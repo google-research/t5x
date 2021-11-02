@@ -291,14 +291,22 @@ class SaveStateTransformationFn(typing_extensions.Protocol):
 
 class RestoreStateTransformationFn(typing_extensions.Protocol):
 
-  def __call__(self, state_dict: PyTreeDef,
-               target_state_dict: PyTreeDef) -> PyTreeDef:
+  def __call__(self,
+               state_dict: PyTreeDef,
+               target_state_dict: PyTreeDef,
+               *,
+               is_resuming: bool = False) -> PyTreeDef:
     """Transforms the given checkpoint state, e.g., by remapping parameters.
 
     Args:
       state_dict: State to transform, which could be from a previous version of
         the model.
       target_state_dict: State in the current model.
+      is_resuming: `True` iff this restore call is due to a job resuming after
+        being temporarily stopped due to, for example, a preemption. This is
+        useful when there is restore logic that should run when restoring from
+        some pre-existing checkpoint, but that should not run again when
+        resuming from a newly-written checkpoint.
 
     Returns:
       The result of transforming the `state_dict`.

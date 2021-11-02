@@ -118,7 +118,9 @@ def merge_state(state_dict: Mapping[str, Any],
 def apply_assignment_map(ckpt_optimizer_state,
                          optimizer_state,
                          assignment_map: Sequence[Tuple[str, Optional[str]]],
-                         require_all_rules_match: bool = True):
+                         require_all_rules_match: bool = True,
+                         *,
+                         is_resuming: bool = False):
   """Applies an assignment map to a checkpoint optimizer state.
 
   In contrast to previous implementations, this has a switch whether to require
@@ -140,10 +142,17 @@ def apply_assignment_map(ckpt_optimizer_state,
       regex-compatible group match codes) or None if the matching state should
       be dropped.
     require_all_rules_match: Whether to require that all rules match.
+    is_resuming: Whether we are resuming a training run (True) or initializing
+      a new one (False).
 
   Returns:
     New, remapped optimizer state.
   """
+  if is_resuming:
+    # Do not apply the transformation when resuming after a temporary stop.
+    # This ensures that the transformation will only happen once.
+    return ckpt_optimizer_state
+
   flat_ckpt = flatten_state_dict(ckpt_optimizer_state)
   unmapped_old_keys = flat_ckpt.copy()
   result = {}

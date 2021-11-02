@@ -255,6 +255,13 @@ def train(
   #  3. From scratch using `init_fn`.
 
   # 1. From a T5X checkpoint in `model_dir`, if one exists.
+  if checkpoint_cfg.restore is not None:
+    state_transforms_for_restore = [
+        functools.partial(fn, is_resuming=True)
+        for fn in checkpoint_cfg.restore.state_transformation_fns
+    ]
+  else:
+    state_transforms_for_restore = []
   restore_cfgs = [
       utils.RestoreCheckpointConfig(
           path=model_dir,
@@ -263,7 +270,8 @@ def train(
           checkpointer_cls=checkpoint_cfg.save.checkpointer_cls,
           # Restore dataset state if it is being saved.
           restore_dataset=(checkpoint_cfg.save and
-                           checkpoint_cfg.save.save_dataset))
+                           checkpoint_cfg.save.save_dataset),
+          state_transformation_fns=state_transforms_for_restore)
   ]
   # 2. From a checkpoint specified by `checkpoint_cfg.restore.path`, if set.
   if checkpoint_cfg.restore:
