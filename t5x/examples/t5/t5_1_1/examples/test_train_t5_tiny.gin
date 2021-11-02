@@ -1,0 +1,48 @@
+# Test config to exercise train.py with model-based pjit partitioning.
+
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5x import adafactor
+from t5x import models
+from t5x import partitioning
+from t5x import utils
+
+include 't5x/configs/runs/pretrain.gin'
+include 't5x/examples/t5/t5_1_1/tiny.gin'
+
+MODEL_DIR = "/tmp"  # Will be overridden in test.
+
+TRAIN_STEPS = 3
+MIXTURE_OR_TASK_MODULE = "t5.data.mixtures"
+MIXTURE_OR_TASK_NAME = "wmt19_ende_v003"
+TASK_FEATURE_LENGTHS = {"inputs": 32, "targets": 32}
+DROPOUT_RATE = 0.0
+
+models.EncoderDecoderModel.loss_fn:
+  z_loss = 0.0
+  label_smoothing = 0.0
+  loss_normalizing_factor = None
+
+
+train/utils.DatasetConfig:
+  pack = False
+  seed = 0
+  shuffle = False
+  use_cached = False
+  batch_size = 8
+
+train_eval/utils.DatasetConfig:
+  pack = False
+  seed = 0
+  shuffle = False
+  use_cached = False
+  batch_size = 8
+
+train_script.train:
+  random_seed = 0
+  eval_steps = 2
+  partitioner = @partitioning.ModelBasedPjitPartitioner()
+
+partitioning.ModelBasedPjitPartitioner.num_partitions = 2
+utils.SaveCheckpointConfig.period = 2

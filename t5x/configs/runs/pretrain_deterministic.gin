@@ -1,0 +1,23 @@
+# Defaults for pretraining deterministically with train.py.
+#
+# See pretrain.gin for usage.
+
+from __gin__ import dynamic_registration
+include 't5x/configs/runs/pretrain.gin'
+
+import __main__ as train_script
+from t5x import utils
+
+# Setting the random_seed will reduce the compilation and training speed. This
+# performance hit will be avoidable once deterministic hardware rng is
+# supporrted (b/202842631)
+train_script.train.random_seed = 0
+train_script.train.get_dataset_fn = @utils.get_deterministic_dataset
+SHUFFLE_TRAIN_EXAMPLES = False
+
+utils.get_deterministic_dataset:
+  model_dir = %MODEL_DIR
+  start_step = 0
+
+# Packing determinism is not robust to preemption.
+train/utils.DatasetConfig.pack = False
