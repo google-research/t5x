@@ -25,7 +25,7 @@ import functools
 import hashlib
 import json
 import os
-import pathlib
+import re
 import shutil
 import time
 from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, Tuple
@@ -263,7 +263,8 @@ def infer(*,
         "`mode` must be one of 'predict', 'score' or 'predict_with_aux'. "
         f"Got '{mode}'")
 
-  # Normalize directory path to avoid inconsistencies.
+  # Remove double-slashes in directory path to avoid inconsistencies.
+  output_dir = re.sub(r'(?<!gs:)([\/]{2,})', '/', output_dir)
   ds_vocabs = utils.get_vocabulary(dataset_cfg)
   if (ds_vocabs[0] != model.input_vocabulary or
       ds_vocabs[1] != model.output_vocabulary):
