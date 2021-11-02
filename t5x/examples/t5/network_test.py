@@ -79,11 +79,12 @@ class NetworkTest(absltest.TestCase):
             np.random.randint(3, 10, size=(batch, max_decode_len))
     }
     loss, _ = jax.jit(model.loss_fn)(params, batch, jax.random.PRNGKey(1))
-    self.assertAlmostEqual(loss, 18.088945)
+    self.assertAlmostEqual(loss, 18.088945, delta=0.05)
 
     predicted, scores = model.predict_batch_with_aux(params, batch)
     np.testing.assert_array_equal(predicted, [[7, 1, 0], [1, 0, 0]])
-    np.testing.assert_almost_equal(scores['scores'], [-3.0401115, -1.9265753])
+    np.testing.assert_allclose(
+        scores['scores'], [-3.0401115, -1.9265753], rtol=1e-3)
 
 
 

@@ -350,12 +350,6 @@ class TrainerTest(parameterized.TestCase):
           expected_metrics,
           steps=steps)
 
-  def test_eval_noprecompile(self):
-    self._test_eval(False)
-
-  def test_eval_precompile(self):
-    self._test_eval(True)
-
   @parameterized.named_parameters([
       {
           'testcase_name': 'max_no_increase',

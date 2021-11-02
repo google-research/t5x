@@ -130,6 +130,7 @@ class PartitioningTest(absltest.TestCase):
 
     for process_indexx in (0, 1, 2, 3):
       process_index_fn.return_value = process_indexx
+      global_mesh = partitioning.default_mesh(4)
       local_chunker = partitioning.LocalChunker(global_mesh)
       # get expected chunk for 'data' axis.
       expected_chunk = process_index_to_data_pos[process_indexx]

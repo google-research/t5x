@@ -171,7 +171,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
                                               enable_dropout=False,
                                               rngs=None,
                                               mutable=False)
-    np.testing.assert_allclose(res, [-3.222973, -1.815315], atol=1e-6)
+    np.testing.assert_allclose(res, [-3.222973, -1.815315], rtol=1e-4)
 
 
   @parameterized.parameters(

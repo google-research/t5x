@@ -12,7 +12,10 @@ jobs:
       with:
         python-version: '3.8.x'
     - name: Install dependencies
-      run: pip install -e .[test]
+      run: |
+        pip install 'jax[tpu]>=0.2.16' -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
+        pip install git+https://github.com/google/gin-config
+        pip install -e .[test]
     - name: Test with pytest
       run: pytest
     # The below step just reports the success or failure of tests as a "commit status".
