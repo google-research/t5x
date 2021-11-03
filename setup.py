@@ -53,7 +53,6 @@ setuptools.setup(
         'numpy',
         'seqio',
         't5',
-        'tensorboard',
         'tensorflow',
         'tensorstore',
     ],
