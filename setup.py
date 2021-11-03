@@ -47,15 +47,15 @@ setuptools.setup(
         'cached_property',
         'clu',
         'flax',
-        'gin-config @ git+https://github.com/google/gin-config#egg=gin',
+        'gin-config',
         'jax[tpu]>=0.2.16',
         'keras<2.7.0',  # TODO(adarob): Remove once tf 2.7 is released.
         'numpy',
         'seqio',
+        't5',
         'tensorboard',
         'tensorflow',
         'tensorstore',
-        't5',
     ],
     extras_require={
         'gcp': [

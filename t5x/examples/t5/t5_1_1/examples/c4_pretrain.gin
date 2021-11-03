@@ -6,8 +6,8 @@ from t5x import partitioning
 from t5x import trainer
 from t5x import utils
 
-include "examples/t5/t5_1_1/base.gin"
-include "configs/runs/pretrain.gin"
+include "t5x/examples/t5/t5_1_1/base.gin"
+include "t5x/configs/runs/pretrain.gin"
 
 MIXTURE_OR_TASK_NAME = "c4_v220_span_corruption"
 MIXTURE_OR_TASK_MODULE = "t5.data.mixtures"

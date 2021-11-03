@@ -41,7 +41,10 @@ from t5x import utils
 import tensorflow as tf
 from tensorflow.io import gfile
 
-_DEFAULT_GIN_SEARCH_PATHS = []
+# Automatically search for gin files relative to the T5X package.
+_DEFAULT_GIN_SEARCH_PATHS = [
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+]
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
@@ -511,7 +514,7 @@ if __name__ == '__main__':
 
   flags.DEFINE_list(
       'gin_search_paths',
-      default=['third_party/py/t5x/configs'],
+      default=['.'],
       help='Comma-separated list of gin config path prefixes to be prepended '
       'to suffixes given via `--gin_file`. If a file appears in. Only the '
       'first prefix that produces a valid path for each suffix will be '
