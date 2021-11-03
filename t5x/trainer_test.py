@@ -243,8 +243,8 @@ class TrainerTest(parameterized.TestCase):
     trainer._partitioned_train_step = mock.Mock(
         side_effect=trainer._partitioned_train_step)
 
-    # train start, train end, logging
-    mock_time.side_effect = [1, 5, 5]
+    # train start, logging, train end, logging
+    mock_time.side_effect = [1, 5, 5, 5]
     num_steps = 2
     trainer.train(self.dataset.as_numpy_iterator(), num_steps)
 
@@ -349,6 +349,12 @@ class TrainerTest(parameterized.TestCase):
           trainer.eval_metrics_managers[task_name].summary_dir,
           expected_metrics,
           steps=steps)
+
+  def test_eval_noprecompile(self):
+    self._test_eval(False)
+
+  def test_eval_precompile(self):
+    self._test_eval(True)
 
   @parameterized.named_parameters([
       {
