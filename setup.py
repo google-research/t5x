@@ -47,7 +47,7 @@ setuptools.setup(
         'cached_property',
         'clu',
         'flax',
-        'gin-config',
+        'gin-config @ git+https://github.com/google/gin-config#egg=gin',
         'jax[tpu]>=0.2.16',
         'numpy',
         'seqio',
