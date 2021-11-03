@@ -254,7 +254,7 @@ def separate_embeddings(opts, key, val, encdec, slot):
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   encdec = TOWER_MAP.get(encdec, encdec)
-  newkey = f'{prefix}/{encdec}/Embed_0/embedding{suffix}'
+  newkey = f'{prefix}/{encdec}/token_embedder/embedding{suffix}'
   return newkey, val
 
 
