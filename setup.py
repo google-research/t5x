@@ -49,6 +49,7 @@ setuptools.setup(
         'flax',
         'gin-config @ git+https://github.com/google/gin-config#egg=gin',
         'jax[tpu]>=0.2.16',
+        'keras<2.7.0',  # TODO(adarob): Remove once tf 2.7 is released.
         'numpy',
         'seqio',
         'tensorboard',
