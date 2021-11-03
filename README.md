@@ -189,7 +189,7 @@ via a flag, you must put it in quotes. In the case of strings, it requires
 Gin makes it easy to change a number of configurations. For example, you can
 change the `partitioning.ModelBasedPjitPartitioner.num_partitions` (overriding
 the value in
-[t5_1_1_base_wmt_from_scratch.gin](examples/t5/t5_1_1/examples/t5_1_1_base_wmt_from_scratch.gin))
+[t5_1_1_base_wmt_from_scratch.gin](t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_from_scratch.gin))
 to chanage the parallelism strategy and pass it as a commandline arg.
 
 ```sh
