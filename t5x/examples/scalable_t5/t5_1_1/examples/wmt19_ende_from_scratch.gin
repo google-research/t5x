@@ -1,0 +1,64 @@
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5x import adafactor
+from t5x import models
+from t5x import partitioning
+from t5x import trainer
+from t5x import utils
+from t5x.examples.scalable_t5 import network
+
+include "t5x/examples/scalable_t5/t5_1_1/base.gin"
+include "t5x/configs/runs/finetune.gin"
+
+MIXTURE_OR_TASK_NAME = "wmt19_ende_v003"
+MIXTURE_OR_TASK_MODULE = "t5.data.mixtures"
+TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 512}
+TRAIN_STEPS = 25000
+LABEL_SMOOTHING = 0.1
+INITIAL_CHECKPOINT_PATH = None
+# Note that `DROPOUT_RATE = 0.1` is specified in the finetune.gin but we just
+# repeat to make it explicit.
+DROPOUT_RATE = 0.1
+
+train/utils.DatasetConfig:
+  batch_size = 128
+  use_cached = False
+  pack = True
+  use_custom_packing_ops = False
+  seed = 0
+
+train_eval/utils.DatasetConfig:
+  batch_size = 128
+  use_cached = False
+  pack = False
+  use_custom_packing_ops = False
+  seed = 0
+
+infer_eval/utils.DatasetConfig:
+  use_cached = False
+
+train_script.train:
+  partitioner = @partitioning.ModelBasedPjitPartitioner()
+  eval_period = 250
+  eval_steps = 20
+  random_seed = 0
+  use_hardware_rng = True
+
+utils.CheckpointConfig.restore = None
+utils.SaveCheckpointConfig:
+  period = 500  # checkpoint frequency
+  keep = 1
+
+# Decoder overrides
+models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 4
+
+trainer.Trainer.num_microbatches = 2
+utils.create_learning_rate_scheduler.warmup_steps = 1000
+
+partitioning.ModelBasedPjitPartitioner:
+  num_partitions = 2
+  model_parallel_submesh = (1,1,1,2)
+
+adafactor.Adafactor:
+  logical_factor_rules = @adafactor.standard_logical_factor_rules()

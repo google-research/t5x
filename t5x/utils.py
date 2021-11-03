@@ -383,12 +383,10 @@ class TrainStateInitializer:
     model = init_fn.__self__  # pytype: disable=attribute-error
     if (hasattr(model, 'module') and hasattr(model.module, 'scan_layers') and
         model.module.scan_layers):
-      if not hasattr(model.module, 'spmd_annotations'):
-        raise ValueError('Module uses scanned layers but lacks spmd_annotations'
-                         ' attribute.')
-      # update top-level module with spmd annotations.
-      model.module = model.module.clone(
-          parent=None, spmd_annotations=self.train_state_axes.params)
+      if hasattr(model.module, 'spmd_annotations'):
+        # update top-level module with spmd annotations.
+        model.module = model.module.clone(
+            parent=None, spmd_annotations=self.train_state_axes.params)
 
   def from_scratch(self, init_rng: Array) -> train_state_lib.TrainState:
     """Initializes the partitioned Optimizer from scratch."""
