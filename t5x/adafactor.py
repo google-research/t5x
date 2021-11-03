@@ -41,16 +41,8 @@ divergence (the original Adafactor formulation).
 
 This Adafactor implementation generalized the default behavior such that we
 obtain the correct second moment estimator even for higher dimensional
-parameters. We do so by specifying the matching rules on the flattened
-dictionary keys for model variables, much like sharding rules.  Each rule
-specifies how this subset of parameters is to be factorized by Adafactor:
-  The rule is either None (default to heuristic behavior) or a tuple
-  of the same rank as the `param` array containing a ROW or COLUMN to mark
-  dimensions to factorize in two row and column sets, and optionally
-  dimensions marked BATCH to denote batched dimensions that should not be
-  averaged over for parameter scale updates or gradient clipping.
-  e.g. (BATCH, ROW, COLUMN, COLUMN) for a rank-4 array with a leading stacked
-  dim.
+parameters.
+
 """
 import enum
 import re
@@ -136,105 +128,6 @@ def factor_name_to_factordim(name):
   }[name]
 
 
-# TODO(adarob, levskaya): Make gin configurable.
-def standard_factor_rules(
-    split_heads=False,
-    scan_layers=False,
-) -> Tuple[Tuple[str, FactorRule]]:
-  """Returns T5X standard Adafactor factorization rules; see `_parse_rule`."""
-
-  # pylint:disable=invalid-name
-  NONE = FactorDim.NONE
-  BATCH = FactorDim.BATCH
-  COLUMN = FactorDim.COLUMN
-  ROW = FactorDim.ROW
-  # pylint:enable=invalid-name
-
-  token_embedding = (COLUMN, ROW)
-  logits_dense = (ROW, COLUMN)
-  final_lnorm = (NONE,)
-  # NOTE(levskaya): variable fusion shouldn't change the factorization rules.
-  if split_heads:
-    attn_fused_qkv = (ROW, BATCH, COLUMN, COLUMN)
-    attn_qkv = (ROW, COLUMN, COLUMN)
-    attn_out = (COLUMN, COLUMN, ROW)
-  else:
-    # fusion requires unreshaped variable storage
-    attn_fused_qkv = (NONE, NONE, NONE)  # Dummy value: fused always split_heads
-    attn_qkv = (ROW, COLUMN)
-    attn_out = (COLUMN, ROW)
-  mlp_fused_in = (ROW, BATCH, COLUMN)
-  mlp_in = (ROW, COLUMN)
-  mlp_out = (COLUMN, ROW)
-  lnorm = (NONE,)
-  relpos = (NONE, NONE)
-  conv_kernel = (BATCH, ROW, COLUMN)
-  parallel_attn_fused_qwi = (ROW, COLUMN, COLUMN)
-  parallel_attn_fused_kv = (ROW, COLUMN, COLUMN)
-  parallel_attn_fused_owo = (COLUMN, COLUMN, ROW)
-
-  # `scan_layers` means use XLA to unroll transformer layers instead of directly
-  # unrolling them in the graph.
-  relpos_unscanned = relpos
-  if scan_layers:
-    SCAN_AXIS = 1  # pylint: disable=invalid-name
-    attn_fused_qkv = _insert(attn_fused_qkv, SCAN_AXIS, BATCH)
-    attn_qkv = _insert(attn_qkv, SCAN_AXIS, BATCH)
-    attn_out = _insert(attn_out, SCAN_AXIS, BATCH)
-    mlp_fused_in = _insert(mlp_fused_in, SCAN_AXIS, BATCH)
-    mlp_in = _insert(mlp_in, SCAN_AXIS, BATCH)
-    mlp_out = _insert(mlp_out, SCAN_AXIS, BATCH)
-    lnorm = _insert(lnorm, SCAN_AXIS, BATCH)
-    relpos = _insert(relpos, SCAN_AXIS, BATCH)
-    conv_kernel = _insert(conv_kernel, SCAN_AXIS, BATCH)
-    parallel_attn_fused_qwi = _insert(parallel_attn_fused_qwi, SCAN_AXIS, BATCH)
-    parallel_attn_fused_kv = _insert(parallel_attn_fused_kv, SCAN_AXIS, BATCH)
-    parallel_attn_fused_owo = _insert(parallel_attn_fused_owo, SCAN_AXIS, BATCH)
-
-  return (
-      # State IO Transformer's T5 model uses a shared relative position bias,
-      # whereas the rest of the layers are scanned. Until this section is
-      # configurable, we use "wrapped" as a proxy for whether it is a State IO
-      # Transformer model.
-      (r'relpos_bias/wrapped/rel_embedding', relpos_unscanned),
-
-      # Normal rules.
-      (r'_layer_norm/(bias|scale)', lnorm),
-      (r'(encoder|decoder)_norm/(bias|scale)', final_lnorm),
-      ((r'(encoder_decoder_|self_|\b)attention/'
-        r'(query|key|value)/kernel'), attn_qkv),
-      ((r'(encoder_decoder_|self_|\b)attention/'
-        r'(qkv_fused|kv_fused)/kernel'), attn_fused_qkv),
-      (r'q_wi_fused/kernel', parallel_attn_fused_qwi),
-      (r'kv_fused/kernel', parallel_attn_fused_kv),
-      (r'o_wo_fused/kernel', parallel_attn_fused_owo),
-      (r'(encoder_decoder_|self_|\b)attention/out/kernel', attn_out),
-      (r'mlp/wi(_\d+)?/kernel', mlp_in),
-      (r'mlp/wi_fused/kernel', mlp_fused_in),
-      (r'mlp/wo/kernel', mlp_out),
-      (r'conv/kernel', conv_kernel),
-      (r'\brelpos_bias', relpos),
-      (r'token_embedder', token_embedding),
-      (r'logits_dense', logits_dense),
-
-      # State IO Transformer rules.
-      (r'components_0_1/.*/(bias|scale)', lnorm),  # Layer norm
-      (r'(encoder_decoder_|self_|\b)attention/.*(query|key|value)/kernel',
-       attn_qkv),
-      (r'(encoder_decoder_|self_|\b)attention/.*out/kernel', attn_out),
-      (r'mlp/.*/wi(_\d+)?/kernel', mlp_in),
-      (r'mlp/.*/wo/kernel', mlp_out),
-
-      # LongT5 rules.
-      (r'\bside_relpos_bias', relpos),
-      (r'\bg2l_relpos_bias', relpos),
-      (r'\bg2g_relpos_bias', relpos),
-
-      # Catch all rule for custom layers: use traditional heuristic.
-      (r'.*', HEURISTIC_RULE),
-  )
-
-
 class HParamMap:
   """Maps parameter path names to hparams.
 
@@ -313,24 +206,6 @@ class Adafactor(OptimizerDef):
                max_parameter_scale: Optional[float] = None):
     """Constructor for the Adafactor optimizer.
 
-    We can pass in manual factorization rules by initializing a `HParamMap` on
-    a set of factorization rules.  `standard_factor_rules` demonstrates the
-    default set.
-
-    This explicit factorization rule is *required* when a parameter has a rank
-    strictly larger than 2. See the module docstring for details. When the rank
-    is 2, we can use either the explicit factorization rule or the heuristic
-    behavior based on argsort. For checkpoint format consistency, we always use
-    the heuristic behavior for rank 2 or less. In other words, `factor_map` for
-    2D parameter is ignored.
-
-    The rule is either None (default to heuristic behavior) or a tuple
-    of the same rank as the `param` array containing a `FactorDim.ROW` or
-    `FactorDim.COLUMN` to mark dimensions to factorize in two row and column
-    sets, and optionally dimensions marked `FactorDim.BATCH` to denote batched
-    dimensions that should not be averaged over for parameter scale updates or
-    gradient clipping. e.g. (BATCH, ROW, COLUMN, COLUMN) for a rank-4 array with
-    a leading stacked dim.
 
     Args:
       learning_rate: float: learning rate.  NB: the natural scale for adafactor
