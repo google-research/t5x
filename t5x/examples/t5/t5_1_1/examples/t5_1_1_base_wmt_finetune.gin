@@ -1,0 +1,55 @@
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5.data import mixtures
+from t5x import models
+from t5x import partitioning
+from t5x import utils
+
+include "t5x/examples/t5/t5_1_1/base.gin"
+include "t5x/configs/runs/finetune.gin"
+
+MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
+TASK_FEATURE_LENGTHS = {"inputs": 256, "targets": 256}
+TRAIN_STEPS = 1020000  # 1000000 pre-trained steps + 10000 fine-tuning steps.
+
+# `LOSS_NORMALIZING_FACTOR`: When fine-tuning a model that was pre-trained
+# using Mesh Tensorflow (e.g. the public T5 / mT5 / ByT5 models), this should be
+# set to `pretraining batch_size` * `target_token_length`. For T5 and T5.1.1:
+# `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
+LOSS_NORMALIZING_FACTOR = 233472
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000"
+
+DROPOUT_RATE = 0.0
+
+train/utils.DatasetConfig:
+  batch_size = 128
+  use_cached = False
+  pack = True
+
+train_eval/utils.DatasetConfig:
+  batch_size = 128
+  use_cached = False
+  pack = True
+
+infer_eval/utils.DatasetConfig:
+  use_cached = False
+
+train_script.train:
+  eval_period = 500
+  eval_steps = 20
+  random_seed = 0
+  use_hardware_rng = True
+  partitioner = @partitioning.ModelBasedPjitPartitioner()
+
+utils.RestoreCheckpointConfig:
+  mode = 'specific'
+  path = %INITIAL_CHECKPOINT_PATH
+  dtype = 'float32'
+utils.SaveCheckpointConfig:
+  period = 5000  # checkpoint frequency
+
+# `num_decodes` is equivalent to a beam size in a beam search decoding.
+models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 4
+
+partitioning.ModelBasedPjitPartitioner.num_partitions = 2
