@@ -552,6 +552,12 @@ class Checkpointer(object):
     final_dir = os.path.join(self.checkpoints_dir, f'checkpoint_{step}')
     tmp_dir = final_dir + f'.tmp-{timestamp}'
 
+    if gfile.exists(final_dir):
+      logging.info(
+          'Skipping save checkpoint for step %d (directory %s already exists)',
+          step, final_dir)
+      return
+
     logging.info('Saving checkpoint for step %d to %s', step, tmp_dir)
 
     if jax.process_index() == 0:
