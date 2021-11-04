@@ -696,6 +696,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
         'This could be an indication that the dataset is nondeterministic.')
     try:
       dataset_remainder = len(ds) % batch_size  # pytype:disable=wrong-arg-types
+      logging.info('length of dataset = %s', len(ds))
     except TypeError as e:
       if str(e) == 'dataset length is unknown.':
         logging.warning(
@@ -731,6 +732,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       # Run fast inference on batch.
       # [B, ...] -> [B, ...]
       batch_result = infer_step(train_state.params, infer_batch)
+      logging.info('Inference of batch %s done.', index)
       # Issue asynchronous copy request which serves as prefetching to the host.
       # The result value is synchronized with host_allgather in the loop below.
       try:
@@ -740,7 +742,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
         pass
       batched_results.append(batch_result)
       all_indices.append(index)
-
+    logging.info('Inference of all batches done.')
     all_inferences = []
     for batch_result in batched_results:
       # [B, ...] -> [H, B, ...]
