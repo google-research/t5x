@@ -890,14 +890,15 @@ def get_dataset(cfg: DatasetConfig,
   else:
     seed = cfg.seed
 
-  return _get_dataset(cfg, shard_info, feature_converter_cls, seed, num_epochs)
+  return get_dataset_inner(cfg, shard_info, feature_converter_cls, seed,
+                           num_epochs)
 
 
-def _get_dataset(cfg: DatasetConfig,
-                 shard_info: seqio.ShardInfo,
-                 feature_converter_cls: Type[seqio.FeatureConverter],
-                 seed: Optional[int] = None,
-                 num_epochs: Optional[int] = None):
+def get_dataset_inner(cfg: DatasetConfig,
+                      shard_info: seqio.ShardInfo,
+                      feature_converter_cls: Type[seqio.FeatureConverter],
+                      seed: Optional[int] = None,
+                      num_epochs: Optional[int] = None):
   """Internal fn to load a dataset from SeqIO based on a `DatasetConfig`."""
   batch_size = cfg.batch_size // shard_info.num_shards
   logging.info(
