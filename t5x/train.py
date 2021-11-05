@@ -54,8 +54,7 @@ def run_actions(
     mode: trainer_lib.ActionMode,
     actions: Mapping[trainer_lib.ActionMode, Sequence[trainer_lib.BaseAction]],
     train_state: train_state_lib.TrainState,
-    metrics_by_task: Optional[Mapping[str, trainer_lib.MetricMapType]]
-) -> train_state_lib.TrainState:
+    metrics_by_task: Optional[Mapping[str, trainer_lib.MetricMapType]]) -> bool:
   """Invokes all actions on the given mode on host 0 only.
 
   Args:
@@ -67,37 +66,33 @@ def run_actions(
     metrics_by_task: A map of metrics keyed by task name.
 
   Returns:
-    A maybe updated train_state, e.g., a updated `stop_training` state to
-    indicate whether to stop the main training loop.
+    A bool indicating whether training should be halted.
 
   Raises:
     RuntimeError: When the metrics processed on host 0 is None.
   """
   if jax.process_index() != 0:
-    return train_state
+    return False
   if metrics_by_task is None:
     raise RuntimeError('Metric is unexpectedly None on process 0')
+  stop_training = False
   for action in actions.get(mode, []):
-    train_state = action.run(train_state, metrics_by_task=metrics_by_task)
-  return train_state
+    stop_training |= action.run(train_state, metrics_by_task=metrics_by_task)
+  return stop_training
 
 
-def broadcast_stop_training(
-    train_state: train_state_lib.TrainState) -> train_state_lib.TrainState:
+def broadcast_stop_training(stop_training: bool) -> bool:
   """Broadcast the stop_training on host 0 to all host.
 
   Args:
-    train_state: The current train_state of the trainer.
+    stop_training: Whether training should stop.
 
   Returns:
-    a TrainState that reflects the `stop_training` on host 0.
+    a bool that reflects the `stop_training` on host 0.
   """
   # Broadcast state to all hosts and exit training loop everywhere if
   # `stop_training` is requested.
-  return train_state.replace(
-      stop_training=bool(
-          multihost_utils.broadcast_one_to_all(
-              jnp.array(train_state.stop_training))))
+  return bool(multihost_utils.broadcast_one_to_all(jnp.array(stop_training)))
 
 
 def train(
@@ -429,8 +424,7 @@ def train(
     logging.info('Epoch %d of %d', epoch, num_epochs)
 
     # `stop_training` is requested, break out the main loop immediately.
-    # TODO(hthu): Make sure that all hosts are exit cleanly.
-    if trainer.train_state.stop_training:
+    if trainer.stop_training:
       break
 
     # Gather all task evaluation metrics.
@@ -450,9 +444,9 @@ def train(
       if not concurrent_evaluation:
         # Ensure metrics are finished being computed.
         all_metrics_done = all_metrics.result()
-        trainer.train_state = run_actions(trainer_lib.ActionMode.INFER_EVAL,
-                                          actions, trainer.train_state,
-                                          all_metrics_done)
+        trainer.stop_training = run_actions(trainer_lib.ActionMode.INFER_EVAL,
+                                            actions, trainer.train_state,
+                                            all_metrics_done)
       train_metrics.write_scalar('timing/evaluate_seconds',
                                  time.time() - evaluate_tick, host_step)
     if train_eval_dataset_cfg:
@@ -469,9 +463,9 @@ def train(
           for task, ds in train_eval_datasets.items()
       }
       eval_summaries = trainer.eval(eval_batch_iters)
-      trainer.train_state = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,
-                                        actions, trainer.train_state,
-                                        eval_summaries)
+      trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,
+                                          actions, trainer.train_state,
+                                          eval_summaries)
 
     if epoch == first_epoch:
       logging.info('Kickstarting train dataset prefetch.')
@@ -492,8 +486,8 @@ def train(
       epoch_end_step = host_step + num_steps
       logging.info('Training for %d steps.', num_steps)
       while host_step < epoch_end_step:
-        trainer.train_state = broadcast_stop_training(trainer.train_state)
-        if trainer.train_state.stop_training:
+        trainer.stop_training = broadcast_stop_training(trainer.stop_training)
+        if trainer.stop_training:
           logging.info('Saving a checkpoint before early stopping...')
           checkpointer.save(trainer.train_state,
                             checkpoint_cfg.save.state_transformation_fns)
@@ -507,9 +501,9 @@ def train(
         # that the actions can be performed without special casing. The only
         # caveat is that train would need its own special `key` given no
         # `task` will be applied.
-        trainer.train_state = run_actions(trainer_lib.ActionMode.TRAIN, actions,
-                                          trainer.train_state,
-                                          {TRAIN_METRIC_KEY: train_summary})
+        trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN,
+                                            actions, trainer.train_state,
+                                            {TRAIN_METRIC_KEY: train_summary})
 
         host_step += inner_num_steps
       logging.info('END Train loop.')
@@ -544,9 +538,9 @@ def train(
         for task, ds in train_eval_datasets.items()
     }
     eval_summary = trainer.eval(eval_batch_iters)  # pytype:disable=wrong-arg-types
-    trainer.train_state = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,
-                                      actions, trainer.train_state,
-                                      eval_summary)
+    trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,
+                                        actions, trainer.train_state,
+                                        eval_summary)
   if evaluator is not None:
     evaluate_tick = time.time()
     all_metrics, _, _ = evaluator.evaluate(
@@ -557,9 +551,9 @@ def train(
         score_fn=functools.partial(score_fn, train_state=trainer.train_state))
     # Ensure metrics are finished being computed.
     all_metrics_done = all_metrics.result()
-    trainer.train_state = run_actions(trainer_lib.ActionMode.INFER_EVAL,
-                                      actions, trainer.train_state,
-                                      all_metrics_done)
+    trainer.stop_training = run_actions(trainer_lib.ActionMode.INFER_EVAL,
+                                        actions, trainer.train_state,
+                                        all_metrics_done)
     train_metrics.write_scalar('timing/evaluate_seconds',
                                time.time() - evaluate_tick, host_step)
 

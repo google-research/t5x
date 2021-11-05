@@ -476,12 +476,12 @@ class TrainerTest(parameterized.TestCase):
                                            rtol=rtol)
 
     for metric in metrics:
-      trainer.train_state = hook.run(trainer.train_state,
-                                     {'test_task': {
-                                         'metric': metric
-                                     }})
+      trainer_stop_training = hook.run(trainer.train_state,
+                                       {'test_task': {
+                                           'metric': metric
+                                       }})
 
-    self.assertEqual(trainer.train_state.stop_training, stop_training)
+    self.assertEqual(trainer_stop_training, stop_training)
 
   @parameterized.named_parameters([{
       'testcase_name': 'valid_loss',
@@ -508,12 +508,12 @@ class TrainerTest(parameterized.TestCase):
     trainer = self.test_trainer
     hook = trainer_lib.TerminateOnNanAction(task='test_task', metric=metric)
 
-    trainer.train_state = hook.run(trainer.train_state,
-                                   {'test_task': {
-                                       metric: value
-                                   }})
+    trainer_stop_training = hook.run(trainer.train_state,
+                                     {'test_task': {
+                                         metric: value
+                                     }})
 
-    self.assertEqual(trainer.train_state.stop_training, stop_training)
+    self.assertEqual(trainer_stop_training, stop_training)
 
   @mock.patch('time.time')
   def test_compile_train(self, mock_time=None):

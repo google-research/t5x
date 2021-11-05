@@ -221,6 +221,8 @@ class BaseTrainer(abc.ABC):
 
     self.train_state = train_state
 
+    self.stop_training = False
+
     # The training metrics combine metrics added by the Model (e.g., loss and
     # accuracy) and Trainer (e.g., learning rate).
     self.train_metrics_manager = MetricsManager(
@@ -638,10 +640,8 @@ class BaseAction(abc.ABC):
   """Base Action class for override. The action itself does nothing."""
 
   @abc.abstractmethod
-  def run(
-      self, train_state: train_state_lib.TrainState,
-      metrics_by_task: Mapping[str,
-                               MetricMapType]) -> train_state_lib.TrainState:
+  def run(self, train_state: train_state_lib.TrainState,
+          metrics_by_task: Mapping[str, MetricMapType]) -> bool:
     """Runs an action for the given train_state and metrics.
 
     Args:
@@ -649,8 +649,7 @@ class BaseAction(abc.ABC):
       metrics_by_task: A map of metrics that is grouped by each task.
 
     Returns:
-      A new train_state object that is potentially modified to indicate a
-        change of state to training loop.
+      A bool indicating whether training should be halted.
     """
     raise NotImplementedError("Action must define its run method.")
 
@@ -716,10 +715,8 @@ class EarlyStoppingAction(BaseAction):
       delta *= -1
     return compare_fn(current, previous - delta)
 
-  def run(
-      self, train_state: train_state_lib.TrainState,
-      metrics_by_task: Mapping[str,
-                               MetricMapType]) -> train_state_lib.TrainState:
+  def run(self, train_state: train_state_lib.TrainState,
+          metrics_by_task: Mapping[str, MetricMapType]) -> bool:
     if self._task not in metrics_by_task.keys():
       logging.warning(
           "Monitoring task: %s does not exist in all task metrics. "
@@ -727,13 +724,13 @@ class EarlyStoppingAction(BaseAction):
       logging.warning(
           "The action that tracks metric : %s for task : %s is not run",
           self._metric, self._task)
-      return train_state
+      return False
     else:
       self._metric_history.append(metrics_by_task[self._task][self._metric])
 
     # Not enough history.
     if len(self._metric_history) < self._patience:
-      return train_state
+      return False
 
     if all(
         self._compare_fn(self._metric_history[i + 1], self._metric_history[i])
@@ -743,10 +740,10 @@ class EarlyStoppingAction(BaseAction):
           "Metric: %s for Task: %s has not improved for %s iterations, detail "
           "history of the metric: %s", self._metric, self._task, self._patience,
           self._metric_history)
-      return train_state.replace(stop_training=True)
+      return True
     # Remove extra histories that we don't need to keep.
     self._metric_history.pop(0)
-    return train_state
+    return False
 
 
 class TerminateOnNanAction(BaseAction):
@@ -766,29 +763,27 @@ class TerminateOnNanAction(BaseAction):
     self._task = task
     self._metric = metric
 
-  def run(
-      self, train_state: train_state_lib.TrainState,
-      metrics_by_task: Mapping[str,
-                               MetricMapType]) -> train_state_lib.TrainState:
+  def run(self, train_state: train_state_lib.TrainState,
+          metrics_by_task: Mapping[str, MetricMapType]) -> bool:
     if self._task not in metrics_by_task.keys():
       logging.warning(
           "Monitoring task: %s does not exist in all task metrics. "
           "Available tasks are : %s", self._task, metrics_by_task.keys())
       logging.warning("TerminateOnNanAction for task : %s is not run.",
                       self._task)
-      return train_state
+      return False
     if self._metric not in metrics_by_task[self._task].keys():
       logging.warning("Metric : %s does not exist in metrics for task : %s",
                       self._metric, self._task)
       logging.warning("TerminateOnNanAction for task : %s is not run.",
                       self._task)
-      return train_state
+      return False
 
     metric = metrics_by_task[self._task][self._metric]
     if np.isnan(metric) or np.isinf(metric):
       logging.warning(
           "Requested `stop_training` in training loop (Details below).\n "
           "NaN encountered in metric for task : %s", self._task)
-      return train_state.replace(stop_training=True)
+      return True
 
-    return train_state
+    return False

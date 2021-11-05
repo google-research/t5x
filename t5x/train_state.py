@@ -30,7 +30,6 @@ class TrainState(struct.PyTreeNode):
   _optimizer: optim.Optimizer
   # Non-parameter variables.
   other_variables: Optional[flax_scope.FrozenVariableDict] = None
-  stop_training: bool = struct.field(default=False, pytree_node=False)
 
   @property
   def step(self) -> jnp.ndarray:
@@ -59,7 +58,7 @@ class TrainState(struct.PyTreeNode):
 
   def restore_state(self, state_dict: Dict[str, Any]) -> 'TrainState':
     new_optimizer = self._optimizer.restore_state(state_dict)
-    return self.replace(_optimizer=new_optimizer, stop_training=False)
+    return self.replace(_optimizer=new_optimizer)
 
   def update_step(self, step: int) -> 'TrainState':
     return self.replace(
