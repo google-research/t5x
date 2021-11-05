@@ -33,13 +33,13 @@ import jax.numpy as jnp
 import numpy as np
 import seqio
 from t5x import decoding
-from t5x import metrics as metrics_lib
 import tensorflow as tf
 import typing_extensions
 
 Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
-MetricsMap = metrics_lib.MetricsMap
+MetricsMap = MutableMapping[str, jnp.ndarray]
 Optimizer = optim.Optimizer
+MetricMapType = Mapping[str, jnp.ndarray]
 PyTreeDef = type(jax.tree_structure(None))
 
 
@@ -166,12 +166,12 @@ class BaseModel(abc.ABC):
     pass
 
   @abc.abstractmethod
-  def get_initial_metrics(self) -> MetricsMap:
+  def get_initial_metrics(self) -> Mapping[str, Array]:
     """Dictionary of metrics and initial values."""
     pass
 
   @abc.abstractmethod
-  def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
+  def summarize_metrics_fn(self, metrics: Mapping[str, Array], duration: float,
                            num_steps: int) -> Mapping[str, Array]:
     """Converts metrics into tensorboard-friendly summary.
 
@@ -257,8 +257,8 @@ class BaseTransformerModel(BaseModel):
   ) -> MetricsMap:
     """Compute metrics given the logits, targets and loss."""
     additional_metrics = {
-        'z_loss': metrics_lib.Sum.from_model_output(total_z_loss),
-        'cross_ent_loss': metrics_lib.Sum.from_model_output(loss - total_z_loss)
+        'z_loss': total_z_loss,
+        'cross_ent_loss': loss - total_z_loss
     }
     return compute_metrics(
         logits=logits,
@@ -269,7 +269,7 @@ class BaseTransformerModel(BaseModel):
         additional_metrics=additional_metrics)
 
   def get_initial_metrics(self):
-    metrics = {
+    return {
         'loss': 0.0,
         'accuracy': 0.0,
         'weight_sum': 0.0,
@@ -278,12 +278,10 @@ class BaseTransformerModel(BaseModel):
         'num_tokens': 0.0,
         'num_examples': 0.0
     }
-    return metrics_lib.create_metrics_dict(metrics)
 
-  def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
+  def summarize_metrics_fn(self, metrics: Mapping[str, Array], duration: float,
                            num_steps: int) -> Mapping[str, Array]:
     """Convert metrics into tensorboard-friendly summary."""
-    metrics = {k: v.compute() for k, v in metrics.items()}
     summary = {
         'accuracy':
             metrics['accuracy'] / metrics['weight_sum'],
@@ -1086,10 +1084,11 @@ def compute_weighted_accuracy(
   return jnp.sum(accuracy)
 
 
-def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray,
-                    weights: jnp.ndarray, loss: jnp.ndarray,
-                    weight_sum: jnp.ndarray,
-                    additional_metrics: MetricsMap) -> MetricsMap:
+def compute_metrics(
+    logits: jnp.ndarray, targets: jnp.ndarray, weights: jnp.ndarray,
+    loss: jnp.ndarray, weight_sum: jnp.ndarray,
+    additional_metrics: MutableMapping[str, jnp.ndarray]
+) -> MutableMapping[str, jnp.ndarray]:
   """Compute summary metrics."""
   accuracy = compute_weighted_accuracy(logits, targets, weights)
   metrics = {
@@ -1099,7 +1098,6 @@ def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray,
       'num_examples': targets.shape[0],
       'num_tokens': targets.size
   }
-  metrics = metrics_lib.create_metrics_dict(metrics)
   metrics.update(additional_metrics)
   return metrics
 
