@@ -51,7 +51,7 @@ setuptools.setup(
         'jax[tpu]>=0.2.16',
         'keras<2.7.0',  # TODO(adarob): Remove once tf 2.7 is released.
         'numpy',
-        'seqio',
+        'seqio-nightly',
         't5',
         'tensorflow',
         'tensorstore',
