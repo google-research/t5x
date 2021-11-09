@@ -22,16 +22,18 @@ import abc
 import enum
 import os
 import time
-from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple
+from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
 from absl import logging
 import cached_property
 from clu import metric_writers
+from clu.metrics import Metric
 from flax.core import FrozenDict
 import jax.lax
 import jax.numpy as jnp
 import jax.random
 import numpy as np
+from t5x import metrics as metrics_lib
 from t5x import models
 from t5x import multihost_utils
 from t5x import partitioning
@@ -40,13 +42,14 @@ from t5x import utils
 import typing_extensions
 
 
+Array = Union[np.ndarray, jnp.ndarray]
 BatchSpec = Mapping[str, jax.ShapeDtypeStruct]
 BatchType = Mapping[str, np.ndarray]
 Rng = jnp.ndarray
-MetricMapType = Mapping[str, jnp.ndarray]
+MetricMapType = MutableMapping[str, Metric]
 MetricMapSpec = Mapping[str, jax.ShapeDtypeStruct]
 ModelWeights = Any
-MutableMetricMapType = Dict[str, jnp.ndarray]
+MutableMetricMapType = Dict[str, Metric]
 P = partitioning.PartitionSpec
 
 if TYPE_CHECKING:  # See b/163639353
@@ -68,7 +71,7 @@ class SummarizeMetricsCallable(typing_extensions.Protocol):
   """PyType template for a metrics summary function."""
 
   def __call__(self, metrics: MetricMapType, duration: float,
-               num_steps: int) -> MetricMapType:
+               num_steps: int) -> Mapping[str, jnp.ndarray]:
     """Summarizes metrics accumulated across multiple steps.
 
     Args:
@@ -87,7 +90,7 @@ class PartitionedTrainCallable(typing_extensions.Protocol):
 
   def __call__(
       self, train_state: train_state_lib.TrainState, batch: BatchType,
-      prev_metrics: Mapping[str, float]
+      prev_metrics: MetricMapType
   ) -> Tuple[train_state_lib.TrainState, MetricMapType]:
     ...
 
@@ -99,7 +102,7 @@ class PartitionedEvalCallable(typing_extensions.Protocol):
       self,
       train_state: train_state_lib.TrainState,
       batch: jnp.ndarray,
-      prev_metrics: Mapping[str, float],
+      prev_metrics: MetricMapType,
   ) -> MetricMapType:
     ...
 
@@ -116,18 +119,15 @@ class MetricsManager(object):
 
     Args:
       name: an identifier of the metrics to use when logging (e.g., 'train').
-      initial_accumulator: a mapping from metric name to the initial values for
-        accumulation.
+      initial_accumulator: a mapping from metric name to the initial values
+        (clu.metric.Metric objects) for accumulation.
       summarize_fn: a callable to convert the mapping of accumulated metrics
         into a mapping of scalars to be logged.
       summary_dir: the summary directory. If provided, TensorBoard summaries
         will be written to a `name` subdirectory.
     """
     self._name = name
-    # We explicitly convert initial metrics to numpy arrays to force them to be
-    # strongly typed. Python scalars are weakly typed and can cause the train
-    # and eval step functions to be compiled twice.
-    self._initial_accumulator = jax.tree_map(np.array, initial_accumulator)
+    self._initial_accumulator = initial_accumulator
     self._summarize_fn = summarize_fn
     self.summary_dir = os.path.join(summary_dir, name) if summary_dir else None
     writers = []
@@ -155,7 +155,7 @@ class MetricsManager(object):
 
   def write_metrics_summary(self, metrics: MetricMapType, step: int,
                             duration: float,
-                            num_steps: int) -> Optional[MetricMapType]:
+                            num_steps: int) -> Optional[Mapping[str, Array]]:
     """Writes summary based on accumulated metrics.
 
     Actual write only occurs on host 0.
@@ -178,6 +178,7 @@ class MetricsManager(object):
     if jax.process_index() == 0:
       summary = self._summarize_fn(
           metrics=metrics, duration=duration, num_steps=num_steps)
+      # TODO(b/203790423): Use CLU LoggingWriter.
       logging.info("%s metrics at step: %s, %s", self._name, step, summary)
       self._writer.write_scalars(step, summary)
       self._writer.flush()
@@ -289,8 +290,8 @@ class BaseTrainer(abc.ABC):
                                             tock - tick, self.train_state.step)
 
   def eval(
-      self, batch_iters: Mapping[str, Iterator[BatchType]]
-  ) -> Mapping[str, MetricMapType]:
+      self, batch_iters: Mapping[str,
+                                 Iterator[BatchType]]) -> Mapping[str, Array]:
     """Runs evaluation loop over the iterator and writes summary."""
     eval_summaries = {}
     for iter_name, batch_iter in batch_iters.items():
@@ -439,7 +440,7 @@ def accumulate_grads_microbatched(
                                                     sub_dropout_rng)
       del loss, weight_sum
       grad_accum = jax.tree_multimap(jnp.add, grad_accum, grad)
-      metrics = jax.tree_multimap(jnp.add, metrics, prev_metrics)
+      metrics = {k: v.merge(metrics[k]) for k, v in prev_metrics.items()}
       return dropout_rng, grad_accum, metrics
 
     # Initialize gradient accumulation loop state.
@@ -475,7 +476,7 @@ def apply_grads(
   # Update optimizer using accumulated gradient.
   new_train_state = train_state.apply_gradient(
       grad_accum, learning_rate=learning_rate)
-  metrics["learning_rate"] = learning_rate
+  metrics["learning_rate"] = metrics_lib.Sum.from_model_output(learning_rate)
   if log_weight_metrics:
     # TODO(reinerp): Extend weight stats logging with support for non-reduced
     # axes of tensors. For example, for stacked layers (QKV stacking or layer
@@ -493,11 +494,10 @@ def apply_grads(
 
 
 def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
-              batch: jnp.ndarray,
-              prev_metrics: Mapping[str, float]) -> MetricMapType:
+              batch: jnp.ndarray, prev_metrics: MetricMapType) -> MetricMapType:
   """Default evaluation step."""
   _, (_, metrics) = model.eval_fn(train_state.params, batch)
-  metrics = jax.tree_multimap(jnp.add, prev_metrics, metrics)
+  metrics = {k: v.merge(metrics[k]) for k, v in prev_metrics.items()}
   return metrics
 
 
@@ -509,7 +509,8 @@ _WEIGHT_METRICS = [
 def _make_rms_metrics(name, tree):
   """Calculates the root-mean-square metric for a pytree."""
   return {
-      f"{name}/{k}": jnp.sqrt(jnp.mean(jnp.square(v)))
+      f"{name}/{k}":
+      metrics_lib.Sum.from_model_output(jnp.sqrt(jnp.mean(jnp.square(v))))
       for k, v in utils.flatten_dict_string_keys(tree).items()
   }
 
@@ -517,7 +518,7 @@ def _make_rms_metrics(name, tree):
 def _make_max_metrics(name, tree):
   """Calculates the L-inf norm for a pytree."""
   return {
-      f"{name}/{k}": jnp.max(jnp.abs(v))
+      f"{name}/{k}": metrics_lib.Sum.from_model_output(jnp.max(jnp.abs(v)))
       for k, v in utils.flatten_dict_string_keys(tree).items()
   }
 
@@ -570,13 +571,13 @@ class Trainer(BaseTrainer):
   def _summarize_metrics_fn(self) -> SummarizeMetricsCallable:
 
     def _summarize_trainer_metrics(metrics: MetricMapType, duration: float,
-                                   num_steps: int) -> MetricMapType:
+                                   num_steps: int) -> Mapping[str, jnp.ndarray]:
       """Produces summaries for metrics added by the trainer."""
       del duration
       return {
-          "learning_rate": metrics["learning_rate"] / num_steps,
+          "learning_rate": metrics["learning_rate"].compute() / num_steps,
           **{
-              k: v
+              k: v.compute()
               for k, v in metrics.items()
               if k.split("/")[0] in _WEIGHT_METRICS
           }
@@ -585,19 +586,22 @@ class Trainer(BaseTrainer):
     return _summarize_trainer_metrics
 
   def _get_initial_metrics(self) -> MutableMetricMapType:
-    initial_metrics = {"learning_rate": 0.0}
+    initial_metrics = {"learning_rate": metrics_lib.Sum.from_model_output(0.)}
     if self._log_weight_metrics:
       targets = utils.flatten_dict_string_keys(
           self.train_state.state_dict()["target"])
       for name in _WEIGHT_METRICS:
-        initial_metrics.update({f"{name}/{k}": 0.0 for k in targets.keys()})
+        initial_metrics.update({
+            f"{name}/{k}": metrics_lib.Sum.from_model_output(0.)
+            for k in targets.keys()
+        })
     return initial_metrics
 
   @cached_property
   def _partitioned_train_step(self) -> PartitionedTrainCallable:
 
     def train_with_lr(train_state: train_state_lib.TrainState, batch: BatchType,
-                      prev_metrics: Mapping[str, float]):
+                      prev_metrics: MetricMapType):
 
       learning_rate = self._learning_rate_fn(train_state.step)
       dropout_rng = self._get_step_rng(train_state.step)
@@ -607,7 +611,7 @@ class Trainer(BaseTrainer):
       new_train_state, metrics = apply_grads(train_state, grad_accum, metrics,
                                              learning_rate,
                                              self._log_weight_metrics)
-      metrics = jax.tree_multimap(jnp.add, prev_metrics, metrics)
+      metrics = {k: v.merge(metrics[k]) for k, v in prev_metrics.items()}
       return new_train_state, metrics
 
     return self._partitioner.partition(
