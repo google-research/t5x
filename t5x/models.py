@@ -132,6 +132,29 @@ class BaseModel(abc.ABC):
     """
     pass
 
+  def eval_fn(
+      self,
+      params: PyTreeDef,
+      batch: Mapping[str, jnp.ndarray],
+  ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
+    """Computes loss and metrics during the evaluation.
+
+    Args:
+      params: model parameters.
+      batch: a batch of inputs.
+
+    Returns:
+      loss: the loss computed for the given inputs and parameters.
+      aux:
+        weight_sum: sum of the per-token weights applied to the loss.
+        metrics: a mapping of metrics computed for this batch.
+    """
+    return self.loss_fn(
+        params=params,
+        batch=batch,
+        dropout_rng=None,
+    )
+
   def predict_batch(self, params: PyTreeDef,
                     batch: Mapping[str, jnp.ndarray]) -> jnp.ndarray:
     """Thin wrapper around `self.predict_batch_with_aux`."""

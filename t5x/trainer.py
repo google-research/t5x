@@ -496,7 +496,7 @@ def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
               batch: jnp.ndarray,
               prev_metrics: Mapping[str, float]) -> MetricMapType:
   """Default evaluation step."""
-  _, (_, metrics) = model.loss_fn(train_state.params, batch, dropout_rng=None)
+  _, (_, metrics) = model.eval_fn(train_state.params, batch)
   metrics = jax.tree_multimap(jnp.add, prev_metrics, metrics)
   return metrics
 
