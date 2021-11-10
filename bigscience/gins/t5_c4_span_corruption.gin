@@ -1,0 +1,1 @@
+from __gin__ import dynamic_registration

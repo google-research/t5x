@@ -28,11 +28,11 @@ gcloud alpha compute tpus tpu-vm create ${TPU_NAME} --zone ${ZONE} --accelerator
 
 8. **Setup JAX on your TPU:**
 ```
-sudo pip uninstall jax jaxlib
+sudo pip uninstall jax jaxlib -y
 pip3 install -U pip
 pip3 install jax jaxlib
 gsutil cp gs://cloud-tpu-tpuvm-v4-artifacts/wheels/libtpu/latest/libtpu_tpuv4-0.1.dev* .
-pip install libtpu_tpuv4-0.1.dev*
+pip3 install libtpu_tpuv4-0.1.dev*
 ```
 
 9. **Test JAX on your TPU.** This should return `8`, but will hang if you are using a pod (you have to run it on each VM then ;)).
