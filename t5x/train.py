@@ -23,7 +23,7 @@ import time
 from typing import Callable, Iterator, Sequence, Mapping, Tuple, Type, Optional
 
 from absl import logging
-from flax.metrics import tensorboard
+from clu import metric_writers
 import jax
 from jax import random
 import jax.numpy as jnp
@@ -111,7 +111,8 @@ def train(
     stats_period: Optional[int] = None,
     random_seed: Optional[int],
     use_hardware_rng: bool = False,
-    summarize_config_fn: Callable[[str, tensorboard.SummaryWriter, int], None],
+    summarize_config_fn: Callable[[str, metric_writers.SummaryWriter, int],
+                                  None],
     inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator,
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
     concurrent_evaluation: bool = False,
@@ -600,6 +601,7 @@ if __name__ == '__main__':
       'TensorFlow Datasets that are not available in the public TFDS GCS '
       'bucket. Note that this flag overrides the `tfds_data_dir` attribute of '
       'all `Task`s.')
+
 
 
   def main(argv: Sequence[str]):
