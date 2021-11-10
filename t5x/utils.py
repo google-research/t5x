@@ -352,17 +352,15 @@ class TrainStateInitializer:
       initial_variables = init_fn(
           rng=rng, input_shapes=input_shapes, input_types=input_types)
       other_initial_variables, initial_params = initial_variables.pop('params')
-      # If logical axis names are present, derive optimizer partitioning
-      # information from them.
-      if 'params_axes' in other_initial_variables:
-        if hasattr(optimizer_def, 'set_param_axes'):
-          axis_names = nn.partitioning.get_axis_names(
-              other_initial_variables['params_axes'])
-          optimizer_def.set_param_axes(axis_names)
-        else:
-          raise ValueError('params_axes metadata information was produced but'
-                           f'optimizer_def {optimizer_def} has no '
-                           'set_param_axes method.')
+      # If the optimizer supports `set_param_axes`, then assume that the model
+      # code is emitting these axes and use it.
+      if hasattr(optimizer_def, 'set_param_axes'):
+        if 'params_axes' not in other_initial_variables:
+          raise ValueError('The optimizer supports params_axes for model-based '
+                           'partitioning, but the model is not emitting them.')
+        axis_names = nn.partitioning.get_axis_names(
+            other_initial_variables['params_axes'])
+        optimizer_def.set_param_axes(axis_names)
       # Initialize optimizer and initial train state.
       optimizer = optimizer_def.create(initial_params)
       return train_state_lib.TrainState.from_flax_optimizer(
