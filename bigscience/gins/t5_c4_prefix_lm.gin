@@ -10,7 +10,7 @@ import task
 include "t5x/examples/t5/t5_1_1/xxl.gin"
 include "t5x/configs/runs/pretrain.gin"
 
-MIXTURE_OR_TASK_NAME = "c4_v220_span_corruption"
+MIXTURE_OR_TASK_NAME = "c4_v220_prefix_lm"
 MIXTURE_OR_TASK_MODULE = "t5.data.mixtures"
 TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 114}
 TRAIN_STEPS = 10000

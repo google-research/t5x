@@ -31,6 +31,8 @@ TRAIN_STEPS = %gin.REQUIRED
 MODEL_DIR = %gin.REQUIRED
 USE_CACHED_TASKS = True
 
+DROPOUT_RATE = 0.1
+
 # DEPRECATED: Import the this module in your gin file.
 MIXTURE_OR_TASK_MODULE = None
 SHUFFLE_TRAIN_EXAMPLES = True
