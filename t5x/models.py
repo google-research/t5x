@@ -451,6 +451,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       decoder_params: Optional[MutableMapping[str, Any]] = None,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
+      allow_decoder_prompting: bool = False,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict with fast decoding beam search on a batch.
 
@@ -489,6 +490,8 @@ class EncoderDecoderModel(BaseTransformerModel):
       decoder_params: additional (model-independent) parameters for the decoder.
       return_all_decodes: whether to return the entire beam or just the top-1.
       num_decodes: the number of beams to use in beam search.
+      allow_decoder_prompting: if True, will use targets in `batch` as a prompt
+        to the decode_fn. Otherwise only uses targets to infer target shape.
 
     Returns:
       A tuple containing:
@@ -541,7 +544,10 @@ class EncoderDecoderModel(BaseTransformerModel):
     # For beam search, `decoder_prompt_inputs` is only used to obtain batch size
     # and max decode length information. For temperature sampling,
     # `decoder_prompt_inputs` will be filled with the sampled ids.
-    decoder_prompt_inputs = jnp.zeros_like(batch['decoder_input_tokens'])
+    if allow_decoder_prompting:
+      decoder_prompt_inputs = batch['decoder_input_tokens']
+    else:
+      decoder_prompt_inputs = jnp.zeros_like(batch['decoder_input_tokens'])
 
     # TODO(hwchung): rename the returned value names to more generic ones.
     # Using the above-defined single-step decoder function, run a
