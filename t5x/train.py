@@ -174,8 +174,23 @@ def train(
   """
   tf.io.gfile.makedirs(model_dir)
 
-  if stats_period is None or stats_period > eval_period:
-    stats_period = eval_period
+  # Each "epoch" of the training loop should be the min of the eval period,
+  # checkpoint period or the full training.
+  # We compute here to ensure that the eval period and checkpoint period are
+  # divisible by this number, otherwise we fail.
+  eval_enabled = (train_eval_dataset_cfg or infer_eval_dataset_cfg)
+  eval_period = eval_period if eval_enabled else 0
+  checkpoint_period = checkpoint_cfg.save.period if checkpoint_cfg.save else 0
+  if eval_period or checkpoint_period:
+    steps_per_epoch = min(eval_period or np.inf, checkpoint_period or np.inf)
+  else:
+    steps_per_epoch = total_steps
+  stats_period = stats_period or steps_per_epoch
+  if (eval_period and eval_period % steps_per_epoch or
+      checkpoint_period and checkpoint_period % steps_per_epoch):
+    raise ValueError(
+        f'Checkpoint period ({checkpoint_period}) must evenly divide eval '
+        f'period ({eval_period}), or vice-versa.')
 
   if use_hardware_rng or random_seed is None:
     logging.info(
@@ -312,8 +327,6 @@ def train(
                        train_state_initializer.global_train_state_shape,
                        partitioner)
 
-  checkpoint_period = (
-      checkpoint_cfg.save.period if checkpoint_cfg.save else None)
   if checkpoint_period:
     checkpointer = checkpoint_cfg.save.checkpointer_cls(
         train_state=train_state_initializer.global_train_state_shape,
@@ -351,6 +364,7 @@ def train(
   # SeqIO (inference-based) evaluation setup
   # ----------------------------------------------------------------------------
   # Init evaluator to set up cached datasets
+  evaluator = None
   if infer_eval_dataset_cfg is not None:
     _verify_matching_vocabs(infer_eval_dataset_cfg)
     evaluator = inference_evaluator_cls(
@@ -362,6 +376,11 @@ def train(
         seed=infer_eval_dataset_cfg.seed,
         sequence_length=infer_eval_dataset_cfg.task_feature_lengths,
         use_memory_cache=infer_eval_dataset_cfg.use_memory_cache)
+    if not evaluator.eval_tasks:
+      # Skip evaluaton.
+      evaluator = None
+
+  if evaluator is not None:
     predict_fn = utils.get_infer_fn(
         infer_step=model.predict_batch,
         batch_size=infer_eval_dataset_cfg.batch_size,
@@ -373,8 +392,6 @@ def train(
         batch_size=infer_eval_dataset_cfg.batch_size,
         train_state_axes=train_state_axes,
         partitioner=partitioner)
-  else:
-    evaluator = None
 
   if actions is None:
     actions = {}
@@ -404,20 +421,24 @@ def train(
         f' ({first_step}).')
   logging.info('Starting main loop over steps %d-%d', first_step, total_steps)
 
-  # Each "epoch" should be how often we do evaluation, or (if not specified)
-  # how often we write a checkpoint or (if also not specified) the full
-  # training.
-  steps_per_epoch = int(eval_period or checkpoint_period or total_steps)
+  steps_per_epoch = min(steps_per_epoch, total_steps)
   first_epoch = first_step // steps_per_epoch
   num_epochs = first_epoch + math.ceil(
       (total_steps - first_step) / steps_per_epoch)
   logging.info('Training with artificial "epochs" of %d steps.',
                steps_per_epoch)
 
-  if (checkpoint_period and checkpoint_period % steps_per_epoch != 0):
-    logging.warning(
-        'Checkpoint frequency does not evenly divide `eval_frequency` so '
-        'saves will occur at uneven intervals.')
+  # Kickstart training dataset and compile train loop.
+  logging.info('Kickstarting train dataset prefetch.')
+  ds_tick = time.time()
+  # Get first batch to warm up the dataset pipeline.
+  first_batch = next(train_iter)
+  # Prepend first batch back to iterator to be used by trainer.
+  train_iter = itertools.chain([first_batch], train_iter)
+  train_metrics.write_scalar('timing/dataset_warmup_seconds',
+                             time.time() - ds_tick, host_step)
+  logging.info('Compiling train loop.')
+  trainer.compile_train(first_batch)
 
   # Main Loop over "epochs".
   for epoch in range(first_epoch, num_epochs):
@@ -427,58 +448,6 @@ def train(
     # `stop_training` is requested, break out the main loop immediately.
     if trainer.stop_training:
       break
-
-    # Gather all task evaluation metrics.
-
-    # Run evaluation (with decoding) on the full eval dataset.
-    # Skip eval on first epoch, which may be uninformative and very slow
-    # (due to autoregressive decoding not generating EOS and exiting early).
-    if evaluator is not None and evaluator.eval_tasks and epoch != first_epoch:
-      logging.info('Running inference evaluation.')
-      evaluate_tick = time.time()
-      all_metrics, _, _ = evaluator.evaluate(
-          compute_metrics=jax.host_id() == 0,
-          step=host_step,
-          predict_fn=functools.partial(
-              predict_fn, train_state=trainer.train_state),
-          score_fn=functools.partial(score_fn, train_state=trainer.train_state))
-      if not concurrent_evaluation:
-        # Ensure metrics are finished being computed.
-        all_metrics_done = all_metrics.result()
-        trainer.stop_training = run_actions(trainer_lib.ActionMode.INFER_EVAL,
-                                            actions, trainer.train_state,
-                                            all_metrics_done)
-      train_metrics.write_scalar('timing/evaluate_seconds',
-                                 time.time() - evaluate_tick, host_step)
-    if train_eval_dataset_cfg:
-      # Gather training evaluation metrics.
-      if epoch == first_epoch:
-        logging.info('Compiling training eval loop.')
-        trainer.compile_eval({
-            task: utils.get_zeros_batch_like_dataset(ds)
-            for task, ds in train_eval_datasets.items()
-        })
-      logging.info('Computing training evaluation metrics.')
-      eval_batch_iters = {
-          task: ds.as_numpy_iterator()
-          for task, ds in train_eval_datasets.items()
-      }
-      eval_summaries = trainer.eval(eval_batch_iters)
-      trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,
-                                          actions, trainer.train_state,
-                                          eval_summaries)
-
-    if epoch == first_epoch:
-      logging.info('Kickstarting train dataset prefetch.')
-      ds_tick = time.time()
-      # Get first batch to warm up the dataset pipeline.
-      first_batch = next(train_iter)
-      # Prepend first batch back to iterator to be used by trainer.
-      train_iter = itertools.chain([first_batch], train_iter)
-      train_metrics.write_scalar('timing/dataset_warmup_seconds',
-                                 time.time() - ds_tick, host_step)
-      logging.info('Compiling train loop.')
-      trainer.compile_train(first_batch)
 
     logging.info('BEGIN Train loop.')
     try:
@@ -508,21 +477,6 @@ def train(
 
         host_step += inner_num_steps
       logging.info('END Train loop.')
-
-      # Maybe save a checkpoint.
-      if checkpoint_period:
-        steps_since_last_checkpoint = host_step - (
-            checkpointer.latest_step() or 0)
-        if final_epoch or (steps_since_last_checkpoint >= checkpoint_period):
-          logging.info('Saving checkpoint.')
-          checkpoint_tick = time.time()
-          checkpointer.save(trainer.train_state,
-                            checkpoint_cfg.save.state_transformation_fns)
-          checkpoint_tock = time.time()
-          train_metrics.write_scalar('timing/checkpoint_seconds',
-                                     checkpoint_tock - checkpoint_tick,
-                                     host_step)
-
     except trainer_lib.PreemptionError as e:
       logging.info('Saving emergency checkpoint.')
       checkpointer.save(trainer.train_state,
@@ -530,33 +484,58 @@ def train(
       logging.info('Saving emergency checkpoint done.')
       raise e
 
-  # Run final evaluation on the full eval dataset.
-  if train_eval_dataset_cfg:
-    # Gather training evaluation metrics.
-    logging.info('Computing training evaluation metrics v2.')
-    eval_batch_iters = {
-        task: ds.as_numpy_iterator()
-        for task, ds in train_eval_datasets.items()
-    }
-    eval_summary = trainer.eval(eval_batch_iters)  # pytype:disable=wrong-arg-types
-    trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,
-                                        actions, trainer.train_state,
-                                        eval_summary)
-  if evaluator is not None:
-    evaluate_tick = time.time()
-    all_metrics, _, _ = evaluator.evaluate(
-        compute_metrics=jax.host_id() == 0,
-        step=host_step,
-        predict_fn=functools.partial(
-            predict_fn, train_state=trainer.train_state),
-        score_fn=functools.partial(score_fn, train_state=trainer.train_state))
-    # Ensure metrics are finished being computed.
-    all_metrics_done = all_metrics.result()
-    trainer.stop_training = run_actions(trainer_lib.ActionMode.INFER_EVAL,
-                                        actions, trainer.train_state,
-                                        all_metrics_done)
-    train_metrics.write_scalar('timing/evaluate_seconds',
-                               time.time() - evaluate_tick, host_step)
+    step_offset = host_step - first_step
+
+    # Maybe save a checkpoint.
+    if checkpoint_period and (final_epoch or
+                              step_offset % checkpoint_period == 0):
+      logging.info('Saving checkpoint.')
+      checkpoint_tick = time.time()
+      checkpointer.save(trainer.train_state,
+                        checkpoint_cfg.save.state_transformation_fns)
+      checkpoint_tock = time.time()
+      train_metrics.write_scalar('timing/checkpoint_seconds',
+                                 checkpoint_tock - checkpoint_tick, host_step)
+
+    is_eval_epoch = final_epoch or step_offset % eval_period == 0
+
+    # Training Evaluation (i.e., with teacher forcing).
+    if is_eval_epoch and train_eval_dataset_cfg:
+      if step_offset // eval_period <= 1:  # Maybe less if final step < period.
+        # Compile before the first run.
+        logging.info('Compiling training eval loop.')
+        trainer.compile_eval({
+            task: utils.get_zeros_batch_like_dataset(ds)
+            for task, ds in train_eval_datasets.items()
+        })
+      logging.info('Computing training evaluation metrics.')
+      eval_batch_iters = {
+          task: ds.as_numpy_iterator()
+          for task, ds in train_eval_datasets.items()
+      }
+      eval_summaries = trainer.eval(eval_batch_iters)
+      trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,
+                                          actions, trainer.train_state,
+                                          eval_summaries)
+
+    # Inference Evaluation (i.e., with decoding or scoring).
+    if evaluator is not None:
+      logging.info('Running inference evaluation.')
+      evaluate_tick = time.time()
+      all_metrics, _, _ = evaluator.evaluate(
+          compute_metrics=jax.host_id() == 0,
+          step=host_step,
+          predict_fn=functools.partial(
+              predict_fn, train_state=trainer.train_state),
+          score_fn=functools.partial(score_fn, train_state=trainer.train_state))
+      if not concurrent_evaluation:
+        # Ensure metrics are finished being computed.
+        all_metrics_done = all_metrics.result()
+        trainer.stop_training = run_actions(trainer_lib.ActionMode.INFER_EVAL,
+                                            actions, trainer.train_state,
+                                            all_metrics_done)
+      train_metrics.write_scalar('timing/evaluate_seconds',
+                                 time.time() - evaluate_tick, host_step)
 
   # Wait until computations are done before exiting
   logging.info('Finished.')

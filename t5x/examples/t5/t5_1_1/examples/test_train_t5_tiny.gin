@@ -45,4 +45,4 @@ train_script.train:
   partitioner = @partitioning.ModelBasedPjitPartitioner()
 
 partitioning.ModelBasedPjitPartitioner.num_partitions = 2
-utils.SaveCheckpointConfig.period = 2
+utils.SaveCheckpointConfig.period = 4
