@@ -19,14 +19,11 @@
 import abc
 import collections
 import dataclasses
-import re
 from typing import Any, Callable, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
 from absl import logging
 import cached_property
 from flax.linen import partitioning as flax_partitioning
-from flax.traverse_util import flatten_dict
-from flax.traverse_util import unflatten_dict
 import jax
 from jax import numpy as jnp
 from jax import random
@@ -434,10 +431,6 @@ class LocalChunker:
 
 # Model parallel sharding specifications.
 # -----------------------------------------------------------------------------
-def _insert(tpl, idx, x):
-  tmp = list(tpl)
-  tmp.insert(idx, x)
-  return tuple(tmp)
 
 
 def standard_logical_axis_rules() -> LogicalAxisRules:
