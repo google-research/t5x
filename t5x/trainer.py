@@ -303,6 +303,7 @@ class BaseTrainer(abc.ABC):
                                                    self._partitioned_eval_step)
       num_steps = 0
       for batch in batch_iter:
+        logging.info("Eval step : %s", num_steps)
         num_steps += 1
         multihost_utils.assert_same(
             jnp.array(num_steps),
