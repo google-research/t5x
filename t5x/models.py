@@ -324,6 +324,8 @@ class BaseTransformerModel(BaseModel):
             duration,
         'timing/seqs':
             metrics['num_examples'],
+        'nonpadding_fraction':
+            metrics['weight_sum'] / metrics['num_tokens']
     }
 
     if 'z_loss' in metrics:
