@@ -63,7 +63,11 @@ def evaluate(*, model: models.BaseTransformerModel,
   ds_vocabs = utils.get_vocabulary(dataset_cfg)
   if (ds_vocabs[0] != model.input_vocabulary or
       ds_vocabs[1] != model.output_vocabulary):
-    raise ValueError('Model and Task vocabularies do not match.')
+    raise ValueError(f'Model and Task vocabularies do not match:\n'
+                     f'  task={dataset_cfg.mixture_or_task_name}\n'
+                     f'  ds_vocabs=({ds_vocabs[0]}, {ds_vocabs[1]})\n'
+                     f'  model.input_vocabulary={model.input_vocabulary}\n'
+                     f'  model.output_vocabulary={model.output_vocabulary}\n')
 
   # ----------------------------------------------------------------------------
   # SeqIO (inference-based) evaluation setup
