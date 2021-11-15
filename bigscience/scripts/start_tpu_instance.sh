@@ -23,4 +23,3 @@ gcloud alpha compute tpus tpu-vm create ${TPU_NAME} --zone ${ZONE} --accelerator
 
 # Connect to your TPU
 gcloud alpha compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE}
-

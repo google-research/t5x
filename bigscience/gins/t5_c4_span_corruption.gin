@@ -43,4 +43,4 @@ utils.SaveCheckpointConfig:
   period = 2000  # checkpoint frequency
   keep = 1 # only keep one checkpoint
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 2
+partitioning.ModelBasedPjitPartitioner.model_parallel_submesh = (2,2,1,1)
