@@ -10,9 +10,11 @@ cd ~/code
 git clone https://github.com/bigscience-workshop/t5x.git
 pushd t5x
 git checkout thomas/add_train_script_span_corruption
-pip install -e .
+pip3 install -e .
 popd
 
 # TODO: figure if this is actually important
 sudo rm /usr/local/lib/python3.8/dist-packages/tensorflow/core/kernels/libtfkernel_sobol_op.so
 
+# TODO: figure why I need this
+pip3 install tensor2tensor

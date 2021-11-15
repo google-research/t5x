@@ -19,13 +19,13 @@ train/utils.DatasetConfig:
   batch_size = 256
   use_cached = True
   pack = True
-  use_custom_packing_ops = True
+  use_custom_packing_ops = False
 
 train_eval/utils.DatasetConfig:
   batch_size = 256
   use_cached = True
   pack = True
-  use_custom_packing_ops = True
+  use_custom_packing_ops = False
 
 train_script.train:
   eval_period = 1000
