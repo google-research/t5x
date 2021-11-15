@@ -46,4 +46,4 @@ utils.SaveCheckpointConfig:
   keep = None # only keep one checkpoint
   save_dataset = True
 
-partitioning.ModelBasedPjitPartitioner.model_parallel_submesh = (2,2,2,1)
+partitioning.ModelBasedPjitPartitioner.model_parallel_submesh = (2,2,4,1)
