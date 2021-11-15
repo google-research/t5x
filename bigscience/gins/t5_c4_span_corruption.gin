@@ -38,7 +38,7 @@ models.EncoderDecoderModel.loss_fn:
   z_loss = 0.0001
   loss_normalizing_factor = None  # 2048 * 114
 
-trainer.Trainer.num_microbatches = 2048 # 2048 // 8
+trainer.Trainer.num_microbatches = 256 # 2048 // 8
 utils.create_learning_rate_scheduler.warmup_steps = 10000
 
 utils.SaveCheckpointConfig:
