@@ -17,13 +17,13 @@ TRAIN_STEPS = 10000
 
 train/utils.DatasetConfig:
   batch_size = 256
-  use_cached = False
+  use_cached = True
   pack = True
   use_custom_packing_ops = True
 
 train_eval/utils.DatasetConfig:
   batch_size = 256
-  use_cached = False
+  use_cached = True
   pack = True
   use_custom_packing_ops = True
 
