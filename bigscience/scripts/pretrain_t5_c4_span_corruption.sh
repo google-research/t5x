@@ -1,9 +1,13 @@
+python3 -c "import jax; print(jax.device_count()); print(jax.local_device_count())"
+
 # Model dir to save logs, ckpts, etc. in "gs://model_dir" format.
 MODEL_DIR="gs://bigscience/t5x/t5_c4_span_corruption"
 
 # directory where the T5X repo is cloned.
 T5X_DIR="/home/thomas/code/t5x"
-
+pushd $T5X_DIR
+git pull
+popd
 export PYTHONPATH=${T5X_DIR}/bigscience/gins
 
 python3 ${T5X_DIR}/t5x/train.py \

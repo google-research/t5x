@@ -16,5 +16,6 @@ popd
 # TODO: figure if this is actually important
 sudo rm /usr/local/lib/python3.8/dist-packages/tensorflow/core/kernels/libtfkernel_sobol_op.so
 
-# TODO: figure why I need this
-pip3 install tensor2tensor
+## TODO: figure why I need this
+##   This is probably linked to `use_custom_packing_ops=True`. Just set it to False and we're good to go
+#pip3 install tensor2tensor

@@ -24,4 +24,9 @@ RUNTIME_VERSION=v2-alpha-tpuv4-pod
 gcloud alpha compute tpus tpu-vm create ${TPU_NAME} --zone ${ZONE} --accelerator-type ${ACCELERATOR_TYPE} --version ${RUNTIME_VERSION} --subnetwork ${SUBNET}
 
 # Connect to your TPU
+# gcloud alpha compute tpus tpu-vm ssh thomas-tpu --zone us-central2-b
 gcloud alpha compute tpus tpu-vm ssh ${TPU_NAME} --zone ${ZONE}
+
+# Run on all workers
+# gcloud alpha compute tpus tpu-vm ssh <tpu name> --zone <zone> --worker=all --command “<command>” --output-directory=/some/existing/dir
+# gcloud alpha compute tpus tpu-vm ssh thomas-tpu --zone us-central2-b --worker=all --command="$(cat bigscience/scripts/setup_vm.sh)"
