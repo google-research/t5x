@@ -12,17 +12,17 @@ include "t5x/configs/runs/pretrain.gin"
 
 MIXTURE_OR_TASK_NAME = "c4_v220_span_corruption"
 MIXTURE_OR_TASK_MODULE = "t5.data.mixtures"
-TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 114}
-TRAIN_STEPS = 10000
+TASK_FEATURE_LENGTHS = {"inputs": 1024, "targets": 256}
+TRAIN_STEPS = 100000
 
 train/utils.DatasetConfig:
-  batch_size = 256
+  batch_size = 512
   use_cached = True
   pack = True
   use_custom_packing_ops = False
 
 train_eval/utils.DatasetConfig:
-  batch_size = 256
+  batch_size = 512
   use_cached = True
   pack = True
   use_custom_packing_ops = False
@@ -34,9 +34,11 @@ train_script.train:
 
 models.EncoderDecoderModel.loss_fn:
   z_loss = 0.0001
-  loss_normalizing_factor = 29184  # 256 * 114
+  loss_normalizing_factor = 131072  # 512 * 256
 
-trainer.Trainer.num_microbatches = 2
+network.T5Config.dropout = %DROPOUT_RATE
+
+trainer.Trainer.num_microbatches = 64 # 512 // 8
 utils.create_learning_rate_scheduler.warmup_steps = 10000
 
 utils.SaveCheckpointConfig:
