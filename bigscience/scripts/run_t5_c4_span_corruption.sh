@@ -8,5 +8,5 @@ export PYTHONPATH=${T5X_DIR}/bigscience/gins
 
 python3 ${T5X_DIR}/t5x/train.py \
   --gin_file="bigscience/gins/t5_c4_span_corruption.gin" \
-  --gin.DROPOUT_RATE=0.1 \
+  --gin.DROPOUT_RATE=0.0 \
   --gin.MODEL_DIR="'${MODEL_DIR}'"

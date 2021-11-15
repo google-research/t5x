@@ -20,12 +20,14 @@ train/utils.DatasetConfig:
   use_cached = True
   pack = True
   use_custom_packing_ops = False
+  seed = 42
 
 train_eval/utils.DatasetConfig:
   batch_size = 2048
   use_cached = True
   pack = True
   use_custom_packing_ops = False
+  seed = 42
 
 train_script.train:
   eval_period = 1000
@@ -34,13 +36,14 @@ train_script.train:
 
 models.EncoderDecoderModel.loss_fn:
   z_loss = 0.0001
-  loss_normalizing_factor = 233472  # 2048 * 114
+  loss_normalizing_factor = None  # 2048 * 114
 
-trainer.Trainer.num_microbatches = 256 # 2048 // 8
+trainer.Trainer.num_microbatches = 512 # 2048 // 4
 utils.create_learning_rate_scheduler.warmup_steps = 10000
 
 utils.SaveCheckpointConfig:
   period = 2000  # checkpoint frequency
-  keep = 1 # only keep one checkpoint
+  keep = None # only keep one checkpoint
+  save_dataset = True
 
 partitioning.ModelBasedPjitPartitioner.model_parallel_submesh = (2,2,1,1)
