@@ -38,7 +38,7 @@ models.EncoderDecoderModel.loss_fn:
   z_loss = 0.0001
   loss_normalizing_factor = None  # 2048 * 114
 
-trainer.Trainer.num_microbatches = 256 # 2048 // 8
+trainer.Trainer.num_microbatches = 1024 # 2048 // 8
 utils.create_learning_rate_scheduler.warmup_steps = 10000
 
 utils.SaveCheckpointConfig:
@@ -46,4 +46,4 @@ utils.SaveCheckpointConfig:
   keep = None # only keep one checkpoint
   save_dataset = True
 
-partitioning.ModelBasedPjitPartitioner.model_parallel_submesh = (2,2,4,1)
+partitioning.ModelBasedPjitPartitioner.model_parallel_submesh = (2,2,2,1)
