@@ -36,8 +36,6 @@ models.EncoderDecoderModel.loss_fn:
   z_loss = 0.0001
   loss_normalizing_factor = 131072  # 512 * 256
 
-network.T5Config.dropout_rate = %DROPOUT_RATE
-
 trainer.Trainer.num_microbatches = 64 # 512 // 8
 utils.create_learning_rate_scheduler.warmup_steps = 10000
 
