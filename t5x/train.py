@@ -497,7 +497,8 @@ def train(
       train_metrics.write_scalar('timing/checkpoint_seconds',
                                  checkpoint_tock - checkpoint_tick, host_step)
 
-    is_eval_epoch = final_epoch or step_offset % eval_period == 0
+    is_eval_epoch = eval_period and (final_epoch or
+                                     step_offset % eval_period == 0)
 
     # Training Evaluation (i.e., with teacher forcing).
     if is_eval_epoch and train_eval_dataset_cfg:
