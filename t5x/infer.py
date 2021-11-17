@@ -179,8 +179,9 @@ def write_inferences_to_file(
     vocabulary: Task output vocabulary. Only used in `predict` mode in order to
       decode predicted outputs into string.
   """
-  if mode == 'predict' and not vocabulary:
-    raise ValueError('`vocabulary` parameter required in `predict` mode')
+  if mode in ('predict', 'predict_with_aux') and vocabulary is None:
+    raise ValueError('The `vocabulary` parameter is required in `predict` and '
+                     '`predict_with_aux` modes')
 
   def _json_compat(value):
     if isinstance(value, bytes):
@@ -205,14 +206,16 @@ def write_inferences_to_file(
             k: _json_compat(v.numpy()) for k, v in pretokenized.items()
         }
       if mode == 'predict':
+        assert vocabulary is not None
         json_dict['prediction'] = _json_compat(
-            vocabulary.decode_tf(tf.constant(output)).numpy())  # pytype: disable=attribute-error
+            vocabulary.decode_tf(tf.constant(output)).numpy())
       elif mode == 'score':
         json_dict['score'] = _json_compat(output)
       elif mode == 'predict_with_aux':
+        assert vocabulary is not None
         pred_text, pred_aux = output
         json_dict['prediction'] = _json_compat(
-            vocabulary.decode_tf(tf.constant(pred_text)).numpy())  # pytype: disable=attribute-error
+            vocabulary.decode_tf(tf.constant(pred_text)).numpy())
         json_dict['aux'] = jax.tree_map(_json_compat, pred_aux)
       else:
         raise ValueError(f'Invalid mode: {mode}')
