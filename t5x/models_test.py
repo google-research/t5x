@@ -282,6 +282,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       self._input_vocabulary = mock.Mock(eos_id=1)
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = decoding.beam_search
+      self._inputs_bidirectional_attention = False
 
     with mock.patch.object(
         models.EncoderDecoderModel, '__init__', new=mock_init):
@@ -331,14 +332,18 @@ class DecoderOnlyModelTest(parameterized.TestCase):
       self.module = mock_module
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = functools.partial(decoding.temperature_sample, topk=4)
+      self._inputs_bidirectional_attention = False
 
     with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
       model = models.DecoderOnlyModel()
 
     model.predict_batch({}, batch)
     prefill_call = mock_module.apply.call_args_list[1]
-    _, inputs, targets = prefill_call[0]
     kwargs = prefill_call[1]
+    inputs = prefill_call[1]['decoder_input_tokens']
+    # Note that, for the prefill call, we use 'decoder_causal_attention' as
+    # 'decoder_target_tokens'.
+    targets = prefill_call[1]['decoder_target_tokens']
     self.assertTrue(kwargs['prefill'])
     np.testing.assert_array_equal(kwargs['prefill_lengths'],
                                   np.squeeze(lengths - 1, axis=-1))
@@ -381,6 +386,7 @@ class DecoderOnlyModelTest(parameterized.TestCase):
       self.module = mock_module
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = functools.partial(decoding.temperature_sample, topk=4)
+      self._inputs_bidirectional_attention = False
 
     with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
       model = models.DecoderOnlyModel()
@@ -425,6 +431,7 @@ class DecoderOnlyModelTest(parameterized.TestCase):
       self.module = mock_module
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = functools.partial(decoding.temperature_sample, topk=4)
+      self._inputs_bidirectional_attention = False
 
     with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
       model = models.DecoderOnlyModel()
@@ -472,6 +479,7 @@ class DecoderOnlyModelTest(parameterized.TestCase):
       self.module = mock_module
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = functools.partial(decoding.temperature_sample, topk=4)
+      self._inputs_bidirectional_attention = False
 
     with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
       model = models.DecoderOnlyModel()
