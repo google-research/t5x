@@ -1161,3 +1161,8 @@ def get_input_vocabulary(model: BaseTransformerModel) -> seqio.Vocabulary:
 
 def get_output_vocabulary(model: BaseTransformerModel) -> seqio.Vocabulary:
   return model.output_vocabulary
+
+
+class EncoderDecoderPrefixLMObjModel(EncoderDecoderModel):
+
+  FEATURE_CONVERTER_CLS = seqio.PassThroughFeatureConverter
