@@ -645,7 +645,7 @@ class BaseAction(abc.ABC):
 
   @abc.abstractmethod
   def run(self, train_state: train_state_lib.TrainState,
-          metrics_by_task: Mapping[str, MetricMapType]) -> bool:
+          metrics_by_task: Mapping[str, Array]) -> bool:
     """Runs an action for the given train_state and metrics.
 
     Args:
