@@ -28,7 +28,7 @@ import os
 import re
 import shutil
 import time
-from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, Tuple
+from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, Tuple, Type
 
 from absl import logging
 import jax
@@ -167,7 +167,9 @@ def write_inferences_to_file(
     inferences: Sequence[Any],
     task_ds: tf.data.Dataset,
     mode: str,
-    vocabulary: Optional[seqio.Vocabulary] = None) -> None:
+    vocabulary: Optional[seqio.Vocabulary] = None,
+    json_encoder_cls: Type[json.JSONEncoder] = seqio.TensorAndNumpyEncoder,
+    include_all_inputs: bool = False) -> None:
   """Write model predictions, along with pretokenized inputs, to JSONL file.
 
   Args:
@@ -178,6 +180,10 @@ def write_inferences_to_file(
     mode: Prediction mode, either 'predict', 'score' or 'predict_with_aux'.
     vocabulary: Task output vocabulary. Only used in `predict` mode in order to
       decode predicted outputs into string.
+    json_encoder_cls: a JSON encoder class used to customize JSON serialization
+      via json.dumps.
+    include_all_inputs: if True, will include all model inputs in the output
+      JSONL file (including raw tokens) in addition to the pretokenized inputs.
   """
   if mode in ('predict', 'predict_with_aux') and vocabulary is None:
     raise ValueError('The `vocabulary` parameter is required in `predict` and '
@@ -201,10 +207,13 @@ def write_inferences_to_file(
       pretokenized = {
           k: v for k, v in inp.items() if k.endswith('_pretokenized')
       }
-      if pretokenized:
-        json_dict['input'] = {
-            k: _json_compat(v.numpy()) for k, v in pretokenized.items()
-        }
+
+      # if include_all_inputs, includes all inputs in the JSONL file.
+      inputs = inp if include_all_inputs else pretokenized
+      json_dict['inputs'] = {
+          k: _json_compat(v.numpy()) for k, v in inputs.items()
+      }
+
       if mode == 'predict':
         assert vocabulary is not None
         json_dict['prediction'] = _json_compat(
@@ -219,7 +228,7 @@ def write_inferences_to_file(
         json_dict['aux'] = jax.tree_map(_json_compat, pred_aux)
       else:
         raise ValueError(f'Invalid mode: {mode}')
-      json_str = json.dumps(json_dict, cls=seqio.TensorAndNumpyEncoder)
+      json_str = json.dumps(json_dict, cls=json_encoder_cls)
       f.write(json_str + '\n')
 
 
@@ -235,7 +244,7 @@ def infer(*,
           restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
           partitioner: partitioning.BasePartitioner,
           output_dir: str,
-          checkpoint_period: int,
+          checkpoint_period: Optional[int],
           shard_id: int = 0,
           num_shards: int = 1,
           run_xprof: bool = True,
@@ -254,7 +263,10 @@ def infer(*,
     output_dir: Path to directory to write temporary files and final results.
     checkpoint_period: The intermediate results and dataset iterator will be
       checkpointed on each multiple of this number of batches to enable
-      continuation after a failure.
+      continuation after a failure. If the checkpoint_period is set to None,
+      no checkpoints will be saved. Since certain datasets cannot be
+      checkpointed (for instance, seqio.FunctionTask datasets), this must be
+      disabled for certain datasets.
     shard_id: Index of dataset shard for this instance to use if splitting the
       work across multiple jobs.
     num_shards: Total number of dataset shards to split dataset across.
@@ -358,13 +370,16 @@ def infer(*,
     infer_ds = infer_ds.padded_batch(
         checkpoint_period * batch_size, drop_remainder=False).enumerate()
     infer_ds_iter: Iterator[Tuple[int, Any]] = iter(infer_ds.prefetch(AUTOTUNE))
-    # Create checkpoint manager and restore state, if applicable.
-    ckpt_path = os.path.join(tmp_dir, 'input.ckpt')
 
-    input_ckpt = tf.train.Checkpoint(ds=infer_ds_iter)
-    if gfile.glob(ckpt_path + '*'):
-      logging.info('Restoring input iterator from %s', ckpt_path)
-      input_ckpt.read(ckpt_path).assert_consumed()
+    save_checkpoints = checkpoint_period is not None
+    if save_checkpoints:
+      # Create checkpoint manager and restore state, if applicable.
+      ckpt_path = os.path.join(tmp_dir, 'input.ckpt')
+
+      input_ckpt = tf.train.Checkpoint(ds=infer_ds_iter)
+      if gfile.glob(ckpt_path + '*'):
+        logging.info('Restoring input iterator from %s', ckpt_path)
+        input_ckpt.read(ckpt_path).assert_consumed()
 
     output_fname = f'{task.name}-{mode}.jsonl-{shard_id:05}-of-{num_shards:05}'
     logging.info("Starting inference loop for shard %d of %d of task '%s'.",
@@ -386,10 +401,11 @@ def infer(*,
       update_measurement_series('writing_examples_per_sec', epoch,
                                 len(inferences) / write_time)
 
-      # Canonicalize checkpoint.
-      for fname in gfile.glob(epoch_ckpt_path + '*'):
-        gfile.rename(
-            fname, fname.replace(epoch_ckpt_path, ckpt_path), overwrite=True)
+      if save_checkpoints:
+        # Canonicalize checkpoint.
+        for fname in gfile.glob(epoch_ckpt_path + '*'):
+          gfile.rename(
+              fname, fname.replace(epoch_ckpt_path, ckpt_path), overwrite=True)
 
     # Main Loop over "epochs".
     for epoch, epoch_batch in infer_ds_iter:
@@ -430,15 +446,18 @@ def infer(*,
 
         epoch_path = os.path.join(tmp_dir, f'{output_fname}-epoch{epoch:05}')
 
-        # Store iterator checkpoint in temporary location before writing the
-        # model output asynchronously. After outputs are written, the checkpoint
-        # will be moved to the canonical location to be used if restart occurs.
-        ckpt_tick = time.time()
-        epoch_ckpt_path = input_ckpt.write(
-            os.path.join(tmp_dir, f'{epoch}.ckpt'))
-        logging.info(
-            'Checkpoint written to temporary location in %02f seconds.',
-            time.time() - ckpt_tick)
+        if save_checkpoints:
+          # Store iterator checkpoint in temporary location before writing the
+          # model output asynchronously. After outputs are written, the
+          # checkpoint will be moved to the canonical location to be used if
+          # restart occurs.
+          ckpt_tick = time.time()
+          epoch_ckpt_path = input_ckpt.write(
+              os.path.join(tmp_dir, f'{epoch}.ckpt'))
+          logging.info(
+              'Checkpoint written to temporary location in %02f seconds.',
+              time.time() - ckpt_tick)
+
         # These will execute sequentially since the ThreadPool size is 1.
         write_thread_pool.submit(
             _write_epoch_and_canonicalize_ckpt,
