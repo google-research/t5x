@@ -484,6 +484,10 @@ def apply_grads(
     # order to provide more localization in the logged stats.
     metrics.update(_make_rms_metrics("weight_rms", new_train_state.params))
     metrics.update(_make_rms_metrics("weight_gradient_rms", grad_accum))
+    grad_norm = jnp.sqrt(
+        jnp.sum(jnp.vdot(x, x) for x in jax.tree_leaves(grad_accum)))
+    metrics.update(
+        {"weight_gradient_norm": metrics_lib.Sum.from_model_output(grad_norm)})
     metrics.update(
         _make_rms_metrics(
             "weight_update_rms",
@@ -574,7 +578,7 @@ class Trainer(BaseTrainer):
                                    num_steps: int) -> Mapping[str, jnp.ndarray]:
       """Produces summaries for metrics added by the trainer."""
       del duration
-      return {
+      summary_metrics = {
           "learning_rate": metrics["learning_rate"].compute() / num_steps,
           **{
               k: v.compute()
@@ -582,12 +586,20 @@ class Trainer(BaseTrainer):
               if k.split("/")[0] in _WEIGHT_METRICS
           }
       }
+      if self._log_weight_metrics:
+        summary_metrics.update({
+            "weight_gradient_norm":
+                metrics["weight_gradient_norm"].compute() / num_steps
+        })
+      return summary_metrics
 
     return _summarize_trainer_metrics
 
   def _get_initial_metrics(self) -> MutableMetricMapType:
     initial_metrics = {"learning_rate": metrics_lib.Sum.from_model_output(0.)}
     if self._log_weight_metrics:
+      initial_metrics.update(
+          {"weight_gradient_norm": metrics_lib.Sum.from_model_output(0.)})
       targets = utils.flatten_dict_string_keys(
           self.train_state.state_dict()["target"])
       for name in _WEIGHT_METRICS:
