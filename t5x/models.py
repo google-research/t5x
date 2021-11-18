@@ -33,13 +33,13 @@ import jax.numpy as jnp
 import numpy as np
 import seqio
 from t5x import decoding
+from t5x import metrics as metrics_lib
 import tensorflow as tf
 import typing_extensions
 
 Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
-MetricsMap = MutableMapping[str, jnp.ndarray]
+MetricsMap = metrics_lib.MetricsMap
 Optimizer = optim.Optimizer
-MetricMapType = Mapping[str, jnp.ndarray]
 PyTreeDef = type(jax.tree_structure(None))
 
 
@@ -132,6 +132,29 @@ class BaseModel(abc.ABC):
     """
     pass
 
+  def eval_fn(
+      self,
+      params: PyTreeDef,
+      batch: Mapping[str, jnp.ndarray],
+  ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
+    """Computes loss and metrics during the evaluation.
+
+    Args:
+      params: model parameters.
+      batch: a batch of inputs.
+
+    Returns:
+      loss: the loss computed for the given inputs and parameters.
+      aux:
+        weight_sum: sum of the per-token weights applied to the loss.
+        metrics: a mapping of metrics computed for this batch.
+    """
+    return self.loss_fn(
+        params=params,
+        batch=batch,
+        dropout_rng=None,
+    )
+
   def predict_batch(self, params: PyTreeDef,
                     batch: Mapping[str, jnp.ndarray]) -> jnp.ndarray:
     """Thin wrapper around `self.predict_batch_with_aux`."""
@@ -166,12 +189,12 @@ class BaseModel(abc.ABC):
     pass
 
   @abc.abstractmethod
-  def get_initial_metrics(self) -> Mapping[str, Array]:
+  def get_initial_metrics(self) -> MetricsMap:
     """Dictionary of metrics and initial values."""
     pass
 
   @abc.abstractmethod
-  def summarize_metrics_fn(self, metrics: Mapping[str, Array], duration: float,
+  def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
                            num_steps: int) -> Mapping[str, Array]:
     """Converts metrics into tensorboard-friendly summary.
 
@@ -257,8 +280,8 @@ class BaseTransformerModel(BaseModel):
   ) -> MetricsMap:
     """Compute metrics given the logits, targets and loss."""
     additional_metrics = {
-        'z_loss': total_z_loss,
-        'cross_ent_loss': loss - total_z_loss
+        'z_loss': metrics_lib.Sum.from_model_output(total_z_loss),
+        'cross_ent_loss': metrics_lib.Sum.from_model_output(loss - total_z_loss)
     }
     return compute_metrics(
         logits=logits,
@@ -269,7 +292,7 @@ class BaseTransformerModel(BaseModel):
         additional_metrics=additional_metrics)
 
   def get_initial_metrics(self):
-    return {
+    metrics = {
         'loss': 0.0,
         'accuracy': 0.0,
         'weight_sum': 0.0,
@@ -278,10 +301,12 @@ class BaseTransformerModel(BaseModel):
         'num_tokens': 0.0,
         'num_examples': 0.0
     }
+    return metrics_lib.create_metrics_dict(metrics)
 
-  def summarize_metrics_fn(self, metrics: Mapping[str, Array], duration: float,
+  def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
                            num_steps: int) -> Mapping[str, Array]:
     """Convert metrics into tensorboard-friendly summary."""
+    metrics = {k: v.compute() for k, v in metrics.items()}
     summary = {
         'accuracy':
             metrics['accuracy'] / metrics['weight_sum'],
@@ -299,6 +324,8 @@ class BaseTransformerModel(BaseModel):
             duration,
         'timing/seqs':
             metrics['num_examples'],
+        'nonpadding_fraction':
+            metrics['weight_sum'] / metrics['num_tokens']
     }
 
     if 'z_loss' in metrics:
@@ -592,11 +619,17 @@ class EncoderDecoderModel(BaseTransformerModel):
 
 
 class DecoderOnlyModel(BaseTransformerModel):
-  """Wrapper class for the layers.DecoderOnly nn.module.
+  """Model class for the decoder-only modules.
 
   It accepts inputs made out of only 'targets' or both 'inputs'
   and 'targets'. If both 'inputs' and 'targets' are present, the loss will
   be computed only on 'targets'.
+
+  By default the self-attention is fully causal and a given position only
+  attends to the time steps before and itself. If
+  `inputs_bidirectional_attention = True`, the attention in the "inputs" region
+  is bidirectional. This architecture was referred to as "Prefix LM" in Raffel
+  et al. 2019 (https://arxiv.org/abs/1910.10683).
   """
 
   FEATURE_CONVERTER_CLS = seqio.DecoderFeatureConverter
@@ -605,7 +638,9 @@ class DecoderOnlyModel(BaseTransformerModel):
                module: nn.Module,
                vocabulary: seqio.Vocabulary,
                optimizer_def: optim.OptimizerDef,
-               decode_fn: DecodeFnCallable = decoding.temperature_sample):
+               decode_fn: DecodeFnCallable = decoding.temperature_sample,
+               inputs_bidirectional_attention: bool = False):
+    self._inputs_bidirectional_attention = inputs_bidirectional_attention
     super().__init__(
         module,
         input_vocabulary=vocabulary,
@@ -630,12 +665,25 @@ class DecoderOnlyModel(BaseTransformerModel):
         enable_dropout=False)
     return initial_variables
 
+  def _get_decoder_causal_attention(self, batch):
+    """Returns decoder causal attention from the batch or None."""
+    if self._inputs_bidirectional_attention:
+      if 'decoder_causal_attention' not in batch:
+        raise ValueError('`inputs_bidirectional_attention` mode requires '
+                         '"decoder_causal_attention" feature in the batch')
+      decoder_causal_attention = batch['decoder_causal_attention']
+    else:
+      decoder_causal_attention = None
+
+    return decoder_causal_attention
+
   def _compute_logits(self,
                       params: PyTreeDef,
                       batch: Mapping[str, jnp.ndarray],
                       dropout_rng: Optional[jnp.ndarray] = None) -> jnp.ndarray:
     """Computes logits via a forward pass of `self.module`."""
     rngs = {'dropout': dropout_rng} if dropout_rng is not None else None
+    decoder_causal_attention = self._get_decoder_causal_attention(batch)
 
     return self.module.apply(
         {'params': params},
@@ -643,6 +691,7 @@ class DecoderOnlyModel(BaseTransformerModel):
         batch['decoder_target_tokens'],
         decoder_segment_ids=batch.get('decoder_segment_ids', None),
         decoder_positions=batch.get('decoder_positions', None),
+        decoder_causal_attention=decoder_causal_attention,
         rngs=rngs,
         decode=False,
         enable_dropout=rngs is not None)
@@ -763,9 +812,6 @@ class DecoderOnlyModel(BaseTransformerModel):
        one position. So we use `decoder_causal_attention` as a binary mask to
        zero out the target tokens in `decoder_input_tokens`.
 
-    Currently, this function only supports fully-causal attention, even in the
-    prefix.
-
     Note:
       In order to use a custom self._decode_fn with this model it must support:
 
@@ -835,20 +881,27 @@ class DecoderOnlyModel(BaseTransformerModel):
     # `cached_key[b, ..., i < inputs_lengths[b]] != 0`.
     #
     # The cache index is now a vector of size [B] = input_lengths
+
+    # If `self._inputs_bidirectional_attention = False`, we should not pass
+    # batch['decoder_causal_attention'] to `module.apply` during cache prefill
+    # and pass None instead.
+    maybe_decoder_causal_attention = self._get_decoder_causal_attention(batch)
+
     _, variables_with_cache = self.module.apply(
         {
             'params': params,
             'cache': cache
         },
-        inputs,
-        # Use the `decoder_causal_attention` mask, which has 1 for all input
+        decoder_input_tokens=inputs,
+        # Use the `decoder_causal_attention`, which has 1 for all input
         # positions, including the BOS token, as the targets so when the
         # decoder attention mask is built, it will correctly cover the whole
         # input, Using something like the inputs will cause the first input
         # token (the 0 for BOS) will not be included in the mask. This also
         # restricts the mask to not include any target positions like it would
         # if you used `decoder_target_tokens`.
-        batch['decoder_causal_attention'],
+        decoder_target_tokens=batch['decoder_causal_attention'],
+        decoder_causal_attention=maybe_decoder_causal_attention,
         mutable=['cache'],
         enable_dropout=False,
         prefill=True,
@@ -1084,11 +1137,10 @@ def compute_weighted_accuracy(
   return jnp.sum(accuracy)
 
 
-def compute_metrics(
-    logits: jnp.ndarray, targets: jnp.ndarray, weights: jnp.ndarray,
-    loss: jnp.ndarray, weight_sum: jnp.ndarray,
-    additional_metrics: MutableMapping[str, jnp.ndarray]
-) -> MutableMapping[str, jnp.ndarray]:
+def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray,
+                    weights: jnp.ndarray, loss: jnp.ndarray,
+                    weight_sum: jnp.ndarray,
+                    additional_metrics: MetricsMap) -> MetricsMap:
   """Compute summary metrics."""
   accuracy = compute_weighted_accuracy(logits, targets, weights)
   metrics = {
@@ -1098,6 +1150,7 @@ def compute_metrics(
       'num_examples': targets.shape[0],
       'num_tokens': targets.size
   }
+  metrics = metrics_lib.create_metrics_dict(metrics)
   metrics.update(additional_metrics)
   return metrics
 

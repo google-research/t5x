@@ -173,8 +173,9 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
   mesh_ndim = len(global_hardware_mesh)
   local_hardware_mesh = bounds_from_last_device(input_local_devices[-1])
   mesh_err = (
-      'each dimension of the model parallel submesh must be a factor of the '
-      'corresponding dimension of the global device mesh')
+      f'each dimension of the model parallel submesh {model_parallel_submesh} '
+      'must be a factor of the corresponding dimension of the global device '
+      f'mesh {global_hardware_mesh}')
   assert not any(
       g % m
       for g, m in zip(global_hardware_mesh, model_parallel_submesh)), mesh_err

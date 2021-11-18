@@ -19,9 +19,13 @@ import os
 from absl.testing import absltest
 from absl.testing import parameterized
 from clu import metric_writers
+import clu.metrics
+import flax
 from flax import optim
 import jax
+import jax.numpy as jnp
 import numpy as np
+from t5x import metrics as metrics_lib
 from t5x import partitioning
 from t5x import test_utils
 from t5x import train_state as train_state_lib
@@ -55,7 +59,10 @@ class MetricsManagerTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.accumulator = {'loss': 0, 'accuracy': 1}
+    self.accumulator = {
+        'loss': metrics_lib.Sum.from_model_output(0),
+        'accuracy': metrics_lib.Sum.from_model_output(1)
+    }
     self.model_dir = self.create_tempdir().full_path
 
   def test_initial_accumulator(self):
@@ -63,9 +70,9 @@ class MetricsManagerTest(absltest.TestCase):
                                     self.model_dir)
     out_accumulator = mm.initial_accumulator
     for v in out_accumulator.values():
-      self.assertIsInstance(v, np.ndarray)
+      self.assertIsInstance(v, clu.metrics.Metric)
     self.assertDictEqual(out_accumulator, self.accumulator)
-    out_accumulator['loss'] = 1
+    out_accumulator['loss'] = metrics_lib.Sum.from_model_output(1)
     self.assertDictEqual(mm.initial_accumulator, self.accumulator)
 
   @mock.patch('jax.process_index')
@@ -129,12 +136,15 @@ class MetricsManagerTest(absltest.TestCase):
 
     def summarize_fn(metrics, duration, num_steps):
       return {
-          'loss': metrics['loss'] / num_steps,
-          'accuracy': metrics['accuracy'] / num_steps,
+          'loss': metrics['loss'].compute() / num_steps,
+          'accuracy': metrics['accuracy'].compute() / num_steps,
           'batches_per_second': num_steps / duration
       }
 
-    accumulated_metrics = {'loss': 40.0, 'accuracy': 198.0}
+    accumulated_metrics = {
+        'loss': metrics_lib.Sum.from_model_output(40.0),
+        'accuracy': metrics_lib.Sum.from_model_output(198.0)
+    }
     expected_events = {
         'loss': 20.0,
         'accuracy': 99.0,
@@ -165,14 +175,17 @@ def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
   grad_accum = jax.tree_map(lambda x: i, optimizer)
   # Add j to each metric.
   j = batch['j'].sum()
-  metrics = {'loss': j, 'accuracy': j}
+  metrics = {
+      'loss': metrics_lib.Sum.from_model_output(j),
+      'accuracy': metrics_lib.Sum.from_model_output(j)
+  }
   return grad_accum, metrics
 
 
 def fake_apply_grads(optimizer, grad_accum, metrics, learning_rate,
                      log_weight_metrics):
   del log_weight_metrics
-  metrics['learning_rate'] = learning_rate
+  metrics['learning_rate'] = metrics_lib.Sum.from_model_output(learning_rate)
   optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics
 
@@ -181,7 +194,11 @@ def fake_eval_step(model, optimizer, batch, metrics):
   del model, optimizer
   # Add `i` to each metric.
   i = batch['i'].sum()
-  metrics = jax.tree_map(lambda x: x + i, metrics)
+
+  metrics = {
+      k: v.merge(metrics_lib.Sum.from_model_output(i))
+      for k, v in metrics.items()
+  }
   return metrics
 
 
@@ -213,11 +230,11 @@ class TrainerTest(parameterized.TestCase):
         mock.Mock(
             get_initial_metrics=lambda:  # pylint:disable=g-long-lambda
             {
-                'loss': 1.0,
-                'accuracy': 2.0,
+                'loss': metrics_lib.Sum.from_model_output(1.0),
+                'accuracy': metrics_lib.Sum.from_model_output(2.0),
             },
-            summarize_metrics_fn=lambda metrics, duration, num_steps: jax.  # pylint:disable=g-long-lambda
-            tree_map(lambda x: x / duration, metrics)),
+            summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
+            {k: v.compute() / duration for k, v in metrics.items()}),
         self.init_train_state,
         partitioning.ModelBasedPjitPartitioner(num_partitions=1),
         eval_names=['task1', 'task2'],
@@ -248,9 +265,10 @@ class TrainerTest(parameterized.TestCase):
     num_steps = 2
     trainer.train(self.dataset.as_numpy_iterator(), num_steps)
 
-    expected_metrics = jax.tree_map(
-        lambda x: (x + 2 * num_steps) / 4,  # divide by duration
-        trainer.train_metrics_manager.initial_accumulator)
+    expected_metrics = {
+        k: (v.compute() + 2 * num_steps) / 4  # divide by duration
+        for k, v in trainer.train_metrics_manager.initial_accumulator.items()
+    }
     # (0 + 2) / 2 = 1
     expected_metrics['learning_rate'] = 1
     # 0+1+2+3 = 6
@@ -317,15 +335,17 @@ class TrainerTest(parameterized.TestCase):
 
     all_expected_metrics = {
         # 0+1+2+3 = 6
-        'task1':
-            jax.tree_map(
-                lambda x: (x + 6) / 4,  # divide by duration
-                trainer.eval_metrics_managers['task1'].initial_accumulator),
+        'task1': {
+            k: (v.compute() + 6) / 4  # divide by duration
+            for k, v in
+            trainer.eval_metrics_managers['task1'].initial_accumulator.items()
+        },
         # 0+1 = 1
-        'task2':
-            jax.tree_map(
-                lambda x: (x + 1) / 4,  # divide by duration
-                trainer.eval_metrics_managers['task2'].initial_accumulator),
+        'task2': {
+            k: (v.compute() + 1) / 4  # divide by duration
+            for k, v in
+            trainer.eval_metrics_managers['task2'].initial_accumulator.items()
+        }
     }
 
     np.testing.assert_array_equal(trainer._base_rng, initial_rng)
@@ -476,12 +496,12 @@ class TrainerTest(parameterized.TestCase):
                                            rtol=rtol)
 
     for metric in metrics:
-      trainer.train_state = hook.run(trainer.train_state,
-                                     {'test_task': {
-                                         'metric': metric
-                                     }})
+      trainer_stop_training = hook.run(trainer.train_state,
+                                       {'test_task': {
+                                           'metric': metric
+                                       }})
 
-    self.assertEqual(trainer.train_state.stop_training, stop_training)
+    self.assertEqual(trainer_stop_training, stop_training)
 
   @parameterized.named_parameters([{
       'testcase_name': 'valid_loss',
@@ -508,19 +528,20 @@ class TrainerTest(parameterized.TestCase):
     trainer = self.test_trainer
     hook = trainer_lib.TerminateOnNanAction(task='test_task', metric=metric)
 
-    trainer.train_state = hook.run(trainer.train_state,
-                                   {'test_task': {
-                                       metric: value
-                                   }})
+    trainer_stop_training = hook.run(trainer.train_state,
+                                     {'test_task': {
+                                         metric: value
+                                     }})
 
-    self.assertEqual(trainer.train_state.stop_training, stop_training)
+    self.assertEqual(trainer_stop_training, stop_training)
 
   @mock.patch('time.time')
   def test_compile_train(self, mock_time=None):
     trainer = self.test_trainer
     trainer._partitioned_train_step = mock.Mock()
-    trainer.train_metrics_manager = mock.Mock(
-        initial_accumulator={'fake_metric': 0})
+    trainer.train_metrics_manager = mock.Mock(initial_accumulator={
+        'fake_metric': metrics_lib.Sum.from_model_output(0)
+    })
 
     # compile start, compile end
     mock_time.side_effect = [1, 5]
@@ -538,17 +559,30 @@ class TrainerTest(parameterized.TestCase):
     self.assertLen(train_step_args, 3)
     self.assertEqual(train_step_args[0], trainer.train_state)
     test_utils.assert_same(train_step_args[1], batch)
-    self.assertDictEqual(train_step_args[2], {'fake_metric': 0})
+    self.assertDictEqual(train_step_args[2],
+                         {'fake_metric': metrics_lib.Sum.from_model_output(0)})
 
   @mock.patch('time.time')
   def test_compile_eval(self, mock_time=None):
     trainer = self.test_trainer
     trainer._partitioned_eval_step = mock.Mock()
     trainer.eval_metrics_managers = {
-        'eval1': mock.Mock(initial_accumulator={'fake_metric1': 0}),
-        'eval2': mock.Mock(initial_accumulator={'fake_metric2': 1}),
-        'eval3': mock.Mock(initial_accumulator={'fake_metric2': 1}),
-        'eval4': mock.Mock(initial_accumulator={'fake_metric3': 1})
+        'eval1':
+            mock.Mock(initial_accumulator={
+                'fake_metric1': metrics_lib.Sum.from_model_output(0)
+            }),
+        'eval2':
+            mock.Mock(initial_accumulator={
+                'fake_metric2': metrics_lib.Sum.from_model_output(1)
+            }),
+        'eval3':
+            mock.Mock(initial_accumulator={
+                'fake_metric2': metrics_lib.Sum.from_model_output(1)
+            }),
+        'eval4':
+            mock.Mock(initial_accumulator={
+                'fake_metric3': metrics_lib.Sum.from_model_output(1)
+            })
     }
     trainer._partitioned_eval_step.lower().compile.side_effect = [
         'compiled1', 'compiled2', 'compiled3'
@@ -590,7 +624,8 @@ class TrainerTest(parameterized.TestCase):
     test_utils.assert_same(eval1_call_args[1], {
         'i': np.zeros((2, 5), dtype=np.int32),
     })
-    self.assertDictEqual(eval1_call_args[2], {'fake_metric1': 0})
+    self.assertDictEqual(eval1_call_args[2],
+                         {'fake_metric1': metrics_lib.Sum.from_model_output(0)})
 
     eval2_call_args = eval_step_args[1][0]
     self.assertLen(eval2_call_args, 3)
@@ -598,7 +633,8 @@ class TrainerTest(parameterized.TestCase):
     test_utils.assert_same(eval2_call_args[1], {
         'j': np.zeros((), dtype=np.float32),
     })
-    self.assertDictEqual(eval2_call_args[2], {'fake_metric2': 1})
+    self.assertDictEqual(eval2_call_args[2],
+                         {'fake_metric2': metrics_lib.Sum.from_model_output(1)})
 
     eval3_call_args = eval_step_args[2][0]
     self.assertLen(eval3_call_args, 3)
@@ -606,7 +642,8 @@ class TrainerTest(parameterized.TestCase):
     test_utils.assert_same(eval3_call_args[1], {
         'j': np.zeros((), dtype=np.float32),
     })
-    self.assertDictEqual(eval3_call_args[2], {'fake_metric3': 1})
+    self.assertDictEqual(eval3_call_args[2],
+                         {'fake_metric3': metrics_lib.Sum.from_model_output(1)})
 
     self.assertDictEqual(
         trainer._compiled_eval_steps, {
@@ -615,6 +652,13 @@ class TrainerTest(parameterized.TestCase):
             'eval3': 'compiled2',
             'eval4': 'compiled3'
         })
+
+
+@flax.struct.dataclass
+class RNG(clu.metrics.CollectingMetric.from_outputs(('values',))):
+
+  def compute(self):
+    return np.sum(self.values['values'], axis=0)
 
 
 class TrainerRngDeterminismTest(parameterized.TestCase):
@@ -638,10 +682,9 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     test_trainer = trainer_lib.Trainer(
         mock.Mock(
             get_initial_metrics=lambda:  # pylint:disable=g-long-lambda
-            {
-                'rng': np.zeros(2, np.uint32),
-            },
-            summarize_metrics_fn=lambda metrics, duration, num_steps: metrics),
+            {'rng': RNG.from_model_output(values=np.zeros((1, 2), np.uint32))},
+            summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
+            {k: v.compute() for k, v in metrics.items()}),
         init_train_state,
         partitioning.ModelBasedPjitPartitioner(num_partitions=1),
         eval_names=['task1', 'task2'],
@@ -671,7 +714,8 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
       # Add 1, which will increment the step as a side effect.
       grad_accum = jax.tree_map(lambda x: 1, optimizer)
       tf.compat.v1.logging.info(rng)
-      return grad_accum, {'rng': rng}
+      m = {'rng': RNG.from_model_output(values=jnp.expand_dims(rng, 0))}
+      return grad_accum, m
 
     mock_accum_grads.side_effect = fake_accum_grads_rng
     # Create a trainer at a given step (53) with a given random seed (23),
@@ -691,6 +735,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
         axis=0,
         dtype=np.uint32)
     tf.compat.v1.logging.info(metrics)
+    # No longer a Metric object, no need for .compute()
     np.testing.assert_array_equal(metrics['rng'], expected_rng_sum)
 
 

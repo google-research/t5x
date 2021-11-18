@@ -45,4 +45,8 @@ train_script.train:
   partitioner = @partitioning.ModelBasedPjitPartitioner()
 
 partitioning.ModelBasedPjitPartitioner.num_partitions = 2
-utils.SaveCheckpointConfig.period = 2
+utils.SaveCheckpointConfig.period = 4
+
+# Overriding from pretrain.gin to keep magic constants in tests.
+utils.create_learning_rate_scheduler:
+  warmup_steps = 1000
