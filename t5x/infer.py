@@ -244,12 +244,13 @@ def infer(*,
           restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
           partitioner: partitioning.BasePartitioner,
           output_dir: str,
-          checkpoint_period: Optional[int],
+          checkpoint_period: int,
           shard_id: int = 0,
           num_shards: int = 1,
           run_xprof: bool = True,
           merge_epoch_results: bool = True,
-          write_fn: WriteFn = write_inferences_to_file):
+          write_fn: WriteFn = write_inferences_to_file,
+          checkpoint_ds_iter: bool = True):
   """Infer function.
 
   Args:
@@ -263,10 +264,7 @@ def infer(*,
     output_dir: Path to directory to write temporary files and final results.
     checkpoint_period: The intermediate results and dataset iterator will be
       checkpointed on each multiple of this number of batches to enable
-      continuation after a failure. If the checkpoint_period is set to None,
-      no checkpoints will be saved. Since certain datasets cannot be
-      checkpointed (for instance, seqio.FunctionTask datasets), this must be
-      disabled for certain datasets.
+      continuation after a failure.
     shard_id: Index of dataset shard for this instance to use if splitting the
       work across multiple jobs.
     num_shards: Total number of dataset shards to split dataset across.
@@ -275,6 +273,10 @@ def infer(*,
       json file.
     write_fn: Callable function used to serialized and write inferences out to
       files.
+    checkpoint_ds_iter: if True, will checkpoint the dataset iterator every
+      checkpoint_period as well as the intermediate predictions. This must be
+      disabled for certain datasets, for example since stateful iterators
+      (e.g. from seqio.FunctionTask) cannot be checkpointed.
   """
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
@@ -369,10 +371,10 @@ def infer(*,
     # (i, [(task, model)] * epoch_size)
     infer_ds = infer_ds.padded_batch(
         checkpoint_period * batch_size, drop_remainder=False).enumerate()
+
     infer_ds_iter: Iterator[Tuple[int, Any]] = iter(infer_ds.prefetch(AUTOTUNE))
 
-    save_checkpoints = checkpoint_period is not None
-    if save_checkpoints:
+    if checkpoint_ds_iter:
       # Create checkpoint manager and restore state, if applicable.
       ckpt_path = os.path.join(tmp_dir, 'input.ckpt')
 
@@ -401,7 +403,7 @@ def infer(*,
       update_measurement_series('writing_examples_per_sec', epoch,
                                 len(inferences) / write_time)
 
-      if save_checkpoints:
+      if checkpoint_ds_iter:
         # Canonicalize checkpoint.
         for fname in gfile.glob(epoch_ckpt_path + '*'):
           gfile.rename(
@@ -446,7 +448,8 @@ def infer(*,
 
         epoch_path = os.path.join(tmp_dir, f'{output_fname}-epoch{epoch:05}')
 
-        if save_checkpoints:
+        epoch_ckpt_path = None
+        if checkpoint_ds_iter:
           # Store iterator checkpoint in temporary location before writing the
           # model output asynchronously. After outputs are written, the
           # checkpoint will be moved to the canonical location to be used if
