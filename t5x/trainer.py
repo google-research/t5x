@@ -485,7 +485,8 @@ def apply_grads(
     metrics.update(_make_rms_metrics("weight_rms", new_train_state.params))
     metrics.update(_make_rms_metrics("weight_gradient_rms", grad_accum))
     grad_norm = jnp.sqrt(
-        jnp.sum(jnp.vdot(x, x) for x in jax.tree_leaves(grad_accum)))
+        jnp.sum(
+            jnp.array([jnp.vdot(x, x) for x in jax.tree_leaves(grad_accum)])))
     metrics.update(
         {"weight_gradient_norm": metrics_lib.Sum.from_model_output(grad_norm)})
     metrics.update(
