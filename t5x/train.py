@@ -293,11 +293,17 @@ def train(
     if checkpoint_cfg.restore.mode == 'all':
       raise ValueError(
           "Restore checkpoint mode 'all' is not supported in training.")
-    if not isinstance(checkpoint_cfg.restore.path, str):
+
+    # TODO(dhgarrette): Split "restore" behavior into separate configurations
+    #     for the initial restoration for a new run, vs resuming a stopped run.
+    if isinstance(checkpoint_cfg.restore.path, str):
+      restore_cfgs.append(checkpoint_cfg.restore)
+    elif not checkpoint_cfg.restore.path:
+      # `path` is an empty (non-`str`) sequence, so there is nothing to restore.
+      pass
+    else:
       raise ValueError(
           'Restore checkpoint config may only have a single path in training.')
-
-    restore_cfgs.append(checkpoint_cfg.restore)
 
   # Need to use full batch size.
   input_shapes = {

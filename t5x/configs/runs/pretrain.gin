@@ -86,8 +86,10 @@ train_eval/utils.DatasetConfig:
   module = %MIXTURE_OR_TASK_MODULE
 
 utils.CheckpointConfig:
-  restore = None  # initialize from scratch
+  restore = @utils.RestoreCheckpointConfig()
   save = @utils.SaveCheckpointConfig()
+utils.RestoreCheckpointConfig:
+  path = []  # initialize from scratch
 utils.SaveCheckpointConfig:
   period = 1000
   dtype = 'float32'
