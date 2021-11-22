@@ -32,6 +32,7 @@ import dataclasses
 import functools
 import os
 import re
+import subprocess
 import time
 from typing import Any, Dict, Iterable, MutableMapping, Mapping, Optional, Sequence, Tuple, List
 
@@ -594,7 +595,12 @@ class Checkpointer(object):
       fp.write(msgpack_bytes)
 
     # Finalize checkpoint directory.
-    gfile.rename(tmp_dir, final_dir)
+    if final_dir.startswith('gs://'):
+      subprocess.run(['gsutil', '-m', 'mv', tmp_dir, final_dir],
+                     stdout=subprocess.DEVNULL,
+                     check=True)
+    else:
+      gfile.rename(tmp_dir, final_dir)
     logging.info('Saved checkpoint for step %d to %s', step, final_dir)
 
     # Remove old checkpoints, if necessary.
