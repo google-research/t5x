@@ -118,7 +118,8 @@ def train(
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
     concurrent_evaluation: bool = False,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
-    train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None
+    train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None,
+    feature_converter_cls: Optional[Type[seqio.FeatureConverter]] = None,
 ) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
@@ -169,6 +170,8 @@ def train(
     train_eval_get_dataset_fn: Optional callable use to get the train-eval
       datasets based on the DatasetConfig and shard information. If missing, it
       defaults to `get_dataset_fn`.
+    feature_converter_cls: Optional SeqIO feature converters to apply to the
+      dataset. If `None`, overrides `model.FEATURE_CONVERTER_CLS`.
 
   Returns:
     The tuple of (last_step, last_train_state).
@@ -241,9 +244,12 @@ def train(
                        f'  model.output_vocabulary={model.output_vocabulary}\n')
 
   _verify_matching_vocabs(train_dataset_cfg)
-
+  if feature_converter_cls is not None:
+    fc_cls = feature_converter_cls
+  else:
+    fc_cls = model.FEATURE_CONVERTER_CLS
   train_ds = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
-                            model.FEATURE_CONVERTER_CLS)
+                            fc_cls)
 
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
@@ -252,7 +258,7 @@ def train(
         ds_shard_id,
         num_ds_shards,
         eval_steps,
-        model.FEATURE_CONVERTER_CLS,
+        fc_cls,
         get_dataset_fn=train_eval_get_dataset_fn if train_eval_get_dataset_fn
         is not None else get_dataset_fn)  # type: Mapping[str, tf.data.Dataset]
   else:
@@ -371,7 +377,7 @@ def train(
     evaluator = inference_evaluator_cls(
         log_dir=os.path.join(model_dir, 'inference_eval'),
         mixture_or_task_name=infer_eval_dataset_cfg.mixture_or_task_name,
-        feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),  # pytype:disable=not-instantiable
+        feature_converter=fc_cls(pack=False),  # pytype:disable=not-instantiable
         eval_split=infer_eval_dataset_cfg.split,
         use_cached=infer_eval_dataset_cfg.use_cached,
         seed=infer_eval_dataset_cfg.seed,

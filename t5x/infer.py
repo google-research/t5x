@@ -250,7 +250,8 @@ def infer(*,
           run_xprof: bool = True,
           merge_epoch_results: bool = True,
           write_fn: WriteFn = write_inferences_to_file,
-          checkpoint_ds_iter: bool = True):
+          checkpoint_ds_iter: bool = True,
+          feature_converter_cls: Optional[Type[seqio.FeatureConverter]] = None):
   """Infer function.
 
   Args:
@@ -277,6 +278,8 @@ def infer(*,
       checkpoint_period as well as the intermediate predictions. This must be
       disabled for certain datasets, for example since stateful iterators
       (e.g. from seqio.FunctionTask) cannot be checkpointed.
+    feature_converter_cls: Optional SeqIO feature converters to apply to the
+      dataset. If `None`, overrides `model.FEATURE_CONVERTER_CLS`.
   """
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
@@ -301,7 +304,10 @@ def infer(*,
   host_shard_info = seqio.ShardInfo(index=shard_id, num_shards=num_shards)
   task_or_mixture = seqio.get_mixture_or_task(dataset_cfg.mixture_or_task_name)
 
-  feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)  # pytype:disable=not-instantiable
+  if feature_converter_cls is not None:
+    feature_converter = feature_converter_cls(pack=False)  # pytype:disable=not-instantiable
+  else:
+    feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)  # pytype:disable=not-instantiable
 
   def _get_dataset(dataset_provider):
     # TODO(adarob): assert pack is false, shuffle is false, seed?

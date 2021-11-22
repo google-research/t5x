@@ -22,7 +22,7 @@ r"""This script runs inference-evaluation on a T5X-compatible model.
 
 import functools
 import os
-from typing import Sequence
+from typing import Optional, Sequence, Type
 
 from absl import logging
 # Set Linen to add profiling information when constructing Modules.
@@ -42,10 +42,14 @@ _DEFAULT_GIN_SEARCH_PATHS = [
 ]
 
 
-def evaluate(*, model: models.BaseTransformerModel,
-             dataset_cfg: utils.DatasetConfig,
-             restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
-             partitioner: partitioning.BasePartitioner, output_dir: str):
+def evaluate(
+    *,
+    model: models.BaseTransformerModel,
+    dataset_cfg: utils.DatasetConfig,
+    restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
+    partitioner: partitioning.BasePartitioner,
+    output_dir: str,
+    feature_converter_cls: Optional[Type[seqio.FeatureConverter]] = None):
   """Evaluation function.
 
   Args:
@@ -55,6 +59,8 @@ def evaluate(*, model: models.BaseTransformerModel,
       load.
     partitioner: Partitioner for the model parameters and data across devices.
     output_dir: Path to directory to write temporary files and final results.
+    feature_converter_cls: Optional SeqIO feature converters to apply to the
+      dataset. If `None`, overrides `model.FEATURE_CONVERTER_CLS`.
   """
   if dataset_cfg.module:
     utils.import_module(dataset_cfg.module)
@@ -72,10 +78,15 @@ def evaluate(*, model: models.BaseTransformerModel,
   # ----------------------------------------------------------------------------
   # SeqIO (inference-based) evaluation setup
   # ----------------------------------------------------------------------------
+  if feature_converter_cls is not None:
+    feature_converter = feature_converter_cls(pack=False)  # pytype:disable=not-instantiable
+  else:
+    feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)  # pytype:disable=not-instantiable
+
   # Init evaluator to set up cached datasets
   evaluator = seqio.Evaluator(
       mixture_or_task_name=dataset_cfg.mixture_or_task_name,
-      feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),  # pytype:disable=not-instantiable
+      feature_converter=feature_converter,  # pytype:disable=not-instantiable
       eval_split=dataset_cfg.split,
       use_cached=dataset_cfg.use_cached,
       seed=dataset_cfg.seed,
