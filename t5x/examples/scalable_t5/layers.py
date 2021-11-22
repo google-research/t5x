@@ -157,6 +157,12 @@ def dot_product_attention(query: Array,
   assert key.shape[-3] == value.shape[-3], 'k, v lengths must match.'
   assert query.shape[-1] == key.shape[-1], 'q, k depths must match.'
 
+  # To support parameter fusion optimization, we don't fold attention rescaling
+  # factor into the Q initializer as in T5, instead performing it here as in
+  # the original transformer model.
+  depth = query.shape[-1]
+  query = query / jnp.sqrt(depth).astype(dtype)
+
   # Casting logits and softmax computation for float32 for model stability.
   if float32_logits:
     query = query.astype(jnp.float32)
@@ -251,24 +257,44 @@ class MultiHeadDotProductAttention(nn.Module):
     Returns:
       output of shape `[batch, length, q_features]`.
     """
-    projection = functools.partial(
-        DenseGeneral,
-        axis=-1,
-        features=(self.num_heads, self.head_dim),
-        kernel_axes=('embed', 'heads', 'kv'),
-        dtype=self.dtype)
-
-    # NOTE: T5 does not explicitly rescale the attention logits by
-    #       1/sqrt(depth_kq)!  This is folded into the initializers of the
-    #       linear transformations, which is equivalent under Adafactor.
-    depth_scaling = jnp.sqrt(self.head_dim).astype(self.dtype)
-    query_init = lambda *args: self.kernel_init(*args) / depth_scaling
-
     # Project inputs_q to multi-headed q/k/v
     # dimensions are then [batch, length, num_heads, head_dim]
-    query = projection(kernel_init=query_init, name='query')(inputs_q)
-    key = projection(kernel_init=self.kernel_init, name='key')(inputs_kv)
-    value = projection(kernel_init=self.kernel_init, name='value')(inputs_kv)
+    if inputs_q is inputs_kv:
+      # self attention case
+      qkv = DenseGeneral(
+          axis=-1,
+          features=(3, self.num_heads, self.head_dim),
+          kernel_axes=('embed', 'stack', 'heads', 'kv'),
+          kernel_init=self.kernel_init,
+          kernel_out_axis=(2, 3),
+          dtype=self.dtype)(
+              inputs_q)
+      qkv = with_sharding_constraint(
+          qkv, ('batch', 'length', 'stack', 'heads', 'kv'))
+      query = jnp.squeeze(lax.dynamic_slice_in_dim(qkv, 0, 1, -3), -3)
+      key = jnp.squeeze(lax.dynamic_slice_in_dim(qkv, 1, 1, -3), -3)
+      value = jnp.squeeze(lax.dynamic_slice_in_dim(qkv, 2, 1, -3), -3)
+    else:
+      # cross attention case
+      query = DenseGeneral(
+          axis=-1,
+          features=(self.num_heads, self.head_dim),
+          kernel_axes=('embed', 'heads', 'kv'),
+          kernel_init=self.kernel_init,
+          dtype=self.dtype)(
+              inputs_q)
+      kv = DenseGeneral(
+          axis=-1,
+          features=(2, self.num_heads, self.head_dim),
+          kernel_axes=('embed', 'stack', 'heads', 'kv'),
+          kernel_out_axis=(2, 3),
+          kernel_init=self.kernel_init,
+          dtype=self.dtype)(
+              inputs_kv)
+      kv = with_sharding_constraint(kv,
+                                    ('batch', 'length', 'stack', 'heads', 'kv'))
+      key = jnp.squeeze(lax.dynamic_slice_in_dim(kv, 1, 1, -3), -3)
+      value = jnp.squeeze(lax.dynamic_slice_in_dim(kv, 2, 1, -3), -3)
 
     query = with_sharding_constraint(query, ('batch', 'length', 'heads', 'kv'))
     key = with_sharding_constraint(key, ('batch', 'length', 'heads', 'kv'))
@@ -415,6 +441,8 @@ class DenseGeneral(nn.Module):
   dtype: DType = jnp.float32
   kernel_init: NdInitializer = nd_dense_init(1.0, 'fan_in', 'truncated_normal')
   kernel_axes: Tuple[str, ...] = ()
+  kernel_in_axis: Union[None, int, Tuple[int, ...]] = None
+  kernel_out_axis: Union[None, int, Tuple[int, ...]] = None
 
   @nn.compact
   def __call__(self, inputs: Array) -> Array:
@@ -433,8 +461,12 @@ class DenseGeneral(nn.Module):
     axis = _normalize_axes(axis, inputs.ndim)
 
     kernel_shape = tuple([inputs.shape[ax] for ax in axis]) + features
-    kernel_in_axis = np.arange(len(axis))
-    kernel_out_axis = np.arange(len(axis), len(axis) + len(features))
+    kernel_in_axis = self.kernel_in_axis
+    kernel_out_axis = self.kernel_out_axis
+    if kernel_in_axis is None:
+      kernel_in_axis = np.arange(len(axis))
+    if kernel_out_axis is None:
+      kernel_out_axis = np.arange(len(axis), len(axis) + len(features))
     kernel = param_with_axes(
         'kernel',
         self.kernel_init,
@@ -484,18 +516,20 @@ class MlpBlock(nn.Module):
   @nn.compact
   def __call__(self, inputs, decode: bool = False, deterministic: bool = False):
     """Applies Transformer MlpBlock module."""
+    xs = DenseGeneral((len(self.activations), self.intermediate_dim),
+                      dtype=self.dtype,
+                      kernel_init=self.kernel_init,
+                      kernel_out_axis=(2,),
+                      kernel_axes=('embed', 'stack', 'mlp'),
+                      name='wi_fused')(
+                          inputs)
+    xs = with_sharding_constraint(xs, ('batch', 'length', 'stack', 'mlp'))
     # Iterate over specified MLP input activation functions.
     # e.g. ('relu',) or ('linear', 'gelu') for gated-gelu.
     activations = []
     for idx, act_fn in enumerate(self.activations):
-      dense_name = 'wi' if len(self.activations) == 1 else f'wi_{idx}'
-      x = DenseGeneral(
-          self.intermediate_dim,
-          dtype=self.dtype,
-          kernel_init=self.kernel_init,
-          kernel_axes=('embed', 'mlp'),
-          name=dense_name)(
-              inputs)
+      x = jnp.squeeze(lax.dynamic_slice_in_dim(xs, idx, 1, -2), -2)
+      x = with_sharding_constraint(x, ('batch', 'length', 'mlp'))
       x = _convert_to_activation_function(act_fn)(x)
       activations.append(x)
 
@@ -505,7 +539,7 @@ class MlpBlock(nn.Module):
     x = nn.Dropout(
         rate=self.intermediate_dropout_rate, broadcast_dims=(-2,))(
             x, deterministic=deterministic)  # Broadcast along length.
-    x = with_sharding_constraint(x, ('batch', 'length', 'embed'))
+    x = with_sharding_constraint(x, ('batch', 'length', 'mlp'))
     output = DenseGeneral(
         inputs.shape[-1],
         dtype=self.dtype,
@@ -533,7 +567,7 @@ class Embed(nn.Module):
   dtype: DType = jnp.float32
   attend_dtype: Optional[DType] = None
   embedding_init: Initializer = default_embed_init
-  one_hot: bool = False
+  one_hot: bool = True
   embedding: Array = dataclasses.field(init=False)
 
   def setup(self):
