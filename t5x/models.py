@@ -21,7 +21,7 @@ steps.
 
 import abc
 import functools
-from typing import Any, Mapping, MutableMapping, Optional, Tuple, Type, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Tuple, Type, Union
 
 from flax import core as flax_core
 from flax import linen as nn
@@ -343,12 +343,17 @@ class EncoderDecoderModel(BaseTransformerModel):
 
   FEATURE_CONVERTER_CLS = seqio.EncDecFeatureConverter
 
-  def __init__(self,
-               module: nn.Module,
-               input_vocabulary: seqio.Vocabulary,
-               output_vocabulary: seqio.Vocabulary,
-               optimizer_def: optim.OptimizerDef,
-               decode_fn: DecodeFnCallable = decoding.beam_search):
+  def __init__(
+      self,
+      module: nn.Module,
+      input_vocabulary: seqio.Vocabulary,
+      output_vocabulary: seqio.Vocabulary,
+      optimizer_def: optim.OptimizerDef,
+      decode_fn: DecodeFnCallable = decoding.beam_search,
+      feature_converter_cls: Optional[Callable[...,
+                                               seqio.FeatureConverter]] = None):
+    if feature_converter_cls is not None:
+      self.FEATURE_CONVERTER_CLS = feature_converter_cls  # pylint: disable=invalid-name
     super().__init__(
         module=module,
         input_vocabulary=input_vocabulary,
@@ -634,12 +639,17 @@ class DecoderOnlyModel(BaseTransformerModel):
 
   FEATURE_CONVERTER_CLS = seqio.DecoderFeatureConverter
 
-  def __init__(self,
-               module: nn.Module,
-               vocabulary: seqio.Vocabulary,
-               optimizer_def: optim.OptimizerDef,
-               decode_fn: DecodeFnCallable = decoding.temperature_sample,
-               inputs_bidirectional_attention: bool = False):
+  def __init__(
+      self,
+      module: nn.Module,
+      vocabulary: seqio.Vocabulary,
+      optimizer_def: optim.OptimizerDef,
+      decode_fn: DecodeFnCallable = decoding.temperature_sample,
+      inputs_bidirectional_attention: bool = False,
+      feature_converter_cls: Optional[Callable[...,
+                                               seqio.FeatureConverter]] = None):
+    if feature_converter_cls is not None:
+      self.FEATURE_CONVERTER_CLS = feature_converter_cls  # pylint: disable=invalid-name
     self._inputs_bidirectional_attention = inputs_bidirectional_attention
     super().__init__(
         module,
