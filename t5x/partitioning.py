@@ -441,7 +441,7 @@ def _insert(tpl, idx, x):
 
 
 def standard_logical_axis_rules() -> LogicalAxisRules:
-  """Default sharding rules for P5X model in terms of logical axes names."""
+  """Default sharding rules for T5X model in terms of logical axes names."""
   return (
       ('batch', 'data'),
       ('vocab', 'model'),
@@ -667,7 +667,7 @@ class BasePjitPartitioner(BasePartitioner):
 
 
 class ModelBasedPjitPartitioner(BasePjitPartitioner):
-  """Partitioner that uses P5X version of jax.pjit and model annotations."""
+  """Partitioner that uses T5X version of jax.pjit and model annotations."""
 
   def __init__(self,
                num_partitions: Optional[int],
