@@ -130,7 +130,7 @@ def evaluate(*, model: models.BaseTransformerModel,
 
     # Run final evaluation (with decoding) on the full eval dataset.
     all_metrics, _, _ = evaluator.evaluate(
-        compute_metrics=jax.host_id() == 0,
+        compute_metrics=jax.process_index() == 0,
         step=int(train_state.step),
         predict_fn=functools.partial(predict_fn, train_state=train_state),
         score_fn=functools.partial(score_fn, train_state=train_state))

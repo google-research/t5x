@@ -653,8 +653,8 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
   the targets in a correct order even if the dataset is sharded across
   multiple hosts and gathered in a nondeterministic way.
 
-  jax.host_id == 0 is used as a "main host", i.e., it gathers all inference
-  results and returns.
+  jax.process_index == 0 is used as a "main host", i.e., it gathers all
+  inference results and returns.
 
   Shape notation:
     Per replica set num replicas: R

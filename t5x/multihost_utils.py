@@ -94,8 +94,8 @@ def host_allgather(in_tree: PyTreeDef, num_replica_sets: int,
   num_local_devices = jax.local_device_count()
 
   # We collect data per-host by creating two new axes: a pmap outer axis, and
-  # an inner 'host' axis.  The latter is filled based on host_id, and the outer
-  # only has this single nonzero entry.  Thus after a psum, we collect the
+  # an inner 'host' axis. The latter is filled based on process_index, and the
+  # outer only has this single nonzero entry. Thus after a psum, we collect the
   # first member of the outer axis and have a new 'host' dimension such that
   # the returned leaves contain the data gathered from other hosts.
   def pre_pmap(x):

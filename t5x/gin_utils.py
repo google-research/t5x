@@ -86,7 +86,7 @@ def summarize_gin_config(model_dir: str,
                          summary_writer: Optional[metric_writers.SummaryWriter],
                          step: int):
   """Writes gin config to the model dir and TensorBoard summary."""
-  if jax.host_id() == 0:
+  if jax.process_index() == 0:
     config_str = gin.config_str()
     tf.io.gfile.makedirs(model_dir)
     # Write the config as JSON.
