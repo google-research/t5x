@@ -120,21 +120,6 @@ def create_task_from_tfexample_file(
           tf.data.TFRecordDataset,
   }[file_type]
 
-  # TODO(adarob): Remove after b/180658446 is resolved.
-  def reserialize_tfexample(x):
-
-    def _reserialize(s):
-      ex = tf.train.Example()
-      ex.ParseFromString(s)
-      return ex.SerializeToString()
-
-    return tf.compat.v1.py_func(
-        _reserialize, inp=[x], Tout=tf.string, stateful=False)
-
-  def reserialize_reader(filenames):
-    return reader(filenames).map(
-        reserialize_tfexample, num_parallel_calls=AUTOTUNE)
-
   feature_description = {inputs_key: tf.io.FixedLenFeature([], tf.string)}
   if targets_key:
     feature_description[targets_key] = tf.io.FixedLenFeature([], tf.string)
@@ -148,7 +133,7 @@ def create_task_from_tfexample_file(
       name=f'infer_{task_id}',
       source=seqio.TFExampleDataSource({'infer': paths},
                                        feature_description=feature_description,
-                                       reader_cls=reserialize_reader),
+                                       reader_cls=reader),
       preprocessors=[
           functools.partial(
               seqio.preprocessors.rekey,
