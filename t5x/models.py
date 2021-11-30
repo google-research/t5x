@@ -782,7 +782,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       inputs = [9, 4, 6, 1]
       targets = [3, 9, 1]
 
-      seqio.PrefixLMFeatureConverter will generate these set of features
+      seqio.DecoderFeatureConverter will generate these set of features
 
          decoder_target_tokens = [9, 4, 6, 1, 3, 9, 1, 0, 0]
           decoder_input_tokens = [0, 9, 4, 6, 1, 3, 9, 1, 0]
@@ -837,7 +837,7 @@ class DecoderOnlyModel(BaseTransformerModel):
     Args:
       params: model parameters.
       batch: batch element with the model features specified in
-        seqio.PrefixLMFeatureConverter.
+        seqio.DecoderFeatureConverter.
       return_all_decodes: if True, will return all batch_size * num_decodes
         samples from the model as an array of shape [batch_size, num_decodes,
         sequence_length]. Otherwise returns only the most likely samples as an
