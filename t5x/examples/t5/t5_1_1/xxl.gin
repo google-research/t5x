@@ -14,5 +14,5 @@ network.T5Config:
   head_dim = 64
   mlp_dim = 10240
   mlp_activations = ('gelu', 'linear')
-  dropout_rate = 0.0
+  dropout_rate = %DROPOUT_RATE
   logits_via_embedding = False

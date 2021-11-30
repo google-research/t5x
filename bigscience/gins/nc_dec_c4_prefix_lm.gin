@@ -1,0 +1,21 @@
+from __gin__ import dynamic_registration
+
+from t5x import models
+import seqio
+
+include "bigscience/gins/dec_xxl.gin"
+include "t5x/configs/runs/pretrain.gin"
+include "bigscience/gins/trainer_base.gin"
+
+TASK_FEATURE_LENGTHS = {
+    "decoder_target_tokens": 626,
+    "decoder_input_tokens": 626,
+    "decoder_segment_ids": 626,
+    "decoder_causal_attention": 626,
+    "targets": 626
+}
+MIXTURE_OR_TASK_NAME = "c4_prefix_lm_objective_decoder_architecture"
+
+models.DecoderOnlyModel:
+    feature_converter_cls = @seqio.PassThroughFeatureConverter
+    inputs_bidirectional_attention = True

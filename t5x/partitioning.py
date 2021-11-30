@@ -178,7 +178,7 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
       f'mesh {global_hardware_mesh}')
   assert not any(
       g % m
-      for g, m in zip(global_hardware_mesh, model_parallel_submesh)), mesh_err
+      for g, m in zip(global_hardware_mesh, model_parallel_submesh)), f"{mesh_err} {global_hardware_mesh} {model_parallel_submesh}"
   assert not any(
       g % l for g, l in zip(global_hardware_mesh, local_hardware_mesh))
   devices = np.empty(global_hardware_mesh, dtype=np.object)

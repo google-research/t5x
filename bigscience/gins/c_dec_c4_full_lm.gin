@@ -1,0 +1,13 @@
+from __gin__ import dynamic_registration
+
+from t5x import models
+
+include "bigscience/gins/dec_xxl.gin"
+include "t5x/configs/runs/pretrain.gin"
+include "bigscience/gins/trainer_base.gin"
+
+# TODO: check if we keep 512 or 512 + 114 ...
+TASK_FEATURE_LENGTHS = {"targets": 626}
+MIXTURE_OR_TASK_NAME = "c4_v220_full_lm"
+
+models.DecoderOnlyModel.inputs_bidirectional_attention = False

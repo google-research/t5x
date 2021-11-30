@@ -1,0 +1,29 @@
+from __gin__ import dynamic_registration
+
+from t5x import models
+from t5x import utils
+import seqio
+
+include "bigscience/gins/enc_dec_xxl.gin"
+include "t5x/configs/runs/pretrain.gin"
+include "bigscience/gins/trainer_base.gin"
+
+TASK_FEATURE_LENGTHS = {
+    "encoder_input_tokens": 626,
+    "decoder_target_tokens": 626,
+    "decoder_input_tokens": 626,
+    "encoder_segment_ids": 626,
+    "encoder_positions": 626,
+    "decoder_segment_ids": 626,
+    "decoder_positions": 626,
+    "decoder_loss_weights": 626,
+    "targets": 626
+}
+
+# ----- This should be reduced by two because we have fancy packing
+train/utils.DatasetConfig.batch_size = 1024
+train_eval/utils.DatasetConfig.batch_size = 1024
+
+models.EncoderDecoderModel.feature_converter_cls = @seqio.PassThroughFeatureConverter
+
+MIXTURE_OR_TASK_NAME = "c4_prefix_lm_objective_encoder_decoder_architecture"
