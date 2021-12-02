@@ -307,6 +307,8 @@ class BaseTransformerModel(BaseModel):
                            num_steps: int) -> Mapping[str, Array]:
     """Convert metrics into tensorboard-friendly summary."""
     metrics = {k: v.compute() for k, v in metrics.items()}
+    num_devices = jax.device_count()
+    assert num_devices, 'JAX is reporting no devices, but it should.'
     summary = {
         'accuracy':
             metrics['accuracy'] / metrics['weight_sum'],
@@ -316,16 +318,20 @@ class BaseTransformerModel(BaseModel):
             metrics['loss'] / metrics['weight_sum'],
         'loss_per_all_target_tokens':
             metrics['loss'] / metrics['num_tokens'],
-        'timing/seqs_per_second':
-            metrics['num_examples'] / duration,
-        'timing/steps_per_second':
-            num_steps / duration,
+        'nonpadding_fraction':
+            metrics['weight_sum'] / metrics['num_tokens'],
         'timing/seconds':
             duration,
         'timing/seqs':
             metrics['num_examples'],
-        'nonpadding_fraction':
-            metrics['weight_sum'] / metrics['num_tokens']
+        'timing/seqs_per_second':
+            metrics['num_examples'] / duration,
+        'timing/seqs_per_second_per_core':
+            metrics['num_examples'] / (duration * num_devices),
+        'timing/steps_per_second':
+            num_steps / duration,
+        'timing/target_tokens_per_second_per_core':
+            metrics['num_tokens'] / (duration * num_devices),
     }
 
     if 'z_loss' in metrics:
