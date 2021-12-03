@@ -224,7 +224,7 @@ def _update_ts_path_from_relative_to_absolute(
         f'`spec["kvstore"]` or `spec` Got {ts_spec_dict}')
 
 
-def _update_ts_from_gfile_to_gcs(ckpt_contents):
+def _maybe_update_ts_from_file_to_gcs(ckpt_contents):
   """Updates the TensorStore driver from gfile to gcs."""
 
   def _gfile_to_gcs_driver(arr_or_ts_spec_dict):
@@ -251,6 +251,38 @@ def _update_ts_from_gfile_to_gcs(ckpt_contents):
         value, dict) or set(value.keys()) >= {'driver', 'kvstore', 'metadata'}
 
   return jax.tree_map(_gfile_to_gcs_driver, ckpt_contents, is_leaf=_is_leaf)
+
+
+def _maybe_update_ts_from_gcs_to_file(ckpt_contents):
+  """Updates the TensorStore driver to gfile or file if different."""
+
+  # if saved in gcs, change to file
+  def _gcs_to_file_driver(arr_or_ts_spec_dict):
+    if not isinstance(arr_or_ts_spec_dict, dict):
+      return arr_or_ts_spec_dict
+
+    if arr_or_ts_spec_dict['kvstore']['driver'] == 'gcs':
+      ts_spec_dict = arr_or_ts_spec_dict
+      path = ts_spec_dict.pop('path')
+      driver = 'file'
+      ts_spec_dict['kvstore'] = {'path': path, 'driver': driver}
+    elif arr_or_ts_spec_dict['kvstore']['driver'] == 'gfile':
+      ts_spec_dict = arr_or_ts_spec_dict
+      driver = 'file'
+      ts_spec_dict['kvstore']['driver'] = driver
+    elif arr_or_ts_spec_dict['kvstore']['driver'] == 'file':
+      ts_spec_dict = arr_or_ts_spec_dict
+    else:
+      raise ValueError('Unsupported TensoreStore driver. Got '
+                       f'{arr_or_ts_spec_dict["kvstore"]["driver"]}.')
+
+    return ts_spec_dict
+
+  def _is_leaf(value):
+    return not isinstance(
+        value, dict) or set(value.keys()) >= {'driver', 'kvstore', 'metadata'}
+
+  return jax.tree_map(_gcs_to_file_driver, ckpt_contents, is_leaf=_is_leaf)
 
 
 class _BytesConditionVariable(object):
@@ -773,7 +805,11 @@ class Checkpointer(object):
     # If reading a ckpt that was written with gfile driver but the current
     # session uses the gcs driver, convert the ckpt's driver to gcs.
     if ckpt_dir.startswith('gs://'):
-      ckpt_contents = _update_ts_from_gfile_to_gcs(ckpt_contents)
+      ckpt_contents = _maybe_update_ts_from_file_to_gcs(ckpt_contents)
+    # If a ckpt was saved in gcs and is being loaded locally, then convert the
+    # driver to file or gfile. If the ckpt was not saved in gcs, do not change.
+    else:
+      ckpt_contents = _maybe_update_ts_from_gcs_to_file(ckpt_contents)
 
     ckpt_state_dict = self._get_optimizer_state_dict(ckpt_contents,
                                                      state_transformation_fns)
