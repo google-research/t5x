@@ -21,8 +21,8 @@ TASK_FEATURE_LENGTHS = {
 }
 
 # ----- This should be reduced by two because we have fancy packing
-train/utils.DatasetConfig.batch_size = 1024
-train_eval/utils.DatasetConfig.batch_size = 1024
+train/utils.DatasetConfig.batch_size = 64 # BATCH_SIZE / 2
+train_eval/utils.DatasetConfig.batch_size = 64 # BATCH_SIZE /2
 
 models.EncoderDecoderModel.feature_converter_cls = @seqio.PassThroughFeatureConverter
 
