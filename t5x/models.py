@@ -406,9 +406,10 @@ class EncoderDecoderModel(BaseTransformerModel):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jnp.ndarray],
-      label_smoothing: float = 0.0,
-      z_loss: float = 0.0,
-      loss_normalizing_factor: Optional[float] = None
+      label_smoothing: Optional[float] = None,
+      z_loss: Optional[float] = None,
+      loss_normalizing_factor: Union[Optional[float],
+                                     object] = _NoValueSentinel,
   ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
 
     return super().loss_fn(
