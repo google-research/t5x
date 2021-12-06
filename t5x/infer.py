@@ -400,10 +400,6 @@ def infer(*,
 
       epoch_tick = time.time()
 
-      # Take an Xprof trace after the first loop has compiled everything.
-      if epoch == 1:
-        multihost_utils.sync_devices(f'{task.name}:start_xprof')
-        utils.start_xprof(seconds=5, maybe_run=run_xprof, description='infer')
 
       # Load the dataset for the next epoch. We can't use `infer_ds_iter`
       # directly since `infer_fn` needs to know the exact size of each epoch,
