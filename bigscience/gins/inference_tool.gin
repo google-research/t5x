@@ -1,0 +1,27 @@
+from __gin__ import dynamic_registration
+
+import __main__ as inference_script
+from t5x import utils
+from t5x import models
+from t5x import partitioning
+import task
+
+DROPOUT_RATE = 0.0
+
+# MODEL = %gin.REQUIRED
+# INITIAL_CHECKPOINT_PATH = %gin.REQUIRED
+
+inference_script.infer:
+  restore_checkpoint_config = @utils.RestoreCheckpointConfig()
+  model = %MODEL
+  partitioner = @partitioning.ModelBasedPjitPartitioner()
+
+utils.RestoreCheckpointConfig:
+  path = %INITIAL_CHECKPOINT_PATH
+  mode = 'specific'
+  dtype = 'float32'
+
+partitioning.ModelBasedPjitPartitioner:
+  num_partitions = 1 # this argument is ignore in favor of model_parallel_submesh
+  model_parallel_submesh = (2, 2, 1, 1) # Trained using (4,1,1,1)
+  logical_axis_rules = @task.fully_sharded_logical_axis_rules()

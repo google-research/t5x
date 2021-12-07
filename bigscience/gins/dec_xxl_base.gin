@@ -40,10 +40,16 @@ models.DecoderOnlyModel:
   vocabulary = %VOCABULARY
   optimizer_def = %OPTIMIZER
   decode_fn = @decoding.temperature_sample
+  # decode_fn = @decoding.beam_search
+
+# decoding.beam_search:
+#   num_decodes = 1
+#   max_decode_len = 626
 
 decoding.temperature_sample:
   temperature = 1.0
   topk = 40
+  max_decode_steps = 200
 
 # ------------------- Network specification ------------------------------------
 network.DecoderWrapper.config = @network.TransformerConfig()

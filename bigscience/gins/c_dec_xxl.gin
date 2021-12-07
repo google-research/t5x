@@ -1,0 +1,7 @@
+from __gin__ import dynamic_registration
+
+from t5x import models
+
+include "bigscience/gins/dec_xxl_base.gin"
+
+models.DecoderOnlyModel.inputs_bidirectional_attention = False
