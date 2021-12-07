@@ -567,6 +567,16 @@ class Checkpointer(object):
             self._train_state.state_dict(), keep_empty_nodes=True)
     })
 
+    print('ERR')
+    print('train_state_keys', list(self._train_state.state_dict().keys()))
+    state_dict_for_save = self._get_state_dict_for_save(
+        self._train_state.state_dict())
+    print('sdfs', state_dict_for_save['flax_mutables'])
+    part_mesh = self._partitioner.get_mesh_axes(self._train_state)
+    part_mesh_state_dict = part_mesh.state_dict()
+    print('partir_mesh_keys', list(part_mesh_state_dict.keys()))
+    print('part_mesh', part_mesh.step, part_mesh.flax_mutables)
+
     return jax.tree_map(
         _get_param_info, param_names,
         self._get_state_dict_for_save(self._train_state.state_dict()),
