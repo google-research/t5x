@@ -1,0 +1,62 @@
+# Defaults for eval_harness.py.
+#
+# invoke like:
+#
+# python3 ${T5X_DIR}/t5x/eval_harness.py \
+#   --gin_file_="t5x/examples/t5/t5_1_1/small.gin"\
+#   --gin_file_="t5x/bigscience/gins/eval_harness.gin" \
+#   --gin.INFER_OUTPUT_DIR="'.'"\
+#   --gin.DROPOUT_RATE=0.0 \
+#   --gin.CHECKPOINT_PATH="'gs://t5-data/pretrained_models/t5.1.1.lm100k.small/model.ckpt-1100000'"\
+#   --results_path /home/user/base_test.json
+
+
+from __gin__ import dynamic_registration
+
+import __main__ as infer_script
+from t5x import partitioning
+from t5x import utils
+from t5x import models
+
+
+#include %MODEL_GIN
+
+# DEPRECATED: Import the this module in your gin file.
+MIXTURE_OR_TASK_MODULE = None
+
+infer_script.infer:
+  model = %MODEL  # imported from separate gin file
+  output_dir = %INFER_OUTPUT_DIR
+  dataset_cfg = @utils.DatasetConfig()
+  partitioner = @partitioning.ModelBasedPjitPartitioner()
+  restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
+  checkpoint_period = 100
+  shard_id = 0
+  num_shards = 1
+
+
+infer_script.create_task_from_tuples:
+  vocab = %VOCABULARY
+
+partitioning.ModelBasedPjitPartitioner:
+  num_partitions = 4
+  model_parallel_submesh = (2,1,1,1)
+
+TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 114}
+
+utils.DatasetConfig:
+  batch_size = 16
+  use_cached = True
+  pack = True
+  use_custom_packing_ops = False
+  seed = 42
+  shuffle = False
+  split = 'infer'
+  module = None
+  mixture_or_task_name = None
+  task_feature_lengths = %TASK_FEATURE_LENGTHS
+
+utils.RestoreCheckpointConfig:
+  path = %CHECKPOINT_PATH
+  mode = 'specific'
+  dtype = 'bfloat16'
