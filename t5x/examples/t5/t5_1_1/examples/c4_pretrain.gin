@@ -32,7 +32,7 @@ train_script.train:
   eval_steps = 100
   random_seed = None
 
-models.EncoderDecoderModel.loss_fn:
+models.EncoderDecoderModel:
   z_loss = 0.0001
   loss_normalizing_factor = 29184  # 256 * 114
 

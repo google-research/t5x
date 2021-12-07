@@ -16,10 +16,6 @@ LABEL_SMOOTHING = 0.0
 LOSS_NORMALIZING_FACTOR = None
 # Dropout should be specified in the "run" files
 DROPOUT_RATE = %gin.REQUIRED
-models.DecoderOnlyModel.loss_fn:
-  z_loss = %Z_LOSS
-  label_smoothing = %LABEL_SMOOTHING
-  loss_normalizing_factor = %LOSS_NORMALIZING_FACTOR
 
 # Vocabulary (shared by encoder and decoder)
 VOCABULARY = @seqio.SentencePieceVocabulary()
@@ -40,6 +36,9 @@ models.DecoderOnlyModel:
   vocabulary = %VOCABULARY
   optimizer_def = %OPTIMIZER
   decode_fn = @decoding.temperature_sample
+  z_loss = %Z_LOSS
+  label_smoothing = %LABEL_SMOOTHING
+  loss_normalizing_factor = %LOSS_NORMALIZING_FACTOR
 
 decoding.temperature_sample:
   temperature = 1.0

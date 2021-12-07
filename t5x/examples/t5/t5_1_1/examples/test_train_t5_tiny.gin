@@ -19,7 +19,7 @@ MIXTURE_OR_TASK_NAME = "wmt19_ende_v003"
 TASK_FEATURE_LENGTHS = {"inputs": 32, "targets": 32}
 DROPOUT_RATE = 0.0
 
-models.EncoderDecoderModel.loss_fn:
+models.EncoderDecoderModel:
   z_loss = 0.0
   label_smoothing = 0.0
   loss_normalizing_factor = None

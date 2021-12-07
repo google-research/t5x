@@ -430,10 +430,11 @@ class Transformer(nn.Module):
 
     # Make padding attention masks.
     if decode:
-      # fast autoregressive decoding uses only a special encoder-decoder mask
+      # Do not mask decoder attention based on targets padding at
+      # decoding/inference time.
       decoder_mask = None
       encoder_decoder_mask = layers.make_attention_mask(
-          jnp.ones_like(decoder_target_tokens) > 0,
+          jnp.ones_like(decoder_target_tokens),
           encoder_input_tokens > 0,
           dtype=cfg.dtype)
     else:

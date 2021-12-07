@@ -15,10 +15,6 @@ LABEL_SMOOTHING = 0.0
 LOSS_NORMALIZING_FACTOR = None
 # Dropout should be specified in the "run" files
 DROPOUT_RATE = %gin.REQUIRED
-models.EncoderDecoderModel.loss_fn:
-  z_loss = %Z_LOSS
-  label_smoothing = %LABEL_SMOOTHING
-  loss_normalizing_factor = %LOSS_NORMALIZING_FACTOR
 
 # Vocabulary (shared by encoder and decoder)
 VOCABULARY = @seqio.SentencePieceVocabulary()
@@ -39,6 +35,9 @@ models.EncoderDecoderModel:
   input_vocabulary = %VOCABULARY
   output_vocabulary = %VOCABULARY
   optimizer_def = %OPTIMIZER
+  z_loss = %Z_LOSS
+  label_smoothing = %LABEL_SMOOTHING
+  loss_normalizing_factor = %LOSS_NORMALIZING_FACTOR
 
 # ------------------- Network specification ------------------------------------
 network.Transformer.config = @network.T5Config()

@@ -1270,7 +1270,64 @@ class CheckpointsTest(parameterized.TestCase):
             }
         }
     }
-    actual = checkpoints._update_ts_from_gfile_to_gcs(ckpt_contents)
+    actual = checkpoints._maybe_update_ts_from_file_to_gcs(ckpt_contents)
+    jax.tree_multimap(np.testing.assert_array_equal, actual, expected)
+
+  def test_update_ts_from_gcs_to_file(self):
+    ckpt_contents = {
+        'version': 3,
+        'optimizer': {
+            'target': {
+                # np.ndarray should not change
+                'unsharded_param': np.ones((5, 5), dtype=np.int32),
+                'sharded_param': {
+                    'driver': 'zarr',
+                    'kvstore': {
+                        'bucket': 't5x-dummy-bucket',
+                        'driver': 'gcs'
+                    },
+                    'metadata': {
+                        'chunks': [768, 768],
+                        'compressor': {
+                            'id': 'gzip',
+                            'level': 1
+                        },
+                        'dtype': '<f4',
+                        'shape': [768, 768]
+                    },
+                    'path': 'target.sharded_param',
+                }
+            }
+        }
+    }
+
+    driver = 'file'
+    expected = {
+        'version': 3,
+        'optimizer': {
+            'target': {
+                'unsharded_param': np.ones((5, 5), dtype=np.int32),
+                'sharded_param': {
+                    'driver': 'zarr',
+                    'kvstore': {
+                        'driver': driver,
+                        'path': 'target.sharded_param'
+                    },
+                    'metadata': {
+                        'chunks': [768, 768],
+                        'compressor': {
+                            'id': 'gzip',
+                            'level': 1
+                        },
+                        'dtype': '<f4',
+                        'shape': [768, 768]
+                    }
+                }
+            }
+        }
+    }
+
+    actual = checkpoints._maybe_update_ts_from_gcs_to_file(ckpt_contents)
     jax.tree_multimap(np.testing.assert_array_equal, actual, expected)
 
   def test_update_ts_path_from_relative_to_absolute_gfile(self):

@@ -209,6 +209,11 @@ class BaseModel(abc.ABC):
     pass
 
 
+# Sentinel used instead of None to indicate missing values. For backward
+# compatibility purposes; will be removed in an upcoming revision.
+_NoValueSentinel = object()
+
+
 class BaseTransformerModel(BaseModel):
   """Abstract base class for Transformer models using.
 
@@ -216,16 +221,25 @@ class BaseTransformerModel(BaseModel):
   `get_initial_variables` from `BaseModel` as well as `_compute_logits`.
   """
 
-  def __init__(self,
-               module: nn.Module,
-               input_vocabulary: seqio.Vocabulary,
-               output_vocabulary: seqio.Vocabulary,
-               optimizer_def: optim.OptimizerDef,
-               decode_fn: Optional[DecodeFnCallable] = None):
+  def __init__(
+      self,
+      module: nn.Module,
+      input_vocabulary: seqio.Vocabulary,
+      output_vocabulary: seqio.Vocabulary,
+      optimizer_def: optim.OptimizerDef,
+      decode_fn: Optional[DecodeFnCallable] = None,
+      label_smoothing: float = 0.0,
+      z_loss: float = 0.0,
+      loss_normalizing_factor: Optional[float] = None,
+  ):
     self.module = module
     self._input_vocabulary = input_vocabulary
     self._output_vocabulary = output_vocabulary
     self._decode_fn = decode_fn
+    self._label_smoothing = label_smoothing
+    self._z_loss = z_loss
+    self._loss_normalizing_factor = loss_normalizing_factor
+
     super().__init__(optimizer_def=optimizer_def)
 
   @property
@@ -253,11 +267,21 @@ class BaseTransformerModel(BaseModel):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jnp.ndarray],
-      label_smoothing: float = 0.0,
-      z_loss: float = 0.0,
-      loss_normalizing_factor: Optional[float] = None
+      label_smoothing: Optional[float] = None,
+      z_loss: Optional[float] = None,
+      loss_normalizing_factor: Union[Optional[float],
+                                     object] = _NoValueSentinel,
   ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
     """Loss function used for training with a cross-entropy loss."""
+
+    # Default these to the constructor values. In the future, they may be
+    # removed as parameters for `loss_fn`.
+    label_smoothing = (
+        self._label_smoothing if label_smoothing is None else label_smoothing)
+    z_loss = self._z_loss if z_loss is None else z_loss
+    if loss_normalizing_factor is _NoValueSentinel:
+      loss_normalizing_factor = self._loss_normalizing_factor
+
     logits = self._compute_logits(params, batch, dropout_rng)
     loss, total_z_loss, weight_sum = compute_weighted_cross_entropy(
         logits,
@@ -307,6 +331,8 @@ class BaseTransformerModel(BaseModel):
                            num_steps: int) -> Mapping[str, Array]:
     """Convert metrics into tensorboard-friendly summary."""
     metrics = {k: v.compute() for k, v in metrics.items()}
+    num_devices = jax.device_count()
+    assert num_devices, 'JAX is reporting no devices, but it should.'
     summary = {
         'accuracy':
             metrics['accuracy'] / metrics['weight_sum'],
@@ -316,16 +342,20 @@ class BaseTransformerModel(BaseModel):
             metrics['loss'] / metrics['weight_sum'],
         'loss_per_all_target_tokens':
             metrics['loss'] / metrics['num_tokens'],
-        'timing/seqs_per_second':
-            metrics['num_examples'] / duration,
-        'timing/steps_per_second':
-            num_steps / duration,
+        'nonpadding_fraction':
+            metrics['weight_sum'] / metrics['num_tokens'],
         'timing/seconds':
             duration,
         'timing/seqs':
             metrics['num_examples'],
-        'nonpadding_fraction':
-            metrics['weight_sum'] / metrics['num_tokens']
+        'timing/seqs_per_second':
+            metrics['num_examples'] / duration,
+        'timing/seqs_per_second_per_core':
+            metrics['num_examples'] / (duration * num_devices),
+        'timing/steps_per_second':
+            num_steps / duration,
+        'timing/target_tokens_per_second_per_core':
+            metrics['num_tokens'] / (duration * num_devices),
     }
 
     if 'z_loss' in metrics:
@@ -351,7 +381,11 @@ class EncoderDecoderModel(BaseTransformerModel):
       optimizer_def: optim.OptimizerDef,
       decode_fn: DecodeFnCallable = decoding.beam_search,
       feature_converter_cls: Optional[Callable[...,
-                                               seqio.FeatureConverter]] = None):
+                                               seqio.FeatureConverter]] = None,
+      label_smoothing: float = 0.0,
+      z_loss: float = 0.0,
+      loss_normalizing_factor: Optional[float] = None,
+  ):
     if feature_converter_cls is not None:
       self.FEATURE_CONVERTER_CLS = feature_converter_cls  # pylint: disable=invalid-name
     super().__init__(
@@ -359,7 +393,11 @@ class EncoderDecoderModel(BaseTransformerModel):
         input_vocabulary=input_vocabulary,
         output_vocabulary=output_vocabulary,
         optimizer_def=optimizer_def,
-        decode_fn=decode_fn)
+        decode_fn=decode_fn,
+        label_smoothing=label_smoothing,
+        z_loss=z_loss,
+        loss_normalizing_factor=loss_normalizing_factor,
+    )
 
   # Adds explicit loss method for proper configuration.
   # TODO(b/194404217): Remove once gin correctly handles child class configs.
@@ -368,9 +406,10 @@ class EncoderDecoderModel(BaseTransformerModel):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jnp.ndarray],
-      label_smoothing: float = 0.0,
-      z_loss: float = 0.0,
-      loss_normalizing_factor: Optional[float] = None
+      label_smoothing: Optional[float] = None,
+      z_loss: Optional[float] = None,
+      loss_normalizing_factor: Union[Optional[float],
+                                     object] = _NoValueSentinel,
   ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
 
     return super().loss_fn(
@@ -647,7 +686,11 @@ class DecoderOnlyModel(BaseTransformerModel):
       decode_fn: DecodeFnCallable = decoding.temperature_sample,
       inputs_bidirectional_attention: bool = False,
       feature_converter_cls: Optional[Callable[...,
-                                               seqio.FeatureConverter]] = None):
+                                               seqio.FeatureConverter]] = None,
+      label_smoothing: float = 0.0,
+      z_loss: float = 0.0,
+      loss_normalizing_factor: Optional[float] = None,
+  ):
     if feature_converter_cls is not None:
       self.FEATURE_CONVERTER_CLS = feature_converter_cls  # pylint: disable=invalid-name
     self._inputs_bidirectional_attention = inputs_bidirectional_attention
@@ -656,7 +699,11 @@ class DecoderOnlyModel(BaseTransformerModel):
         input_vocabulary=vocabulary,
         output_vocabulary=vocabulary,
         optimizer_def=optimizer_def,
-        decode_fn=decode_fn)
+        decode_fn=decode_fn,
+        label_smoothing=label_smoothing,
+        z_loss=z_loss,
+        loss_normalizing_factor=loss_normalizing_factor,
+    )
 
   def get_initial_variables(
       self,
@@ -782,7 +829,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       inputs = [9, 4, 6, 1]
       targets = [3, 9, 1]
 
-      seqio.PrefixLMFeatureConverter will generate these set of features
+      seqio.DecoderFeatureConverter will generate these set of features
 
          decoder_target_tokens = [9, 4, 6, 1, 3, 9, 1, 0, 0]
           decoder_input_tokens = [0, 9, 4, 6, 1, 3, 9, 1, 0]
@@ -837,7 +884,7 @@ class DecoderOnlyModel(BaseTransformerModel):
     Args:
       params: model parameters.
       batch: batch element with the model features specified in
-        seqio.PrefixLMFeatureConverter.
+        seqio.DecoderFeatureConverter.
       return_all_decodes: if True, will return all batch_size * num_decodes
         samples from the model as an array of shape [batch_size, num_decodes,
         sequence_length]. Otherwise returns only the most likely samples as an
