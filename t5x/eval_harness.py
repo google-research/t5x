@@ -57,6 +57,15 @@ _DEFAULT_GIN_SEARCH_PATHS = [
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
 
+DEFAULT_ACTIVE_TASKS = [
+    "lambada",
+    "hellaswag",
+    "winogrande",
+    "piqa",
+    "mathqa",
+    "pubmedqa"
+]
+
 def create_task_from_tuples(data, vocab):
     tfrecord_writer = tf.io.TFRecordWriter("data.tfrecord")
     def _bytes_feature(value):
@@ -244,7 +253,7 @@ def infer(*,
     return infer_task(task)
   logging.info('DONE')
 
-def eval_task(output_path, create_task_func, infer_func):
+def eval_task(active_tasks, output_path, create_task_func, infer_func):
   class EvalHarnessAdaptor(LM):
     def greedy_until(self, requests):
         raise Exception("unimplemented")
@@ -260,14 +269,6 @@ def eval_task(output_path, create_task_func, infer_func):
         return np.array(infer_func(task_name = task_name, mode = 'score_with_correct'))
   
   adaptor = EvalHarnessAdaptor()
-  active_tasks = [
-    "lambada",
-    "hellaswag",
-    "winogrande",
-    "piqa",
-    "mathqa",
-    "pubmedqa"
-    ]
   
   results = evaluator.evaluate(adaptor, tasks.get_task_dict(active_tasks), False, 0, None)
   dumped = json.dumps(results, indent=2)
@@ -319,6 +320,10 @@ if __name__ == '__main__':
 
   flags.DEFINE_string(
       'results_path', None, "Path to save the json with the results.")
+
+  flags.DEFINE_list(
+      'tasks', default=DEFAULT_ACTIVE_TASKS, help="List of task to run evaluation on."
+  )
   
   def main(argv: Sequence[str]):
     """Wrapper for pdb post mortems."""
@@ -344,6 +349,6 @@ if __name__ == '__main__':
 
     print(FLAGS.results_path)
     
-    eval_task(FLAGS.results_path, create_task_from_tuples_gin, infer_using_gin)
+    eval_task(FLAGS.tasks, FLAGS.results_path, create_task_from_tuples_gin, infer_using_gin)
     
   gin_utils.run(main)
