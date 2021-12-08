@@ -614,7 +614,7 @@ class MlpBlock(nn.Module):
     x = nn.Dropout(
         rate=self.intermediate_dropout_rate, broadcast_dims=(-2,))(
             x, deterministic=deterministic)  # Broadcast along length.
-    x = with_sharding_constraint(x, ('batch', 'length', 'embed'))
+    x = with_sharding_constraint(x, ('batch', 'length', 'mlp'))
     output = DenseGeneral(
         inputs.shape[-1],
         dtype=self.dtype,
