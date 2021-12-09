@@ -1,0 +1,13 @@
+from __gin__ import dynamic_registration
+
+from t5x import models
+from t5x import utils
+import seqio
+from promptsource import seqio_tasks
+
+include "bigscience/gins/c_dec_xxl.gin"
+include "t5x/configs/runs/finetune.gin"
+include "bigscience/gins/t0_adapter_base.gin" # This overrides some default config in `t5x/configs/runs/finetune.gin`
+
+TASK_FEATURE_LENGTHS = {"inputs": 1024, "targets": 256}
+MIXTURE_OR_TASK_NAME = "d4_train" # We need to install prompt source and actually import it

@@ -5,7 +5,7 @@ import seqio
 
 include "bigscience/gins/nc_dec_xxl.gin"
 include "t5x/configs/runs/pretrain.gin"
-include "bigscience/gins/pretrainer_base.gin"
+include "bigscience/gins/lm_adapter_base.gin"
 
 TASK_FEATURE_LENGTHS = {
     "decoder_target_tokens": 626,

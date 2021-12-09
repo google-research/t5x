@@ -28,9 +28,13 @@ train_script.train:
   stats_period = 3000
   eval_steps = 1500
   random_seed = None
+  infer_eval_dataset_cfg = None # Prevent to run inference evaluation
 
 # trainer.Trainer.num_microbatches = 8 # 2048 // 8
-utils.create_learning_rate_scheduler.warmup_steps = 10000
+utils.create_learning_rate_scheduler:
+  factors = 'constant * rsqrt_decay'
+  base_learning_rate = 1.0
+  warmup_steps = 10000
 
 utils.SaveCheckpointConfig:
   period = 30000  # checkpoint frequency
@@ -38,4 +42,3 @@ utils.SaveCheckpointConfig:
 
 partitioning.ModelBasedPjitPartitioner:
   model_parallel_submesh = (4,1,1,1)
-  logical_axis_rules = @task.fully_sharded_logical_axis_rules()

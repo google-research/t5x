@@ -1,0 +1,10 @@
+from __gin__ import dynamic_registration
+
+from t5x import utils
+
+include "bigscience/gins/pretrainer_base.gin"
+
+utils.RestoreCheckpointConfig:
+  path = %INITIAL_CHECKPOINT_PATH
+  mode = 'specific'
+  dtype = 'float32'

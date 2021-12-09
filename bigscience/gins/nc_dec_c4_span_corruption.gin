@@ -4,7 +4,7 @@ from t5x import models
 
 include "bigscience/gins/nc_dec_xxl.gin"
 include "t5x/configs/runs/pretrain.gin"
-include "bigscience/gins/trainer_base.gin"
+include "bigscience/gins/pretrainer_base.gin"
 
 TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 114}
 MIXTURE_OR_TASK_NAME = "c4_v220_span_corruption"

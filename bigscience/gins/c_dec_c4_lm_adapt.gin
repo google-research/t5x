@@ -4,7 +4,7 @@ from t5x import models
 
 include "bigscience/gins/c_dec_xxl.gin"
 include "t5x/configs/runs/pretrain.gin"
-include "bigscience/gins/pretrainer_base.gin"
+include "bigscience/gins/lm_adapter_base.gin"
 
 # TODO: check if we keep 512 or 512 + 114 ...
 TASK_FEATURE_LENGTHS = {"targets": 626}
