@@ -1330,6 +1330,24 @@ class CheckpointsTest(parameterized.TestCase):
     actual = checkpoints._maybe_update_ts_from_gcs_to_file(ckpt_contents)
     jax.tree_multimap(np.testing.assert_array_equal, actual, expected)
 
+  def assert_update_ts_path_from_relative_to_absolute(self, ts_spec_dict,
+                                                      expected, ckpt_dir):
+    """Tests that `ts_spec_dict` gets updated with `ckpt_dir` to `expected`."""
+
+    # Test with normalization (corresponds to tensorstore>=0.1.14)
+    normalized_ts_spec_dict = ts.Spec(ts_spec_dict).to_json()
+    checkpoints._update_ts_path_from_relative_to_absolute(
+        ckpt_dir, normalized_ts_spec_dict)
+    normalized_ts_spec_dict = ts.Spec(normalized_ts_spec_dict).to_json()
+    normalized_expected = ts.Spec(expected).to_json()
+    jax.tree_multimap(np.testing.assert_array_equal, normalized_ts_spec_dict,
+                      normalized_expected)
+
+    # Test without normalization (corresponds to tensorstore<0.1.14)
+    checkpoints._update_ts_path_from_relative_to_absolute(
+        ckpt_dir, ts_spec_dict)
+    jax.tree_multimap(np.testing.assert_array_equal, ts_spec_dict, expected)
+
   def test_update_ts_path_from_relative_to_absolute_gfile(self):
     ts_spec_dict = {
         'driver': 'zarr',
@@ -1367,9 +1385,8 @@ class CheckpointsTest(parameterized.TestCase):
     }
     ckpt_dir = '/dir1/dir2'
 
-    checkpoints._update_ts_path_from_relative_to_absolute(
-        ckpt_dir, ts_spec_dict)
-    jax.tree_multimap(np.testing.assert_array_equal, ts_spec_dict, expected)
+    self.assert_update_ts_path_from_relative_to_absolute(
+        ts_spec_dict, expected, ckpt_dir)
 
   def test_update_ts_path_from_relative_to_absolute_gcs(self):
     ts_spec_dict = {
@@ -1394,6 +1411,7 @@ class CheckpointsTest(parameterized.TestCase):
             'input_inclusive_min': [0, 0]
         }
     }
+
     expected = {
         'driver': 'zarr',
         'dtype': 'float32',
@@ -1417,11 +1435,11 @@ class CheckpointsTest(parameterized.TestCase):
             'input_inclusive_min': [0, 0]
         }
     }
+
     ckpt_dir = 'gs://test-bucket/dir1/dir2'
 
-    checkpoints._update_ts_path_from_relative_to_absolute(
-        ckpt_dir, ts_spec_dict)
-    jax.tree_multimap(np.testing.assert_array_equal, ts_spec_dict, expected)
+    self.assert_update_ts_path_from_relative_to_absolute(
+        ts_spec_dict, expected, ckpt_dir)
 
   def test_restore_tf_checkpoint(self):
     self.verify_restore_checkpoint_from_path(

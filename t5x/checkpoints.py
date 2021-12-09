@@ -203,25 +203,31 @@ def _cast(target: PyTreeDef, dtype: jnp.dtype):
 def _update_ts_path_from_relative_to_absolute(
     ckpt_dir: str, ts_spec_dict: MutableMapping[str, Any]):
   """Update (in-place) the path and gcs bucket (if applicable) in a TS Spec."""
-  # Update the path with `ckpt_dir`
-  if 'path' in ts_spec_dict:
-    # GCS driver
-    if 'gs://' not in ckpt_dir:
-      raise ValueError(
-          f'`ckpt_dir` should start with "gs://" prefix. Got {ckpt_dir}')
 
-    bucket, stripped_ckpt_dir = re.findall('gs://(.*?)/(.*)', ckpt_dir)[0]
-    ts_spec_dict['path'] = os.path.join(stripped_ckpt_dir, ts_spec_dict['path'])
-    # Dynamically update the dummy bucket to the bucket of `ckpt_dir`.
+  # Handle `gs://` paths.
+  m = re.fullmatch('^gs://([^/]*)/(.*)$', ckpt_dir, re.DOTALL)
+  if m is not None:
+    if ts_spec_dict['kvstore']['driver'] != 'gcs':
+      raise ValueError(f'Incorrect TensorStore Spec.  '
+                       f'Expects kvstore driver to be "gcs" for {ckpt_dir}.  '
+                       f'Got {ts_spec_dict}')
+    bucket = m.group(1)
+    ckpt_dir = m.group(2)
     ts_spec_dict['kvstore']['bucket'] = bucket
-  elif 'path' in ts_spec_dict['kvstore']:
-    # Internal gfile driver
+
+  # Update the path with `ckpt_dir`
+
+  if 'path' in ts_spec_dict['kvstore']:
+    # tensorstore>=0.1.14 format
     ts_spec_dict['kvstore']['path'] = os.path.join(
         ckpt_dir, ts_spec_dict['kvstore']['path'])
+  elif 'path' in ts_spec_dict:
+    # tensorstore<0.1.14 format
+    ts_spec_dict['path'] = os.path.join(ckpt_dir, ts_spec_dict['path'])
   else:
     raise ValueError(
-        'Incorrect TensorStore Spec. Expects "path" to be a key of '
-        f'`spec["kvstore"]` or `spec` Got {ts_spec_dict}')
+        'Incorrect TensorStore Spec. Expects "path" to be a key of spec or '
+        f'`spec["kvstore"]`. Got {ts_spec_dict}')
 
 
 def _maybe_update_ts_from_file_to_gcs(ckpt_contents):
