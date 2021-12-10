@@ -29,6 +29,7 @@ train_script.train:
   eval_steps = 500
   random_seed = None
   infer_eval_dataset_cfg = None # Prevent to run inference evaluation
+  train_eval_dataset_cfg = None # Prevent to run evaluation as it seems to OOM me.
 
 utils.create_learning_rate_scheduler:
   base_learning_rate = 0.001
