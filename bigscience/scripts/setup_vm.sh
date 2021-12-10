@@ -1,4 +1,4 @@
-sudo pip uninstall jax jaxlib -y
+sudo pip3 uninstall jax jaxlib -y
 pip3 install -U pip
 pip3 install jax jaxlib
 rm libtpu_tpuv4-0.1.dev*
