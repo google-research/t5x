@@ -1,6 +1,7 @@
 from __gin__ import dynamic_registration
 
 from t5x import models
+import seqio
 
 include "bigscience/gins/c_dec_xxl.gin"
 include "t5x/configs/runs/pretrain.gin"
