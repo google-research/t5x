@@ -1,8 +1,13 @@
 from __gin__ import dynamic_registration
 
+from t5x.examples.t5 import network
+
 include "bigscience/gins/enc_dec_xxl.gin"
 include "t5x/configs/runs/pretrain.gin"
 include "bigscience/gins/pretrainer_base.gin"
 
 TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 114}
 MIXTURE_OR_TASK_NAME = "c4_v220_span_corruption"
+
+# Try running float32
+network.T5Config.dtype = 'float32'
