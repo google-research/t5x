@@ -365,6 +365,8 @@ def train(
   if infer_eval_dataset_cfg is not None:
     _verify_matching_vocabs(infer_eval_dataset_cfg)
     evaluator = inference_evaluator_cls(
+        num_examples=eval_steps * infer_eval_dataset_cfg.batch_size,
+        logger_cls=(seqio.TensorBoardLogger, seqio.PyLoggingLogger),
         log_dir=os.path.join(model_dir, 'inference_eval'),
         mixture_or_task_name=infer_eval_dataset_cfg.mixture_or_task_name,
         feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),  # pytype:disable=not-instantiable
