@@ -33,6 +33,7 @@ from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, T
 from absl import logging
 import jax
 import jax.numpy as jnp
+import numpy as np
 import seqio
 from t5x import models
 from t5x import multihost_utils
@@ -181,7 +182,8 @@ def write_inferences_to_file(
       return float(value)
     elif isinstance(value, jnp.integer):
       return float(value)
-    elif isinstance(value, jnp.ndarray):
+    elif isinstance(value, (jnp.ndarray, np.ndarray)):
+      # Flatten array features.
       return value.tolist()
     else:
       return value
