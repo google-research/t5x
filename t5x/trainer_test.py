@@ -14,6 +14,7 @@
 
 """Tests for t5x.trainer_lib."""
 import collections
+import contextlib
 import os
 
 from absl.testing import absltest
@@ -35,6 +36,15 @@ from tensorflow.io import gfile
 
 mock = absltest.mock
 jax.config.parse_flags_with_absl()
+
+
+# Make `log_elapsed_time` a no-op to simplify mocking of `time.time()`.
+@contextlib.contextmanager
+def fake_log_elapsed_time(_):
+  yield
+
+
+jax._src.dispatch.log_elapsed_time = fake_log_elapsed_time
 
 
 def _validate_events(test_case, summary_dir, expected_metrics, steps):
