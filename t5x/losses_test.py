@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tests for loss."""
+"""Tests for t5x.losses."""
 
 from absl.testing import absltest
 import jax
 import numpy as np
-from t5x import loss as loss_lib
+from t5x import losses
 
 
 class LossTest(absltest.TestCase):
@@ -25,7 +25,7 @@ class LossTest(absltest.TestCase):
   def test_xent(self):
 
     def lossfn(logits, targets, weights):
-      loss, z_loss, weight_sum = loss_lib.compute_weighted_cross_entropy(
+      loss, z_loss, weight_sum = losses.compute_weighted_cross_entropy(
           logits,
           targets,
           weights,

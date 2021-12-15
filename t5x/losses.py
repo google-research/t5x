@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""xent loss."""
+"""Loss functions."""
 from typing import Tuple, Optional
 
 from flax.training import common_utils

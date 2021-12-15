@@ -34,7 +34,7 @@ import jax.numpy as jnp
 import numpy as np
 import seqio
 from t5x import decoding
-from t5x import loss as loss_lib
+from t5x import losses
 from t5x import metrics as metrics_lib
 import tensorflow as tf
 import typing_extensions
@@ -53,17 +53,16 @@ def _loss_move_warning(fun):
 
   def wrap(*args, **kwargs):
     logging.warn('Please update your access to t5x loss functions to use '
-                 't5x.loss. The forwarding symbols in t5x.models will be '
+                 't5x.losses. The forwarding symbols in t5x.models will be '
                  'eventually removed.')
     return fun(*args, **kwargs)
 
   return wrap
 
 
-cross_entropy_with_logits = _loss_move_warning(
-    loss_lib.cross_entropy_with_logits)
+cross_entropy_with_logits = _loss_move_warning(losses.cross_entropy_with_logits)
 compute_weighted_cross_entropy = _loss_move_warning(
-    loss_lib.compute_weighted_cross_entropy)
+    losses.compute_weighted_cross_entropy)
 
 
 class TokensIdsToLogitsCallable(typing_extensions.Protocol):
@@ -306,7 +305,7 @@ class BaseTransformerModel(BaseModel):
       loss_normalizing_factor = self._loss_normalizing_factor
 
     logits = self._compute_logits(params, batch, dropout_rng)
-    loss, total_z_loss, weight_sum = compute_weighted_cross_entropy(
+    loss, total_z_loss, weight_sum = losses.compute_weighted_cross_entropy(
         logits,
         targets=batch['decoder_target_tokens'],
         weights=batch.get('decoder_loss_weights', None),
@@ -671,7 +670,7 @@ class EncoderDecoderModel(BaseTransformerModel):
 
     # Purposefully don't use config.z_loss because that term is for training
     # stability and shouldn't affect our reported scores.
-    token_scores = -cross_entropy_with_logits(
+    token_scores = -losses.cross_entropy_with_logits(
         logits,
         common_utils.onehot(
             target_tokens, logits.shape[-1], on_value=1, off_value=0),
@@ -820,7 +819,7 @@ class DecoderOnlyModel(BaseTransformerModel):
 
     logits = self._compute_logits(params=params, batch=batch, dropout_rng=None)
 
-    token_scores = -cross_entropy_with_logits(
+    token_scores = -losses.cross_entropy_with_logits(
         logits,
         common_utils.onehot(
             decoder_target_tokens, logits.shape[-1], on_value=1, off_value=0),
