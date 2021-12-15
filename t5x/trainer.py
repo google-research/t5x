@@ -19,6 +19,7 @@ To create a custom trainer, subclass `BaseTrainer` and implement
 possibly by re-using the utility functions provided in this module.
 """
 import abc
+import concurrent.futures
 import enum
 import os
 import time
@@ -56,6 +57,12 @@ if TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
 else:
   cached_property = cached_property.cached_property
+
+
+class OptionalArrayMapFuture(typing_extensions.Protocol):
+
+  def result(self) -> Optional[Mapping[str, Array]]:
+    ...
 
 
 class LearningRateCallable(typing_extensions.Protocol):
@@ -226,12 +233,15 @@ class BaseTrainer(abc.ABC):
 
     # The training metrics combine metrics added by the Model (e.g., loss and
     # accuracy) and Trainer (e.g., learning rate).
-    self.train_metrics_manager = MetricsManager(
-        "train",
-        initial_accumulator={
+    # Pre-copy the initial accumulator to devices to reduce communication.
+    on_device_initial_accumulator = self._partitioner.partition(
+        lambda x: x, in_axis_resources=None, out_axis_resources=None)({
             **model.get_initial_metrics(),
             **self._get_initial_metrics()
-        },
+        })
+    self.train_metrics_manager = MetricsManager(
+        "train",
+        initial_accumulator=on_device_initial_accumulator,
         summarize_fn=lambda *args, **kwargs: {  # pylint:disable=g-long-lambda
             **model.summarize_metrics_fn(*args, **kwargs),
             **self._summarize_metrics_fn(*args, **kwargs)
@@ -247,10 +257,14 @@ class BaseTrainer(abc.ABC):
             summary_dir=summary_dir) for n in eval_names
     }
 
+    self._metrics_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1)
+
   def _get_step_rng(self, step: int) -> Rng:
     return jax.random.fold_in(self._base_rng, step)
 
-  def train(self, batch_iter: Iterator[BatchType], num_steps: int):
+  def train(self, batch_iter: Iterator[BatchType],
+            num_steps: int) -> OptionalArrayMapFuture:
     """Runs the train loop for the given number of steps."""
     tick = time.time()
     metrics = self.train_metrics_manager.initial_accumulator
@@ -265,10 +279,20 @@ class BaseTrainer(abc.ABC):
         batch = next(batch_iter)
         self.train_state, metrics = train_step_fn(self.train_state, batch,
                                                   metrics)
-    jax.tree_map(lambda x: x.block_until_ready(), self.train_state)
-    tock = time.time()
-    return self.train_metrics_manager.write_metrics_summary(
-        metrics, self.train_state.step, tock - tick, num_steps)
+
+    def _write_summary():
+
+      def _block_until_ready(x):
+        if isinstance(x, jax.pxla.ShardedDeviceArray):
+          x = x.device_buffers[0]
+        x.block_host_until_ready()
+
+      jax.tree_map(_block_until_ready, self.train_state)
+      tock = time.time()
+      return self.train_metrics_manager.write_metrics_summary(
+          metrics, self.train_state.step, tock - tick, num_steps)
+
+    return self._metrics_executor.submit(_write_summary)
 
   def compile_train(self, batch: BatchType) -> None:
     """Pre-compiles train step (if not yet compiled).
@@ -315,6 +339,7 @@ class BaseTrainer(abc.ABC):
           "Eval step mismatch across hosts. Check for empty dataset shard.")
       tock = time.time()
 
+      # TODO(adarob): Write metrics in separate thread.
       eval_summary = self.eval_metrics_managers[
           iter_name].write_metrics_summary(metrics, self.train_state.step,
                                            tock - tick, num_steps)

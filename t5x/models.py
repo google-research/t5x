@@ -353,7 +353,7 @@ class BaseTransformerModel(BaseModel):
   def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
                            num_steps: int) -> Mapping[str, Array]:
     """Convert metrics into tensorboard-friendly summary."""
-    metrics = {k: v.compute() for k, v in metrics.items()}
+    metrics = {k: jax.device_get(v.compute()) for k, v in metrics.items()}
     num_devices = jax.device_count()
     assert num_devices, 'JAX is reporting no devices, but it should.'
     summary = {

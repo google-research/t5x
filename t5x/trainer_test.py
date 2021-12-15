@@ -273,7 +273,7 @@ class TrainerTest(parameterized.TestCase):
     # train start, logging, train end, logging
     mock_time.side_effect = [1, 5, 5, 5]
     num_steps = 2
-    trainer.train(self.dataset.as_numpy_iterator(), num_steps)
+    trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
 
     expected_metrics = {
         k: (v.compute() + 2 * num_steps) / 4  # divide by duration
@@ -746,7 +746,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
         dtype=np.uint32)
     tf.compat.v1.logging.info(metrics)
     # No longer a Metric object, no need for .compute()
-    np.testing.assert_array_equal(metrics['rng'], expected_rng_sum)
+    np.testing.assert_array_equal(metrics.result()['rng'], expected_rng_sum)
 
 
 if __name__ == '__main__':

@@ -74,8 +74,8 @@ def run_actions(
   """
   if jax.process_index() != 0:
     return False
-  if metrics_by_task is None:
-    raise RuntimeError('Metric is unexpectedly None on process 0')
+  if not metrics_by_task:
+    raise RuntimeError('Metric is unexpectedly empty on process 0')
   stop_training = False
   for action in actions.get(mode, []):
     stop_training |= action.run(train_state, metrics_by_task=metrics_by_task)
@@ -116,7 +116,7 @@ def train(
                                   None],
     inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator,
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
-    concurrent_evaluation: bool = False,
+    concurrent_metrics: bool = False,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None
 ) -> Tuple[int, train_state_lib.TrainState]:
@@ -158,12 +158,12 @@ def train(
       evaluation, potentially with bound configuration args.
     get_dataset_fn: The callable use to get the train and train-eval datasets
       based on the DatasetConfig and shard information.
-    concurrent_evaluation: If True, allow infer-eval metrics computation to
+    concurrent_metrics: If True, allow metrics computation and logging to
       overlap with training. Will likely result in additional TPU memory usage.
     actions: A mapping of actions that runs after train, eval or infer_eval, to
       inspect the model and perform useful operations, e.g., early stopping. The
       key must have a 1:1 mapping to ActionMode enum. For EVAL actions to
-        actually work, this requires `concurrent_evaluation` to be turned off,
+        actually work, this requires `concurrent_metrics` to be turned off,
         since chaining futures and mutating states concurrently might be
         error-prone.
     train_eval_get_dataset_fn: Optional callable use to get the train-eval
@@ -410,9 +410,13 @@ def train(
   # Transform the string key into proper ActionMode enum.
   actions = {trainer_lib.ActionMode[k]: v for k, v in actions.items()}
 
-  if concurrent_evaluation and actions.get(trainer_lib.ActionMode.INFER_EVAL,
-                                           None) is not None:
+  if concurrent_metrics and actions.get(trainer_lib.ActionMode.INFER_EVAL,
+                                        None) is not None:
     logging.warning('Actions for INFER_EVAL will not be triggered when async '
+                    'metrics computation is enabled')
+  if concurrent_metrics and actions.get(trainer_lib.ActionMode.TRAIN,
+                                        None) is not None:
+    logging.warning('Actions for TRAIN will not be triggered when async '
                     'metrics computation is enabled')
 
   # ----------------------------------------------------------------------------
@@ -474,13 +478,14 @@ def train(
 
         inner_num_steps = min(epoch_end_step - host_step, stats_period)
         train_summary = trainer.train(train_iter, inner_num_steps)
-        # Note that we always pass the dictionary of `tasks` -> summary so
-        # that the actions can be performed without special casing. The only
-        # caveat is that train would need its own special `key` given no
-        # `task` will be applied.
-        trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN,
-                                            actions, trainer.train_state,
-                                            {TRAIN_METRIC_KEY: train_summary})
+        if not concurrent_metrics:
+          # Note that we always pass the dictionary of `tasks` -> summary so
+          # that the actions can be performed without special casing. The only
+          # caveat is that train would need its own special `key` given no
+          # `task` will be applied.
+          trainer.stop_training = run_actions(
+              trainer_lib.ActionMode.TRAIN, actions, trainer.train_state,
+              {TRAIN_METRIC_KEY: train_summary.result()})
 
         host_step += inner_num_steps
       logging.info('END Train loop.')
@@ -536,9 +541,9 @@ def train(
           predict_fn=functools.partial(
               predict_fn, train_state=trainer.train_state),
           score_fn=functools.partial(score_fn, train_state=trainer.train_state))
-      if not concurrent_evaluation:
+      if not concurrent_metrics:
         # Ensure metrics are finished being computed.
-        all_metrics_done = all_metrics.result()
+        all_metrics_done = all_metrics.result() or {}
         trainer.stop_training = run_actions(trainer_lib.ActionMode.INFER_EVAL,
                                             actions, trainer.train_state,
                                             all_metrics_done)
