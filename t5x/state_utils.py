@@ -195,8 +195,6 @@ def apply_assignment_map(ckpt_optimizer_state,
   for key, v in unmapped_old_keys.items():
     if key not in explicitly_skipped_keys:
       result[key] = v
-      logging.info("Keeping unmapped key from checkpoint=%s (this is normal)",
-                   key)
 
   # If any new keys weren't mapped, but are in the old checkpoint, copy those.
   for key in set(flat_opt) - set(result):
@@ -204,7 +202,6 @@ def apply_assignment_map(ckpt_optimizer_state,
       pass
     elif key in flat_ckpt:
       result[key] = flat_ckpt[key]
-      logging.info("Assigning optimizer-matched key from checkpoint=%s", key)
     else:
       logging.warning(
           "Skipping key=%s which did not match assignment map or checkpoint.",
