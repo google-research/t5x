@@ -731,22 +731,21 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       # [B, ...] -> [B, ...]
       batch_result = infer_step(train_state.params, infer_batch)
       logging.info('Inference of batch %s done.', index)
-      # Issue asynchronous copy request which serves as prefetching to the host.
-      # The result value is synchronized with host_allgather in the loop below.
-      try:
-        jax.tree_map(lambda x: x.copy_to_host_async(), batch_result)
-      except AttributeError:
-        # Similar to jax.device_get, we skip transfers for non DeviceArrays.
-        pass
-      batched_results.append(batch_result)
-      all_indices.append(index)
-    logging.info('Inference of all batches done.')
-    all_inferences = []
-    for batch_result in batched_results:
+
+      # NOTE: host_allgather also brings the data into the host memory.
       # [B, ...] -> [H, B, ...]
       batch_result = multihost_utils.host_allgather(
           batch_result, num_shards, shard_id,
           data_layout.is_first_host_in_replica_set)
+      # Just to be 100% sure batch_result is now in the host memory.
+      batch_result = jax.device_get(batch_result)
+      logging.info('Completed multihost_utils.host_allgather + jax.device_get')
+      batched_results.append(batch_result)
+      all_indices.append(index)
+    logging.info('Inference of all batches done.')
+
+    all_inferences = []
+    for batch_result in batched_results:
       all_inferences.append(batch_result)
 
     # List[H, B, ...] -> List[B, H, ...]
