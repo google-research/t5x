@@ -255,6 +255,10 @@ def train(
         model.FEATURE_CONVERTER_CLS,
         get_dataset_fn=train_eval_get_dataset_fn if train_eval_get_dataset_fn
         is not None else get_dataset_fn)  # type: Mapping[str, tf.data.Dataset]
+    if not train_eval_datasets:
+      logging.warning(
+          'No train_eval datasets loaded from config `train_eval_dataset_cfg`: '
+          '%s', train_eval_dataset_cfg)
   else:
     train_eval_datasets = {}
 
@@ -513,7 +517,7 @@ def train(
                                      step_offset % eval_period == 0)
 
     # Training Evaluation (i.e., with teacher forcing).
-    if is_eval_epoch and train_eval_dataset_cfg:
+    if is_eval_epoch and train_eval_datasets:
       if step_offset // eval_period <= 1:  # Maybe less if final step < period.
         # Compile before the first run.
         logging.info('Compiling training eval loop.')
