@@ -14,6 +14,7 @@
 
 """Tests for t5x.trainer_lib."""
 import collections
+import contextlib
 import os
 
 from absl.testing import absltest
@@ -35,6 +36,15 @@ from tensorflow.io import gfile
 
 mock = absltest.mock
 jax.config.parse_flags_with_absl()
+
+
+# Make `log_elapsed_time` a no-op to simplify mocking of `time.time()`.
+@contextlib.contextmanager
+def fake_log_elapsed_time(_):
+  yield
+
+
+jax._src.dispatch.log_elapsed_time = fake_log_elapsed_time
 
 
 def _validate_events(test_case, summary_dir, expected_metrics, steps):
@@ -263,7 +273,7 @@ class TrainerTest(parameterized.TestCase):
     # train start, logging, train end, logging
     mock_time.side_effect = [1, 5, 5, 5]
     num_steps = 2
-    trainer.train(self.dataset.as_numpy_iterator(), num_steps)
+    trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
 
     expected_metrics = {
         k: (v.compute() + 2 * num_steps) / 4  # divide by duration
@@ -736,7 +746,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
         dtype=np.uint32)
     tf.compat.v1.logging.info(metrics)
     # No longer a Metric object, no need for .compute()
-    np.testing.assert_array_equal(metrics['rng'], expected_rng_sum)
+    np.testing.assert_array_equal(metrics.result()['rng'], expected_rng_sum)
 
 
 if __name__ == '__main__':

@@ -842,6 +842,11 @@ class Checkpointer(object):
       restore_parameter_infos = state_utils.intersect_state(
           self._parameter_infos, ckpt_state_dict)
 
+    restore_parameter_infos_flat = state_utils.flatten_state_dict(
+        restore_parameter_infos)
+    for key in restore_parameter_infos_flat.keys():
+      logging.info('Restoring key from ckpt: %s', key)
+
     # NB: `serialization.from_state_dict` doesn't check whether the shapes match
     # at the leaf level. Non-partitioned leaves (e.g., optimizer states) can
     # load arrays with inconsistent shapes.
@@ -859,6 +864,10 @@ class Checkpointer(object):
     # If `fallback_state` was specified, then fill the missing parameters.
     if fallback_state is not None:
       state_dict = state_utils.merge_state(state_dict, fallback_state)
+
+    for key in state_utils.flatten_state_dict(state_dict).keys():
+      if key not in restore_parameter_infos_flat:
+        logging.info('Not restoring key from ckpt: %s', key)
 
     if self._dataset_ckpt:
       logging.info("Restoring dataset iterator from '%s'.",

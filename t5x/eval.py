@@ -22,7 +22,7 @@ r"""This script runs inference-evaluation on a T5X-compatible model.
 
 import functools
 import os
-from typing import Sequence
+from typing import Sequence, Type
 
 from absl import logging
 # Set Linen to add profiling information when constructing Modules.
@@ -42,10 +42,13 @@ _DEFAULT_GIN_SEARCH_PATHS = [
 ]
 
 
-def evaluate(*, model: models.BaseTransformerModel,
+def evaluate(*,
+             model: models.BaseTransformerModel,
              dataset_cfg: utils.DatasetConfig,
              restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
-             partitioner: partitioning.BasePartitioner, output_dir: str):
+             partitioner: partitioning.BasePartitioner,
+             output_dir: str,
+             inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator):
   """Evaluation function.
 
   Args:
@@ -55,6 +58,8 @@ def evaluate(*, model: models.BaseTransformerModel,
       load.
     partitioner: Partitioner for the model parameters and data across devices.
     output_dir: Path to directory to write temporary files and final results.
+    inference_evaluator_cls: seqio.Evaluator class to use for inference
+      evaluation, potentially with bound configuration args.
   """
   if dataset_cfg.module:
     utils.import_module(dataset_cfg.module)
@@ -73,16 +78,13 @@ def evaluate(*, model: models.BaseTransformerModel,
   # SeqIO (inference-based) evaluation setup
   # ----------------------------------------------------------------------------
   # Init evaluator to set up cached datasets
-  evaluator = seqio.Evaluator(
+  evaluator = inference_evaluator_cls(
       mixture_or_task_name=dataset_cfg.mixture_or_task_name,
       feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),  # pytype:disable=not-instantiable
       eval_split=dataset_cfg.split,
       use_cached=dataset_cfg.use_cached,
       seed=dataset_cfg.seed,
       sequence_length=dataset_cfg.task_feature_lengths,
-      logger_cls=[
-          seqio.PyLoggingLogger, seqio.TensorBoardLogger, seqio.JSONLogger
-      ],
       log_dir=os.path.join(output_dir, 'inference_eval'))
   if not evaluator.eval_tasks:
     raise ValueError(
