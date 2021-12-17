@@ -1,7 +1,5 @@
 pushd ~/code/t5x
 
-PYTHONPATH=$(pwd)/bigscience/gins
-
 ORIGINAL_EXPERIMENT_NAME=$1
 
 if [[ $ORIGINAL_EXPERIMENT_NAME == *t0_adapt* ]]
@@ -12,8 +10,7 @@ else
   CHECKPOINT_STEP=32768
 fi
 
-
-python3 $(pwd)/t5x/eval_harness.py \
+PYTHONPATH=$(pwd)/bigscience/gins python3 $(pwd)/t5x/eval_harness.py \
    --gin_file_="bigscience/gins/c_dec_xxl.gin" \
    --gin_file_="bigscience/gins/eval_harness.gin" \
    --gin.INFER_OUTPUT_DIR="'.'"  \
