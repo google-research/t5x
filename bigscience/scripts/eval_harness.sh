@@ -4,8 +4,7 @@ ORIGINAL_EXPERIMENT_NAME=$1
 
 if [[ $ORIGINAL_EXPERIMENT_NAME == *t0_adapt* ]]
 then
-  echo "I don't know how much T0 adaptation one has to do, so I don't know the correct checkpoint"
-  exit 1
+  CHECKPOINT_STEP=37768 # 32768 (pretrain) + 5000 (t0 adapt)
 else
   CHECKPOINT_STEP=32768
 fi

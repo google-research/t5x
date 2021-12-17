@@ -2,7 +2,7 @@ python3 -c "import jax; print(jax.device_count()); print(jax.local_device_count(
 
 # Model dir to save logs, ckpts, etc. in "gs://model_dir" format.
 EXPERIMENT_NAME=$1
-MODEL_DIR="gs://bigscience-t5x/arch_objective_exps/$EXPERIMENT_NAME"
+MODEL_DIR="gs://bigscience-t5x/arch_objective_exps_v2/$EXPERIMENT_NAME"
 
 # directory where the T5X repo is cloned.
 T5X_DIR="/home/thomas/code/t5x"

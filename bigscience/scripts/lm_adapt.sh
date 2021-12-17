@@ -4,8 +4,8 @@ python3 -c "import jax; print(jax.device_count()); print(jax.local_device_count(
 ORIGINAL_EXPERIMENT_NAME=$1
 CHECKPOINT_STEP=$2
 EXPERIMENT_NAME=$ORIGINAL_EXPERIMENT_NAME"_lm_adapt_"$CHECKPOINT_STEP
-CHECKPOINT_DIR="gs://bigscience-t5x/arch_objective_exps/$ORIGINAL_EXPERIMENT_NAME/checkpoint_$CHECKPOINT_STEP"
-MODEL_DIR="gs://bigscience-t5x/arch_objective_exps/$EXPERIMENT_NAME"
+CHECKPOINT_DIR="gs://bigscience-t5x/arch_objective_exps_v2/$ORIGINAL_EXPERIMENT_NAME/checkpoint_$CHECKPOINT_STEP"
+MODEL_DIR="gs://bigscience-t5x/arch_objective_exps_v2/$EXPERIMENT_NAME"
 
 # directory where the T5X repo is cloned.
 T5X_DIR="/home/thomas/code/t5x"

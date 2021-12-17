@@ -8,35 +8,35 @@ from t5x import utils
 import task
 
 MIXTURE_OR_TASK_MODULE = "t5.data.mixtures"
-TRAIN_STEPS = 604288 # 524288 (pretrain) + 80000 (finetune)
+TRAIN_STEPS = 37768 # 32768 (pretrain) + 5000 (finetune)
 DROPOUT_RATE = 0.1 # TODO: Check this value
+BATCH_SIZE = 2048
 
 train/utils.DatasetConfig:
-  batch_size = 128
+  batch_size = %BATCH_SIZE
   use_cached = True
   pack = True
   use_custom_packing_ops = False
 
 train_eval/utils.DatasetConfig:
-  batch_size = 128
+  batch_size = %BATCH_SIZE
   use_cached = True
   pack = True
   use_custom_packing_ops = False
 
 train_script.train:
-  eval_period = 10000
-  stats_period = 2500
-  eval_steps = 500
+  eval_period = 500
+  eval_steps = 50
   random_seed = None
   infer_eval_dataset_cfg = None # Prevent to run inference evaluation
   train_eval_dataset_cfg = None # Prevent to run evaluation as it seems to OOM me.
 
 utils.create_learning_rate_scheduler:
   base_learning_rate = 0.001
-  warmup_steps = 1000 # irrelevant
+  warmup_steps = 10000 # irrelevant
 
 utils.SaveCheckpointConfig:
-  period = 20000  # checkpoint frequency
+  period = 1000  # checkpoint frequency
   keep = None # only keep one checkpoint
 
 utils.RestoreCheckpointConfig:
@@ -44,3 +44,5 @@ utils.RestoreCheckpointConfig:
 
 partitioning.ModelBasedPjitPartitioner:
   model_parallel_submesh = (4,1,1,1)
+
+# trainer.Trainer.num_microbatches = 8 # 2048 // 8
