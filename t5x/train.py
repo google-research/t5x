@@ -56,7 +56,7 @@ def run_actions(
     train_state: train_state_lib.TrainState,
     metrics_by_task: Mapping[str, Optional[Mapping[str, trainer_lib.Array]]]
 ) -> bool:
-  """Invokes all actions on the given mode on host 0 only.
+  """Invokes all actions on the given mode on host 0, then broadcasts to all.
 
   Args:
     mode: The mode to run the actions. e.g., if mode is `train`, only actions
@@ -72,27 +72,13 @@ def run_actions(
   Raises:
     RuntimeError: When the metrics processed on host 0 is None.
   """
-  if jax.process_index() != 0:
-    return False
-  if not metrics_by_task:
-    raise RuntimeError('Metric is unexpectedly empty on process 0')
   stop_training = False
-  for action in actions.get(mode, []):
-    stop_training |= action.run(train_state, metrics_by_task=metrics_by_task)
-  return stop_training
-
-
-def broadcast_stop_training(stop_training: bool) -> bool:
-  """Broadcast the stop_training on host 0 to all host.
-
-  Args:
-    stop_training: Whether training should stop.
-
-  Returns:
-    a bool that reflects the `stop_training` on host 0.
-  """
-  # Broadcast state to all hosts and exit training loop everywhere if
-  # `stop_training` is requested.
+  if jax.process_index() == 0:
+    if not metrics_by_task:
+      raise RuntimeError('Metric is unexpectedly empty on process 0')
+    for action in actions.get(mode, []):
+      stop_training |= action.run(train_state, metrics_by_task=metrics_by_task)
+  # Broadcast result from host 0 to others.
   return bool(multihost_utils.broadcast_one_to_all(jnp.array(stop_training)))
 
 
@@ -471,7 +457,6 @@ def train(
       epoch_end_step = host_step + num_steps
       logging.info('Training for %d steps.', num_steps)
       while host_step < epoch_end_step:
-        trainer.stop_training = broadcast_stop_training(trainer.stop_training)
         if trainer.stop_training:
           logging.info('Saving a checkpoint before early stopping...')
           checkpointer.save(trainer.train_state,
