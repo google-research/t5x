@@ -667,6 +667,90 @@ class RelativePositionBiasesTest(absltest.TestCase):
     self.assertAlmostEqual(outputs[0, 1, 4, 6], -0.13101986, places=5)
     self.assertAlmostEqual(outputs[0, 2, 4, 6], 0.39296466, places=5)
 
+  def test_relative_attention_decode_cache_error_with_init(self):
+    """Tests that relative embedding init fails with decode == True."""
+    with self.assertRaisesRegex(
+        ValueError,
+        'decode-mode cannot be enabled during init. use model.apply to '
+        'initialize the decoding cache.'):
+      self.relative_attention.init(
+          jax.random.PRNGKey(0),
+          self.query_len,
+          self.key_len,
+          bidirectional=False,
+          decode=True)
+
+  def test_relative_attention_decode_cache_errror_with_bidirectional(self):
+    """Tests that bidirectional relative embeddings fails when decoding."""
+    params = self.relative_attention.init(
+        jax.random.PRNGKey(0),
+        self.query_len,
+        self.key_len,
+        bidirectional=False,
+        decode=False)
+
+    with self.assertRaisesRegex(
+        ValueError,
+        'bidirectional RelativePositionBiases are not supported when '
+        '`decode=True`.'):
+      self.relative_attention.apply(
+          params,
+          self.query_len,
+          self.key_len,
+          bidirectional=True,
+          decode=True,
+          mutable=['cache'])
+
+  def test_relative_attention_decode_cache(self):
+    """Tests that relative embeddings are correctly cached when decode=True."""
+
+    params = self.relative_attention.init(
+        jax.random.PRNGKey(0),
+        self.query_len,
+        self.key_len,
+        bidirectional=False,
+        decode=False)
+
+    # during init, cache is not actually initialized.
+    self.assertNotIn('cache', params)
+
+    outputs, state = self.relative_attention.apply(
+        params,
+        self.query_len,
+        self.key_len,
+        bidirectional=False,
+        decode=True,
+        mutable=['cache'])
+
+    self.assertEqual(outputs.shape,
+                     (1, self.num_heads, self.query_len, self.key_len))
+
+    self.assertIn('cached_bias', state['cache'])
+
+    cached_bias = state['cache']['cached_bias']
+
+    self.assertAlmostEqual(cached_bias[0, 0, 0, 0], 0.55764728, places=5)
+    self.assertAlmostEqual(cached_bias[0, 1, 2, 1], -0.10935841, places=5)
+    self.assertAlmostEqual(cached_bias[0, 1, 4, 6], -0.13101986, places=5)
+    self.assertAlmostEqual(cached_bias[0, 2, 4, 6], 0.39296466, places=5)
+
+    np.testing.assert_array_equal(outputs, state['cache']['cached_bias'])
+
+    params_with_cache = {
+        **params,
+        **state,
+    }
+
+    outputs, state = self.relative_attention.apply(
+        params_with_cache,
+        self.query_len,
+        self.key_len,
+        bidirectional=False,
+        decode=True,
+        mutable=['cache'])
+
+    np.testing.assert_array_equal(cached_bias, state['cache']['cached_bias'])
+
 
 if __name__ == '__main__':
   absltest.main()
