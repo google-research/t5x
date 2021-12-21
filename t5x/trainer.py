@@ -183,6 +183,8 @@ class MetricsManager(object):
           f"{sorted(self.initial_accumulator)} vs {sorted(metrics)}")
 
     if jax.process_index() == 0:
+      # Ensure that there are no TPU computations since this method may be
+      # called from a separate thread.
       summary = self._summarize_fn(
           metrics=metrics, duration=duration, num_steps=num_steps)
       # TODO(b/203790423): Use CLU LoggingWriter.
@@ -263,13 +265,15 @@ class BaseTrainer(abc.ABC):
   def _get_step_rng(self, step: int) -> Rng:
     return jax.random.fold_in(self._base_rng, step)
 
-  def train(self, batch_iter: Iterator[BatchType],
-            num_steps: int) -> OptionalArrayMapFuture:
+  def train(self,
+            batch_iter: Iterator[BatchType],
+            num_steps: int,
+            start_step: Optional[int] = None) -> OptionalArrayMapFuture:
     """Runs the train loop for the given number of steps."""
     tick = time.time()
     metrics = self.train_metrics_manager.initial_accumulator
     # Compute step number on host to avoid communication overhead.
-    start_step = self.train_state.step
+    start_step = start_step if start_step is not None else self.train_state.step
     for step_num in range(start_step, start_step + num_steps):
       logging.log_every_n_seconds(logging.INFO, "Training: step %d", 10,
                                   step_num)
@@ -281,16 +285,12 @@ class BaseTrainer(abc.ABC):
                                                   metrics)
 
     def _write_summary():
-
-      def _block_until_ready(x):
-        if isinstance(x, jax.pxla.ShardedDeviceArray):
-          x = x.device_buffers[0]
-        x.block_host_until_ready()
-
-      jax.tree_map(_block_until_ready, self.train_state)
+      # Copy to device to avoid TPU computations in separate thread.
+      final_metrics = jax.tree_map(jax.device_get, metrics)
+      # Take end time only after step computation is completed.
       tock = time.time()
       return self.train_metrics_manager.write_metrics_summary(
-          metrics, self.train_state.step, tock - tick, num_steps)
+          final_metrics, start_step + num_steps, tock - tick, num_steps)
 
     return self._metrics_executor.submit(_write_summary)
 

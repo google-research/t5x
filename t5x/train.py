@@ -466,7 +466,8 @@ def train(
           break
 
         inner_num_steps = min(epoch_end_step - host_step, stats_period)
-        train_summary = trainer.train(train_iter, inner_num_steps)
+        train_summary = trainer.train(
+            train_iter, inner_num_steps, start_step=host_step)
         if not concurrent_metrics:
           # Note that we always pass the dictionary of `tasks` -> summary so
           # that the actions can be performed without special casing. The only

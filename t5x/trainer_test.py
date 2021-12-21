@@ -291,7 +291,7 @@ class TrainerTest(parameterized.TestCase):
                       expected_train_state)
     # Expected step is 6 since we increment it along with the other optimizer
     # values.
-    steps = [6, 6, 6]
+    steps = [2, 2, 2]
     if precompile:
       steps = [0] + steps
       expected_metrics['timing/compilation_seconds'] = 1
@@ -723,7 +723,6 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
       del model, batch, num_microbatches
       # Add 1, which will increment the step as a side effect.
       grad_accum = jax.tree_map(lambda x: 1, optimizer)
-      tf.compat.v1.logging.info(rng)
       m = {'rng': RNG.from_model_output(values=jnp.expand_dims(rng, 0))}
       return grad_accum, m
 
@@ -743,9 +742,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     expected_rng_sum = np.sum(
         [jax.random.fold_in(base_rng, i) for i in range(start_step, end_step)],
         axis=0,
-        dtype=np.uint32)
-    tf.compat.v1.logging.info(metrics)
-    # No longer a Metric object, no need for .compute()
+        dtype=np.uint64)
     np.testing.assert_array_equal(metrics.result()['rng'], expected_rng_sum)
 
 
