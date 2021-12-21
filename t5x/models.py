@@ -45,26 +45,6 @@ Optimizer = optim.Optimizer
 PyTreeDef = type(jax.tree_structure(None))
 
 
-# TODO(t5x): Update references and remove these.
-
-
-def _loss_move_warning(fun):
-  functools.wraps(fun)
-
-  def wrap(*args, **kwargs):
-    logging.warn('Please update your access to t5x loss functions to use '
-                 't5x.losses. The forwarding symbols in t5x.models will be '
-                 'eventually removed.')
-    return fun(*args, **kwargs)
-
-  return wrap
-
-
-cross_entropy_with_logits = _loss_move_warning(losses.cross_entropy_with_logits)
-compute_weighted_cross_entropy = _loss_move_warning(
-    losses.compute_weighted_cross_entropy)
-
-
 class TokensIdsToLogitsCallable(typing_extensions.Protocol):
   """Token ids to logits mapping call signature."""
 
