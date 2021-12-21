@@ -978,6 +978,7 @@ class DecoderOnlyModel(BaseTransformerModel):
     # Using the above-defined single-step decoder function, run temperature
     # sampling with the prefix.
     # [batch, max_decode_length]
+    scanned = hasattr(self.module, 'scan_layers') and self.module.scan_layers
     decoded_sequences, scores = self._decode_fn(
         inputs=inputs,
         cache=prefilled_cache,
@@ -985,6 +986,7 @@ class DecoderOnlyModel(BaseTransformerModel):
         eos_id=self.output_vocabulary.eos_id,
         num_decodes=num_decodes,
         initial_index=inputs_lengths,
+        cache_offset=1 if scanned else 0,
         **decoder_params)
 
     if not return_all_decodes:
