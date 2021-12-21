@@ -15,6 +15,7 @@
 """Tests for network."""
 
 from absl.testing import absltest
+from absl.testing import parameterized
 import jax
 import numpy as np
 import seqio
@@ -28,6 +29,7 @@ def get_test_model(emb_dim,
                    head_dim,
                    num_heads,
                    mlp_dim,
+                   dtype='float32',
                    vocab_size=32128,
                    num_encoder_layers=2,
                    num_decoder_layers=2):
@@ -40,7 +42,7 @@ def get_test_model(emb_dim,
       num_heads=num_heads,
       head_dim=head_dim,
       mlp_dim=mlp_dim,
-      dtype='float32',
+      dtype=dtype,
       mlp_activations=('gelu', 'linear'))
   module = network.Transformer(config=config)
   vocab = seqio.test_utils.sentencepiece_vocab()
@@ -49,7 +51,7 @@ def get_test_model(emb_dim,
       module, vocab, vocab, optimizer_def=optimizer_def)
 
 
-class NetworkTest(absltest.TestCase):
+class NetworkTest(parameterized.TestCase):
 
   def test_regression(self):
     batch, max_decode_len, input_len = 2, 3, 4

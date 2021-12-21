@@ -368,7 +368,7 @@ class Transformer(nn.Module):
         deterministic=not enable_dropout,
         decode=decode,
         max_decode_length=max_decode_length)
-    return logits.astype(self.config.dtype)
+    return logits
 
   def __call__(self,
                encoder_input_tokens,
