@@ -431,6 +431,10 @@ def train(
 
   # Kickstart training dataset and compile train loop.
   logging.info('Kickstarting train dataset prefetch.')
+  # We flush here so that if the next log line doesn't appear in stdout, we can
+  # be sure we died during input reading.
+  logging.flush()
+
   ds_tick = time.time()
   # Get first batch to warm up the dataset pipeline.
   first_batch = next(train_iter)
