@@ -466,6 +466,12 @@ def infer(*,
       # Merge epochs into single file.
       epoch_paths = sorted(
           gfile.glob(os.path.join(tmp_dir, f'{output_fname}-epoch?????')))
+
+      if not epoch_paths:
+        raise FileNotFoundError(
+            'No epoch results found! One possible explanation is that your '
+            'input did not contain any examples')
+
       assert int(epoch_paths[-1][-5:]) + 1 == len(epoch_paths), (
           f'Expecting {int(epoch_paths[-1][-5:])} epoch paths, found '
           f'{len(epoch_paths)}')
