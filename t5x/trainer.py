@@ -262,6 +262,10 @@ class BaseTrainer(abc.ABC):
     self._metrics_executor = concurrent.futures.ThreadPoolExecutor(
         max_workers=1)
 
+  def __del__(self):
+    """Wait for metrics to be written before deletion."""
+    self._metrics_executor.shutdown(wait=True)
+
   def _get_step_rng(self, step: int) -> Rng:
     return jax.random.fold_in(self._base_rng, step)
 
