@@ -277,7 +277,8 @@ class BaseTrainer(abc.ABC):
     tick = time.time()
     metrics = self.train_metrics_manager.initial_accumulator
     # Compute step number on host to avoid communication overhead.
-    start_step = start_step if start_step is not None else self.train_state.step
+    start_step = int(
+        start_step if start_step is not None else self.train_state.step)
     for step_num in range(start_step, start_step + num_steps):
       logging.log_every_n_seconds(logging.INFO, "Training: step %d", 10,
                                   step_num)
