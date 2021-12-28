@@ -482,7 +482,7 @@ class BasePartitioner(metaclass=abc.ABCMeta):
   """Interface for partitioning computations."""
 
   def __init__(self,
-               num_partitions: Optional[int],
+               num_partitions: Optional[int] = None,
                model_parallel_submesh: Optional[HardwareMesh] = None,
                params_on_devices: bool = True):
     """Configures the partitioner.
@@ -501,6 +501,9 @@ class BasePartitioner(metaclass=abc.ABCMeta):
         this setting, for example if they don't support storing all params on
         device memory.
     """
+    if num_partitions is model_parallel_submesh is None:
+      raise ValueError('At least one of `num_partitions` or '
+                       '`model_parallel_submesh` must be set.')
     self._num_partitions = num_partitions
     self._model_parallel_submesh = model_parallel_submesh
     self._params_on_devices = params_on_devices

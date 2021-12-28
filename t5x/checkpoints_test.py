@@ -187,7 +187,8 @@ class CheckpointsTest(parameterized.TestCase):
 
       def __init__(self):
         self.move_params_to_devices_calls = 0
-        super().__init__(None, None, params_on_devices=params_on_devices)
+        super().__init__(
+            num_partitions, None, params_on_devices=params_on_devices)
 
       @property
       def _local_chunker(self):
