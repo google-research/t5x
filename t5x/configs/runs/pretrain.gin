@@ -99,6 +99,8 @@ utils.SaveCheckpointConfig:
 trainer.Trainer:
   num_microbatches = None
   learning_rate_fn = @utils.create_learning_rate_scheduler()
+  weight_metrics_computer=@trainer.WeightMetricsComputer()
+
 utils.create_learning_rate_scheduler:
   factors = 'constant * rsqrt_decay'
   base_learning_rate = 1.0

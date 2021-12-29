@@ -193,8 +193,8 @@ def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
 
 
 def fake_apply_grads(optimizer, grad_accum, metrics, learning_rate,
-                     log_weight_metrics):
-  del log_weight_metrics
+                     weight_metrics_computer):
+  del weight_metrics_computer
   metrics['learning_rate'] = metrics_lib.Sum.from_model_output(learning_rate)
   optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics

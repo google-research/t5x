@@ -114,6 +114,77 @@ class PartitionedEvalCallable(typing_extensions.Protocol):
     ...
 
 
+class WeightMetricsComputer(object):
+  """Decides which weight metrics to compute during training."""
+
+  _WEIGHT_METRICS = [
+      "weight_rms", "weight_gradient_rms", "weight_update_rms", "weight_max"
+  ]
+
+  def get_initial_metrics(
+      self,
+      initial_train_state: train_state_lib.TrainState) -> MutableMetricMapType:
+    """Returns a set of zero-initialized metrics.
+
+    Args:
+      initial_train_state: A training state that determines the set of weights
+        the model has, which in turn determines what weight statistics will be
+        computed.
+
+    Returns:
+      A map of metrics, indexed by metric name.
+    """
+
+    initial_metrics = {
+        "weight_gradient_norm": metrics_lib.Sum.from_model_output(0.)
+    }
+    targets = utils.flatten_dict_string_keys(
+        initial_train_state.state_dict()["target"])
+    for name in self._WEIGHT_METRICS:
+      initial_metrics.update({
+          f"{name}/{k}": metrics_lib.Sum.from_model_output(0.)
+          for k in targets.keys()
+      })
+    return initial_metrics
+
+  def compute_metrics(
+      self, gradients: ModelWeights,
+      old_train_state: train_state_lib.TrainState,
+      new_train_state: train_state_lib.TrainState) -> MutableMetricMapType:
+    """Compute some metrics about weights after having updating these weights.
+
+    Args:
+      gradients: The gradients of all weights.
+      old_train_state: The training state before applying the gradients.
+      new_train_state: The training state after applying the gradients.
+
+    Returns:
+      A dictionary of Metrics, where the keys are either metric names, or of the
+      form metric_name/parameter_name, depending on whether or not they are
+      global to the model, or specific to each model parameter.
+    """
+    # TODO(reinerp): Extend weight stats logging with support for non-reduced
+    # axes of tensors. For example, for stacked layers (QKV stacking or layer
+    # stacking), we might not want to reduce over the stacking dimension, in
+    # order to provide more localization in the logged stats.
+    metrics = {}
+    metrics.update(_make_rms_metrics("weight_rms", new_train_state.params))
+    metrics.update(_make_rms_metrics("weight_gradient_rms", gradients))
+    grad_norm = jnp.sqrt(
+        jnp.sum(
+            jnp.array([jnp.vdot(x, x) for x in jax.tree_leaves(gradients)])))
+    metrics.update(
+        {"weight_gradient_norm": metrics_lib.Sum.from_model_output(grad_norm)})
+    metrics.update(
+        _make_rms_metrics(
+            "weight_update_rms",
+            jax.tree_multimap(jnp.subtract, new_train_state.params,
+                              old_train_state.params)))
+    metrics.update(_make_max_metrics("weight_max", new_train_state.params))
+
+    return metrics
+
+
 class MetricsManager(object):
   """Manages a set of distributed metrics and their logging to Tensorboard.
 
@@ -491,7 +562,7 @@ def accumulate_grads_microbatched(
 def apply_grads(
     train_state: train_state_lib.TrainState, grad_accum: ModelWeights,
     metrics: MutableMetricMapType, learning_rate: jnp.ndarray,
-    log_weight_metrics: bool
+    weight_metrics_computer: Optional[WeightMetricsComputer]
 ) -> Tuple[train_state_lib.TrainState, MetricMapType]:
   """Applies gradients to the optimizer.
 
@@ -500,7 +571,9 @@ def apply_grads(
     grad_accum: results of `accumulate_grads` call.
     metrics: incremental metrics from `accumulate_grads` call.
     learning_rate: the learning rate to use for this step.
-    log_weight_metrics: whether to record metrics about weights.
+    weight_metrics_computer: A WeightMetricsComputer instance, or None, to
+      decide what metrics, if any, to log about weights and weight updates
+      during training.
 
   Returns:
    The updated train state, metrics.
@@ -509,24 +582,10 @@ def apply_grads(
   new_train_state = train_state.apply_gradient(
       grad_accum, learning_rate=learning_rate)
   metrics["learning_rate"] = metrics_lib.Sum.from_model_output(learning_rate)
-  if log_weight_metrics:
-    # TODO(reinerp): Extend weight stats logging with support for non-reduced
-    # axes of tensors. For example, for stacked layers (QKV stacking or layer
-    # stacking), we might not want to reduce over the stacking dimension, in
-    # order to provide more localization in the logged stats.
-    metrics.update(_make_rms_metrics("weight_rms", new_train_state.params))
-    metrics.update(_make_rms_metrics("weight_gradient_rms", grad_accum))
-    grad_norm = jnp.sqrt(
-        jnp.sum(
-            jnp.array([jnp.vdot(x, x) for x in jax.tree_leaves(grad_accum)])))
+  if weight_metrics_computer is not None:
     metrics.update(
-        {"weight_gradient_norm": metrics_lib.Sum.from_model_output(grad_norm)})
-    metrics.update(
-        _make_rms_metrics(
-            "weight_update_rms",
-            jax.tree_multimap(jnp.subtract, new_train_state.params,
-                              train_state.params)))
-    metrics.update(_make_max_metrics("weight_max", new_train_state.params))
+        weight_metrics_computer.compute_metrics(grad_accum, train_state,
+                                                new_train_state))
   return new_train_state, metrics
 
 
@@ -536,11 +595,6 @@ def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
   _, (_, metrics) = model.eval_fn(train_state.params, batch)
   metrics = {k: v.merge(metrics[k]) for k, v in prev_metrics.items()}
   return metrics
-
-
-_WEIGHT_METRICS = [
-    "weight_rms", "weight_gradient_rms", "weight_update_rms", "weight_max"
-]
 
 
 def _make_rms_metrics(name, tree):
@@ -573,7 +627,7 @@ class Trainer(BaseTrainer):
                rng: Rng,
                learning_rate_fn: LearningRateCallable,
                num_microbatches: Optional[int],
-               log_weight_metrics: bool = False):
+               weight_metrics_computer: Optional[WeightMetricsComputer] = None):
     """Trainer constructor.
 
     Args:
@@ -589,11 +643,13 @@ class Trainer(BaseTrainer):
       learning_rate_fn: returns the learning rate given the current step.
       num_microbatches: the number of microbatches to use, or None for direct
         training.
-      log_weight_metrics: whether to record metrics about weights
+      weight_metrics_computer: A WeightMetricsComputer instance, or None, to
+        decide what metrics, if any, to log about weights and weight updates
+        during training.
     """
     self._learning_rate_fn = learning_rate_fn
     self._num_microbatches = num_microbatches
-    self._log_weight_metrics = log_weight_metrics
+    self._weight_metrics_computer = weight_metrics_computer
 
     super().__init__(
         model=model,
@@ -611,35 +667,32 @@ class Trainer(BaseTrainer):
                                    num_steps: int) -> Mapping[str, jnp.ndarray]:
       """Produces summaries for metrics added by the trainer."""
       del duration
-      summary_metrics = {
-          "learning_rate": metrics["learning_rate"].compute() / num_steps,
-          **{
-              k: v.compute()
-              for k, v in metrics.items()
-              if k.split("/")[0] in _WEIGHT_METRICS
-          }
-      }
-      if self._log_weight_metrics:
-        summary_metrics.update({
-            "weight_gradient_norm":
-                metrics["weight_gradient_norm"].compute() / num_steps
-        })
+      summary_metrics = {"learning_rate": metrics["learning_rate"]}
+
+      if self._weight_metrics_computer is not None:
+        trainer_metric_names = set(
+            self._weight_metrics_computer.get_initial_metrics(self.train_state))
+        summary_metrics.update(
+            {k: v for k, v in metrics.items() if k in trainer_metric_names})
+
+      for k, v in summary_metrics.items():
+        # All of the Sum metrics should be divided by num_steps, since they've
+        # been accumulated that many times.
+        if isinstance(v, metrics_lib.Sum):
+          summary = v.compute() / num_steps
+        else:
+          summary = v.compute()
+        summary_metrics[k] = summary
+
       return summary_metrics
 
     return _summarize_trainer_metrics
 
   def _get_initial_metrics(self) -> MutableMetricMapType:
     initial_metrics = {"learning_rate": metrics_lib.Sum.from_model_output(0.)}
-    if self._log_weight_metrics:
+    if self._weight_metrics_computer is not None:
       initial_metrics.update(
-          {"weight_gradient_norm": metrics_lib.Sum.from_model_output(0.)})
-      targets = utils.flatten_dict_string_keys(
-          self.train_state.state_dict()["target"])
-      for name in _WEIGHT_METRICS:
-        initial_metrics.update({
-            f"{name}/{k}": metrics_lib.Sum.from_model_output(0.)
-            for k in targets.keys()
-        })
+          self._weight_metrics_computer.get_initial_metrics(self.train_state))
     return initial_metrics
 
   @cached_property
@@ -655,7 +708,7 @@ class Trainer(BaseTrainer):
                                         dropout_rng, self._num_microbatches))
       new_train_state, metrics = apply_grads(train_state, grad_accum, metrics,
                                              learning_rate,
-                                             self._log_weight_metrics)
+                                             self._weight_metrics_computer)
       metrics = {k: v.merge(metrics[k]) for k, v in prev_metrics.items()}
       return new_train_state, metrics
 
