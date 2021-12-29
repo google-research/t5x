@@ -22,15 +22,17 @@ r"""This script runs inference-evaluation on a T5X-compatible model.
 
 import functools
 import os
-from typing import Sequence, Type
+from typing import Optional, Protocol, Sequence, Type
 
 from absl import logging
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
 # pylint:disable=g-import-not-at-top
 os.environ['FLAX_PROFILE'] = 'true'
+from clu import metric_writers
 import jax
 import seqio
+from t5x import gin_utils
 from t5x import models
 from t5x import multihost_utils
 from t5x import partitioning
@@ -42,13 +44,24 @@ _DEFAULT_GIN_SEARCH_PATHS = [
 ]
 
 
-def evaluate(*,
-             model: models.BaseTransformerModel,
-             dataset_cfg: utils.DatasetConfig,
-             restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
-             partitioner: partitioning.BasePartitioner,
-             output_dir: str,
-             inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator):
+class SummarizeConfigFn(Protocol):
+
+  def __call__(self, model_dir: str,
+               summary_writer: Optional[metric_writers.SummaryWriter],
+               step: int) -> None:
+    ...
+
+
+def evaluate(
+    *,
+    model: models.BaseTransformerModel,
+    dataset_cfg: utils.DatasetConfig,
+    restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
+    partitioner: partitioning.BasePartitioner,
+    output_dir: str,
+    inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator,
+    summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
+):
   """Evaluation function.
 
   Args:
@@ -60,10 +73,15 @@ def evaluate(*,
     output_dir: Path to directory to write temporary files and final results.
     inference_evaluator_cls: seqio.Evaluator class to use for inference
       evaluation, potentially with bound configuration args.
+    summarize_config_fn: A function that takes in the model directory, an
+      optional SummaryWriter, and the step number, and writes a summary of the
+      configuration. SummaryWriter will be None in most cases.
   """
   if dataset_cfg.module:
     utils.import_module(dataset_cfg.module)
   batch_size = dataset_cfg.batch_size
+
+  summarize_config_fn(model_dir=output_dir, summary_writer=None, step=0)
 
   ds_vocabs = utils.get_vocabulary(dataset_cfg)
   if (ds_vocabs[0] != model.input_vocabulary or
@@ -147,7 +165,6 @@ if __name__ == '__main__':
   from absl import app
   from absl import flags
   import gin
-  from t5x import gin_utils
 
   FLAGS = flags.FLAGS
 
