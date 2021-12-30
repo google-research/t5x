@@ -22,7 +22,7 @@ r"""This script runs inference-evaluation on a T5X-compatible model.
 
 import functools
 import os
-from typing import Optional, Protocol, Sequence, Type
+from typing import Optional, Sequence, Type
 
 from absl import logging
 # Set Linen to add profiling information when constructing Modules.
@@ -37,6 +37,7 @@ from t5x import models
 from t5x import multihost_utils
 from t5x import partitioning
 from t5x import utils
+from typing_extensions import Protocol
 
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
