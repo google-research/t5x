@@ -340,6 +340,15 @@ class BaseTrainer(abc.ABC):
   def _get_step_rng(self, step: int) -> Rng:
     return jax.random.fold_in(self._base_rng, step)
 
+  def _device_copy_and_write_summary(self, summarize_fn, metrics, tick,
+                                     num_steps, start_step):
+    """Copy to device to avoid TPU computations in separate thread."""
+    final_metrics = jax.tree_map(jax.device_get, metrics)
+    # Take end time only after step computation is completed.
+    tock = time.time()
+    return summarize_fn(final_metrics, start_step + num_steps, tock - tick,
+                        num_steps)
+
   def train(self,
             batch_iter: Iterator[BatchType],
             num_steps: int,
@@ -360,15 +369,10 @@ class BaseTrainer(abc.ABC):
         self.train_state, metrics = train_step_fn(self.train_state, batch,
                                                   metrics)
 
-    def _write_summary():
-      # Copy to device to avoid TPU computations in separate thread.
-      final_metrics = jax.tree_map(jax.device_get, metrics)
-      # Take end time only after step computation is completed.
-      tock = time.time()
-      return self.train_metrics_manager.write_metrics_summary(
-          final_metrics, start_step + num_steps, tock - tick, num_steps)
-
-    return self._metrics_executor.submit(_write_summary)
+    return self._metrics_executor.submit(
+        self._device_copy_and_write_summary,
+        self.train_metrics_manager.write_metrics_summary, metrics, tick,
+        num_steps, start_step)
 
   def compile_train(self, batch: BatchType) -> None:
     """Pre-compiles train step (if not yet compiled).
@@ -413,12 +417,12 @@ class BaseTrainer(abc.ABC):
       multihost_utils.assert_same(
           jnp.array(-1),
           "Eval step mismatch across hosts. Check for empty dataset shard.")
-      tock = time.time()
 
       # TODO(adarob): Write metrics in separate thread.
-      eval_summary = self.eval_metrics_managers[
-          iter_name].write_metrics_summary(metrics, self.train_state.step,
-                                           tock - tick, num_steps)
+      eval_summary = self._device_copy_and_write_summary(
+          self.eval_metrics_managers[iter_name].write_metrics_summary, metrics,
+          tick, num_steps, self.train_state.step)
+
       if eval_summary is not None:
         eval_summaries[iter_name] = eval_summary
     return eval_summaries

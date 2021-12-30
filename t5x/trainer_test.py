@@ -360,8 +360,10 @@ class TrainerTest(parameterized.TestCase):
 
     np.testing.assert_array_equal(trainer._base_rng, initial_rng)
     for task_name, expected_metrics in all_expected_metrics.items():
-      # Expected step is 0 for each metric ssince it comes from the optimizer.
-      steps = [0, 0]
+      if task_name == 'task1':
+        steps = [2, 2]
+      else:
+        steps = [1, 1]
       if precompile:
         steps = [0] + steps
         expected_metrics['timing/compilation_seconds'] = 1
