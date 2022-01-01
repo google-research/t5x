@@ -1048,7 +1048,7 @@ def compute_weighted_accuracy(
 
   Args:
    logits: [batch, length, num_classes] float array.
-   targets: categorical one-hot targets [batch, length, category] int array.
+   targets: categorical targets [batch, length] int array of categories.
    weights: None or array of shape [batch, length]
 
   Returns:
