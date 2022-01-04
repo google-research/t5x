@@ -9,11 +9,14 @@ import __main__ as train_script
 from t5x import utils
 
 # Setting the random_seed will reduce the compilation and training speed. This
-# performance hit will be avoidable once deterministic hardware rng is
-# supporrted (b/202842631)
-train_script.train.random_seed = 0
-train_script.train.get_dataset_fn = @utils.get_deterministic_dataset
+# performance hit can be avoided by setting `USE_HARDWARE_RNG = True`, but
+# then determinism cannot be gauranteed across hardware, topologies, or
+# code versions.
+USE_HARDWARE_RNG = False
+RANDOM_SEED = 0
 SHUFFLE_TRAIN_EXAMPLES = False
+
+train_script.train.get_dataset_fn = @utils.get_deterministic_dataset
 
 utils.get_deterministic_dataset:
   model_dir = %MODEL_DIR
