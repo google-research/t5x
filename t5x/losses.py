@@ -99,55 +99,6 @@ cross_entropy_with_logits.defvjp(_cross_entropy_with_logits_fwd,
                                  _cross_entropy_with_logits_bwd)
 
 
-def compute_cross_entropy(
-    logits: jnp.ndarray,
-    targets: jnp.ndarray,
-    label_smoothing: float = 0.0,
-    z_loss: float = 0.0,
-    loss_normalizing_factor: Optional[float] = 1.
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
-  """Compute cross entropy and entropy for log probs and targets.
-
-  Args:
-   logits: [batch, length, num_classes] float array.
-   targets: categorical targets [batch, length] int array.
-   label_smoothing: label smoothing constant, used to determine the on and off
-     values.
-   z_loss: coefficient for auxiliary z-loss loss term.
-   loss_normalizing_factor: Constant to divide loss by. If not specified, loss
-     will not be normalized. Intended for backward compatibility with T5-MTF
-     training. Should not normally be used.
-
-  Returns:
-    Tuple of loss and z_loss ndarrays
-  """
-  if logits.ndim != targets.ndim + 1:
-    raise ValueError('Incorrect shapes. Got shape %s logits and %s targets' %
-                     (str(logits.shape), str(targets.shape)))
-  vocab_size = logits.shape[-1]
-  confidence = 1.0 - label_smoothing
-  low_confidence = (1.0 - confidence) / (vocab_size - 1)
-  normalizing_constant = -(
-      confidence * jnp.log(confidence) +
-      (vocab_size - 1) * low_confidence * jnp.log(low_confidence + 1e-20))
-  soft_targets = common_utils.onehot(
-      targets, vocab_size, on_value=confidence, off_value=low_confidence)
-  total_loss, total_z_loss = cross_entropy_with_logits(
-      logits, soft_targets, z_loss=z_loss)
-  total_loss = total_loss - normalizing_constant
-
-  # By default, we do not normalize loss based on anything.
-  # We don't normalize based on batch size because the optimizers we use are
-  # pretty much scale invariant, so this simplifies things.
-  # We don't normalize based on number of non-padding tokens in order to treat
-  # each token as equally important regardless of sequence length.
-  if loss_normalizing_factor:
-    total_loss /= loss_normalizing_factor
-    total_z_loss /= loss_normalizing_factor
-  return total_loss, total_z_loss
-
-
-# TODO(cpgaffney) leave only compute_cross_entropy when possible.
 def compute_weighted_cross_entropy(
     logits: jnp.ndarray,
     targets: jnp.ndarray,
@@ -164,7 +115,7 @@ def compute_weighted_cross_entropy(
    weights: None or array of shape [batch, length].
    label_smoothing: label smoothing constant, used to determine the on and off
      values.
-   z_loss: coefficient for auxiliary z-loss loss term.
+   z_loss: coefficient for auxilliary z-loss loss term.
    loss_normalizing_factor: Constant to divide loss by. If not specified, loss
      will not be normalized. Intended for backward compatibility with T5-MTF
      training. Should not normally be used.
@@ -172,12 +123,20 @@ def compute_weighted_cross_entropy(
   Returns:
     Tuple of scalar loss, z_loss, and weight sum.
   """
-  total_loss, total_z_loss = compute_cross_entropy(
-      logits,
-      targets,
-      label_smoothing=label_smoothing,
-      z_loss=z_loss,
-      loss_normalizing_factor=loss_normalizing_factor)
+  if logits.ndim != targets.ndim + 1:
+    raise ValueError('Incorrect shapes. Got shape %s logits and %s targets' %
+                     (str(logits.shape), str(targets.shape)))
+  vocab_size = logits.shape[-1]
+  confidence = 1.0 - label_smoothing
+  low_confidence = (1.0 - confidence) / (vocab_size - 1)
+  normalizing_constant = -(
+      confidence * jnp.log(confidence) +
+      (vocab_size - 1) * low_confidence * jnp.log(low_confidence + 1e-20))
+  soft_targets = common_utils.onehot(
+      targets, vocab_size, on_value=confidence, off_value=low_confidence)
+  total_loss, total_z_loss = cross_entropy_with_logits(
+      logits, soft_targets, z_loss=z_loss)
+  total_loss = total_loss - normalizing_constant
 
   weight_sum = np.prod(targets.shape)
   if weights is not None:
@@ -185,4 +144,12 @@ def compute_weighted_cross_entropy(
     total_z_loss = total_z_loss * weights
     weight_sum = jnp.sum(weights)
 
+  # By default, we do not normalize loss based on anything.
+  # We don't normalize based on batch size because the optimizers we use are
+  # pretty much scale invariant, so this simplifies things.
+  # We don't normalize based on number of non-padding tokens in order to treat
+  # each token as equally important regardless of sequence length.
+  if loss_normalizing_factor:
+    total_loss /= loss_normalizing_factor
+    total_z_loss /= loss_normalizing_factor
   return jnp.sum(total_loss), jnp.sum(total_z_loss), weight_sum
