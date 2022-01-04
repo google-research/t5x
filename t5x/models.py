@@ -23,7 +23,6 @@ import abc
 import functools
 from typing import Any, Callable, Mapping, MutableMapping, Optional, Tuple, Type, Union
 
-from absl import logging
 from flax import core as flax_core
 from flax import linen as nn
 from flax import optim
@@ -271,8 +270,7 @@ class BaseTransformerModel(BaseModel):
       dropout_rng: Optional[jnp.ndarray],
       label_smoothing: Optional[float] = None,
       z_loss: Optional[float] = None,
-      loss_normalizing_factor: Union[Optional[float],
-                                     object] = _NoValueSentinel,
+      loss_normalizing_factor: Union[Optional[float], object] = _NoValueSentinel
   ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
     """Loss function used for training with a cross-entropy loss."""
 
@@ -285,17 +283,21 @@ class BaseTransformerModel(BaseModel):
       loss_normalizing_factor = self._loss_normalizing_factor
 
     logits = self._compute_logits(params, batch, dropout_rng)
-    loss, total_z_loss, weight_sum = losses.compute_weighted_cross_entropy(
+    loss, z_loss = losses.compute_cross_entropy(
         logits,
         targets=batch['decoder_target_tokens'],
-        weights=batch.get('decoder_loss_weights', None),
         label_smoothing=label_smoothing,
         z_loss=z_loss,
         loss_normalizing_factor=loss_normalizing_factor)
-    metrics = self._compute_metrics(batch, logits, loss, total_z_loss,
-                                    weight_sum)
-    return loss, (weight_sum, metrics)
+    metrics = compute_base_metrics(
+        logits=logits,
+        targets=batch['decoder_target_tokens'],
+        weights=batch.get('decoder_loss_weights', None),
+        loss=loss,
+        z_loss=z_loss)
+    return metrics['loss'].compute(), (0., metrics)
 
+  # TODO(cpgaffney) Modify when all users are able to use compute_base_metrics
   def _compute_metrics(
       self,
       batch: Mapping[str, jnp.ndarray],
@@ -318,56 +320,14 @@ class BaseTransformerModel(BaseModel):
         additional_metrics=additional_metrics)
 
   def get_initial_metrics(self):
-    metrics = {
-        'loss': 0.0,
-        'accuracy': 0.0,
-        'weight_sum': 0.0,
-        'z_loss': 0.0,
-        'cross_ent_loss': 0.0,
-        'num_tokens': 0.0,
-        'num_examples': 0.0
-    }
-    return metrics_lib.create_metrics_dict(metrics)
+    return {}
 
+  # TODO(cpgaffney) clean up summarize_metrics_fn
   def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
                            num_steps: int) -> Mapping[str, Array]:
     """Convert metrics into tensorboard-friendly summary."""
-    metrics = {k: v.compute() for k, v in metrics.items()}
-    num_devices = jax.device_count()
-    assert num_devices, 'JAX is reporting no devices, but it should.'
-    summary = {
-        'accuracy':
-            metrics['accuracy'] / metrics['weight_sum'],
-        'loss':
-            metrics['loss'] / num_steps,
-        'loss_per_nonpadding_target_token':
-            metrics['loss'] / metrics['weight_sum'],
-        'loss_per_all_target_tokens':
-            metrics['loss'] / metrics['num_tokens'],
-        'nonpadding_fraction':
-            metrics['weight_sum'] / metrics['num_tokens'],
-        'timing/seconds':
-            duration,
-        'timing/seqs':
-            metrics['num_examples'],
-        'timing/seqs_per_second':
-            metrics['num_examples'] / duration,
-        'timing/seqs_per_second_per_core':
-            metrics['num_examples'] / (duration * num_devices),
-        'timing/steps_per_second':
-            num_steps / duration,
-        'timing/target_tokens_per_second_per_core':
-            metrics['num_tokens'] / (duration * num_devices),
-    }
-
-    if 'z_loss' in metrics:
-      summary['z_loss'] = metrics['z_loss'] / num_steps
-      summary['cross_ent_loss'] = metrics['cross_ent_loss'] / num_steps
-      summary['cross_ent_loss_per_all_target_tokens'] = (
-          metrics['cross_ent_loss'] / metrics['num_tokens'])
-      summary['z_loss_per_all_target_tokens'] = (
-          metrics['z_loss'] / metrics['num_tokens'])
-    return summary
+    del duration, num_steps
+    return {k: v.compute() for k, v in metrics.items()}
 
 
 class EncoderDecoderModel(BaseTransformerModel):
@@ -1040,6 +1000,8 @@ def remove_prefix(sequence: jnp.ndarray,
   return jnp.roll(targets, -prefix_length, axis=-1)
 
 
+# TODO(cpgaffney) Remove this method when dependencies no longer use - rely on
+# WeightedAccuracy Metric instead.
 def compute_weighted_accuracy(
     logits: jnp.ndarray,
     targets: jnp.ndarray,
@@ -1064,6 +1026,7 @@ def compute_weighted_accuracy(
   return jnp.sum(accuracy)
 
 
+# TODO(cpgaffney) remove when users rely on compute_base_metrics
 def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray,
                     weights: jnp.ndarray, loss: jnp.ndarray,
                     weight_sum: jnp.ndarray,
@@ -1079,6 +1042,69 @@ def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray,
   }
   metrics = metrics_lib.create_metrics_dict(metrics)
   metrics.update(additional_metrics)
+  return metrics
+
+
+def compute_base_metrics(
+    logits: jnp.ndarray,
+    targets: jnp.ndarray,
+    weights: jnp.ndarray,
+    loss: jnp.ndarray,
+    z_loss: jnp.ndarray,
+) -> MetricsMap:
+  """Compute summary metrics."""
+  num_examples = targets.shape[0]
+  num_tokens = targets.size
+  num_devices = jax.device_count()
+  assert num_devices, 'JAX is reporting no devices, but it should.'
+  metrics = {
+      'accuracy':
+          metrics_lib.WeightedAccuracy.from_model_output(
+              logits=logits, labels=targets, weights=weights),
+      'loss':
+          metrics_lib.MicrobatchAdjusted.from_model_output(
+              metric=metrics_lib.WeightedAverageRate.from_model_output(
+                  loss, count=1, weights=weights),
+              per_step=True),
+      'loss_per_nonpadding_target_token':
+          metrics_lib.WeightedAverage.from_model_output(loss, weights=weights),
+      'loss_per_all_target_tokens':
+          metrics_lib.WeightedAverageRate.from_model_output(
+              loss, count=num_tokens, weights=weights),
+      'timing/seqs_per_second':
+          metrics_lib.TimeRate.from_model_output(num_examples),
+      'timing/steps_per_second':
+          metrics_lib.MicrobatchAdjusted.from_model_output(
+              metric=metrics_lib.TimeRate.from_model_output(1), per_step=False),
+      'timing/seqs':
+          metrics_lib.Sum.from_model_output(num_examples),
+      'timing/seqs_per_second_per_core':
+          metrics_lib.TimeRate.from_model_output(num_examples / num_devices),
+      'timing/target_tokens_per_second':
+          metrics_lib.TimeRate.from_model_output(num_tokens),
+      'timing/target_tokens_per_second_per_core':
+          metrics_lib.TimeRate.from_model_output(num_tokens / num_devices),
+      'nonpadding_fraction':
+          metrics_lib.WeightedAverageRate.from_model_output(
+              weights.astype(jnp.float32) if weights is not None else 0.,
+              count=num_tokens),
+      'z_loss':
+          metrics_lib.MicrobatchAdjusted.from_model_output(
+              metric=metrics_lib.WeightedAverageRate.from_model_output(
+                  z_loss, count=1, weights=weights),
+              per_step=True),
+      'z_loss_per_all_target_tokens':
+          metrics_lib.WeightedAverageRate.from_model_output(
+              z_loss, count=num_tokens, weights=weights),
+      'cross_ent_loss':
+          metrics_lib.MicrobatchAdjusted.from_model_output(
+              metric=metrics_lib.WeightedAverageRate.from_model_output(
+                  loss - z_loss, count=1, weights=weights),
+              per_step=True),
+      'cross_ent_loss_per_all_target_tokens':
+          metrics_lib.WeightedAverageRate.from_model_output(
+              loss - z_loss, count=num_tokens, weights=weights)
+  }
   return metrics
 
 

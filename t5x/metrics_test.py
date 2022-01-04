@@ -15,8 +15,7 @@
 """Tests for clu.metrics."""
 
 from absl.testing import parameterized
-import jax
-import jax.numpy as jnp
+import numpy as np
 from t5x import metrics
 import tensorflow as tf
 
@@ -44,6 +43,25 @@ class MetricsTest(tf.test.TestCase, parameterized.TestCase):
         expected_result)
 
   @parameterized.named_parameters(
+      ("0d_values_no_weights", 1, 2, None, 0.5),
+      ("1d_values_no_weights", [1, 2, 3], 1., None, 6.),
+      ("1d_values_1d_weights", [1, 2, 3], 0.5, [True, True, False], 6.),
+      ("2d_values_no_weights", [[1, 2], [2, 3], [3, 4]], 0.5, None, 30.),
+      ("2d_values_1d_weights", [[1, 2], [2, 3], [3, 4]
+                               ], 3., [False, True, True], 4.),
+      ("2d_values_2d_weights", [[1, 2], [2, 3], [3, 4]], 2.,
+       [[False, True], [True, True], [True, True]], 7.),
+      ("3d_values_no_weights", [[[1, 2], [2, 3]], [[2, 1], [3, 4]],
+                                [[3, 1], [4, 1]]], 3, None, 9),
+      ("3d_values_1d_weights", [[[1, 2], [2, 3]], [[2, 1], [3, 4]],
+                                [[3, 1], [4, 1]]], 1., [False, True, True], 19),
+  )
+  def test_weighted_average_rate(self, values, count, weights, expected_result):
+    self.assertAllClose(
+        metrics.WeightedAverageRate.from_model_output(
+            values, count=count, weights=weights).compute(), expected_result)
+
+  @parameterized.named_parameters(
       ("0d_values", 2., 2.), ("1d_values", [1, 2, 3], 6.),
       ("2d_values", [[1, 2], [2, 3], [3, 4]], 15.),
       ("3d_values", [[[1, 2], [2, 3]], [[2, 1], [3, 4]], [[3, 1], [4, 1]]], 27.)
@@ -53,16 +71,29 @@ class MetricsTest(tf.test.TestCase, parameterized.TestCase):
         metrics.Sum.from_model_output(values).compute(), expected_result)
 
   @parameterized.named_parameters(
-      ("WeightedAverage", metrics.WeightedAverage),
-      ("Sum", metrics.Sum),
+      ("2d_values_no_weights", [[5, 10], [0.1, 0.9], [1, 2]], [1, 1, 0
+                                                              ], None, 2. / 3),
+      ("2d_values_1d_weights", [[1, 2], [20, 10], [0.9, 0.1]], [1, 1, 1
+                                                               ], [0, 1, 1], 0),
+      ("3d_values_no_weights", [[[0.9, 0.1], [0.8, 0.2]], [[7, 3], [0, 10]],
+                                [[1, 9], [5, 20]]], [[0, 0], [1, 0], [1, 1]
+                                                    ], None, 2. / 3),
+      ("3d_values_1d_weights", [[[0.9, 0.1], [0.8, 0.2]], [[7, 3], [0, 10]],
+                                [[1, 9], [5, 20]]], [[0, 0], [1, 0], [1, 1]
+                                                    ], [0, 1, 1], 0.5),
   )
-  def test_merge_asserts_shape(self, metric_cls):
-    metric1 = metric_cls.from_model_output(jnp.arange(3.))
-    metric2 = jax.tree_multimap(lambda *args: jnp.stack(args), metric1, metric1)
-    with self.assertRaisesRegex(
-        ValueError,
-        r"^{} metric expected same shape".format(metric_cls.__name__)):
-      metric1.merge(metric2)
+  def test_weighted_accuracy(self, logits, labels, weights, expected_result):
+    self.assertAllClose(
+        metrics.WeightedAccuracy.from_model_output(
+            logits=logits, labels=labels, weights=weights).compute(),
+        expected_result)
+
+  def test_time_rate(self):
+    value = np.array([3.])
+    duration = 2.
+    metric = metrics.TimeRate.from_model_output(value).replace_duration(
+        duration)
+    self.assertAllClose(metric.compute(), value / duration)
 
 
 if __name__ == "__main__":

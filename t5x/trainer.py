@@ -28,7 +28,7 @@ from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Seque
 from absl import logging
 import cached_property
 from clu import metric_writers
-from clu.metrics import Metric
+from clu import metrics as clu_metrics
 from flax.core import FrozenDict
 import jax.lax
 import jax.numpy as jnp
@@ -47,16 +47,36 @@ Array = Union[np.ndarray, jnp.ndarray]
 BatchSpec = Mapping[str, jax.ShapeDtypeStruct]
 BatchType = Mapping[str, np.ndarray]
 Rng = jnp.ndarray
-MetricMapType = MutableMapping[str, Metric]
+MetricMapType = MutableMapping[str, clu_metrics.Metric]
 MetricMapSpec = Mapping[str, jax.ShapeDtypeStruct]
 ModelWeights = Any
-MutableMetricMapType = Dict[str, Metric]
+MutableMetricMapType = Dict[str, clu_metrics.Metric]
 P = partitioning.PartitionSpec
 
 if TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
 else:
   cached_property = cached_property.cached_property
+
+
+@jax.jit
+def _merge_metrics(a, b):
+  return jax.tree_multimap(
+      lambda a, b: a.merge(b), a, b, is_leaf=metrics_lib.is_metric_obj)
+
+
+def _sda_to_da(x):
+  if not hasattr(x, "device_buffers"):
+    return x
+  return jax.interpreters.xla.make_device_array(x.aval,
+                                                x.device_buffers[0].device(),
+                                                x.device_buffers[0])
+
+
+# Merges two metrics pytrees (mapping of metric_name (str) to clu.Metric object)
+def merge_metrics(a, b):
+  a, b = jax.tree_map(_sda_to_da, (a, b))
+  return _merge_metrics(a, b)
 
 
 class OptionalArrayMapFuture(typing_extensions.Protocol):
@@ -96,21 +116,16 @@ class PartitionedTrainCallable(typing_extensions.Protocol):
   """Protocol for a partitioned train step."""
 
   def __call__(
-      self, train_state: train_state_lib.TrainState, batch: BatchType,
-      prev_metrics: MetricMapType
-  ) -> Tuple[train_state_lib.TrainState, MetricMapType]:
+      self, train_state: train_state_lib.TrainState,
+      batch: BatchType) -> Tuple[train_state_lib.TrainState, MetricMapType]:
     ...
 
 
 class PartitionedEvalCallable(typing_extensions.Protocol):
   """Protocol for a partitioned eval step."""
 
-  def __call__(
-      self,
-      train_state: train_state_lib.TrainState,
-      batch: jnp.ndarray,
-      prev_metrics: MetricMapType,
-  ) -> MetricMapType:
+  def __call__(self, train_state: train_state_lib.TrainState,
+               batch: jnp.ndarray) -> MetricMapType:
     ...
 
 
@@ -190,26 +205,21 @@ class MetricsManager(object):
 
   """
 
-  def __init__(self, name: str, initial_accumulator: MetricMapType,
-               summarize_fn: SummarizeMetricsCallable,
+  def __init__(self, name: str, summarize_fn: SummarizeMetricsCallable,
                summary_dir: Optional[str]):
     """MetricsManager constructor.
 
     Args:
       name: an identifier of the metrics to use when logging (e.g., 'train').
-      initial_accumulator: a mapping from metric name to the initial values
-        (clu.metric.Metric objects) for accumulation.
       summarize_fn: a callable to convert the mapping of accumulated metrics
         into a mapping of scalars to be logged.
       summary_dir: the summary directory. If provided, TensorBoard summaries
         will be written to a `name` subdirectory.
     """
     self._name = name
-    self._initial_accumulator = initial_accumulator
     self._summarize_fn = summarize_fn
     self.summary_dir = os.path.join(summary_dir, name) if summary_dir else None
     writers = []
-
     self._summary_writer = None
     if self.summary_dir and jax.process_index() == 0:
       self._summary_writer = metric_writers.SummaryWriter(self.summary_dir)
@@ -221,11 +231,6 @@ class MetricsManager(object):
   def summary_writer(self) -> Optional[metric_writers.SummaryWriter]:
     """Returns the MultiWriter used by this class."""
     return self._summary_writer
-
-  @property
-  def initial_accumulator(self) -> MetricMapType:
-    """Returns a metric map with initial values for accumulation."""
-    return dict(self._initial_accumulator)
 
   def write_scalar(self, key: str, val, step: int):
     """Writes scalar value to TensorBoard, if host 0."""
@@ -248,11 +253,6 @@ class MetricsManager(object):
       A mapping of name -> scalar value of the written summary. Only return the
         real scalar value on host 0. For other hosts, return None.
     """
-    if set(self.initial_accumulator) != set(metrics):
-      raise ValueError(
-          "Initial and accumulated metric names do not match: "
-          f"{sorted(self.initial_accumulator)} vs {sorted(metrics)}")
-
     if jax.process_index() == 0:
       # Ensure that there are no TPU computations since this method may be
       # called from a separate thread.
@@ -297,8 +297,8 @@ class BaseTrainer(abc.ABC):
     self._partitioner = partitioner
     self._compiled_train_step: Optional[PartitionedTrainCallable] = None
     self._compiled_eval_steps: MutableMapping[str, PartitionedEvalCallable] = {}
-    self._compiled_eval_step_cache: MutableMapping[Tuple[
-        MetricMapSpec, BatchSpec], PartitionedEvalCallable] = {}
+    self._compiled_eval_step_cache: MutableMapping[
+        BatchSpec, PartitionedEvalCallable] = {}
 
     self.train_state = train_state
 
@@ -306,15 +306,8 @@ class BaseTrainer(abc.ABC):
 
     # The training metrics combine metrics added by the Model (e.g., loss and
     # accuracy) and Trainer (e.g., learning rate).
-    # Pre-copy the initial accumulator to devices to reduce communication.
-    on_device_initial_accumulator = self._partitioner.partition(
-        lambda x: x, in_axis_resources=None, out_axis_resources=None)({
-            **model.get_initial_metrics(),
-            **self._get_initial_metrics()
-        })
     self.train_metrics_manager = MetricsManager(
         "train",
-        initial_accumulator=on_device_initial_accumulator,
         summarize_fn=lambda *args, **kwargs: {  # pylint:disable=g-long-lambda
             **model.summarize_metrics_fn(*args, **kwargs),
             **self._summarize_metrics_fn(*args, **kwargs)
@@ -325,7 +318,6 @@ class BaseTrainer(abc.ABC):
     self.eval_metrics_managers = {  # pylint:disable=g-complex-comprehension
         n: MetricsManager(
             f"training_eval/{n}",
-            initial_accumulator=model.get_initial_metrics(),
             summarize_fn=model.summarize_metrics_fn,
             summary_dir=summary_dir) for n in eval_names
     }
@@ -343,9 +335,11 @@ class BaseTrainer(abc.ABC):
   def _device_copy_and_write_summary(self, summarize_fn, metrics, tick,
                                      num_steps, start_step):
     """Copy to device to avoid TPU computations in separate thread."""
-    final_metrics = jax.tree_map(jax.device_get, metrics)
+    fetched_metrics = jax.tree_map(jax.device_get, metrics)
     # Take end time only after step computation is completed.
     tock = time.time()
+    final_metrics = metrics_lib.set_time_rate_metrics_duration(
+        fetched_metrics, tock - tick)
     return summarize_fn(final_metrics, start_step + num_steps, tock - tick,
                         num_steps)
 
@@ -355,7 +349,7 @@ class BaseTrainer(abc.ABC):
             start_step: Optional[int] = None) -> OptionalArrayMapFuture:
     """Runs the train loop for the given number of steps."""
     tick = time.time()
-    metrics = self.train_metrics_manager.initial_accumulator
+    metrics = None
     # Compute step number on host to avoid communication overhead.
     start_step = int(
         start_step if start_step is not None else self.train_state.step)
@@ -366,8 +360,12 @@ class BaseTrainer(abc.ABC):
       train_step_fn = self._compiled_train_step or self._partitioned_train_step
       with jax.profiler.StepTraceAnnotation("train", step_num=step_num):
         batch = next(batch_iter)
-        self.train_state, metrics = train_step_fn(self.train_state, batch,
-                                                  metrics)
+        self.train_state, metrics_update = train_step_fn(
+            self.train_state, batch)
+        if metrics:
+          metrics = merge_metrics(metrics, metrics_update)
+        else:
+          metrics = metrics_update
 
     return self._metrics_executor.submit(
         self._device_copy_and_write_summary,
@@ -389,8 +387,7 @@ class BaseTrainer(abc.ABC):
     """
     tick = time.time()
     self._compiled_train_step = self._partitioner.compile(
-        self._partitioned_train_step, self.train_state, batch,
-        self.train_metrics_manager.initial_accumulator)
+        self._partitioned_train_step, self.train_state, batch)
     tock = time.time()
     self.train_metrics_manager.write_scalar("timing/compilation_seconds",
                                             tock - tick, self.train_state.step)
@@ -403,7 +400,7 @@ class BaseTrainer(abc.ABC):
     for iter_name, batch_iter in batch_iters.items():
       logging.info("Evaluating: %s.", iter_name)
       tick = time.time()
-      metrics = self.eval_metrics_managers[iter_name].initial_accumulator
+      metrics = None
       # Use a pre-compiled step function, if available.
       eval_step_fn = self._compiled_eval_steps.get(iter_name,
                                                    self._partitioned_eval_step)
@@ -413,7 +410,11 @@ class BaseTrainer(abc.ABC):
         multihost_utils.assert_same(
             jnp.array(num_steps),
             "Eval step mismatch across hosts. Check for empty dataset shard.")
-        metrics = eval_step_fn(self.train_state, batch, metrics)
+        metrics_update = eval_step_fn(self.train_state, batch)
+        if metrics:
+          metrics = merge_metrics(metrics, metrics_update)
+        else:
+          metrics = metrics_update
       multihost_utils.assert_same(
           jnp.array(-1),
           "Eval step mismatch across hosts. Check for empty dataset shard.")
@@ -448,13 +449,10 @@ class BaseTrainer(abc.ABC):
     """
     for eval_name, batch in batches.items():
       tick = time.time()
-      metrics = self.eval_metrics_managers[eval_name].initial_accumulator
-      cache_key: Tuple[MetricMapSpec, BatchSpec] = (
-          FrozenDict(jax.eval_shape(lambda: metrics)),  # pylint:disable=cell-var-from-loop
-          FrozenDict(jax.eval_shape(lambda: batch)))  # pylint:disable=cell-var-from-loop
+      cache_key: BatchSpec = FrozenDict(jax.eval_shape(lambda: batch))  # pylint:disable=cell-var-from-loop
       if cache_key not in self._compiled_eval_step_cache:
         self._compiled_eval_step_cache[cache_key] = self._partitioner.compile(
-            self._partitioned_eval_step, self.train_state, batch, metrics)
+            self._partitioned_eval_step, self.train_state, batch)
       self._compiled_eval_steps[eval_name] = self._compiled_eval_step_cache[
           cache_key]
       tock = time.time()
@@ -509,9 +507,8 @@ def accumulate_grads_microbatched(
   grad_fn = jax.value_and_grad(model.loss_fn, has_aux=True)
 
   if num_microbatches is None or num_microbatches <= 1:
-    (loss, (weight_sum, metrics)), grad_accum = grad_fn(train_state.params,
-                                                        batch, dropout_rng)
-    del loss, weight_sum
+    (_, (_, metrics)), grad_accum = grad_fn(train_state.params, batch,
+                                            dropout_rng)
   else:
     assert batch_size % num_microbatches == 0, (
         "Batch size isn't divided evenly by num_microbatches.")
@@ -530,11 +527,7 @@ def accumulate_grads_microbatched(
           for k, b in batch.items()
       }
 
-    def per_microbatch_train_step(
-        loop_cnt: int, state: Tuple[jnp.ndarray, jnp.ndarray,
-                                    Mapping[str, jnp.ndarray]]
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, Mapping[str, jnp.ndarray]]:
-      (dropout_rng, grad_accum, prev_metrics) = state
+    def metrics_and_grad(loop_cnt, dropout_rng):
       dropout_rng, sub_dropout_rng = jax.random.split(dropout_rng)
       mbatch = get_microbatch(batch, loop_cnt)
       # We need to annotate the microbatch sharding as we would a batch.
@@ -543,23 +536,42 @@ def accumulate_grads_microbatched(
               x, partitioning.PartitionSpec("data")),
           mbatch)
 
-      (loss, (weight_sum, metrics)), grad = grad_fn(train_state.params, mbatch,
-                                                    sub_dropout_rng)
-      del loss, weight_sum
+      (_, (_, metrics)), grad = grad_fn(train_state.params, mbatch,
+                                        sub_dropout_rng)
+      return metrics, grad
+
+    def per_microbatch_train_step(
+        loop_cnt: int, state: Tuple[jnp.ndarray, jnp.ndarray,
+                                    Mapping[str, jnp.ndarray]]
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, Mapping[str, jnp.ndarray]]:
+      (dropout_rng, grad_accum, prev_metrics) = state
+
+      metrics, grad = metrics_and_grad(loop_cnt, dropout_rng)
+
       grad_accum = jax.tree_multimap(jnp.add, grad_accum, grad)
-      metrics = {k: v.merge(metrics[k]) for k, v in prev_metrics.items()}
+      metrics = jax.lax.cond(loop_cnt == 0, lambda _: metrics,
+                             lambda _: merge_metrics(prev_metrics, metrics),
+                             None)
       return dropout_rng, grad_accum, metrics
 
     # Initialize gradient accumulation loop state.
     accum_dtype = jnp.float32
     grad_accum_init = jax.tree_map(lambda x: jnp.zeros(x.shape, accum_dtype),
                                    train_state.params)
-    loop_init = (dropout_rng, grad_accum_init, model.get_initial_metrics())
-    # Run gradient accumulation loop.
+    initial_metrics_shape, _ = jax.eval_shape(
+        metrics_and_grad, loop_cnt=0, dropout_rng=dropout_rng)
+
+    initial_metrics = {
+        k: metrics_lib.shape_obj_to_defined_obj(v)
+        for k, v in initial_metrics_shape.items()
+    }
+    loop_init = (dropout_rng, grad_accum_init, initial_metrics)
     new_dropout_rng, grad_accum, metrics = jax.lax.fori_loop(
         0, num_microbatches, per_microbatch_train_step, loop_init)
     del new_dropout_rng
 
+  metrics = metrics_lib.set_microbatch_adjusted_metrics_microbatches(
+      metrics, num_microbatches)
   return grad_accum, metrics
 
 
@@ -585,7 +597,8 @@ def apply_grads(
   # Update optimizer using accumulated gradient.
   new_train_state = train_state.apply_gradient(
       grad_accum, learning_rate=learning_rate)
-  metrics["learning_rate"] = metrics_lib.Sum.from_model_output(learning_rate)
+  metrics["learning_rate"] = clu_metrics.Average.from_model_output(
+      jnp.asarray([learning_rate]))
   if weight_metrics_computer is not None:
     metrics.update(
         weight_metrics_computer.compute_metrics(grad_accum, train_state,
@@ -594,10 +607,9 @@ def apply_grads(
 
 
 def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
-              batch: jnp.ndarray, prev_metrics: MetricMapType) -> MetricMapType:
+              batch: jnp.ndarray) -> MetricMapType:
   """Default evaluation step."""
   _, (_, metrics) = model.eval_fn(train_state.params, batch)
-  metrics = {k: v.merge(metrics[k]) for k, v in prev_metrics.items()}
   return metrics
 
 
@@ -692,18 +704,15 @@ class Trainer(BaseTrainer):
 
     return _summarize_trainer_metrics
 
+  # TODO(cpgaffney) clean up when there are no overrides.
   def _get_initial_metrics(self) -> MutableMetricMapType:
-    initial_metrics = {"learning_rate": metrics_lib.Sum.from_model_output(0.)}
-    if self._weight_metrics_computer is not None:
-      initial_metrics.update(
-          self._weight_metrics_computer.get_initial_metrics(self.train_state))
-    return initial_metrics
+    return {}
 
   @cached_property
   def _partitioned_train_step(self) -> PartitionedTrainCallable:
 
-    def train_with_lr(train_state: train_state_lib.TrainState, batch: BatchType,
-                      prev_metrics: MetricMapType):
+    def train_with_lr(train_state: train_state_lib.TrainState,
+                      batch: BatchType):
 
       learning_rate = self._learning_rate_fn(train_state.step)
       dropout_rng = self._get_step_rng(train_state.step)
@@ -713,12 +722,11 @@ class Trainer(BaseTrainer):
       new_train_state, metrics = apply_grads(train_state, grad_accum, metrics,
                                              learning_rate,
                                              self._weight_metrics_computer)
-      metrics = {k: v.merge(metrics[k]) for k, v in prev_metrics.items()}
       return new_train_state, metrics
 
     return self._partitioner.partition(
         train_with_lr,
-        in_axis_resources=(self._train_state_axes, P("data",), None),
+        in_axis_resources=(self._train_state_axes, P("data",)),
         out_axis_resources=(self._train_state_axes, None),
         donate_argnums=(0,))
 
@@ -726,7 +734,7 @@ class Trainer(BaseTrainer):
   def _partitioned_eval_step(self) -> PartitionedEvalCallable:
     return self._partitioner.partition(
         lambda *args, **kwargs: eval_step(self._model, *args, **kwargs),
-        in_axis_resources=(self._train_state_axes, P("data",), None),
+        in_axis_resources=(self._train_state_axes, P("data",)),
         out_axis_resources=None)
 
 
