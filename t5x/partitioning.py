@@ -21,6 +21,7 @@ import collections
 import dataclasses
 import re
 from typing import Any, Callable, Optional, Sequence, TYPE_CHECKING, Tuple, Union
+import warnings
 
 from absl import logging
 import cached_property
@@ -144,13 +145,13 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
       first three elements (`x`, `y`, and `z`) should be factors of the pod
       slice; e.g., if you are using df_4x8, then `x` should be a factor of 4
       (one of 1, 2, 4), `y` should be a factor of 8 (one of 1, 2, 4, 8), and `z`
-      must be 1, because TPU v3 slices are only 2D. `z` can be >1 for
-      TPU v4 (and maybe later TPUs) that allow 3D slices. `core` is the
-      number of cores to use from each TPU node. As communication is usually
-      fastest inside the same node, if you need a tile of more than 1 core, then
-      you should first increase `core`: e.g., for TPU v3, (1,1,1,2) is
-        better than (2,1,1,1). To pick a good spec, try a few possible values
-        until you get high TPU utilization.
+      must be 1, because TPU v3 slices are only 2D. `z` can be >1 for TPU v4
+      (and maybe later TPUs) that allow 3D slices. `core` is the number of cores
+      to use from each TPU node. As communication is usually fastest inside the
+      same node, if you need a tile of more than 1 core, then
+      you should first increase `core`: e.g., for TPU v3, (1,1,1,2) is better
+        than (2,1,1,1). To pick a good spec, try a few possible values until you
+        get high TPU utilization.
     input_devices: the devices to use, will use jax.devices() if this is not
       set.
     input_local_devices: the local devices to use, will use jax.local_devices()
