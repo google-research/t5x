@@ -343,7 +343,14 @@ class BaseTrainer(abc.ABC):
   def _device_copy_and_write_summary(self, summarize_fn, metrics, tick,
                                      num_steps, start_step):
     """Copy to device to avoid TPU computations in separate thread."""
-    final_metrics = jax.tree_map(jax.device_get, metrics)
+
+    def _replicated_device_get(x):
+      """Avoids unnecessary coms when getting replicated ShardedDeviceArray."""
+      if isinstance(x, jax.pxla.ShardedDeviceArray):
+        x = x.device_buffers[0]
+      return x.copy()
+
+    final_metrics = jax.tree_map(_replicated_device_get, metrics)
     # Take end time only after step computation is completed.
     tock = time.time()
     return summarize_fn(final_metrics, start_step + num_steps, tock - tick,
