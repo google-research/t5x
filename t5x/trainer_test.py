@@ -69,43 +69,29 @@ class MetricsManagerTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.accumulator = {
-        'loss': metrics_lib.Sum.from_model_output(0),
-        'accuracy': metrics_lib.Sum.from_model_output(1)
-    }
     self.model_dir = self.create_tempdir().full_path
-
-  def test_initial_accumulator(self):
-    mm = trainer_lib.MetricsManager('eval', self.accumulator, lambda x, y: x,
-                                    self.model_dir)
-    out_accumulator = mm.initial_accumulator
-    for v in out_accumulator.values():
-      self.assertIsInstance(v, clu.metrics.Metric)
-    self.assertDictEqual(out_accumulator, self.accumulator)
-    out_accumulator['loss'] = metrics_lib.Sum.from_model_output(1)
-    self.assertDictEqual(mm.initial_accumulator, self.accumulator)
 
   @mock.patch('jax.process_index')
   def test_summary_dir(self, mock_process_index):
     # All hosts have the summary dir.
     mock_process_index.return_value = 0
-    mm = trainer_lib.MetricsManager('eval', {}, lambda x, y: x, self.model_dir)
+    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertEqual(mm.summary_dir, os.path.join(self.model_dir, 'eval'))
 
     mock_process_index.return_value = 1
-    mm = trainer_lib.MetricsManager('eval', {}, lambda x, y: x, self.model_dir)
+    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertEqual(mm.summary_dir, os.path.join(self.model_dir, 'eval'))
 
   @mock.patch('jax.process_index')
   def test_summary_writer(self, mock_process_index):
     # Only host 0 has a summary writer.
     mock_process_index.return_value = 1
-    mm = trainer_lib.MetricsManager('eval', {}, lambda x, y: x, self.model_dir)
+    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertIsNone(mm.summary_writer)
     self.assertFalse(gfile.exists(mm.summary_dir))
 
     mock_process_index.return_value = 0
-    mm = trainer_lib.MetricsManager('eval', {}, lambda x, y: x, self.model_dir)
+    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertIsInstance(mm.summary_writer, metric_writers.SummaryWriter)
     self.assertTrue(gfile.exists(mm.summary_dir))
 
@@ -118,13 +104,13 @@ class MetricsManagerTest(absltest.TestCase):
 
     # Only host 0 has a summary writer.
     mock_process_index.return_value = 1
-    mm = trainer_lib.MetricsManager('eval', {}, lambda x, y: x, self.model_dir)
+    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     for s in scalars:
       mm.write_scalar(*s)
     self.assertEmpty(gfile.listdir(mm.summary_dir))
 
     mock_process_index.return_value = 0
-    mm = trainer_lib.MetricsManager('eval', {}, lambda x, y: x, self.model_dir)
+    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     for s in scalars:
       mm.write_scalar(*s)
     summaries = gfile.listdir(mm.summary_dir)
@@ -163,15 +149,13 @@ class MetricsManagerTest(absltest.TestCase):
 
     # Only host 0 has a summary writer.
     mock_process_index.return_value = 1
-    mm = trainer_lib.MetricsManager('eval', self.accumulator, summarize_fn,
-                                    self.model_dir)
+    mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
     mm.write_metrics_summary(
         accumulated_metrics, step=4, duration=40.0, num_steps=2)
     self.assertEmpty(gfile.listdir(mm.summary_dir))
 
     mock_process_index.return_value = 0
-    mm = trainer_lib.MetricsManager('eval', self.accumulator, summarize_fn,
-                                    self.model_dir)
+    mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
     mm.write_metrics_summary(
         accumulated_metrics, step=4, duration=40.0, num_steps=2)
 
@@ -195,21 +179,21 @@ def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
 def fake_apply_grads(optimizer, grad_accum, metrics, learning_rate,
                      weight_metrics_computer):
   del weight_metrics_computer
-  metrics['learning_rate'] = metrics_lib.Sum.from_model_output(learning_rate)
+  metrics['learning_rate'] = clu.metrics.Average.from_model_output(
+      learning_rate)
   optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics
 
 
-def fake_eval_step(model, optimizer, batch, metrics):
+def fake_eval_step(model, optimizer, batch):
   del model, optimizer
   # Add `i` to each metric.
   i = batch['i'].sum()
 
-  metrics = {
-      k: v.merge(metrics_lib.Sum.from_model_output(i))
-      for k, v in metrics.items()
+  return {
+      'loss': metrics_lib.Sum.from_model_output(i),
+      'accuracy': metrics_lib.Sum.from_model_output(i)
   }
-  return metrics
 
 
 class TrainerTest(parameterized.TestCase):
@@ -238,11 +222,7 @@ class TrainerTest(parameterized.TestCase):
 
     self.test_trainer = trainer_lib.Trainer(
         mock.Mock(
-            get_initial_metrics=lambda:  # pylint:disable=g-long-lambda
-            {
-                'loss': metrics_lib.Sum.from_model_output(1.0),
-                'accuracy': metrics_lib.Sum.from_model_output(2.0),
-            },
+            get_initial_metrics=lambda: {},
             summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
             {k: v.compute() / duration for k, v in metrics.items()}),
         self.init_train_state,
@@ -275,9 +255,13 @@ class TrainerTest(parameterized.TestCase):
     num_steps = 2
     trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
 
+    initial_metrics = {
+        'loss': 0.,
+        'accuracy': 0.,
+    }
     expected_metrics = {
-        k: (v.compute() + 2 * num_steps) / 4  # divide by duration
-        for k, v in trainer.train_metrics_manager.initial_accumulator.items()
+        k: (v + 2 * num_steps) / 4  # divide by duration
+        for k, v in initial_metrics.items()
     }
     # (0 + 2) / 2 = 1
     expected_metrics['learning_rate'] = 1
@@ -343,18 +327,20 @@ class TrainerTest(parameterized.TestCase):
     trainer.eval(
         {task: ds.as_numpy_iterator() for task, ds in task_datasets.items()})
 
+    initial_metrics = {
+        'loss': 0.,
+        'accuracy': 0.,
+    }
     all_expected_metrics = {
         # 0+1+2+3 = 6
         'task1': {
-            k: (v.compute() + 6) / 4  # divide by duration
-            for k, v in
-            trainer.eval_metrics_managers['task1'].initial_accumulator.items()
+            k: (v + 6) / 4  # divide by duration
+            for k, v in initial_metrics.items()
         },
         # 0+1 = 1
         'task2': {
-            k: (v.compute() + 1) / 4  # divide by duration
-            for k, v in
-            trainer.eval_metrics_managers['task2'].initial_accumulator.items()
+            k: (v + 1) / 4  # divide by duration
+            for k, v in initial_metrics.items()
         }
     }
 
@@ -551,9 +537,7 @@ class TrainerTest(parameterized.TestCase):
   def test_compile_train(self, mock_time=None):
     trainer = self.test_trainer
     trainer._partitioned_train_step = mock.Mock()
-    trainer.train_metrics_manager = mock.Mock(initial_accumulator={
-        'fake_metric': metrics_lib.Sum.from_model_output(0)
-    })
+    trainer.train_metrics_manager = mock.Mock()
 
     # compile start, compile end
     mock_time.side_effect = [1, 5]
@@ -568,33 +552,19 @@ class TrainerTest(parameterized.TestCase):
         'timing/compilation_seconds', 4, trainer.train_state.step)
     trainer._partitioned_train_step.lower.assert_called_once()
     train_step_args = trainer._partitioned_train_step.lower.call_args[0]
-    self.assertLen(train_step_args, 3)
+    self.assertLen(train_step_args, 2)
     self.assertEqual(train_step_args[0], trainer.train_state)
     test_utils.assert_same(train_step_args[1], batch)
-    self.assertDictEqual(train_step_args[2],
-                         {'fake_metric': metrics_lib.Sum.from_model_output(0)})
 
   @mock.patch('time.time')
   def test_compile_eval(self, mock_time=None):
     trainer = self.test_trainer
     trainer._partitioned_eval_step = mock.Mock()
     trainer.eval_metrics_managers = {
-        'eval1':
-            mock.Mock(initial_accumulator={
-                'fake_metric1': metrics_lib.Sum.from_model_output(0)
-            }),
-        'eval2':
-            mock.Mock(initial_accumulator={
-                'fake_metric2': metrics_lib.Sum.from_model_output(1)
-            }),
-        'eval3':
-            mock.Mock(initial_accumulator={
-                'fake_metric2': metrics_lib.Sum.from_model_output(1)
-            }),
-        'eval4':
-            mock.Mock(initial_accumulator={
-                'fake_metric3': metrics_lib.Sum.from_model_output(1)
-            })
+        'eval1': mock.Mock(),
+        'eval2': mock.Mock(),
+        'eval3': mock.Mock(),
+        'eval4': mock.Mock()
     }
     trainer._partitioned_eval_step.lower().compile.side_effect = [
         'compiled1', 'compiled2', 'compiled3'
@@ -613,7 +583,7 @@ class TrainerTest(parameterized.TestCase):
             'j': np.zeros((), dtype=np.float32)
         },
         'eval4': {
-            'j': np.zeros((), dtype=np.float32)
+            'k': np.zeros((4), dtype=np.float32)
         },
     }
 
@@ -631,31 +601,25 @@ class TrainerTest(parameterized.TestCase):
     self.assertLen(eval_step_args, 3)
 
     eval1_call_args = eval_step_args[0][0]
-    self.assertLen(eval1_call_args, 3)
+    self.assertLen(eval1_call_args, 2)
     self.assertEqual(eval1_call_args[0], trainer.train_state)
     test_utils.assert_same(eval1_call_args[1], {
         'i': np.zeros((2, 5), dtype=np.int32),
     })
-    self.assertDictEqual(eval1_call_args[2],
-                         {'fake_metric1': metrics_lib.Sum.from_model_output(0)})
 
     eval2_call_args = eval_step_args[1][0]
-    self.assertLen(eval2_call_args, 3)
+    self.assertLen(eval2_call_args, 2)
     self.assertEqual(eval2_call_args[0], trainer.train_state)
     test_utils.assert_same(eval2_call_args[1], {
         'j': np.zeros((), dtype=np.float32),
     })
-    self.assertDictEqual(eval2_call_args[2],
-                         {'fake_metric2': metrics_lib.Sum.from_model_output(1)})
 
     eval3_call_args = eval_step_args[2][0]
-    self.assertLen(eval3_call_args, 3)
+    self.assertLen(eval3_call_args, 2)
     self.assertEqual(eval3_call_args[0], trainer.train_state)
     test_utils.assert_same(eval3_call_args[1], {
-        'j': np.zeros((), dtype=np.float32),
+        'k': np.zeros((4), dtype=np.float32),
     })
-    self.assertDictEqual(eval3_call_args[2],
-                         {'fake_metric3': metrics_lib.Sum.from_model_output(1)})
 
     self.assertDictEqual(
         trainer._compiled_eval_steps, {
@@ -693,8 +657,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
 
     test_trainer = trainer_lib.Trainer(
         mock.Mock(
-            get_initial_metrics=lambda:  # pylint:disable=g-long-lambda
-            {'rng': RNG.from_model_output(values=np.zeros((1, 2), np.uint32))},
+            get_initial_metrics=lambda: {},
             summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
             {k: v.compute() for k, v in metrics.items()}),
         init_train_state,

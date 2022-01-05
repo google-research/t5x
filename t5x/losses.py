@@ -115,7 +115,7 @@ def compute_weighted_cross_entropy(
    weights: None or array of shape [batch, length].
    label_smoothing: label smoothing constant, used to determine the on and off
      values.
-   z_loss: coefficient for auxilliary z-loss loss term.
+   z_loss: coefficient for auxiliary z-loss loss term.
    loss_normalizing_factor: Constant to divide loss by. If not specified, loss
      will not be normalized. Intended for backward compatibility with T5-MTF
      training. Should not normally be used.
