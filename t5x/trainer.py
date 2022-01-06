@@ -136,6 +136,23 @@ class WeightMetricsComputer(object):
       "weight_rms", "weight_gradient_rms", "weight_update_rms", "weight_max"
   ]
 
+  @staticmethod
+  def _make_rms_metrics(name, tree):
+    """Calculates the root-mean-square metric for a pytree."""
+    return {
+        f"{name}/{k}":
+        metrics_lib.Sum.from_model_output(jnp.sqrt(jnp.mean(jnp.square(v))))
+        for k, v in utils.flatten_dict_string_keys(tree).items()
+    }
+
+  @staticmethod
+  def _make_max_metrics(name, tree):
+    """Calculates the L-inf norm for a pytree."""
+    return {
+        f"{name}/{k}": metrics_lib.Sum.from_model_output(jnp.max(jnp.abs(v)))
+        for k, v in utils.flatten_dict_string_keys(tree).items()
+    }
+
   def get_initial_metrics(
       self,
       initial_train_state: train_state_lib.TrainState) -> MutableMetricMapType:
@@ -183,19 +200,19 @@ class WeightMetricsComputer(object):
     # stacking), we might not want to reduce over the stacking dimension, in
     # order to provide more localization in the logged stats.
     metrics = {}
-    metrics.update(_make_rms_metrics("weight_rms", new_train_state.params))
-    metrics.update(_make_rms_metrics("weight_gradient_rms", gradients))
+    metrics.update(self._make_rms_metrics("weight_rms", new_train_state.params))
+    metrics.update(self._make_rms_metrics("weight_gradient_rms", gradients))
     grad_norm = jnp.sqrt(
         jnp.sum(
             jnp.array([jnp.vdot(x, x) for x in jax.tree_leaves(gradients)])))
     metrics.update(
         {"weight_gradient_norm": metrics_lib.Sum.from_model_output(grad_norm)})
     metrics.update(
-        _make_rms_metrics(
+        self._make_rms_metrics(
             "weight_update_rms",
             jax.tree_multimap(jnp.subtract, new_train_state.params,
                               old_train_state.params)))
-    metrics.update(_make_max_metrics("weight_max", new_train_state.params))
+    metrics.update(self._make_max_metrics("weight_max", new_train_state.params))
 
     return metrics
 
@@ -611,23 +628,6 @@ def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
   """Default evaluation step."""
   _, (_, metrics) = model.eval_fn(train_state.params, batch)
   return metrics
-
-
-def _make_rms_metrics(name, tree):
-  """Calculates the root-mean-square metric for a pytree."""
-  return {
-      f"{name}/{k}":
-      metrics_lib.Sum.from_model_output(jnp.sqrt(jnp.mean(jnp.square(v))))
-      for k, v in utils.flatten_dict_string_keys(tree).items()
-  }
-
-
-def _make_max_metrics(name, tree):
-  """Calculates the L-inf norm for a pytree."""
-  return {
-      f"{name}/{k}": metrics_lib.Sum.from_model_output(jnp.max(jnp.abs(v)))
-      for k, v in utils.flatten_dict_string_keys(tree).items()
-  }
 
 
 class Trainer(BaseTrainer):
