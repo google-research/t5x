@@ -15,6 +15,7 @@
 """Tests for train_state."""
 
 from absl.testing import absltest
+from flax import core as flax_core
 from flax import linen as nn
 from flax import optim
 import jax
@@ -31,9 +32,13 @@ class TrainStateTest(absltest.TestCase):
     params = model.init(jax.random.PRNGKey(0), inputs)['params']
     optimizer_def = optim.GradientDescent(learning_rate=0.1)
     optimizer = optimizer_def.create(params)
-    state = train_state_lib.TrainState.from_flax_optimizer(optimizer)
+    flax_mutables = flax_core.freeze({'flax_mutable1': np.ones(10)})
+    state = train_state_lib.TrainState.from_flax_optimizer(
+        optimizer, flax_mutables=flax_mutables)
     self.assertEqual(state.step, 0)
     self.assertIsInstance(state._optimizer, optim.Optimizer)
+    self.assertEqual(state.state_dict()['flax_mutables'],
+                     flax_core.unfreeze(flax_mutables))
     jax.tree_multimap(np.testing.assert_array_equal, params, state.params)
 
 

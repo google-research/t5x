@@ -181,7 +181,7 @@ class PartitioningTest(absltest.TestCase):
       optimizer = opt_def.create(target)
       state = train_state.TrainState.from_flax_optimizer(optimizer)
       state = state.replace(
-          other_variables={
+          axes_variables={
               'params_axes': {
                   'logits_dense_axes': AxisMetadata(names=('vocab', 'embed')),
                   'mlp': {
@@ -192,7 +192,7 @@ class PartitioningTest(absltest.TestCase):
               }
           })
       axis_names = nn_partitioning.get_axis_names(
-          state.other_variables['params_axes'])
+          state.axes_variables['params_axes'])
       state._optimizer.optimizer_def.set_param_axes(axis_names)
       return ppm.get_mesh_axes(state).state_dict()
 

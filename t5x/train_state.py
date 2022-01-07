@@ -16,6 +16,7 @@
 
 from typing import Any, Dict, Optional
 
+from flax import core as flax_core
 from flax import optim
 from flax import struct
 from flax.core import scope as flax_scope
@@ -23,13 +24,16 @@ import jax
 import jax.numpy as jnp
 
 PyTreeDef = type(jax.tree_structure(None))
+EMPTY_DICT = flax_core.freeze({})
 
 
 class TrainState(struct.PyTreeNode):
   """Simple train state for holding parameters, step, optimizer state."""
   _optimizer: optim.Optimizer
-  # Non-parameter variables.
-  other_variables: Optional[flax_scope.FrozenVariableDict] = None
+  # Variables related with axes specification.
+  axes_variables: Optional[flax_scope.FrozenVariableDict] = None
+  # Flax mutable fields.
+  flax_mutables: Optional[flax_scope.FrozenDict] = EMPTY_DICT
 
   @property
   def step(self) -> jnp.ndarray:
@@ -49,26 +53,40 @@ class TrainState(struct.PyTreeNode):
     return self._optimizer.optimizer_def.__class__.__name__
 
   def state_dict(self) -> Dict[str, Any]:
-    return self._optimizer.state_dict()
+    state_dict = self._optimizer.state_dict()
+    if self.flax_mutables:
+      state_dict['flax_mutables'] = flax_core.unfreeze(self.flax_mutables)
+    return state_dict
 
-  def apply_gradient(self, grads, learning_rate) -> 'TrainState':
+  def apply_gradient(self,
+                     grads,
+                     learning_rate,
+                     flax_mutables=EMPTY_DICT) -> 'TrainState':
     new_optimizer = self._optimizer.apply_gradient(
         grads, learning_rate=learning_rate)
-    return self.replace(_optimizer=new_optimizer)
+    return self.replace(_optimizer=new_optimizer, flax_mutables=flax_mutables)
 
   def restore_state(self, state_dict: Dict[str, Any]) -> 'TrainState':
     new_optimizer = self._optimizer.restore_state(state_dict)
-    return self.replace(_optimizer=new_optimizer)
+    return self.replace(
+        _optimizer=new_optimizer,
+        flax_mutables=flax_core.freeze(state_dict['flax_mutables'])
+        if 'flax_mutables' in state_dict else EMPTY_DICT)
 
   def update_step(self, step: int) -> 'TrainState':
     return self.replace(
         _optimizer=self._optimizer.replace(
-            state=self._optimizer.state.replace(step=step)))
+            state=self._optimizer.state.replace(step=step)),
+        flax_mutables=self.flax_mutables)
 
   @classmethod
   def from_flax_optimizer(
       cls,
       optimizer: optim.Optimizer,
-      other_variables: Optional[flax_scope.FrozenVariableDict] = None
+      axes_variables: Optional[flax_scope.FrozenVariableDict] = None,
+      flax_mutables: Optional[flax_scope.FrozenDict] = EMPTY_DICT
   ) -> 'TrainState':
-    return cls(_optimizer=optimizer, other_variables=other_variables)
+    return cls(
+        _optimizer=optimizer,
+        axes_variables=axes_variables,
+        flax_mutables=flax_mutables)

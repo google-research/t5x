@@ -605,9 +605,12 @@ def accumulate_grads_microbatched(
 
 
 def apply_grads(
-    train_state: train_state_lib.TrainState, grad_accum: ModelWeights,
-    metrics: MutableMetricMapType, learning_rate: jnp.ndarray,
-    weight_metrics_computer: Optional[WeightMetricsComputer]
+    train_state: train_state_lib.TrainState,
+    grad_accum: ModelWeights,
+    metrics: MutableMetricMapType,
+    learning_rate: jnp.ndarray,
+    weight_metrics_computer: Optional[WeightMetricsComputer],
+    other_state_variables: Optional[Mapping[str, Any]] = None
 ) -> Tuple[train_state_lib.TrainState, MetricMapType]:
   """Applies gradients to the optimizer.
 
@@ -619,13 +622,16 @@ def apply_grads(
     weight_metrics_computer: A WeightMetricsComputer instance, or None, to
       decide what metrics, if any, to log about weights and weight updates
       during training.
+    other_state_variables: other variables to update the state with.
 
   Returns:
    The updated train state, metrics.
   """
+  if other_state_variables is None:
+    other_state_variables = {}
   # Update optimizer using accumulated gradient.
   new_train_state = train_state.apply_gradient(
-      grad_accum, learning_rate=learning_rate)
+      grad_accum, learning_rate=learning_rate, **other_state_variables)
   metrics["learning_rate"] = clu_metrics.Average.from_model_output(
       jnp.asarray([learning_rate]))
   if weight_metrics_computer is not None:

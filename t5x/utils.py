@@ -26,6 +26,7 @@ import warnings
 from absl import logging
 from flax import linen as nn
 from flax import optim
+from flax.core import freeze
 from flax.core import scope as flax_scope
 from flax.core import unfreeze
 from flax.traverse_util import flatten_dict
@@ -361,10 +362,17 @@ class TrainStateInitializer:
         axis_names = nn.partitioning.get_axis_names(
             other_initial_variables['params_axes'])
         optimizer_def.set_param_axes(axis_names)
+      if 'params_axes' in other_initial_variables:
+        flax_mutables, params_axes = other_initial_variables.pop('params_axes')
+        axes_variables = freeze({'params_axes': params_axes})
+      else:
+        flax_mutables, axes_variables = other_initial_variables, None
       # Initialize optimizer and initial train state.
       optimizer = optimizer_def.create(initial_params)
       return train_state_lib.TrainState.from_flax_optimizer(
-          optimizer=optimizer, other_variables=other_initial_variables)
+          optimizer=optimizer,
+          flax_mutables=flax_mutables,
+          axes_variables=axes_variables)
 
     self._partitioner = partitioner
     self.global_train_state_shape = jax.eval_shape(

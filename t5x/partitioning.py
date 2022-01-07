@@ -705,11 +705,11 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
 
   def get_logical_axes(self, train_state: TrainState) -> TrainState:
     """Returns a copy of TrainState with Optional[AxisNames] as leaves."""
-    if 'params_axes' not in train_state.other_variables:
+    if 'params_axes' not in train_state.axes_variables:
       raise ValueError('Missing model params_axes collection.')
 
     params_axes = flax_partitioning.get_axis_names(
-        train_state.other_variables['params_axes'])
+        train_state.axes_variables['params_axes'])
 
     optimizer_axes = train_state._optimizer.optimizer_def.derive_logical_axes(  # pylint: disable=protected-access
         train_state._optimizer, params_axes)  # pylint: disable=protected-access
