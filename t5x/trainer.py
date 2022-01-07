@@ -22,6 +22,7 @@ import abc
 import concurrent.futures
 import enum
 import os
+import threading
 import time
 from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple, Union
 
@@ -79,9 +80,9 @@ def merge_metrics(a, b):
   return _merge_metrics(a, b)
 
 
-class OptionalArrayMapFuture(typing_extensions.Protocol):
+class ArrayMapFuture(typing_extensions.Protocol):
 
-  def result(self) -> Optional[Mapping[str, Array]]:
+  def result(self) -> Mapping[str, Array]:
     ...
 
 
@@ -218,13 +219,20 @@ class WeightMetricsComputer(object):
 
 
 class MetricsManager(object):
-  """Manages a set of distributed metrics and their logging to Tensorboard.
+  """Manages a set of distributed metrics and their logging.
 
+  Logging is disabled on all but host 0.
+
+  Logs to:
+    * TensorBoard
+    * ABSL
   """
 
   def __init__(self, name: str, summarize_fn: SummarizeMetricsCallable,
                summary_dir: Optional[str]):
     """MetricsManager constructor.
+
+    Constructs an empty MetricWriter on all but host 0.
 
     Args:
       name: an identifier of the metrics to use when logging (e.g., 'train').
@@ -237,28 +245,39 @@ class MetricsManager(object):
     self._summarize_fn = summarize_fn
     self.summary_dir = os.path.join(summary_dir, name) if summary_dir else None
     writers = []
-    self._summary_writer = None
     if self.summary_dir and jax.process_index() == 0:
-      self._summary_writer = metric_writers.SummaryWriter(self.summary_dir)
-    if self._summary_writer:
-      writers.append(self._summary_writer)
+      writers.append(metric_writers.SummaryWriter(self.summary_dir))
+      writers.append(metric_writers.LoggingWriter(prefix=f"{name}: "))
     self._writer = metric_writers.MultiWriter(writers)
+    self._writer_lock = threading.RLock()
+    self._summary_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1)
+
+  def __del__(self):
+    self.flush()
+    with self._writer_lock:
+      self._writer.close()
 
   @property
-  def summary_writer(self) -> Optional[metric_writers.SummaryWriter]:
-    """Returns the MultiWriter used by this class."""
-    return self._summary_writer
+  def summary_writer(self) -> metric_writers.MetricWriter:
+    """Returns the MetricWriter used by this class."""
+    # TODO(adarob): Make returned writer threadsafe.
+    return self._writer
 
-  def write_scalar(self, key: str, val, step: int):
-    """Writes scalar value to TensorBoard, if host 0."""
-    self._writer.write_scalars(step, {key: val})
+  def write_scalar(self, key: str, val: metric_writers.interface.Scalar,
+                   step: int):
+    """Writes scalar value to metric writers in a threadsafe manner."""
+    self.write_scalars(step, {key: val})
+
+  def write_scalars(self, step: int,
+                    scalars: Mapping[str, metric_writers.interface.Scalar]):
+    """Writes scalar value to metric writers in a threadsafe manner."""
+    with self._writer_lock:
+      self._writer.write_scalars(step, scalars)
 
   def write_metrics_summary(self, metrics: MetricMapType, step: int,
-                            duration: float,
-                            num_steps: int) -> Optional[Mapping[str, Array]]:
-    """Writes summary based on accumulated metrics.
-
-    Actual write only occurs on host 0.
+                            duration: float, num_steps: int) -> ArrayMapFuture:
+    """Writes summary based on accumulated metrics in a background thread.
 
     Args:
       metrics: acculumated metric values.
@@ -270,17 +289,28 @@ class MetricsManager(object):
       A mapping of name -> scalar value of the written summary. Only return the
         real scalar value on host 0. For other hosts, return None.
     """
-    if jax.process_index() == 0:
-      # Ensure that there are no TPU computations since this method may be
-      # called from a separate thread.
+
+    def _summarize_and_write():
+      # For thread safety, since `_summarize_fn` may do additional computations,
+      # we first copy the metrics to host.
+      fetched_metrics = jax.tree_map(jax.device_get, metrics)
+      # We set the duration on TimeRate metrics.
+      final_metrics = metrics_lib.set_time_rate_metrics_duration(
+          fetched_metrics, duration)
       summary = self._summarize_fn(
-          metrics=metrics, duration=duration, num_steps=num_steps)
-      # TODO(b/203790423): Use CLU LoggingWriter.
-      logging.info("%s metrics at step: %s, %s", self._name, step, summary)
-      self._writer.write_scalars(step, summary)
-      self._writer.flush()
+          metrics=final_metrics, duration=duration, num_steps=num_steps)
+      self.write_scalars(step, summary)
+
       return summary
-    return None
+
+    return self._summary_executor.submit(_summarize_and_write)
+
+  def flush(self):
+    self._summary_executor.shutdown(wait=True)
+    self._summary_executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=1)
+    with self._writer_lock:
+      self._writer.flush()
 
 
 class PreemptionError(Exception):
@@ -339,31 +369,13 @@ class BaseTrainer(abc.ABC):
             summary_dir=summary_dir) for n in eval_names
     }
 
-    self._metrics_executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1)
-
-  def __del__(self):
-    """Wait for metrics to be written before deletion."""
-    self._metrics_executor.shutdown(wait=True)
-
   def _get_step_rng(self, step: int) -> Rng:
     return jax.random.fold_in(self._base_rng, step)
-
-  def _device_copy_and_write_summary(self, summarize_fn, metrics, tick,
-                                     num_steps, start_step):
-    """Copy to device to avoid TPU computations in separate thread."""
-    fetched_metrics = jax.tree_map(jax.device_get, metrics)
-    # Take end time only after step computation is completed.
-    tock = time.time()
-    final_metrics = metrics_lib.set_time_rate_metrics_duration(
-        fetched_metrics, tock - tick)
-    return summarize_fn(final_metrics, start_step + num_steps, tock - tick,
-                        num_steps)
 
   def train(self,
             batch_iter: Iterator[BatchType],
             num_steps: int,
-            start_step: Optional[int] = None) -> OptionalArrayMapFuture:
+            start_step: Optional[int] = None) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""
     tick = time.time()
     metrics = None
@@ -384,10 +396,9 @@ class BaseTrainer(abc.ABC):
         else:
           metrics = metrics_update
 
-    return self._metrics_executor.submit(
-        self._device_copy_and_write_summary,
-        self.train_metrics_manager.write_metrics_summary, metrics, tick,
-        num_steps, start_step)
+    tock = time.time()
+    return self.train_metrics_manager.write_metrics_summary(
+        metrics, start_step + num_steps, tock - tick, num_steps)
 
   def compile_train(self, batch: BatchType) -> None:
     """Pre-compiles train step (if not yet compiled).
@@ -436,14 +447,13 @@ class BaseTrainer(abc.ABC):
           jnp.array(-1),
           "Eval step mismatch across hosts. Check for empty dataset shard.")
 
-      # TODO(adarob): Write metrics in separate thread.
-      eval_summary = self._device_copy_and_write_summary(
-          self.eval_metrics_managers[iter_name].write_metrics_summary, metrics,
-          tick, num_steps, self.train_state.step)
+      tock = time.time()
+      eval_summaries[iter_name] = self.eval_metrics_managers[
+          iter_name].write_metrics_summary(metrics, self.train_state.step,
+                                           tock - tick, num_steps)
 
-      if eval_summary is not None:
-        eval_summaries[iter_name] = eval_summary
-    return eval_summaries
+    # TODO(adarob): Return futures.
+    return {k: v.result() for k, v in eval_summaries.items()}
 
   def compile_eval(self, batches: Mapping[str, BatchType]) -> None:
     """Pre-compiles eval step (if not yet compiled).
@@ -676,20 +686,21 @@ class Trainer(BaseTrainer):
         train_state_axes=train_state_axes,
         rng=rng)
 
-  @property
+  @cached_property
   def _summarize_metrics_fn(self) -> SummarizeMetricsCallable:
+
+    trainer_metric_names = set(["learning_rate"])
+    if self._weight_metrics_computer is not None:
+      trainer_metric_names.update(
+          self._weight_metrics_computer.get_initial_metrics(self.train_state))
 
     def _summarize_trainer_metrics(metrics: MetricMapType, duration: float,
                                    num_steps: int) -> Mapping[str, jnp.ndarray]:
       """Produces summaries for metrics added by the trainer."""
       del duration
-      summary_metrics = {"learning_rate": metrics["learning_rate"]}
-
-      if self._weight_metrics_computer is not None:
-        trainer_metric_names = set(
-            self._weight_metrics_computer.get_initial_metrics(self.train_state))
-        summary_metrics.update(
-            {k: v for k, v in metrics.items() if k in trainer_metric_names})
+      summary_metrics = {
+          k: v for k, v in metrics.items() if k in trainer_metric_names
+      }
 
       for k, v in summary_metrics.items():
         # All of the Sum metrics should be divided by num_steps, since they've

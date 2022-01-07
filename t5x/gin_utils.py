@@ -83,7 +83,7 @@ def rewrite_gin_args(args: Sequence[str]) -> Sequence[str]:
 
 @gin.register
 def summarize_gin_config(model_dir: str,
-                         summary_writer: Optional[metric_writers.SummaryWriter],
+                         summary_writer: Optional[metric_writers.MetricWriter],
                          step: int):
   """Writes gin config to the model dir and TensorBoard summary."""
   if jax.process_index() == 0:

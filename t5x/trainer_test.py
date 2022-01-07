@@ -84,15 +84,14 @@ class MetricsManagerTest(absltest.TestCase):
 
   @mock.patch('jax.process_index')
   def test_summary_writer(self, mock_process_index):
-    # Only host 0 has a summary writer.
+    # Only host 0 creates a non-empty summary writer.
     mock_process_index.return_value = 1
     mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
-    self.assertIsNone(mm.summary_writer)
     self.assertFalse(gfile.exists(mm.summary_dir))
 
     mock_process_index.return_value = 0
     mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
-    self.assertIsInstance(mm.summary_writer, metric_writers.SummaryWriter)
+    self.assertIsInstance(mm.summary_writer, metric_writers.MetricWriter)
     self.assertTrue(gfile.exists(mm.summary_dir))
 
   @mock.patch('jax.process_index')
@@ -116,6 +115,7 @@ class MetricsManagerTest(absltest.TestCase):
     summaries = gfile.listdir(mm.summary_dir)
     self.assertLen(summaries, 1)
 
+    mm.flush()
     event_file = os.path.join(mm.summary_dir, summaries[0])
     events = list(tf.compat.v1.train.summary_iterator(event_file))
     # First event is boilerplate
@@ -159,6 +159,7 @@ class MetricsManagerTest(absltest.TestCase):
     mm.write_metrics_summary(
         accumulated_metrics, step=4, duration=40.0, num_steps=2)
 
+    mm.flush()
     _validate_events(self, mm.summary_dir, expected_events, steps=[4, 4, 4])
 
 
@@ -237,11 +238,15 @@ class TrainerTest(parameterized.TestCase):
   @mock.patch('time.time')
   @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_accum_grads)
   @mock.patch('t5x.trainer.apply_grads', fake_apply_grads)
+  # avoids calls time.time() during logging
+  @mock.patch('absl.logging.info', lambda *_: None)
+  @mock.patch('absl.logging.log_every_n_seconds', lambda *_: None)
   def _test_train(self, precompile, mock_time=None):
     trainer = self.test_trainer
     initial_rng = trainer._base_rng
 
     if precompile:
+      # compile start, compile end
       mock_time.side_effect = [0, 1]
       trainer.compile_train(next(self.dataset.as_numpy_iterator()))
       trainer._compiled_train_step = mock.Mock(
@@ -250,8 +255,8 @@ class TrainerTest(parameterized.TestCase):
     trainer._partitioned_train_step = mock.Mock(
         side_effect=trainer._partitioned_train_step)
 
-    # train start, logging, train end, logging
-    mock_time.side_effect = [1, 5, 5, 5]
+    # train start, train end
+    mock_time.side_effect = [1, 5]
     num_steps = 2
     trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
 
@@ -284,6 +289,7 @@ class TrainerTest(parameterized.TestCase):
     else:
       self.assertIsNone(trainer._compiled_train_step)
       self.assertEqual(trainer._partitioned_train_step.call_count, num_steps)
+    trainer.train_metrics_manager.flush()
     _validate_events(
         self,
         trainer.train_metrics_manager.summary_dir,
@@ -298,6 +304,7 @@ class TrainerTest(parameterized.TestCase):
 
   @mock.patch('time.time')
   @mock.patch('t5x.trainer.eval_step', fake_eval_step)
+  @mock.patch('absl.logging.info', lambda *_: None)  # avoids time.time() calls
   def _test_eval(self, precompile, mock_time=None):
     trainer = self.test_trainer
     initial_rng = trainer._base_rng
@@ -308,6 +315,7 @@ class TrainerTest(parameterized.TestCase):
     }
 
     if precompile:
+      # [task1 start, task1 end, task2 start, task2 end]
       mock_time.side_effect = [0, 1, 2, 3]
       trainer.compile_eval({
           task: next(ds.as_numpy_iterator())
@@ -321,9 +329,8 @@ class TrainerTest(parameterized.TestCase):
     trainer._partitioned_eval_step = mock.Mock(
         side_effect=trainer._partitioned_eval_step)
 
-    # [task1 start, logging, task1 end, logging,
-    #  task2 start, logging, task2 end, logging]
-    mock_time.side_effect = [1, 1, 5, 5, 1, 1, 5, 5]
+    # [task1 start, task1 end, task2 start, task2 end]
+    mock_time.side_effect = [1, 5, 1, 5]
     trainer.eval(
         {task: ds.as_numpy_iterator() for task, ds in task_datasets.items()})
 
@@ -346,10 +353,7 @@ class TrainerTest(parameterized.TestCase):
 
     np.testing.assert_array_equal(trainer._base_rng, initial_rng)
     for task_name, expected_metrics in all_expected_metrics.items():
-      if task_name == 'task1':
-        steps = [2, 2]
-      else:
-        steps = [1, 1]
+      steps = [0, 0]
       if precompile:
         steps = [0] + steps
         expected_metrics['timing/compilation_seconds'] = 1
@@ -361,12 +365,9 @@ class TrainerTest(parameterized.TestCase):
         self.assertEmpty(trainer._compiled_eval_steps)
         self.assertEqual(trainer._partitioned_eval_step.call_count,
                          sum(len(ds) for ds in task_datasets.values()))
-
-      _validate_events(
-          self,
-          trainer.eval_metrics_managers[task_name].summary_dir,
-          expected_metrics,
-          steps=steps)
+      mm = trainer.eval_metrics_managers[task_name]
+      mm.flush()
+      _validate_events(self, mm.summary_dir, expected_metrics, steps=steps)
 
   def test_eval_noprecompile(self):
     self._test_eval(False)
@@ -670,16 +671,6 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
         num_microbatches=None)
     return test_trainer
 
-  def create_ds(self, batch_size: int, num_batches: int):
-    # The fake trainer increments train_state.step by sum(batch['i']). Hence
-    # create datasets where sum(batch['i']) == 1 to increment train_state.step
-    # by 1 for the test.
-    batch = [1] + [0] * (batch_size - 1)
-    batches = batch * num_batches
-    mapfn = lambda i: {'i': [tf.cast(i, tf.int32)], 'j': [tf.cast(1, tf.int32)]}
-    return tf.data.Dataset.from_tensor_slices(batches).map(mapfn).batch(
-        batch_size, drop_remainder=True)
-
   @mock.patch('t5x.trainer.accumulate_grads_microbatched')
   @mock.patch('t5x.trainer.apply_grads', fake_apply_grads)
   def test_rng_determinism(self, mock_accum_grads):
@@ -699,10 +690,10 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     end_step = 100
     random_seed = 23
     trainer = self.create_trainer(step=start_step, random_seed=random_seed)
-    ds = self.create_ds(batch_size=2, num_batches=500)
+    # 500 batches of size 2
+    ds = [np.zeros(2)] * 500
 
-    metrics = trainer.train(
-        ds.as_numpy_iterator(), num_steps=end_step - start_step)
+    metrics = trainer.train(iter(ds), num_steps=end_step - start_step)
     base_rng = jax.random.PRNGKey(random_seed)
     expected_rng_sum = np.sum(
         [jax.random.fold_in(base_rng, i) for i in range(start_step, end_step)],
