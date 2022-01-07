@@ -41,8 +41,7 @@ the TPU VM instance unless otherwise stated.
 
     where `TPU_NAME` and `ZONE` are the name and the zone used in step 2.
 
-4.  Install T5X and the dependencies. JAX and Gin-config need to be installed
-    from the source.
+4.  Install T5X and the dependencies.
 
     ```sh
     git clone --branch=main https://github.com/google-research/t5x
@@ -54,7 +53,7 @@ the TPU VM instance unless otherwise stated.
     ```
 
 
-5.  Create toogle Cloud Storage (GCS) bucket to store the dataset and model
+5.  Create Google Cloud Storage (GCS) bucket to store the dataset and model
     checkpoints. To create a GCS bucket, see these
     [instructions](https://cloud.google.com/storage/docs/creating-buckets).
 
