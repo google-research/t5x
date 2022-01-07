@@ -536,6 +536,8 @@ def accumulate_grads_microbatched(
   if num_microbatches is None or num_microbatches <= 1:
     (_, (_, metrics)), grad_accum = grad_fn(train_state.params, batch,
                                             dropout_rng)
+    metrics = metrics_lib.set_microbatch_adjusted_metrics_microbatches(
+        metrics, 1)
   else:
     assert batch_size % num_microbatches == 0, (
         "Batch size isn't divided evenly by num_microbatches.")
@@ -637,6 +639,7 @@ def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
               batch: jnp.ndarray) -> MetricMapType:
   """Default evaluation step."""
   _, (_, metrics) = model.eval_fn(train_state.params, batch)
+  metrics = metrics_lib.set_microbatch_adjusted_metrics_microbatches(metrics, 1)
   return metrics
 
 

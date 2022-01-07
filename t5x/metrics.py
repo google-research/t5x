@@ -97,12 +97,11 @@ class MicrobatchAdjusted(clu_metrics.Metric):
 
   metric: clu_metrics.Metric
   per_step: bool = struct.field(pytree_node=False)
-  num_microbatches: int = struct.field(pytree_node=False)
+  num_microbatches: Optional[int] = None
 
   def merge(self, other: "MicrobatchAdjusted") -> "MicrobatchAdjusted":
     assert type(self.metric) is type(other.metric)
     assert self.per_step == other.per_step
-    assert self.num_microbatches == other.num_microbatches
     return type(self)(
         metric=self.metric.merge(other.metric),
         per_step=self.per_step,
@@ -114,6 +113,10 @@ class MicrobatchAdjusted(clu_metrics.Metric):
     return self.replace(num_microbatches=num_microbatches)
 
   def compute(self) -> Scalar:
+    if self.num_microbatches is None:
+      raise ValueError(
+          "`num_microbatches` must be set by calling `replace_num_microbatches` before computing metric."
+      )
     if self.per_step:
       return self.metric.compute() * self.num_microbatches
     else:
@@ -171,7 +174,10 @@ class TimeRate(clu_metrics.Metric):
     return self.replace(duration=duration)
 
   def compute(self) -> Scalar:
-    assert self.duration is not None, "TimeRate duration cannot be None"
+    if self.duration is None:
+      raise ValueError(
+          "`TimeRate` `duration` must be set by calling `replace_duration` before computing."
+      )
     return self.numerator / self.duration
 
 
