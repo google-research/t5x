@@ -124,7 +124,7 @@ class MicrobatchAdjusted(clu_metrics.Metric):
 
 
 @flax.struct.dataclass
-class TimeRate(clu_metrics.Metric):
+class Time(clu_metrics.Metric):
   """Computes the sum of a float-valued metric over a period of time.
 
   Duration (the denominator) must be set manually. This is because JAX does not
@@ -134,28 +134,19 @@ class TimeRate(clu_metrics.Metric):
 
   See also documentation of `Metric`.
   """
-
-  numerator: jnp.ndarray
   duration: Optional[Scalar] = None
 
-  @classmethod
-  def from_model_output(cls, value: float, **_) -> clu_metrics.Metric:
-    """Initializes a TimeRate Metric from a float value (the numerator).
+  def merge(self, other: "Time") -> "Time":
+    return self
 
-    Args:
-      value: a float (numerator of the metric)
+  def compute(self) -> Scalar:
+    if self.duration is None:
+      raise ValueError(
+          "`Time` `duration` must be set by calling `replace_duration` before computing."
+      )
+    return self.duration
 
-    Returns:
-      A Sum object.
-    """
-    return cls(numerator=value)
-
-  def merge(self, other: "TimeRate") -> "TimeRate":
-    assert_msg = "Merging with non-None durations is currently not supported."
-    assert self.duration is None and other.duration is None, assert_msg
-    return type(self)(numerator=self.numerator + other.numerator)
-
-  def replace_duration(self, duration: Scalar) -> "TimeRate":
+  def replace_duration(self, duration: Scalar) -> "Time":
     """Replaces duration with the given value.
 
     Should be used outside a compiled function to set the duration of the
@@ -165,24 +156,61 @@ class TimeRate(clu_metrics.Metric):
       duration: metric duration
 
     Returns:
-      A new TimeRate object.
+      A new Time object.
     """
+    return self.replace(duration=duration)
+
+
+@flax.struct.dataclass
+class TimeRate(Time):
+  """Computes the sum of a float-valued metric over a period of time.
+
+  Duration (the denominator) must be set using replace_duration. This is because
+  JAX does not properly support time functions inside compiled functions.
+  Calling time.time() inside a compiled function results in the stored time
+  being the compilation time, not the run time.
+
+  See also documentation of `Time` and `Metric`.
+  """
+
+  numerator: Optional[jnp.ndarray] = None
+
+  @classmethod
+  def from_model_output(cls, numerator: float, **_) -> clu_metrics.Metric:
+    """Initializes a TimeRate Metric from a float value (the numerator).
+
+    Args:
+      numerator: a float (numerator of the metric)
+
+    Returns:
+      A TimeRate object.
+    """
+    return cls(numerator=numerator)
+
+  def merge(self, other: "TimeRate") -> "TimeRate":
+    assert_msg = "Merging with non-None durations is currently not supported."
+    assert self.duration is None and other.duration is None, assert_msg
+    return type(self)(numerator=self.numerator + other.numerator)
+
+  def compute(self) -> Scalar:
+    duration = super().compute()
+    return self.numerator / duration
+
+  def replace_duration(self, duration: Scalar) -> "Time":
     if not isinstance(self.numerator, np.ndarray):
       raise ValueError(
           "Expected numerator to be of type np.ndarray since method should be "
           "called outside of a compiled function. Got ", type(self.numerator))
-    return self.replace(duration=duration)
-
-  def compute(self) -> Scalar:
-    if self.duration is None:
-      raise ValueError(
-          "`TimeRate` `duration` must be set by calling `replace_duration` before computing."
-      )
-    return self.numerator / self.duration
+    return super().replace_duration(duration)
 
 
 def is_metric_obj(obj):
   return isinstance(obj, clu_metrics.Metric)
+
+
+def is_time_metric(obj):
+  return isinstance(obj, Time) or (isinstance(obj, MicrobatchAdjusted) and
+                                   isinstance(obj.metric, Time))
 
 
 def create_metrics_dict(float_metrics_dict):
@@ -220,17 +248,16 @@ def shape_obj_to_defined_obj(obj: clu_metrics.Metric):
       **{a.name: class_attr_shape(a) for a in dataclasses.fields(obj)})
 
 
-def set_time_rate_metrics_duration(metrics, duration):
+def set_time_metrics_duration(metrics, duration):
   """Sets duration for TimeRate objects in metrics pytree."""
 
   def fn(o):
-    if isinstance(o, TimeRate):
+    if isinstance(o, Time):
       return o.replace_duration(duration)
     else:
       return o
 
-  return jax.tree_map(
-      fn, metrics, is_leaf=lambda obj: isinstance(obj, TimeRate))
+  return jax.tree_map(fn, metrics, is_leaf=lambda obj: isinstance(obj, Time))
 
 
 def set_microbatch_adjusted_metrics_microbatches(metrics, num_microbatches):

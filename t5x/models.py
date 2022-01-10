@@ -1090,18 +1090,22 @@ def compute_base_metrics(
       'loss_per_all_target_tokens':
           clu_metrics.Average(total=loss, count=num_tokens),
       'timing/seqs_per_second':
-          metrics_lib.TimeRate(numerator=num_examples),
+          metrics_lib.TimeRate.from_model_output(numerator=num_examples),
       'timing/steps_per_second':
           metrics_lib.MicrobatchAdjusted(
               metric=metrics_lib.TimeRate(numerator=1), per_step=False),
+      'timing/seconds':
+          metrics_lib.Time(),
       'timing/seqs':
           metrics_lib.Sum(num_examples),
       'timing/seqs_per_second_per_core':
-          metrics_lib.TimeRate(numerator=num_examples / num_devices),
+          metrics_lib.TimeRate.from_model_output(numerator=num_examples /
+                                                 num_devices),
       'timing/target_tokens_per_second':
-          metrics_lib.TimeRate(numerator=num_tokens),
+          metrics_lib.TimeRate.from_model_output(numerator=num_tokens),
       'timing/target_tokens_per_second_per_core':
-          metrics_lib.TimeRate(numerator=num_tokens / num_devices),
+          metrics_lib.TimeRate.from_model_output(numerator=num_tokens /
+                                                 num_devices),
       'nonpadding_fraction':
           clu_metrics.Average(total=nonpadding_tokens, count=num_tokens),
       'z_loss':

@@ -295,7 +295,7 @@ class MetricsManager(object):
       # we first copy the metrics to host.
       fetched_metrics = jax.tree_map(jax.device_get, metrics)
       # We set the duration on TimeRate metrics.
-      final_metrics = metrics_lib.set_time_rate_metrics_duration(
+      final_metrics = metrics_lib.set_time_metrics_duration(
           fetched_metrics, duration)
       summary = self._summarize_fn(
           metrics=final_metrics, duration=duration, num_steps=num_steps)

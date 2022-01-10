@@ -14,13 +14,15 @@
 
 """Tests for clu.metrics."""
 
+from absl.testing import absltest
 from absl.testing import parameterized
+import jax
+import jax.numpy as jnp
 import numpy as np
 from t5x import metrics
-import tensorflow as tf
 
 
-class MetricsTest(tf.test.TestCase, parameterized.TestCase):
+class MetricsTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       ("0d_values", 2., 2.), ("1d_values", [1, 2, 3], 6.),
@@ -28,7 +30,7 @@ class MetricsTest(tf.test.TestCase, parameterized.TestCase):
       ("3d_values", [[[1, 2], [2, 3]], [[2, 1], [3, 4]], [[3, 1], [4, 1]]], 27.)
   )
   def test_sum(self, values, expected_result):
-    self.assertAllClose(
+    self.assertAlmostEqual(
         metrics.Sum.from_model_output(values).compute(), expected_result)
 
   def test_time_rate(self):
@@ -36,8 +38,37 @@ class MetricsTest(tf.test.TestCase, parameterized.TestCase):
     duration = 2.
     metric = metrics.TimeRate.from_model_output(value).replace_duration(
         duration)
-    self.assertAllClose(metric.compute(), value / duration)
+    self.assertAlmostEqual(metric.compute(), value / duration)
+
+  def test_time_rate_unset_duration(self):
+    value = jnp.array([3.])
+    metric = metrics.TimeRate.from_model_output(value)
+    with self.assertRaises(ValueError):
+      metric.compute()
+
+  def test_time_rate_sets_duration_inside_jitted_fn(self):
+
+    @jax.jit
+    def fn():
+      value = jnp.array([3.])
+      duration = 2.
+      metric = metrics.TimeRate.from_model_output(value).replace_duration(
+          duration)
+      return metric
+
+    with self.assertRaises(ValueError):
+      fn()
+
+  def test_time(self):
+    duration = 2.
+    metric = metrics.Time().replace_duration(duration)
+    self.assertAlmostEqual(metric.compute(), duration)
+
+  def test_time_unset_duration(self):
+    metric = metrics.Time()
+    with self.assertRaises(ValueError):
+      metric.compute()
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  absltest.main()
