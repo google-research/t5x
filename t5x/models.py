@@ -190,10 +190,9 @@ class BaseModel(abc.ABC):
     """Returns the initial variables of the model."""
     pass
 
-  @abc.abstractmethod
   def get_initial_metrics(self) -> MetricsMap:
     """Dictionary of metrics and initial values."""
-    pass
+    return {}
 
   @abc.abstractmethod
   def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
