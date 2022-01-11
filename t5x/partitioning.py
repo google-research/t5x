@@ -505,6 +505,13 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     if num_partitions is model_parallel_submesh is None:
       raise ValueError('At least one of `num_partitions` or '
                        '`model_parallel_submesh` must be set.')
+
+    if num_partitions is not None and model_parallel_submesh is not None:
+      warnings.warn(
+          'At most one of `num_partitions` or `model_parallel_submesh` must be '
+          'set. A ValueError will be thrown from 2022/01/18. Please specify '
+          'one of them', DeprecationWarning)
+
     self._num_partitions = num_partitions
     self._model_parallel_submesh = model_parallel_submesh
     self._params_on_devices = params_on_devices
