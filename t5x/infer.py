@@ -29,6 +29,7 @@ import re
 import shutil
 import time
 from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, Tuple, Type
+import warnings
 
 from absl import logging
 import jax
@@ -235,9 +236,10 @@ def infer(*,
           shard_id: int = 0,
           num_shards: int = 1,
           run_xprof: bool = True,
-          merge_epoch_results: bool = True,
+          merge_chunked_results: bool = True,
           write_fn: WriteFn = write_inferences_to_file,
-          checkpoint_ds_iter: bool = True):
+          checkpoint_ds_iter: bool = True,
+          merge_epoch_results=None):
   """Infer function.
 
   Args:
@@ -256,7 +258,7 @@ def infer(*,
       work across multiple jobs.
     num_shards: Total number of dataset shards to split dataset across.
     run_xprof: Whether to take an xprof snapshot during run.
-    merge_epoch_results: Whether to merge results of all epochs into a single
+    merge_chunked_results: Whether to merge results of all chunks into a single
       json file.
     write_fn: Callable function used to serialized and write inferences out to
       files.
@@ -264,7 +266,25 @@ def infer(*,
       checkpoint_period as well as the intermediate predictions. This must be
       disabled for certain datasets, for example since stateful iterators
       (e.g. from seqio.FunctionTask) cannot be checkpointed.
+    merge_epoch_results: Deprecated duplicate of `merge_chunked_results`.
   """
+  # TODO(adarob): Remove this backward compatibility section on 2022/01/18.
+  chunk_file_suffix_id = 'chunk'
+  if merge_epoch_results is not None:
+    warnings.warn(
+        '`merge_epoch_results` is deprecated and will be removed on '
+        '2022/01/18. Please use `merge_chunked_results` instead.',
+        DeprecationWarning)
+    logging.info(
+        'Setting `merge_chunked_results` to `merge_epoch_results` (%s).',
+        merge_epoch_results)
+    merge_chunked_results = merge_epoch_results
+    logging.info(
+        'Setting chunked result file name suffixes to be of the format '
+        '"epoch?????" instead of "chunk?????" since `merge_epoch_results` is '
+        'set.')
+    chunk_file_suffix_id = 'epoch'
+
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
         "`mode` must be one of 'predict', 'score' or 'predict_with_aux'. "
@@ -301,7 +321,7 @@ def infer(*,
         use_cached=dataset_cfg.use_cached,
         seed=dataset_cfg.seed)
 
-  # Each "epoch" should be how often we checkpoint the input dataset and flush
+  # Each "chunk" should be how often we checkpoint the input dataset and flush
   # the inferences to disk.
   logging.info('Inferring with checkpoints every %d batches of %d examples.',
                checkpoint_period, batch_size)
@@ -354,8 +374,8 @@ def infer(*,
     # (task, model)
     infer_ds = tf.data.Dataset.zip((ds, model_ds))
 
-    # Create batches the size of each epoch and index them.
-    # (i, [(task, model)] * epoch_size)
+    # Create batches the size of each chunk and index them.
+    # (i, [(task, model)] * chunk_size)
     infer_ds = infer_ds.padded_batch(
         checkpoint_period * batch_size, drop_remainder=False).enumerate()
 
@@ -374,44 +394,44 @@ def infer(*,
     logging.info("Starting inference loop for shard %d of %d of task '%s'.",
                  shard_id, num_shards, task.name)
 
-    def _write_epoch_and_canonicalize_ckpt(epoch: int, epoch_path: str,
+    def _write_chunk_and_canonicalize_ckpt(chunk: int, chunk_path: str,
                                            inferences: Sequence[Any],
                                            task_ds: tf.data.Dataset,
-                                           epoch_ckpt_path: str):
+                                           chunk_ckpt_path: str):
       write_tick = time.time()
-      logging.info('Writing epoch %d results to %s', epoch, epoch_path)
-      write_fn(epoch_path, inferences, task_ds, mode,
+      logging.info('Writing chunk %d results to %s', chunk, chunk_path)
+      write_fn(chunk_path, inferences, task_ds, mode,
                task.output_features['targets'].vocabulary)
       write_time = time.time() - write_tick
       logging.info('Writing completed in %02f seconds (%02f examples/sec).',
                    write_time,
                    len(inferences) / write_time)
-      update_measurement_series('writing_total_sec', epoch, write_time)
-      update_measurement_series('writing_examples_per_sec', epoch,
+      update_measurement_series('writing_total_sec', chunk, write_time)
+      update_measurement_series('writing_examples_per_sec', chunk,
                                 len(inferences) / write_time)
 
       if checkpoint_ds_iter:
         # Canonicalize checkpoint.
-        for fname in gfile.glob(epoch_ckpt_path + '*'):
+        for fname in gfile.glob(chunk_ckpt_path + '*'):
           gfile.rename(
-              fname, fname.replace(epoch_ckpt_path, ckpt_path), overwrite=True)
+              fname, fname.replace(chunk_ckpt_path, ckpt_path), overwrite=True)
 
-    # Main Loop over "epochs".
-    for epoch, epoch_batch in infer_ds_iter:
-      logging.info('Starting epoch %d', epoch)
+    # Main Loop over "chunks".
+    for chunk, chunk_batch in infer_ds_iter:
+      logging.info('Starting chunk %d', chunk)
 
-      epoch_tick = time.time()
+      chunk_tick = time.time()
 
 
-      # Load the dataset for the next epoch. We can't use `infer_ds_iter`
-      # directly since `infer_fn` needs to know the exact size of each epoch,
+      # Load the dataset for the next chunk. We can't use `infer_ds_iter`
+      # directly since `infer_fn` needs to know the exact size of each chunk,
       # which may be smaller for the final one.
-      epoch_ds = tf.data.Dataset.from_tensor_slices(epoch_batch)
-      epoch_ds.cache().prefetch(AUTOTUNE)
+      chunk_ds = tf.data.Dataset.from_tensor_slices(chunk_batch)
+      chunk_ds.cache().prefetch(AUTOTUNE)
 
-      # Unzip epoch dataset in to pretokenized and model datasets.
-      task_ds = epoch_ds.map(lambda p, m: p, num_parallel_calls=AUTOTUNE)
-      model_ds = epoch_ds.map(lambda p, m: m, num_parallel_calls=AUTOTUNE)
+      # Unzip chunk dataset in to pretokenized and model datasets.
+      task_ds = chunk_ds.map(lambda p, m: p, num_parallel_calls=AUTOTUNE)
+      model_ds = chunk_ds.map(lambda p, m: m, num_parallel_calls=AUTOTUNE)
 
       logging.info('Running inference on %d batches.', checkpoint_period)
       # Sort by and strip index.
@@ -421,64 +441,67 @@ def infer(*,
       ]
 
       if jax.process_index() == 0:
-        epoch_time = time.time() - epoch_tick
-        logging.info('Epoch completed in %02f seconds (%02f examples/sec).',
-                     epoch_time,
-                     len(inferences) / epoch_time)
-        update_measurement_series('inference_total_sec', epoch, epoch_time)
-        update_measurement_series('inference_examples_per_sec', epoch,
-                                  len(inferences) / epoch_time)
+        chunk_time = time.time() - chunk_tick
+        logging.info('chunk completed in %02f seconds (%02f examples/sec).',
+                     chunk_time,
+                     len(inferences) / chunk_time)
+        update_measurement_series('inference_total_sec', chunk, chunk_time)
+        update_measurement_series('inference_examples_per_sec', chunk,
+                                  len(inferences) / chunk_time)
 
-        epoch_path = os.path.join(tmp_dir, f'{output_fname}-epoch{epoch:05}')
+        chunk_path = os.path.join(
+            tmp_dir, f'{output_fname}-{chunk_file_suffix_id}{chunk:05}')
 
-        epoch_ckpt_path = None
+        chunk_ckpt_path = None
         if checkpoint_ds_iter:
           # Store iterator checkpoint in temporary location before writing the
           # model output asynchronously. After outputs are written, the
           # checkpoint will be moved to the canonical location to be used if
           # restart occurs.
           ckpt_tick = time.time()
-          epoch_ckpt_path = input_ckpt.write(
-              os.path.join(tmp_dir, f'{epoch}.ckpt'))
+          chunk_ckpt_path = input_ckpt.write(
+              os.path.join(tmp_dir, f'{chunk}.ckpt'))
           logging.info(
               'Checkpoint written to temporary location in %02f seconds.',
               time.time() - ckpt_tick)
 
         # These will execute sequentially since the ThreadPool size is 1.
         write_thread_pool.submit(
-            _write_epoch_and_canonicalize_ckpt,
-            epoch=epoch,
-            epoch_path=epoch_path,
+            _write_chunk_and_canonicalize_ckpt,
+            chunk=chunk,
+            chunk_path=chunk_path,
             inferences=inferences,
             task_ds=task_ds,
-            epoch_ckpt_path=epoch_ckpt_path)
+            chunk_ckpt_path=chunk_ckpt_path)
 
       # Wait for checkpoint to be written before continuing.
-      multihost_utils.sync_devices(f'{task.name}:checkpoint_epoch{epoch:05}')
+      multihost_utils.sync_devices(f'{task.name}:checkpoint_chunk{chunk:05}')
 
     logging.info("Finished inference for task '%s'.", task.name)
 
-    logging.info('Waiting for epoch writes to complete.')
+    logging.info('Waiting for chunk writes to complete.')
     write_thread_pool.shutdown(wait=True)
 
-    if jax.process_index() == 0 and merge_epoch_results:
-      logging.info('Merging epoch results.')
-      # Merge epochs into single file.
-      epoch_paths = sorted(
-          gfile.glob(os.path.join(tmp_dir, f'{output_fname}-epoch?????')))
+    if jax.process_index() == 0 and merge_chunked_results:
+      logging.info('Merging chunk results.')
+      # Merge chunks into single file.
+      chunk_paths = sorted(
+          gfile.glob(
+              os.path.join(tmp_dir,
+                           f'{output_fname}-{chunk_file_suffix_id}?????')))
 
-      if not epoch_paths:
+      if not chunk_paths:
         raise FileNotFoundError(
-            'No epoch results found! One possible explanation is that your '
+            'No chunk results found! One possible explanation is that your '
             'input did not contain any examples')
 
-      assert int(epoch_paths[-1][-5:]) + 1 == len(epoch_paths), (
-          f'Expecting {int(epoch_paths[-1][-5:])} epoch paths, found '
-          f'{len(epoch_paths)}')
+      assert int(chunk_paths[-1][-5:]) + 1 == len(chunk_paths), (
+          f'Expecting {int(chunk_paths[-1][-5:])} chunk paths, found '
+          f'{len(chunk_paths)}')
       output_path = os.path.join(output_dir, output_fname)
       with gfile.GFile(output_path, 'wb') as merged:
-        for epoch_path in epoch_paths:
-          with gfile.GFile(epoch_path, 'rb') as ef:
+        for chunk_path in chunk_paths:
+          with gfile.GFile(chunk_path, 'rb') as ef:
             shutil.copyfileobj(ef, merged)
       logging.info('Results written to %s.', output_path)
       logging.info('Deleting temporary files.')
