@@ -1350,6 +1350,15 @@ def load_t5x_checkpoint(
   with gfile.GFile(path, 'rb') as fp:
     ckpt_contents = serialization.msgpack_restore(fp.read())
 
+  # If reading a ckpt that was written with gfile driver but the current
+  # session uses the gcs driver, convert the ckpt's driver to gcs.
+  if path.startswith('gs://'):
+    ckpt_contents = _maybe_update_ts_from_file_to_gcs(ckpt_contents)
+  # If a ckpt was saved in gcs and is being loaded locally, then convert the
+  # driver to file or gfile. If the ckpt was not saved in gcs, do not change.
+  else:
+    ckpt_contents = _maybe_update_ts_from_gcs_to_file(ckpt_contents)
+
   # Remap that variable names to the most recent formatting.
   if remap:
     ckpt_optimizer_state = _get_optimizer_state_dict(ckpt_contents, {},
