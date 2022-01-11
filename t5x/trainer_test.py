@@ -52,8 +52,7 @@ def _validate_events(test_case, summary_dir, expected_metrics, steps):
   test_case.assertLen(summaries, 1)
   summary_path = os.path.join(summary_dir, summaries[0])
   event_file = os.path.join(summary_path)
-  with mock.patch('time.time', mock.Mock(return_value=0)):
-    events = list(tf.compat.v1.train.summary_iterator(event_file))
+  events = list(tf.compat.v1.train.summary_iterator(event_file))
   actual_events = {}
   # First event is boilerplate
   test_case.assertLen(events, len(steps) + 1)
@@ -139,8 +138,8 @@ class MetricsManagerTest(absltest.TestCase):
       }
 
     accumulated_metrics = {
-        'loss': metrics_lib.Sum.from_model_output(40.0),
-        'accuracy': metrics_lib.Sum.from_model_output(198.0)
+        'loss': metrics_lib.Sum(40.0),
+        'accuracy': metrics_lib.Sum(198.0)
     }
     expected_events = {
         'loss': 20.0,
@@ -151,14 +150,16 @@ class MetricsManagerTest(absltest.TestCase):
     # Only host 0 has a summary writer.
     mock_process_index.return_value = 1
     mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
-    mm.write_metrics_summary(
-        accumulated_metrics, step=4, duration=40.0, num_steps=2)
+    mm.write_metrics_summary(accumulated_metrics, step=4, num_steps=2)
     self.assertEmpty(gfile.listdir(mm.summary_dir))
 
     mock_process_index.return_value = 0
-    mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
-    mm.write_metrics_summary(
-        accumulated_metrics, step=4, duration=40.0, num_steps=2)
+    with mock.patch(
+        'time.time',
+        side_effect=[0, 40]  # start_time, end_time
+    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+      mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
+      mm.write_metrics_summary(accumulated_metrics, step=4, num_steps=2)
 
     mm.flush()
     _validate_events(self, mm.summary_dir, expected_events, steps=[4, 4, 4])
@@ -171,18 +172,14 @@ def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
   grad_accum = jax.tree_map(lambda x: i, optimizer)
   # Add j to each metric.
   j = batch['j'].sum()
-  metrics = {
-      'loss': metrics_lib.Sum.from_model_output(j),
-      'accuracy': metrics_lib.Sum.from_model_output(j)
-  }
+  metrics = {'loss': metrics_lib.Sum(j), 'accuracy': metrics_lib.Sum(j)}
   return grad_accum, metrics
 
 
 def fake_apply_grads(optimizer, grad_accum, metrics, learning_rate,
                      weight_metrics_computer):
   del weight_metrics_computer
-  metrics['learning_rate'] = clu.metrics.Average.from_model_output(
-      learning_rate)
+  metrics['learning_rate'] = clu.metrics.Average(learning_rate, count=1)
   optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics
 
@@ -192,10 +189,7 @@ def fake_eval_step(model, optimizer, batch):
   # Add `i` to each metric.
   i = batch['i'].sum()
 
-  return {
-      'loss': metrics_lib.Sum.from_model_output(i),
-      'accuracy': metrics_lib.Sum.from_model_output(i)
-  }
+  return {'loss': metrics_lib.Sum(i), 'accuracy': metrics_lib.Sum(i)}
 
 
 class TrainerTest(parameterized.TestCase):
@@ -236,29 +230,38 @@ class TrainerTest(parameterized.TestCase):
         learning_rate_fn=lambda step: 2 * step,
         num_microbatches=None)
 
-  @mock.patch('time.time')
+  def tearDown(self) -> None:
+    # Manually delete managers to avoid phantom threads crossing test cases.
+    del self.test_trainer.train_metrics_manager
+    for mm in self.test_trainer.eval_metrics_managers.values():
+      del mm
+    return super().tearDown()
+
   @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_accum_grads)
   @mock.patch('t5x.trainer.apply_grads', fake_apply_grads)
-  # avoids calls time.time() during logging
-  @mock.patch('absl.logging.log', lambda *_: None)  # avoids time.time() calls
-  def _test_train(self, precompile, mock_time=None):
+  def _test_train(self, precompile):
     trainer = self.test_trainer
     initial_rng = trainer._base_rng
 
     if precompile:
-      # compile start, compile end
-      mock_time.side_effect = [0, 1]
-      trainer.compile_train(next(self.dataset.as_numpy_iterator()))
+      with mock.patch(
+          'time.time',
+          side_effect=[0, 1]  # compile start, end
+      ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+        trainer.compile_train(next(self.dataset.as_numpy_iterator()))
       trainer._compiled_train_step = mock.Mock(
           side_effect=trainer._compiled_train_step)
 
     trainer._partitioned_train_step = mock.Mock(
         side_effect=trainer._partitioned_train_step)
 
-    # train start, train end
-    mock_time.side_effect = [1, 5]
     num_steps = 2
-    trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
+    with mock.patch(
+        'time.time',
+        side_effect=[1, 5]  # start_time, end_time
+    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+      trainer.train_metrics_manager.reset_duration_timer()
+      trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
 
     initial_metrics = {
         'loss': 0.,
@@ -302,25 +305,26 @@ class TrainerTest(parameterized.TestCase):
   def test_train_precompile(self):
     self._test_train(True)
 
-  @mock.patch('time.time')
   @mock.patch('t5x.trainer.eval_step', fake_eval_step)
-  @mock.patch('absl.logging.log', lambda *_: None)  # avoids time.time() calls
-  def _test_eval(self, precompile, mock_time=None):
+  def _test_eval(self, precompile):
     trainer = self.test_trainer
     initial_rng = trainer._base_rng
 
     task_datasets = {
         'task1': self.dataset.take(2),
-        'task2': self.dataset.take(1)
+        'task2': self.dataset.repeat().take(5)
     }
 
     if precompile:
       # [task1 start, task1 end, task2 start, task2 end]
-      mock_time.side_effect = [0, 1, 2, 3]
-      trainer.compile_eval({
-          task: next(ds.as_numpy_iterator())
-          for task, ds in task_datasets.items()
-      })
+      with mock.patch(
+          'time.time',
+          side_effect=[0, 1, 2, 3]  # [t1 start, t1 end, t2 start, t2 end]
+      ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+        trainer.compile_eval({
+            task: next(ds.as_numpy_iterator())
+            for task, ds in task_datasets.items()
+        })
       trainer._compiled_eval_steps = {
           task: mock.Mock(side_effect=trainer._compiled_eval_steps[task])
           for task in task_datasets
@@ -329,26 +333,24 @@ class TrainerTest(parameterized.TestCase):
     trainer._partitioned_eval_step = mock.Mock(
         side_effect=trainer._partitioned_eval_step)
 
-    # [task1 start, task1 end, task2 start, task2 end]
-    mock_time.side_effect = [1, 5, 1, 5]
-    trainer.eval(
-        {task: ds.as_numpy_iterator() for task, ds in task_datasets.items()})
+    with mock.patch(
+        'time.time',
+        side_effect=[1, 5, 5, 8]  # t1 start, t1 end, t2 start, t2 end]
+    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+      trainer.eval(
+          {task: ds.as_numpy_iterator() for task, ds in task_datasets.items()})
 
-    initial_metrics = {
-        'loss': 0.,
-        'accuracy': 0.,
-    }
     all_expected_metrics = {
         # 0+1+2+3 = 6
         'task1': {
-            k: (v + 6) / 4  # divide by duration
-            for k, v in initial_metrics.items()
+            'loss': 6 / 4,  # divide by duration
+            'accuracy': 6 / 4
         },
-        # 0+1 = 1
+        # 0+1+2+3+4+5+0+1+2+3 = 21
         'task2': {
-            k: (v + 1) / 4  # divide by duration
-            for k, v in initial_metrics.items()
-        }
+            'loss': 21 / 3,  # divide by duration
+            'accuracy': 21 / 3
+        },
     }
 
     np.testing.assert_array_equal(trainer._base_rng, initial_rng)
@@ -534,20 +536,18 @@ class TrainerTest(parameterized.TestCase):
 
     self.assertEqual(trainer_stop_training, stop_training)
 
-  @mock.patch('time.time')
-  def test_compile_train(self, mock_time=None):
+  def test_compile_train(self):
     trainer = self.test_trainer
     trainer._partitioned_train_step = mock.Mock()
     trainer.train_metrics_manager = mock.Mock()
-
-    # compile start, compile end
-    mock_time.side_effect = [1, 5]
 
     batch = {
         'i': np.arange(10, dtype=np.int32).reshape((2, 5)),
         'j': np.ones((), dtype=np.float32)
     }
-    trainer.compile_train(batch)
+    # compile start, compile end
+    with mock.patch('time.time', side_effect=[1, 5]):
+      trainer.compile_train(batch)
 
     trainer.train_metrics_manager.write_scalar.assert_called_with(
         'timing/compilation_seconds', 4, trainer.train_state.step)
@@ -557,8 +557,7 @@ class TrainerTest(parameterized.TestCase):
     self.assertEqual(train_step_args[0], trainer.train_state)
     test_utils.assert_same(train_step_args[1], batch)
 
-  @mock.patch('time.time')
-  def test_compile_eval(self, mock_time=None):
+  def test_compile_eval(self):
     trainer = self.test_trainer
     trainer._partitioned_eval_step = mock.Mock()
     trainer.eval_metrics_managers = {
@@ -570,8 +569,6 @@ class TrainerTest(parameterized.TestCase):
     trainer._partitioned_eval_step.lower().compile.side_effect = [
         'compiled1', 'compiled2', 'compiled3'
     ]
-    # eval1 start/end, eval2 start/end, eval3 start/end, eval 4 start/end
-    mock_time.side_effect = [1, 5, 6, 9, 10, 11, 12, 13]
 
     batches = {
         'eval1': {
@@ -588,7 +585,9 @@ class TrainerTest(parameterized.TestCase):
         },
     }
 
-    trainer.compile_eval(collections.OrderedDict(sorted(batches.items())))
+    # eval1 start/end, eval2 start/end, eval3 start/end, eval 4 start/end
+    with mock.patch('time.time', side_effect=[1, 5, 6, 9, 10, 11, 12, 13]):
+      trainer.compile_eval(collections.OrderedDict(sorted(batches.items())))
 
     trainer.eval_metrics_managers['eval1'].write_scalar.assert_called_with(
         'timing/compilation_seconds', 4, trainer.train_state.step)
@@ -700,6 +699,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
         axis=0,
         dtype=np.uint64)
     np.testing.assert_array_equal(metrics.result()['rng'], expected_rng_sum)
+
 
 if __name__ == '__main__':
   absltest.main()

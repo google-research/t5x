@@ -218,6 +218,25 @@ class WeightMetricsComputer(object):
     return metrics
 
 
+class _AtomicStopwatch(object):
+  """A timer that atomically computes durations between calls."""
+
+  def __init__(self):
+    self._mutex = threading.Lock()
+    self.reset()
+
+  def lap(self):
+    tock = time.time()
+    with self._mutex:
+      duration = tock - self._tick
+      self._tick = tock
+    return duration
+
+  def reset(self):
+    with self._mutex:
+      self._tick = time.time()
+
+
 class MetricsManager(object):
   """Manages a set of distributed metrics and their logging.
 
@@ -248,12 +267,14 @@ class MetricsManager(object):
     if self.summary_dir and jax.process_index() == 0:
       writers.append(metric_writers.SummaryWriter(self.summary_dir))
       writers.append(metric_writers.LoggingWriter(prefix=f"{name}: "))
-    self._writer = metric_writers.MultiWriter(writers)
-    self._writer_lock = threading.RLock()
+    self._writer = metric_writers.AsyncMultiWriter(writers)
+    self._writer_lock = threading.Lock()
     # We use a thread pool with a single worker to ensure that calls to the
     # function are run in order (but in a background thread).
     self._summary_pool = asynclib.Pool(
         thread_name_prefix="MetricsManager", max_workers=1)
+    # Keeps track of the time between metric fetch completions.
+    self._stopwatch = _AtomicStopwatch()
 
   def __del__(self):
     self.flush()
@@ -277,14 +298,23 @@ class MetricsManager(object):
     with self._writer_lock:
       self._writer.write_scalars(step, scalars)
 
+  def reset_duration_timer(self):
+    """Resets the duration timer."""
+    self._stopwatch.reset()
+
   def write_metrics_summary(self, metrics: MetricMapType, step: int,
-                            duration: float, num_steps: int) -> ArrayMapFuture:
+                            num_steps: int) -> ArrayMapFuture:
     """Writes summary based on accumulated metrics in a background thread.
+
+    Duration is automatically computed as the interval between completion of
+    metrics fetching. This closely approximates the duration of `num_steps`,
+    as the steps must be computes sequentually, and it is more accurate than
+    computing the time since the call to the step function since its actual
+    execution occurs asynchronously on the TPU/GPU device.
 
     Args:
       metrics: acculumated metric values.
       step: the current train step.
-      duration: the duration of the run being summarized.
       num_steps: the number of steps the metrics are accumulated across.
 
     Returns:
@@ -296,6 +326,8 @@ class MetricsManager(object):
       # For thread safety, since `_summarize_fn` may do additional computations,
       # we first copy the metrics to host.
       fetched_metrics = jax.tree_map(jax.device_get, metrics)
+      # Get the time since the last metric fetch was completed.
+      duration = self._stopwatch.lap()
       # We set the duration on TimeRate metrics.
       final_metrics = metrics_lib.set_time_metrics_duration(
           fetched_metrics, duration)
@@ -378,7 +410,6 @@ class BaseTrainer(abc.ABC):
             num_steps: int,
             start_step: Optional[int] = None) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""
-    tick = time.time()
     metrics = None
     # Compute step number on host to avoid communication overhead.
     start_step = int(
@@ -397,9 +428,8 @@ class BaseTrainer(abc.ABC):
         else:
           metrics = metrics_update
 
-    tock = time.time()
     return self.train_metrics_manager.write_metrics_summary(
-        metrics, start_step + num_steps, tock - tick, num_steps)
+        metrics, start_step + num_steps, num_steps)
 
   def compile_train(self, batch: BatchType) -> None:
     """Pre-compiles train step (if not yet compiled).
@@ -428,12 +458,14 @@ class BaseTrainer(abc.ABC):
     eval_summaries = {}
     for iter_name, batch_iter in batch_iters.items():
       logging.info("Evaluating: %s.", iter_name)
-      tick = time.time()
       metrics = None
       # Use a pre-compiled step function, if available.
       eval_step_fn = self._compiled_eval_steps.get(iter_name,
                                                    self._partitioned_eval_step)
+      mm = self.eval_metrics_managers[iter_name]
+
       num_steps = 0
+      mm.reset_duration_timer()
       for batch in batch_iter:
         num_steps += 1
         multihost_utils.assert_same(
@@ -448,10 +480,8 @@ class BaseTrainer(abc.ABC):
           jnp.array(-1),
           "Eval step mismatch across hosts. Check for empty dataset shard.")
 
-      tock = time.time()
-      eval_summaries[iter_name] = self.eval_metrics_managers[
-          iter_name].write_metrics_summary(metrics, self.train_state.step,
-                                           tock - tick, num_steps)
+      eval_summaries[iter_name] = mm.write_metrics_summary(
+          metrics, self.train_state.step, num_steps)
 
     # TODO(adarob): Return futures.
     return {k: v.result() for k, v in eval_summaries.items()}

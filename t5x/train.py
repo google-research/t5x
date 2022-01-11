@@ -430,8 +430,6 @@ def train(
 
   # Kickstart training dataset and compile train loop.
   logging.info('Kickstarting train dataset prefetch.')
-  # We flush here so that if the next log line doesn't appear in stdout, we can
-  # be sure we died during input reading.
   logging.flush()
 
   ds_tick = time.time()
@@ -442,6 +440,7 @@ def train(
   train_metrics.write_scalar('timing/dataset_warmup_seconds',
                              time.time() - ds_tick, host_step)
   logging.info('Compiling train loop.')
+  logging.flush()
   trainer.compile_train(first_batch)
 
   # Main Loop over "epochs".
@@ -459,6 +458,8 @@ def train(
       num_steps = min(total_steps - host_step, steps_per_epoch)
       epoch_end_step = host_step + num_steps
       logging.info('Training for %d steps.', num_steps)
+      # We manually reset the duration timer to start off the epoch.
+      trainer.train_metrics_manager.reset_duration_timer()
       while host_step < epoch_end_step:
         if trainer.stop_training:
           logging.info('Saving a checkpoint before early stopping...')
