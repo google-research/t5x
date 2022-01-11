@@ -52,7 +52,8 @@ def _validate_events(test_case, summary_dir, expected_metrics, steps):
   test_case.assertLen(summaries, 1)
   summary_path = os.path.join(summary_dir, summaries[0])
   event_file = os.path.join(summary_path)
-  events = list(tf.compat.v1.train.summary_iterator(event_file))
+  with mock.patch('time.time', mock.Mock(return_value=0)):
+    events = list(tf.compat.v1.train.summary_iterator(event_file))
   actual_events = {}
   # First event is boilerplate
   test_case.assertLen(events, len(steps) + 1)
@@ -239,8 +240,7 @@ class TrainerTest(parameterized.TestCase):
   @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_accum_grads)
   @mock.patch('t5x.trainer.apply_grads', fake_apply_grads)
   # avoids calls time.time() during logging
-  @mock.patch('absl.logging.info', lambda *_: None)
-  @mock.patch('absl.logging.log_every_n_seconds', lambda *_: None)
+  @mock.patch('absl.logging.log', lambda *_: None)  # avoids time.time() calls
   def _test_train(self, precompile, mock_time=None):
     trainer = self.test_trainer
     initial_rng = trainer._base_rng
@@ -304,7 +304,7 @@ class TrainerTest(parameterized.TestCase):
 
   @mock.patch('time.time')
   @mock.patch('t5x.trainer.eval_step', fake_eval_step)
-  @mock.patch('absl.logging.info', lambda *_: None)  # avoids time.time() calls
+  @mock.patch('absl.logging.log', lambda *_: None)  # avoids time.time() calls
   def _test_eval(self, precompile, mock_time=None):
     trainer = self.test_trainer
     initial_rng = trainer._base_rng
@@ -700,7 +700,6 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
         axis=0,
         dtype=np.uint64)
     np.testing.assert_array_equal(metrics.result()['rng'], expected_rng_sum)
-
 
 if __name__ == '__main__':
   absltest.main()

@@ -19,7 +19,6 @@ To create a custom trainer, subclass `BaseTrainer` and implement
 possibly by re-using the utility functions provided in this module.
 """
 import abc
-import concurrent.futures
 import enum
 import os
 import threading
@@ -28,6 +27,7 @@ from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Seque
 
 from absl import logging
 import cached_property
+from clu import asynclib
 from clu import metric_writers
 from clu import metrics as clu_metrics
 from flax.core import FrozenDict
@@ -250,8 +250,10 @@ class MetricsManager(object):
       writers.append(metric_writers.LoggingWriter(prefix=f"{name}: "))
     self._writer = metric_writers.MultiWriter(writers)
     self._writer_lock = threading.RLock()
-    self._summary_executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1)
+    # We use a thread pool with a single worker to ensure that calls to the
+    # function are run in order (but in a background thread).
+    self._summary_pool = asynclib.Pool(
+        thread_name_prefix="MetricsManager", max_workers=1)
 
   def __del__(self):
     self.flush()
@@ -303,13 +305,12 @@ class MetricsManager(object):
 
       return summary
 
-    return self._summary_executor.submit(_summarize_and_write)
+    return self._summary_pool(_summarize_and_write)()
 
   def flush(self):
-    self._summary_executor.shutdown(wait=True)
-    self._summary_executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1)
-    with self._writer_lock:
+    try:
+      self._summary_pool.join()
+    finally:
       self._writer.flush()
 
 
