@@ -239,7 +239,8 @@ def infer(*,
           merge_chunked_results: bool = True,
           write_fn: WriteFn = write_inferences_to_file,
           checkpoint_ds_iter: bool = True,
-          merge_epoch_results=None):
+          merge_epoch_results=None,
+          fallback_init_rng: Optional[int] = None):
   """Infer function.
 
   Args:
@@ -267,6 +268,11 @@ def infer(*,
       disabled for certain datasets, for example since stateful iterators
       (e.g. from seqio.FunctionTask) cannot be checkpointed.
     merge_epoch_results: Deprecated duplicate of `merge_chunked_results`.
+    fallback_init_rng: A random seed used for parameter initialization during
+      model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch
+      is set to True. If None, parameter initialization is not allowed during
+      model loading and having fallback_to_scratch enabled will result in an
+      error.
   """
   # TODO(adarob): Remove this backward compatibility section on 2022/01/18.
   chunk_file_suffix_id = 'chunk'
@@ -339,7 +345,11 @@ def infer(*,
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
       partitioner=partitioner)
-  train_state = train_step_initializer.from_checkpoint([restore_checkpoint_cfg])
+
+  if fallback_init_rng is not None:
+    fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
+  train_state = train_step_initializer.from_checkpoint(
+      [restore_checkpoint_cfg], init_rng=fallback_init_rng)
   if mode == 'predict':
     infer_step = model.predict_batch
   elif mode == 'predict_with_aux':

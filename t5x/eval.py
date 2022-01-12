@@ -62,7 +62,7 @@ def evaluate(
     output_dir: str,
     inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator,
     summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
-):
+    fallback_init_rng: Optional[int] = None):
   """Evaluation function.
 
   Args:
@@ -77,6 +77,11 @@ def evaluate(
     summarize_config_fn: A function that takes in the model directory, an
       optional SummaryWriter, and the step number, and writes a summary of the
       configuration. SummaryWriter will be None in most cases.
+    fallback_init_rng: A random seed used for parameter initialization during
+      model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch
+      is set to True. If None, parameter initialization is not allowed during
+      model loading and having fallback_to_scratch enabled will result in an
+      error.
   """
   if dataset_cfg.module:
     utils.import_module(dataset_cfg.module)
@@ -128,8 +133,10 @@ def evaluate(
   predict_fn = None
   score_fn = None
 
+  if fallback_init_rng is not None:
+    fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
   for train_state in train_state_initializer.from_checkpoints(
-      [restore_checkpoint_cfg]):
+      [restore_checkpoint_cfg], init_rng=fallback_init_rng):
 
     # Compile the model only once.
     if not predict_fn:
