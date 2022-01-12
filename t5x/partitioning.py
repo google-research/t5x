@@ -750,6 +750,36 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
                model_parallel_submesh: Optional[HardwareMesh] = None,
                params_on_devices: bool = True,
                logical_axis_rules: Optional[LogicalAxisRules] = None):
+    """ModelBasedPjitPartitioner constructor.
+
+
+    Args:
+      num_partitions: an integer that specifies the size of the model parallel
+        submesh to be automatically selected for the current topology. See
+        `model_parallel_submesh` for details on how this submesh is used.
+        Mutually exlusive with `model_parallel_submesh`.
+      model_parallel_submesh: is a 4-tuple that specifies the `(x, y, z, c)`
+        submesh model-parallel device tile, an axis of accelerator parallelism
+        orthogonal to data parallelism. Array axes in a model's parameters or
+        activations can be sharded over this submesh using axis rules (see
+        `logical_axis_rules`) that map them to 'model'. The effective number of
+        model sub-partitions is equal to `np.prod(model_parallel_submesh)` and
+        must evenly divide the total number of devices (i.e.,
+        `jax.device_count() % np.prod(model_parallel_submesh) == 0`). The rest
+        of the TPU mesh is the data parallel submesh, providing
+        `jax.device_count() // np.prod(model_parallel_submesh)` partitions. It
+        is used for data (batch) parallelism and to shard other array axes that
+        are mapped to 'data'. This argument is mutually exclusive with
+        `num_partitions`.
+      params_on_devices: whether to keep the params on devices, if False -
+        params stay in the host memory. Note that some partitioners might ignore
+        this setting, for example if they don't support storing all params on
+        device memory.
+      logical_axis_rules: an ordered sequence of KV tuples that maps logical
+        axis names to either `None` (not sharded), 'model' (to shard across the
+        model-parallel submesh), or 'data' (to shard across the data-parallel
+        submesh).
+    """
     super().__init__(
         num_partitions=num_partitions,
         model_parallel_submesh=model_parallel_submesh,
