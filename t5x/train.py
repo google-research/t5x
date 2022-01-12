@@ -101,7 +101,7 @@ def train(
                                   None],
     inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator,
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
-    concurrent_metrics: bool = False,
+    concurrent_metrics: bool = True,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None
 ) -> Tuple[int, train_state_lib.TrainState]:
@@ -495,6 +495,8 @@ def train(
     # Maybe save a checkpoint.
     if checkpoint_period and (final_epoch or
                               step_offset % checkpoint_period == 0):
+      # Make sure last train step has completed before starting the clock.
+      train_summary.result()
       logging.info('Saving checkpoint.')
       checkpoint_tick = time.time()
       checkpointer.save(trainer.train_state,
