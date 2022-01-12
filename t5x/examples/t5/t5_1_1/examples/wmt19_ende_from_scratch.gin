@@ -57,8 +57,7 @@ trainer.Trainer.num_microbatches = 2
 utils.create_learning_rate_scheduler.warmup_steps = 1000
 
 partitioning.ModelBasedPjitPartitioner:
-  num_partitions = 2
-  model_parallel_submesh = (1,1,1,2)
+  model_parallel_submesh = (1, 1, 1, 2)
 
 adafactor.Adafactor:
   logical_factor_rules = @adafactor.standard_logical_factor_rules()
