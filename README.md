@@ -388,4 +388,4 @@ This is not an officially supported Google product
 
 [t5_paper]: https://arxiv.org/abs/1910.10683
 [t5_github]: https://github.com/google-research/text-to-text-transfer-transformer
-[gin-primer]: gin-primer.md
+[gin-primer]: gin.md
