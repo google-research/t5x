@@ -441,21 +441,86 @@ def _insert(tpl, idx, x):
   return tuple(tmp)
 
 
-def standard_logical_axis_rules() -> LogicalAxisRules:
-  """Default sharding rules for T5X model in terms of logical axes names."""
-  return (
-      ('batch', 'data'),
-      ('vocab', 'model'),
-      ('embed', None),
-      ('mlp', 'model'),
-      ('heads', 'model'),
-      ('kv', None),
-      ('joined_kv', 'model'),  # joined heads+kv dim in 2D attn param layouts
-      ('relpos_buckets', None),
-      ('length', None),
-      ('layers', None),
-      ('stack', None),
-  )
+def standard_logical_axis_rules(
+    activation_partitioning_dims: int = 1,
+    parameter_partitioning_dims: int = 1) -> LogicalAxisRules:
+  """Default sharding rules for T5X model in terms of logical axis names.
+
+  Args:
+    activation_partitioning_dims: enables 2-D activation sharding when set to 2.
+    parameter_partitioning_dims: enables 2-D parameter sharding when set to 2.
+
+  Returns:
+    Sequence of logical axis rules
+  """
+  logging.info(
+      '`activation_partitioning_dims` = %d, `parameter_partitioning_dims` = %d',
+      activation_partitioning_dims, parameter_partitioning_dims)
+
+  if activation_partitioning_dims == 1 and parameter_partitioning_dims == 1:
+    rules = (
+        ('batch', 'data'),
+        ('vocab', 'model'),
+        ('embed', None),
+        ('mlp', 'model'),
+        ('heads', 'model'),
+        ('kv', None),
+        ('joined_kv', 'model'),  # joined heads+kv dim in 2D attn param layouts
+        ('relpos_buckets', None),
+        ('length', None),
+        ('layers', None),
+        ('stack', None),
+    )
+  elif activation_partitioning_dims == 2 and parameter_partitioning_dims == 1:
+    rules = [
+        ('batch', 'data'),
+        ('vocab', 'model'),
+        ('mlp', 'model'),
+        ('heads', 'model'),
+        ('kv', None),
+        ('joined_kv', 'model'),
+        ('embed', 'model'),
+        ('relpos_buckets', None),
+        ('length', None),
+        ('layers', None),
+        ('stack', None),
+    ]
+  elif activation_partitioning_dims == 1 and parameter_partitioning_dims == 2:
+    rules = [
+        ('batch', 'data'),
+        ('vocab', 'model'),
+        ('mlp', 'model'),
+        ('heads', 'model'),
+        ('kv', None),
+        ('joined_kv', 'model'),
+        ('embed', 'data'),
+        ('relpos_buckets', None),
+        ('length', None),
+        ('layers', None),
+        ('stack', None),
+    ]
+  elif activation_partitioning_dims == 2 and parameter_partitioning_dims == 2:
+    rules = [
+        ('batch', 'data'),
+        ('vocab', 'model'),
+        ('mlp', 'model'),
+        ('heads', 'model'),
+        ('kv', None),
+        ('joined_kv', 'model'),
+        ('embed', 'model'),
+        ('embed', 'data'),
+        ('relpos_buckets', None),
+        ('length', None),
+        ('layers', None),
+        ('stack', None),
+    ]
+  else:
+    raise ValueError(
+        f'`activation_partitioning_dims` = {activation_partitioning_dims} '
+        f'`parameter_partitioning_dims` = {parameter_partitioning_dims} '
+        'is not supported.')
+
+  return rules
 
 
 # NB: This needs to be top-level for the jax compilation cache.

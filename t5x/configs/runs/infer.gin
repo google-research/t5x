@@ -50,7 +50,9 @@ infer_script.infer:
   shard_id = 0
   num_shards = 1
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 1
+partitioning.ModelBasedPjitPartitioner:
+  num_partitions = 1
+  logical_axis_rules = @partitioning.standard_logical_axis_rules()
 
 utils.DatasetConfig:
   mixture_or_task_name = %MIXTURE_OR_TASK_NAME

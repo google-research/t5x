@@ -62,6 +62,7 @@ train_script.train:
 partitioning.ModelBasedPjitPartitioner:
   num_partitions = 1
   model_parallel_submesh = ()
+  logical_axis_rules = @partitioning.standard_logical_axis_rules()
 
 train/utils.DatasetConfig:
   mixture_or_task_name = %MIXTURE_OR_TASK_NAME

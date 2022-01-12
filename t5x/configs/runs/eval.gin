@@ -42,7 +42,9 @@ eval_script.evaluate:
   output_dir = %EVAL_OUTPUT_DIR
   inference_evaluator_cls = @seqio.Evaluator
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 1
+partitioning.ModelBasedPjitPartitioner:
+  num_partitions = 1
+  logical_axis_rules = @partitioning.standard_logical_axis_rules()
 
 seqio.Evaluator:
   logger_cls = [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]

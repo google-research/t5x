@@ -84,6 +84,7 @@ train_script.train:
 partitioning.ModelBasedPjitPartitioner:
   num_partitions = 1
   model_parallel_submesh = ()
+  logical_axis_rules = @partitioning.standard_logical_axis_rules()
 
 seqio.Evaluator:
   logger_cls = [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]
