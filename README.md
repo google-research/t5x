@@ -104,13 +104,13 @@ TFDS_DATA_DIR="..."
 T5X_DIR="..."  # directory where the T5X repo is cloned.
 
 python3 ${T5X_DIR}/t5x/train.py \
-  --gin_file="t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_from_scratch.gin" \
+  --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_train.gin" \
   --gin.MODEL_DIR="'${MODEL_DIR}'" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
 The configuration for this training run is defined in the Gin file
-[t5_1_1_base_wmt_from_scratch.gin](t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_from_scratch.gin).
+[base_wmt_train.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_train.gin).
 [Gin-config](https://github.com/google/gin-config) is a library to handle
 configurations based on dependency injection. Among many benefits, Gin allows
 users to pass custom components such as a custom model to the T5X library
@@ -174,7 +174,7 @@ TFDS_DATA_DIR="..."
 T5X_DIR="..."  # directory where the T5X repo is cloned.
 
 python3 ${T5X_DIR}/t5x/train.py \
-  --gin_file="t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_finetune.gin" \
+  --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_finetune.gin" \
   --gin.MODEL_DIR="'${MODEL_DIR}'" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
@@ -188,19 +188,12 @@ via a flag, you must put it in quotes. In the case of strings, it requires
 Gin makes it easy to change a number of configurations. For example, you can
 change the `partitioning.ModelBasedPjitPartitioner.num_partitions` (overriding
 the value in
-[t5_1_1_base_wmt_from_scratch.gin](t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_from_scratch.gin))
+[base_wmt_train.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_train.gin))
 to chanage the parallelism strategy and pass it as a commandline arg.
 
 ```sh
 --gin.partitioning.ModelBasedPjitPartitioner.num_partitions=8
 ```
-
-
-
-
-
-
-
 
 ### Evaluation
 
@@ -214,7 +207,7 @@ TFDS_DATA_DIR="..."
 CHECKPOINT_PATH="..."
 
 python3 ${T5X_DIR}/t5x/eval.py \
-  --gin_file="t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_eval.gin" \
+  --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_eval.gin" \
   --gin.CHECKPOINT_PATH="'${CHECKPOINT_PATH}'" \
   --gin.EVAL_OUTPUT_DIR="'${EVAL_OUTPUT_DIR}'" \
   --tfds_data_dir=${TFDS_DATA_DIR}
@@ -234,13 +227,11 @@ TFDS_DATA_DIR="..."
 CHECKPOINT_PATH="..."
 
 python3 ${T5X_DIR}/t5x/infer.py \
-  --gin_file="t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_infer.gin" \
+  --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_infer.gin" \
   --gin.CHECKPOINT_PATH="'${CHECKPOINT_PATH}'" \
   --gin.INFER_OUTPUT_DIR="'${INFER_OUTPUT_DIR}'" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
-
-
 
 ## Custom components
 
@@ -309,7 +300,7 @@ flag.
 from __gin__ import dynamic_registration
 import tasks  # This imports the task defined in dir1/user_dir/tasks.py.
 
-include "t5x-tmp/t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_from_scratch.gin"
+include "t5x-tmp/t5x/examples/t5/t5_1_1/examples/base_wmt_train.gin"
 MIXTURE_OR_TASK_NAME = "wmt_t2t_de_en_v003"
 ```
 
@@ -331,8 +322,6 @@ python3 ${T5X_DIR}/t5x/train.py \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
-
-
 ## Released Checkpoints
 
 We release the checkpoints for the T5.1.1 models in a native T5X format.
@@ -346,7 +335,6 @@ We release the checkpoints for the T5.1.1 models in a native T5X format.
 These are converted from the public [Mesh TensorFlow
 checkpoints](https://github.com/google-research/text-to-text-transfer-transformer/blob/main/released_checkpoints.md#t511)
 .
-
 
 
 ## Compatibility with the Mesh TensorFlow checkpoints
@@ -364,7 +352,7 @@ TFDS_DATA_DIR="..."
 T5X_DIR="..."  # directory where the T5X repo is cloned.
 
 python3 ${T5X_DIR}/t5x/train.py \
-  --gin_file="t5x/examples/t5/t5_1_1/examples/wmt19_ende_from_scratch.gin" \
+  --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt19_ende_train.gin" \
   --gin.MODEL_DIR="'${MODEL_DIR}'" \
   --gin.MIXTURE_OR_TASK_NAME="'wmt_t2t_ende_v003'" \
   --gin.INIT_CHECKPOINT="'gs://t5-data/pretrained_models/t5.1.1.base/model.ckpt-1000000'" \
@@ -380,7 +368,6 @@ checkpoints to T5X native format using
 [`Checkpointer.convert_from_tf_checkpoint`](https://github.com/google-research/t5x/blob/fba685d1d49bfb1000f37b5952a9a0533f24ed36/t5x/checkpoints.py#L886).
 
 TODO(hwchung): Add a conversion script.
-
 
 
 ## Note

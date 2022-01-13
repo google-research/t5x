@@ -29,6 +29,7 @@ MIXTURE_OR_TASK_NAME = %gin.REQUIRED
 TASK_FEATURE_LENGTHS = %gin.REQUIRED
 TRAIN_STEPS = %gin.REQUIRED
 MODEL_DIR = %gin.REQUIRED
+BATCH_SIZE = 128
 USE_CACHED_TASKS = True
 
 # DEPRECATED: Import the this module in your gin file.
@@ -68,7 +69,7 @@ train/utils.DatasetConfig:
   mixture_or_task_name = %MIXTURE_OR_TASK_NAME
   task_feature_lengths = %TASK_FEATURE_LENGTHS
   split = 'train'
-  batch_size = 128
+  batch_size = %BATCH_SIZE
   shuffle = %SHUFFLE_TRAIN_EXAMPLES
   seed = None  # use a new seed each run/restart
   use_cached = %USE_CACHED_TASKS
@@ -79,7 +80,7 @@ train_eval/utils.DatasetConfig:
   mixture_or_task_name = %MIXTURE_OR_TASK_NAME
   task_feature_lengths = %TASK_FEATURE_LENGTHS
   split = 'validation'
-  batch_size = 128
+  batch_size = %BATCH_SIZE
   shuffle = False
   seed = 42
   use_cached = %USE_CACHED_TASKS

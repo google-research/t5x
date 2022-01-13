@@ -74,7 +74,7 @@ method arguments of the instance of `models.BaseModel` that we pass to
 
 Let's now look at an example of a gin configuration for parameterizing
 `evaluate`, specifically using the same the gin file
-[t5_1_1_base_wmt_eval.gin](t5x/examples/t5/t5_1_1/examples/t5_1_1_base_wmt_eval.gin) used in the English
+[base_wmt_eval.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_eval.gin) used in the English
 to German translation task in the [README](README.md).
 
 ```py
