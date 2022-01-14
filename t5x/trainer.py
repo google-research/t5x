@@ -629,9 +629,9 @@ def accumulate_grads_microbatched(
     new_dropout_rng, grad_accum, metrics = jax.lax.fori_loop(
         0, num_microbatches, per_microbatch_train_step, loop_init)
     del new_dropout_rng
-    metrics = metrics_lib.set_microbatch_adjusted_metrics_microbatches(
-        metrics, num_microbatches)
 
+  metrics = metrics_lib.set_microbatch_adjusted_metrics_microbatches(
+      metrics, num_microbatches)
   return grad_accum, metrics
 
 
