@@ -775,10 +775,10 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
         params stay in the host memory. Note that some partitioners might ignore
         this setting, for example if they don't support storing all params on
         device memory.
-      logical_axis_rules: an ordered sequence of KV tuples that maps logical
-        axis names to either `None` (not sharded), 'model' (to shard across the
-        model-parallel submesh), or 'data' (to shard across the data-parallel
-        submesh).
+      logical_axis_rules: a priority-ordered sequence of KV tuples that maps
+        logical axis names to either `None` (not sharded), 'model' (to shard
+        across the model-parallel submesh), or 'data' (to shard across the
+        data-parallel submesh).
     """
     super().__init__(
         num_partitions=num_partitions,
