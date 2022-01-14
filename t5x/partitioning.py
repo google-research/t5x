@@ -752,6 +752,7 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
                logical_axis_rules: Optional[LogicalAxisRules] = None):
     """ModelBasedPjitPartitioner constructor.
 
+    See https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/user/partitioning for details.
 
     Args:
       num_partitions: an integer that specifies the size of the model parallel

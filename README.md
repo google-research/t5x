@@ -8,6 +8,9 @@ It is essentially a new and improved implementation of the
 [T5 codebase](https://github.com/google-research/text-to-text-transfer-transformer)
 (based on [Mesh TensorFlow](https://github.com/tensorflow/mesh)) in [JAX](https://github.com/google/jax) and [Flax](https://github.com/google/flax).
 
+Below is a quick start guide for training models with TPUs on Google Cloud. For
+additional tutorials and background, see the [complete documentation](docs/index.md).
+
 ## Installation
 
 Note that all the commands in this document should be run in the commandline of
@@ -322,22 +325,21 @@ python3 ${T5X_DIR}/t5x/train.py \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
-## Released Checkpoints
+## Checkpoints
 
-We release the checkpoints for the T5.1.1 models in a native T5X format.
+### Native Checkopints
 
-* **t5.1.1.small** (~77 million parameters): [gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000)
-* **t5.1.1.base** (~250 million parameters): [gs://t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000)
-* **t5.1.1.large** (~800 million parameters): [gs://t5-data/pretrained_models/t5x/t5_1_1_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_large/checkpoint_1000000)
-* **t5.1.1.xl** (~3 billion parameters): [gs://t5-data/pretrained_models/t5x/t5_1_1_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_xl/checkpoint_1000000)
-* **t5.1.1.xxl** (~11 billion parameters): [gs://t5-data/pretrained_models/t5x/t5_1_1_xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_xxl/checkpoint_1000000)
+We have released the checkpoints of many of the original T5 models and their
+variants a native T5X format for maximal efficiency.
+See the [complete list](docs/usage/finetune.md#public-research-models) including the
+matching Gin configuration files.
 
 These are converted from the public [Mesh TensorFlow
 checkpoints](https://github.com/google-research/text-to-text-transfer-transformer/blob/main/released_checkpoints.md#t511)
 .
 
 
-## Compatibility with the Mesh TensorFlow checkpoints
+### Compatibility with the Mesh TensorFlow checkpoints
 The Mesh TensorFlow checkpoints trained using the [T5 library][t5_github] can be
 directly loaded into T5X. For example, we can rerun the fine-tuning example
 initializing from the MTF checkpoint by changing the `INIT_CHECKPOINT` Gin
@@ -375,4 +377,4 @@ This is not an officially supported Google product
 
 [t5_paper]: https://arxiv.org/abs/1910.10683
 [t5_github]: https://github.com/google-research/text-to-text-transfer-transformer
-[gin-primer]: gin.md
+[gin-primer]: docs/usage/gin.md

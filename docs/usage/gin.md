@@ -1,16 +1,17 @@
 # Gin Primer
 
 
-[Gin](https://github.com/google/gin-config) is a lightweight configuration
-framework for Python, based on dependency injection. While T5X does not employ
-gin in its core libraries, it is used to configure runs of the `train`, `eval`,
-and `infer` scripts. This usage is a bit different (and more limited) than how
-gin is typically applied, so this primer should be useful even for those who may
-be familiar with gin from other libaries (e.g., T5 or Mesh TensorFlow).
+[Gin](http://https://github.com/google/gin-config/blob/main/README.md) is a lightweight configuration framework for Python,
+based on dependency injection. While P5X does not employ gin in its core
+libraries, it is used to configure runs of the `train`, `eval`, and `infer`
+scripts. This usage is a bit different (and more limited) than how gin is
+typically applied, so this primer should be useful even for those who may be
+familiar with gin from other libaries (e.g., T5 or Mesh TensorFlow).
 
 Nevertheless, you may still find it helpful to refer to the
-[gin documentation](https://github.com/google/gin-config) for more background.
+[gin documentation](http://https://github.com/google/gin-config/blob/main/README.md) for more background.
 
+[TOC]
 
 ## Gin in T5X Scripts
 
@@ -31,14 +32,14 @@ code debt over time.
 On the other hand, gin can sometimes be too powerful, allowing users the ability
 to bind arguments throughout a codebase, which makes it difficult or impossible
 to update "private" internal interfaces. However, by limiting configurability to
-a single top-level function and its arguments, we can better control the
-configurable surface to public interfaces and user-owned code and also avoid
+a single top-level function and its arguments we can better control the
+configurable surface to public interfaces and user-owned code, and also avoid
 unintended side effects.
 
 ### An Example
 
-
-Let's look at the `evaluate` call signature from `t5x/eval.py` as an example:
+Let's look at the `evaluate` call signature from
+[eval.py](https://github.com/google-research/t5x/tree/main/t5x/eval.py) as an example:
 
 ```py
 def evaluate(*,
@@ -61,11 +62,11 @@ def evaluate(*,
   ...
 ```
 
-In the eval.py script, the user-provided gin configuration file will be parsed.
-It specifies which values should be bound to the `evaluate` argument, after
-which we can directly call the fully-bound function without any arguments.
-Basically, we are creating a custom closure of `evaluate` (a la
-`functools.partial`) but specifying the arguments via gin instead of Python.
+In the binary, the user-provided gin configuration file will be parsed. It
+specifies which values should be bound to the `evaluate` argument, after which
+we can directly call the fully-bound function without any arguments. Basically,
+we are creating a custom closure of `evaluate` (a la `functools.partial`) but
+specifying the arguments via gin instead of Python.
 
 Furthermore, this ability to bind custom arguments is recursive. Not only can we
 bind the arguments of `evaluate`, but we can also bind the constructor and
@@ -73,47 +74,53 @@ method arguments of the instance of `models.BaseModel` that we pass to
 `evaluate`.
 
 Let's now look at an example of a gin configuration for parameterizing
-`evaluate`, specifically using the same the gin file
-[base_wmt_eval.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_eval.gin) used in the English
-to German translation task in the [README](README.md).
+`evaluate`, specifically evaluating a
+[T5 model fine-tuned for closed book question answering](http://goo.gle/t5-cbqa)
+on [Natural Questions Open](https://ai.google.com/research/NaturalQuestions):
 
 ```py
 from __gin__ import dynamic_registration
 
 import __main__ as eval_script
-from t5.data import mixtures
+from t5x import models
 from t5x import partitioning
 from t5x import utils
 
-include "t5x/examples/t5/t5_1_1/base.gin"  # defines %MODEL.
-
-CHECKPOINT_PATH = %gin.REQUIRED  # passed via commandline
-EVAL_OUTPUT_DIR = %gin.REQUIRED  # passed via commandline
-DROPOUT_RATE = 0.0  # unused boilerplate
-MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
+MODEL = %gin.REQUIRED
 
 eval_script.evaluate:
-  model = %MODEL  # imported from separate gin file
+  model = %MODEL
+  output_dir = '/tmp/t5x_eval'
   dataset_cfg = @utils.DatasetConfig()
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
+  partitioner = @partitioning.PjitPartitioner()
   restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
-  output_dir = %EVAL_OUTPUT_DIR
+
+# Load model with overrides.
+include 'models/t5_large.gin'
+models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 1
 
 utils.DatasetConfig:
-  mixture_or_task_name = %MIXTURE_OR_TASK_NAME
-  task_feature_lengths = None  # Auto-computes the max feature lengths.
+  mixture_or_task_name = 'natural_questions_open'
   split = 'test'
+  task_feature_lengths = None
   batch_size = 32
   shuffle = False
-  seed = 42
+  seed = 0
+  use_cached = False
+  pack = False
+  use_custom_packing_ops = False
+  module = 'google_research.t5_closed_book_qa.t5_cbqa.tasks'
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 2
+partitioning.PjitPartitioner:
+  num_partitions = 1
 
 utils.RestoreCheckpointConfig:
-  path = %CHECKPOINT_PATH
   mode = 'specific'
+  path = 'gs://t5-data//pretrained_models/cbqa/large_ssm_nqo'
+  assignment_map = None
+  strict = True
+  dtype = None
 ```
-
 
 Let's go through this block-by-block.
 
@@ -121,114 +128,125 @@ Let's go through this block-by-block.
 from __gin__ import dynamic_registration
 ```
 
-The first line imports a new gin feature to allow us to register functions and
-objects for configuration from within the gin file itself without having to
-modify or decorate functions from the imported packages.
+The first line imports a new gin feature (see cl/372624800 for more details) to
+allow us to register functions and objects for configuration from within the gin
+file itself without having to modify or decorate functions from the imported
+packages.
 
 ```py
 import __main__ as eval_script
-from t5.data import mixtures
-from t5x import partitioning
+from t5x import models
 from t5x import utils
 ```
 
 The second block imports the modules containing the components we plan to
 configure in this file and is required for dynamic registration. Note that only
 those functions and objects that we specify below will actually be configured,
-not everything in the module. Also, as is the case in Python, the run script
-(`t5x/eval.py` in this case) module is referred as `__main__`, although we
-rename it to `eval_script` for clarity in the rest of the config.
-
+not everything in the module. Also, as is the case in Python, the binary module
+is referred as `__main__`, although we rename it to `eval_script` for clarity in
+the rest of the config.
 
 ```py
-include "t5x/examples/t5/t5_1_1/base.gin"  # defines %MODEL
+MODEL = %gin.REQUIRED
 ```
 
-The third block loads in a separate gin file that defines the `%MODEL` macro.
+The third block creates a
+[gin macro](https://github.com/google/gin-config/tree/master/docs/index.md#gin-macros)
+(essentially a lazy reference) and for now sets it to refer to the special macro
+`gin.REQUIRED`, which will cause a failure during parsing of the configuration
+if not updated via a later assignment in the config file or command-line flags
+(see [below](#command-line-usage)).
+
+```py
+eval_script.evaluate:
+  model = %MODEL
+  output_dir = '/tmp/t5x_eval'
+  dataset_cfg = @utils.DatasetConfig()
+  partitioner = @partitioning.PjitPartitioner()
+  restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
+```
+
+The fourth block specifies the binding for the `evaluate` function. For `model`,
+we pass the value of the `MODEL` macro (to be defined later). For `output_dir`
+we pass a string path. For `dataset_cfg`, `restore_checkpoint_cfg`, and
+`partitioner`, we pass instantiations of `DatasetConfig`,
+`RestoreCheckpointConfig`, and `PjitPartitioner`, which are defined in
+[utils.py](https://github.com/google-research/t5x/tree/main/t5x/utils.py) and
+[partitioning.py](https://github.com/google-research/t5x/tree/main/t5x/partitioning.py)
+respectively. The '@' prefix tells gin that the following is a configured
+function or class, and the '()' suffix signifies that it should be called (in
+the cases of class, this means calling the constructor). If we wanted to pass in
+the closure (or a partially bound) function instead of its return value, we
+would leave off the parentheses.
+
+The remainder of the file deals with defining the `MODEL` macro and fully
+binding these constructors.
+
+```py
+# Load model with overrides.
+include 't5x/examples/t5/t5_1_1/large.gin'
+models.EncoderDecoderModel.predict_batch_with_aux.beam_size = 2
+```
+
 Although we could define `MODEL = model.EncoderDecoderModel()` here, we prefer
 to create a separate gin file that defines it. This makes it easier to reuse
 parts of the common configurations. All of the bindings in the newly included
 file are read and override any conflicting ones defined so far in this file.
 It's equivalent to copy and pasting the contents of the included file at this
 location in the config. If you want to see how the model itself is instantiated,
-you can refer to [base.gin](t5x/examples/t5/t5_1_1/base.gin).
+you can refer to
+[t5_1_1/large.gin](t5x/examples/t5/t5_1_1/large.gin)
+(which simply overrides a few values from
+[t5_1_1/base.gin](t5x/examples/t5/t5_1_1/base.gin).
 
-
-```py
-CHECKPOINT_PATH = %gin.REQUIRED  # passed via commandline
-EVAL_OUTPUT_DIR = %gin.REQUIRED  # passed via commandline
-DROPOUT_RATE = 0.0  # unused boilerplate
-MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
-```
-
-The fourth block creates a [gin
-macro](https://github.com/google/gin-config/blob/master/docs/index.md#gin-macros)
-(essentially a lazy reference) and for now sets it to refer to the special macro
-`gin.REQUIRED`. This will cause a failure during parsing of the configuration
-if not updated via a later assignment in the config file or command-line flags
-(see [below](#command-line-usage)). In the [README](README.md), we passed the
-assignments via command-line flags.
-
-```py
-eval_script.evaluate:
-  model = %MODEL  # imported from separate gin file
-  dataset_cfg = @utils.DatasetConfig()
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
-  restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
-  output_dir = %EVAL_OUTPUT_DIR
-```
-
-The fifth block specifies the binding for the `evaluate` function. For `model`,
-we pass the value of the `MODEL` macro defined in the third block. For
-`output_dir` we use the `%EVAL_OUTPUT_DIR` to be passed via command-line flag.
-For `dataset_cfg`, `restore_checkpoint_cfg`, and `partitioner`, we pass
-instantiations of `DatasetConfig`, `RestoreCheckpointConfig`, and
-`ModelBasedPjitPartitioner`, which are defined in `t5x/utils.py` and
-`t5x/partitioning.py`, respectively. The '@' prefix tells gin that the following
-is a configured function or class, and the '()' suffix signifies that it should
-be called (in the cases of class, this means calling the constructor). If we
-wanted to pass in the closure (or a partially bound) function instead of its
-return value, we would leave off the parentheses.
-
+The final line of this block shows an example of how you can modify the default
+arguments of the `EncoderDecoderModel` instance referenced by `%MODEL`, in this
+case changing the default beam size it will use during prediction. Notice that
+since we are only binding one argument here, we choose to write it on a single
+line instead of using the block binding syntax used elsewhere in the file.
 
 ```py
 utils.DatasetConfig:
-  mixture_or_task_name = %MIXTURE_OR_TASK_NAME
-  task_feature_lengths = None  # Auto-computes the max feature lengths.
+  mixture_or_task_name = 'natural_questions_open'
   split = 'test'
+  task_feature_lengths = None
   batch_size = 32
   shuffle = False
-  seed = 42
+  seed = 0
+  use_cached = False
+  pack = False
+  use_custom_packing_ops = False
+  module = 'google_research.t5_closed_book_qa.t5_cbqa.tasks'
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 2
+partitioning.PjitPartitioner:
+  num_partitions = 1
 
 utils.RestoreCheckpointConfig:
-  path = %CHECKPOINT_PATH
   mode = 'specific'
+  path = 'gs://t5-data//pretrained_models/cbqa/large_ssm_nqo'
+  assignment_map = None
+  strict = True
+  dtype = None
 ```
 
 The last 3 blocks are fairly straightforward. They are effectively setting the
 attributes of these dataclasses by binding values to their constructors that
 will be used when they are instantiated and passed to `evaluate`, as specified
-in the fifth block. Note that there are two styles of binding values of the
-constructor. Since we are only binding one argument in
-`partitioning.ModelBasedPjitPartitioner.num_partitions = 2`, we choose to write
-it on a single line instead of using the block binding syntax used elsewhere in
-the file.
-
+in the fourth block.
 
 ### Scoping
 
 The above example lacks one key component of gin:
-[scopes](https://github.com/google/gin-config/blob/master/docs/index.md#scoping).
+[scopes](http://https://github.com/google/gin-config/blob/main/README.md#4-configuring-the-same-function-in-different-ways-scopes).
 
 What happens if you need to use a class or function multiple times but with
 different bound values?
 
-A clear example of this is in the top-level `train` function in `train.py`. The
-call signature includes 3 different instances of `utils.DatasetConfig`: one for
-the train dataset, one for the "train-eval" dataset (used for evaluation with
-teacher forcing), and one for the "infer-eval" dataset (used for evaluation with
+A clear example of this is in the top-level `train` function (in
+[train.py](https://github.com/google-research/t5x/tree/main/t5x/train.py)). The call signature
+includes 3 different instances of `utils.DatasetConfig`: one for the train
+dataset, one for the "train-eval" dataset (used for evaluation with teacher
+forcing), and one for the "infer-eval" dataset (used for evaluation with
 inference/decoding).
 
 The solution is to prefix each instance with a unique identifier both when
@@ -297,7 +315,7 @@ two ways: gin files and override flags.
 must put it in quotes. In the case of strings, it requires "triple quotes"
 (`"'<string>'"`). For example: `--gin.utils.DatasetConfig.split="'validation'"`,
 `--gin.utils.DatasetConfig.task_feature_lengths="{'inputs': 512, 'targets':
-84}"`, and `--gin.network.T%Config.mlp_activations="('dense', 'gelu')"`.
+84}"`, and `--gin.dense.MlpBlock.activations="('dense', 'gelu')"`
 
 ### An Example
 
@@ -305,24 +323,21 @@ An example where you may need multiple files is with the `train` script.
 
 You can first specify which model you want to train by supplying a gin file
 containing its definition, for example:
-[t5x/examples/t5/t5_1_1/base.gin](t5x/examples/t5/t5_1_1/base.gin).
+[t5_1_1/small.gin](t5x/examples/t5/t5_1_1/small.gin).
 
 You may then specify a run config that supplies some of the common defaults. For
 example, if you are doing pretraining you can use
-[t5x/configs/runs/pretrain.gin](t5x/configs/runs/pretrain.gin), and if you are
-doing finetuning, you can use
-[t5x/configs/runs/finetune.gin](t5x/configs/runs/finetune.gin).
+[runs/pretrain.gin](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/pretrain.gin),
+and if you are doing finetuning, you can use
+[runs/finetune.gin](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin).
 
 We can apply these two files with the following command:
 
 ```sh
-T5X_DIR="..."  # directory where the t5x is cloned.
-TFDS_DATA_DIR="..."
-
-python3 ${T5X_DIR}/t5x/train.py \
-  --tfds_data_dir=${TFDS_DATA_DIR} \
-  --gin_file="t5x/examples/t5/t5_1_1/base.gin" \
-  --gin_file="t5x/configs/runs/finetune.gin"
+python -m t5x.train \
+  --gin_file=t5x/examples/t5/t5_1_1/small.gin \
+  --gin_file=t5x/configs/runs/finetune.gin \
+  --logtostderr
 ```
 
 However, running this command will give you an error like the following:
@@ -333,38 +348,40 @@ ValueError: MODEL_DIR/macro.value set to `%gin.REQUIRED` but not subsequently ov
 
 This is because the config still includes some `gin.REQUIRED` macros that you'll
 need to override with the details of your run. At the top of
-`t5x/configs/runs/finetune.gin` you'll see the list of required overrides, which
-we will populate for finetuning on WMT in the updated launch command here:
+[runs/finetune.gin](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin)
+you'll see the list of required overrides, which we will populate for finetuning
+on WMT in the updated launch command here:
 
 ```sh
-T5X_DIR="..."  # directory where the t5x is cloned.
-TFDS_DATA_DIR="..."
-MODEL_DIR="..."
-
-python3 ${T5X_DIR}/t5x/train.py \
-  --tfds_data_dir=${TFDS_DATA_DIR} \
-  --gin_file="t5x/examples/t5/t5_1_1/base.gin" \
-  --gin_file="t5x/configs/runs/finetune.gin" \
+python -m t5x.train \
+  --gin_file=t5x/examples/t5/t5_1_1/small.gin \
+  --gin_file=t5x/configs/runs/finetune.gin \
   --gin.MIXTURE_OR_TASK_NAME="'wmt_t2t_ende_v003'" \
   --gin.MIXTURE_OR_TASK_MODULE="'t5.data.mixtures'" \
   --gin.TASK_FEATURE_LENGTHS="{'inputs': 256, 'targets': 256}" \
-  --gin.TRAIN_STEPS=1_100_000 \
-  --gin.MODEL_DIR="'${MODEL_DIR}'" \
-  --gin.USE_CACHED_TASKS=False \
-  --gin.INITIAL_CHECKPOINT_PATH="'gs://t5-data/pretrained_models/t5.1.1.base/model.ckpt-1000000'"
+  --gin.TRAIN_STEPS=1_020_000 \
+  --gin.MODEL_DIR="'/tmp/t5_1_1_base_finetune_gin'" \
+  --gin.INITIAL_CHECKPOINT_PATH="'gs://t5-data//pretrained_models/t5x/t5_1_1_small/checkpoint_1000000'" \
+  --logtostderr
 ```
 
 Note you may still override any registered bindings. For example, to disable
 inference evaluation you may add `--gin.train.infer_eval_dataset_cfg=None`.
 
-### A File-only approach
+### A File-only Example
 
 At the beginning of the primer, we saw a fully-specified run config. We can do
 something similar with the previous example to create a self-contained run
-configuration. We create one gin file with the configurations specified and
-other gin files included. In the launch command, we only need to include this
-"top level" gin file. The examples in the README use this approach.
+configuration.
+[t5_1_1/examples/base_wmt_finetune.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5_1_1/examples/small_wmt_finetune.gin)
+is just such an example that allows you to exactly duplicate the previous launch
+command simply by calling:
 
+```sh
+python -m t5x.train \
+  --gin_file=t5x/google/examples/t5x/examples/t5_1_1/examples/small_wmt_finetune.gin \
+  --logtostderr
+```
 
 ## Logging
 
@@ -373,5 +390,4 @@ will be logged to INFO, written to `config.gin` in the output directory, and
 added to a TensorBoard summary.
 
 It is highly recommended that you review this generated config to ensure that
-your overrides are working as expected, especially if the same configurable is
-set in multiple gin files.
+your overrides are working as expected.
