@@ -117,6 +117,8 @@ class MicrobatchAdjusted(clu_metrics.Metric):
       raise ValueError(
           "`num_microbatches` must be set by calling `replace_num_microbatches` before computing metric."
       )
+    if self.num_microbatches == 0:
+      raise ValueError("`num_microbatches` cannot be zero.")
     if self.per_step:
       return self.metric.compute() * self.num_microbatches
     else:
