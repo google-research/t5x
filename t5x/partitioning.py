@@ -433,14 +433,6 @@ class LocalChunker:
     return LocalChunkInfo(tuple(local_slice), replica_id)
 
 
-# Model parallel sharding specifications.
-# -----------------------------------------------------------------------------
-def _insert(tpl, idx, x):
-  tmp = list(tpl)
-  tmp.insert(idx, x)
-  return tuple(tmp)
-
-
 def standard_logical_axis_rules(
     activation_partitioning_dims: int = 1,
     parameter_partitioning_dims: int = 1) -> LogicalAxisRules:

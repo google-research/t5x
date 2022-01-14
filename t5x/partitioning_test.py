@@ -15,7 +15,6 @@
 """Tests for t5x.partitioning."""
 
 import collections
-import re
 
 from absl.testing import absltest
 from flax import optim
