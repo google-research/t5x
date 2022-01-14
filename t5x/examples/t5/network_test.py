@@ -14,6 +14,9 @@
 
 """Tests for network."""
 
+import os
+
+from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
@@ -23,6 +26,11 @@ from t5x import adafactor
 from t5x import models
 from t5x import test_utils
 from t5x.examples.t5 import network
+
+# Parse absl flags test_srcdir and test_tmpdir.
+jax.config.parse_flags_with_absl()
+
+FLAGS = flags.FLAGS
 
 
 def get_test_model(emb_dim,
@@ -53,33 +61,43 @@ def get_test_model(emb_dim,
 
 class NetworkTest(parameterized.TestCase):
 
-  def test_regression(self):
-    batch, max_decode_len, input_len = 2, 3, 4
-    emb_dim, num_heads, head_dim, mlp_dim, vocab_size = 13, 8, 64, 2048, 10
-    model = get_test_model(
-        emb_dim,
-        head_dim,
-        num_heads,
-        mlp_dim,
-        vocab_size=vocab_size,
-        num_encoder_layers=3)
-
-    input_shapes = {
-        'encoder_input_tokens': (batch, input_len),
-        'decoder_input_tokens': (batch, max_decode_len)
+  def setUp(self):
+    super().setUp()
+    batch_size, max_decode_len, input_len = 2, 3, 4
+    self.input_shapes = {
+        'encoder_input_tokens': (batch_size, input_len),
+        'decoder_input_tokens': (batch_size, max_decode_len)
     }
-    params = model.get_initial_variables(jax.random.PRNGKey(42),
-                                         input_shapes)['params']
+    np.random.seed(42)
+    self.batch = {
+        'encoder_input_tokens':
+            np.random.randint(3, 10, size=(batch_size, input_len)),
+        'decoder_input_tokens':
+            np.random.randint(3, 10, size=(batch_size, max_decode_len)),
+        'decoder_target_tokens':
+            np.random.randint(3, 10, size=(batch_size, max_decode_len))
+    }
 
+  def test_t5_1_1_regression(self):
     np.random.seed(0)
+    batch_size, max_decode_len, input_len = 2, 3, 4
     batch = {
         'encoder_input_tokens':
-            np.random.randint(3, 10, size=(batch, input_len)),
+            np.random.randint(3, 10, size=(batch_size, input_len)),
         'decoder_input_tokens':
-            np.random.randint(3, 10, size=(batch, max_decode_len)),
+            np.random.randint(3, 10, size=(batch_size, max_decode_len)),
         'decoder_target_tokens':
-            np.random.randint(3, 10, size=(batch, max_decode_len))
+            np.random.randint(3, 10, size=(batch_size, max_decode_len))
     }
+    model = get_test_model(
+        emb_dim=13,
+        head_dim=64,
+        num_heads=8,
+        mlp_dim=2048,
+        vocab_size=10,
+        num_encoder_layers=3)
+    params = model.get_initial_variables(
+        jax.random.PRNGKey(42), self.input_shapes)['params']
     loss, _ = jax.jit(model.loss_fn)(params, batch, jax.random.PRNGKey(1))
     self.assertAlmostEqual(loss, 18.088945, delta=0.05)
 
@@ -87,7 +105,6 @@ class NetworkTest(parameterized.TestCase):
     np.testing.assert_array_equal(predicted, [[7, 1, 0], [1, 0, 0]])
     np.testing.assert_allclose(
         scores['scores'], [-3.0401115, -1.9265753], rtol=1e-3)
-
 
 
 if __name__ == '__main__':
