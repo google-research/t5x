@@ -190,12 +190,11 @@ class BaseModel(abc.ABC):
     """Returns the initial variables of the model."""
     pass
 
-  @abc.abstractmethod
   def get_initial_metrics(self) -> MetricsMap:
     """Dictionary of metrics and initial values."""
-    pass
+    return {}
 
-  @abc.abstractmethod
+  # TODO(cpgaffney) clean up summarize_metrics_fn
   def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
                            num_steps: int) -> Mapping[str, Array]:
     """Converts metrics into tensorboard-friendly summary.
@@ -208,7 +207,8 @@ class BaseModel(abc.ABC):
     Returns:
       summary: Metrics in tensorboard friendly format.
     """
-    pass
+    del duration, num_steps
+    return {k: v.compute() for k, v in metrics.items()}
 
 
 # Sentinel used instead of None to indicate missing values. For backward
@@ -324,13 +324,6 @@ class BaseTransformerModel(BaseModel):
 
   def get_initial_metrics(self):
     return {}
-
-  # TODO(cpgaffney) clean up summarize_metrics_fn
-  def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
-                           num_steps: int) -> Mapping[str, Array]:
-    """Convert metrics into tensorboard-friendly summary."""
-    del duration, num_steps
-    return {k: v.compute() for k, v in metrics.items()}
 
 
 class EncoderDecoderModel(BaseTransformerModel):
@@ -1053,7 +1046,7 @@ def compute_base_metrics(
     targets: jnp.ndarray,
     mask: jnp.ndarray,
     loss: jnp.ndarray,
-    z_loss: jnp.ndarray,
+    z_loss: Optional[jnp.ndarray] = None,
 ) -> MetricsMap:
   """Compute summary metrics.
 
@@ -1108,18 +1101,23 @@ def compute_base_metrics(
                                                  num_devices),
       'nonpadding_fraction':
           clu_metrics.Average(total=nonpadding_tokens, count=num_tokens),
-      'z_loss':
-          metrics_lib.MicrobatchAdjusted(
-              metric=clu_metrics.Average(total=z_loss, count=1), per_step=True),
-      'z_loss_per_all_target_tokens':
-          clu_metrics.Average(total=z_loss, count=num_tokens),
-      'cross_ent_loss':
-          metrics_lib.MicrobatchAdjusted(
-              metric=clu_metrics.Average(total=jnp.sum(loss - z_loss), count=1),
-              per_step=True),
-      'cross_ent_loss_per_all_target_tokens':
-          clu_metrics.Average(total=jnp.sum(loss - z_loss), count=num_tokens)
   }
+  if z_loss is not None:
+    metrics.update({
+        'z_loss':
+            metrics_lib.MicrobatchAdjusted(
+                metric=clu_metrics.Average(total=z_loss, count=1),
+                per_step=True),
+        'z_loss_per_all_target_tokens':
+            clu_metrics.Average(total=z_loss, count=num_tokens),
+        'cross_ent_loss':
+            metrics_lib.MicrobatchAdjusted(
+                metric=clu_metrics.Average(
+                    total=jnp.sum(loss - z_loss), count=1),
+                per_step=True),
+        'cross_ent_loss_per_all_target_tokens':
+            clu_metrics.Average(total=jnp.sum(loss - z_loss), count=num_tokens)
+    })
   return metrics
 
 
