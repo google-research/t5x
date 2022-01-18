@@ -327,7 +327,7 @@ python3 ${T5X_DIR}/t5x/train.py \
 
 ## Checkpoints
 
-### Native Checkopints
+### Native Checkpoints
 
 We have released the checkpoints of many of the original T5 models and their
 variants a native T5X format for maximal efficiency.
