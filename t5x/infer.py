@@ -29,7 +29,6 @@ import re
 import shutil
 import time
 from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, Tuple, Type
-import warnings
 
 from absl import logging
 import jax
@@ -239,7 +238,6 @@ def infer(*,
           merge_chunked_results: bool = True,
           write_fn: WriteFn = write_inferences_to_file,
           checkpoint_ds_iter: bool = True,
-          merge_epoch_results=None,
           fallback_init_rng: Optional[int] = None):
   """Infer function.
 
@@ -267,30 +265,12 @@ def infer(*,
       checkpoint_period as well as the intermediate predictions. This must be
       disabled for certain datasets, for example since stateful iterators
       (e.g. from seqio.FunctionTask) cannot be checkpointed.
-    merge_epoch_results: Deprecated duplicate of `merge_chunked_results`.
     fallback_init_rng: A random seed used for parameter initialization during
       model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch
       is set to True. If None, parameter initialization is not allowed during
       model loading and having fallback_to_scratch enabled will result in an
       error.
   """
-  # TODO(adarob): Remove this backward compatibility section on 2022/01/18.
-  chunk_file_suffix_id = 'chunk'
-  if merge_epoch_results is not None:
-    warnings.warn(
-        '`merge_epoch_results` is deprecated and will be removed on '
-        '2022/01/18. Please use `merge_chunked_results` instead.',
-        DeprecationWarning)
-    logging.info(
-        'Setting `merge_chunked_results` to `merge_epoch_results` (%s).',
-        merge_epoch_results)
-    merge_chunked_results = merge_epoch_results
-    logging.info(
-        'Setting chunked result file name suffixes to be of the format '
-        '"epoch?????" instead of "chunk?????" since `merge_epoch_results` is '
-        'set.')
-    chunk_file_suffix_id = 'epoch'
-
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
         "`mode` must be one of 'predict', 'score' or 'predict_with_aux'. "
@@ -459,8 +439,7 @@ def infer(*,
         update_measurement_series('inference_examples_per_sec', chunk,
                                   len(inferences) / chunk_time)
 
-        chunk_path = os.path.join(
-            tmp_dir, f'{output_fname}-{chunk_file_suffix_id}{chunk:05}')
+        chunk_path = os.path.join(tmp_dir, f'{output_fname}-chunk{chunk:05}')
 
         chunk_ckpt_path = None
         if checkpoint_ds_iter:
@@ -496,9 +475,7 @@ def infer(*,
       logging.info('Merging chunk results.')
       # Merge chunks into single file.
       chunk_paths = sorted(
-          gfile.glob(
-              os.path.join(tmp_dir,
-                           f'{output_fname}-{chunk_file_suffix_id}?????')))
+          gfile.glob(os.path.join(tmp_dir, f'{output_fname}-chunk?????')))
 
       if not chunk_paths:
         raise FileNotFoundError(
