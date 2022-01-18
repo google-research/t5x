@@ -1,4 +1,4 @@
-# Copyright 2021 The T5X Authors.
+# Copyright 2022 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -34,7 +34,6 @@ from jax import random
 from jax.experimental.maps import Mesh
 from jax.experimental.maps import mesh
 from jax.experimental.pjit import pjit as jax_pjit
-from jax.experimental.pjit import with_sharding_constraint as jax_pjit_wsc
 from jax.interpreters.sharded_jit import PartitionSpec
 import numpy as np
 from t5x import train_state as train_state_lib
@@ -95,9 +94,7 @@ def with_sharding_constraint(x, axis_resources):
   if jax.devices()[0].platform == 'cpu' or not global_mesh_defined():
     return x
   else:
-    return jax_pjit_wsc(x, axis_resources)
-
-
+    return jax.experimental.pjit.with_sharding_constraint(x, axis_resources)
 
 
 # pjit Mesh creation functions.
