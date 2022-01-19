@@ -458,8 +458,6 @@ def train(
       num_steps = min(total_steps - host_step, steps_per_epoch)
       epoch_end_step = host_step + num_steps
       logging.info('Training for %d steps.', num_steps)
-      # We manually reset the duration timer to start off the epoch.
-      trainer.train_metrics_manager.reset_duration_timer()
       while host_step < epoch_end_step:
         if trainer.stop_training:
           logging.info('Saving a checkpoint before early stopping...')

@@ -52,7 +52,7 @@ MetricMapType = MutableMapping[str, clu_metrics.Metric]
 MetricMapSpec = Mapping[str, jax.ShapeDtypeStruct]
 ModelWeights = Any
 MutableMetricMapType = Dict[str, clu_metrics.Metric]
-P = partitioning.PartitionSpec
+PyTreeDef = type(jax.tree_structure(None))
 
 if TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
@@ -83,6 +83,12 @@ def merge_metrics(a, b):
 class ArrayMapFuture(typing_extensions.Protocol):
 
   def result(self) -> Mapping[str, Array]:
+    ...
+
+
+class TimeFuture(typing_extensions.Protocol):
+
+  def result(self) -> float:
     ...
 
 
@@ -218,23 +224,47 @@ class WeightMetricsComputer(object):
     return metrics
 
 
-class _AtomicStopwatch(object):
-  """A timer that atomically computes durations between calls."""
+class _AsyncTimer(object):
+  """A timer that computes computes durations between async jax operations."""
 
   def __init__(self):
-    self._mutex = threading.Lock()
-    self.reset()
+    # We use a thread pool with a single worker to ensure that calls to the
+    # function are run in order (but in a background thread).
+    self._pool = asynclib.Pool(max_workers=1)
+    self._start_future = None
 
-  def lap(self):
-    tock = time.time()
-    with self._mutex:
-      duration = tock - self._tick
-      self._tick = tock
-    return duration
+  def __del__(self):
+    self._pool.close()
 
-  def reset(self):
-    with self._mutex:
-      self._tick = time.time()
+  def _get_completion_future(self, block_on: PyTreeDef = ()) -> TimeFuture:
+    """Returns Future containing time when `block_on` is ready."""
+
+    def _get_completion_time():
+      try:
+        jax.block_until_ready(block_on)
+      except RuntimeError as e:
+        # If the buffer no longer exists, we assume it was completed.
+        if (str(e) !=
+            "INVALID_ARGUMENT: BlockHostUntilReady() called on deleted or "
+            "donated buffer"):
+          raise
+      return time.time()
+
+    return self._pool(_get_completion_time)()
+
+  def start(self, block_on: PyTreeDef = ()):
+    """Starts timer after `block_on` is ready."""
+    self._start_future = self._get_completion_future(block_on)
+
+  def stop(self, block_on: PyTreeDef = ()) -> TimeFuture:
+    """Stops timer after `block_on` is ready, returning the duration."""
+    if not self._start_future:
+      raise ValueError("The timer hasn't been started.")
+
+    start_future = self._start_future
+    self._start_future = None
+    stop_future = self._get_completion_future(block_on)
+    return self._pool(lambda: stop_future.result() - start_future.result())()
 
 
 class MetricsManager(object):
@@ -273,12 +303,13 @@ class MetricsManager(object):
     # function are run in order (but in a background thread).
     self._summary_pool = asynclib.Pool(
         thread_name_prefix="MetricsManager", max_workers=1)
-    # Keeps track of the time between metric fetch completions.
-    self._stopwatch = _AtomicStopwatch()
+    # Times the duration between steps.
+    self._duration_timer = _AsyncTimer()
 
   def __del__(self):
-    self.flush()
-    with self._writer_lock:
+    try:
+      self._summary_pool.close()
+    finally:
       self._writer.close()
 
   @property
@@ -298,9 +329,9 @@ class MetricsManager(object):
     with self._writer_lock:
       self._writer.write_scalars(step, scalars)
 
-  def reset_duration_timer(self):
-    """Resets the duration timer."""
-    self._stopwatch.reset()
+  def start_duration_timer(self, block_on: PyTreeDef = ()):
+    """Starts the duration timer."""
+    self._duration_timer.start(block_on=block_on)
 
   def write_metrics_summary(self, metrics: MetricMapType, step: int,
                             num_steps: int) -> ArrayMapFuture:
@@ -323,16 +354,17 @@ class MetricsManager(object):
     """
 
     def _summarize_and_write():
+      duration = self._duration_timer.stop(block_on=metrics)
       # For thread safety, since `_summarize_fn` may do additional computations,
       # we first copy the metrics to host.
       fetched_metrics = jax.tree_map(jax.device_get, metrics)
-      # Get the time since the last metric fetch was completed.
-      duration = self._stopwatch.lap()
       # We set the duration on TimeRate metrics.
       final_metrics = metrics_lib.set_time_metrics_duration(
-          fetched_metrics, duration)
+          fetched_metrics, duration.result())
       summary = self._summarize_fn(
-          metrics=final_metrics, duration=duration, num_steps=num_steps)
+          metrics=final_metrics,
+          duration=duration.result(),
+          num_steps=num_steps)
       self.write_scalars(step, summary)
 
       return summary
@@ -380,7 +412,8 @@ class BaseTrainer(abc.ABC):
     self._compiled_eval_step_cache: MutableMapping[
         BatchSpec, PartitionedEvalCallable] = {}
 
-    self.train_state = train_state
+    self._train_state_mutex = threading.RLock()
+    self._train_state = train_state
 
     self.stop_training = False
 
@@ -405,28 +438,44 @@ class BaseTrainer(abc.ABC):
   def _get_step_rng(self, step: int) -> Rng:
     return jax.random.fold_in(self._base_rng, step)
 
+  @property
+  def train_state(self):
+    with self._train_state_mutex:
+      return self._train_state
+
+  @train_state.setter
+  def train_state(self, train_state: PyTreeDef):
+    with self._train_state_mutex:
+      self._train_state = train_state
+
   def train(self,
             batch_iter: Iterator[BatchType],
             num_steps: int,
             start_step: Optional[int] = None) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""
     metrics = None
-    # Compute step number on host to avoid communication overhead.
-    start_step = int(
-        start_step if start_step is not None else self.train_state.step)
-    for step_num in range(start_step, start_step + num_steps):
-      logging.log_every_n_seconds(logging.INFO, "Training: step %d", 10,
-                                  step_num)
-      # Use pre-compiled step, if available.
-      train_step_fn = self._compiled_train_step or self._partitioned_train_step
-      with jax.profiler.StepTraceAnnotation("train", step_num=step_num):
-        batch = next(batch_iter)
-        self.train_state, metrics_update = train_step_fn(
-            self.train_state, batch)
-        if metrics:
-          metrics = merge_metrics(metrics, metrics_update)
-        else:
-          metrics = metrics_update
+    # Use pre-compiled step, if available.
+    train_step_fn = self._compiled_train_step or self._partitioned_train_step
+
+    # We lock `train_state` access during the loop to avoid race conditions.
+    with self._train_state_mutex:
+      train_state = self.train_state
+      # Compute step number on host to avoid communication overhead.
+      start_step = int(
+          start_step if start_step is not None else train_state.step)
+      self.train_metrics_manager.start_duration_timer(block_on=train_state)
+      for step_num in range(start_step, start_step + num_steps):
+        logging.log_every_n_seconds(logging.INFO, "Training: step %d", 10,
+                                    step_num)
+        with jax.profiler.StepTraceAnnotation("train", step_num=step_num):
+          batch = next(batch_iter)
+          train_state, metrics_update = train_step_fn(train_state, batch)
+          if metrics:
+            metrics = merge_metrics(metrics, metrics_update)
+          else:
+            metrics = metrics_update
+
+      self.train_state = train_state
 
     return self.train_metrics_manager.write_metrics_summary(
         metrics, start_step + num_steps, num_steps)
@@ -456,6 +505,7 @@ class BaseTrainer(abc.ABC):
                                  Iterator[BatchType]]) -> Mapping[str, Array]:
     """Runs evaluation loop over the iterator and writes summary."""
     eval_summaries = {}
+    train_state = self.train_state
     for iter_name, batch_iter in batch_iters.items():
       logging.info("Evaluating: %s.", iter_name)
       metrics = None
@@ -465,13 +515,13 @@ class BaseTrainer(abc.ABC):
       mm = self.eval_metrics_managers[iter_name]
 
       num_steps = 0
-      mm.reset_duration_timer()
+      mm.start_duration_timer(block_on=train_state)
       for batch in batch_iter:
         num_steps += 1
         multihost_utils.assert_same(
             jnp.array(num_steps),
             "Eval step mismatch across hosts. Check for empty dataset shard.")
-        metrics_update = eval_step_fn(self.train_state, batch)
+        metrics_update = eval_step_fn(train_state, batch)
         if metrics:
           metrics = merge_metrics(metrics, metrics_update)
         else:
@@ -481,7 +531,7 @@ class BaseTrainer(abc.ABC):
           "Eval step mismatch across hosts. Check for empty dataset shard.")
 
       eval_summaries[iter_name] = mm.write_metrics_summary(
-          metrics, self.train_state.step, num_steps)
+          metrics, train_state.step, num_steps)
 
     # TODO(adarob): Return futures.
     return {k: v.result() for k, v in eval_summaries.items()}
@@ -777,7 +827,8 @@ class Trainer(BaseTrainer):
 
     return self._partitioner.partition(
         train_with_lr,
-        in_axis_resources=(self._train_state_axes, P("data",)),
+        in_axis_resources=(self._train_state_axes,
+                           partitioning.PartitionSpec("data",)),
         out_axis_resources=(self._train_state_axes, None),
         donate_argnums=(0,))
 
@@ -785,7 +836,8 @@ class Trainer(BaseTrainer):
   def _partitioned_eval_step(self) -> PartitionedEvalCallable:
     return self._partitioner.partition(
         lambda *args, **kwargs: eval_step(self._model, *args, **kwargs),
-        in_axis_resources=(self._train_state_axes, P("data",)),
+        in_axis_resources=(self._train_state_axes,
+                           partitioning.PartitionSpec("data",)),
         out_axis_resources=None)
 
 

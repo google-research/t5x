@@ -71,47 +71,44 @@ class MetricsManagerTest(absltest.TestCase):
     super().setUp()
     self.model_dir = self.create_tempdir().full_path
 
-  @mock.patch('jax.process_index')
-  def test_summary_dir(self, mock_process_index):
+  def test_summary_dir(self):
     # All hosts have the summary dir.
-    mock_process_index.return_value = 0
-    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+    with mock.patch('jax.process_index', return_value=0):
+      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertEqual(mm.summary_dir, os.path.join(self.model_dir, 'eval'))
 
-    mock_process_index.return_value = 1
-    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+    with mock.patch('jax.process_index', return_value=1):
+      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertEqual(mm.summary_dir, os.path.join(self.model_dir, 'eval'))
 
-  @mock.patch('jax.process_index')
-  def test_summary_writer(self, mock_process_index):
+  def test_summary_writer(self):
     # Only host 0 creates a non-empty summary writer.
-    mock_process_index.return_value = 1
-    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+    with mock.patch('jax.process_index', return_value=1):
+      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertFalse(gfile.exists(mm.summary_dir))
 
-    mock_process_index.return_value = 0
-    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+    with mock.patch('jax.process_index', return_value=0):
+      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertIsInstance(mm.summary_writer, metric_writers.MetricWriter)
     self.assertTrue(gfile.exists(mm.summary_dir))
 
-  @mock.patch('jax.process_index')
-  def test_write_scalar(self, mock_process_index):
+  def test_write_scalar(self):
     gfile.makedirs(os.path.join(self.model_dir, 'eval'))
 
     # tag, value, step
     scalars = [('loss', 1.0, 1), ('accuracy', 100.0, 2)]
 
-    # Only host 0 has a summary writer.
-    mock_process_index.return_value = 1
-    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
-    for s in scalars:
-      mm.write_scalar(*s)
+    # Only host 0 has actually writes summaries.
+    with mock.patch('jax.process_index', return_value=1):
+      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+      for s in scalars:
+        mm.write_scalar(*s)
     self.assertEmpty(gfile.listdir(mm.summary_dir))
 
-    mock_process_index.return_value = 0
-    mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
-    for s in scalars:
-      mm.write_scalar(*s)
+    with mock.patch('jax.process_index', return_value=0):
+      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+      for s in scalars:
+        mm.write_scalar(*s)
     summaries = gfile.listdir(mm.summary_dir)
     self.assertLen(summaries, 1)
 
@@ -126,8 +123,7 @@ class MetricsManagerTest(absltest.TestCase):
       self.assertEqual(event.summary.value[0].tag, tag)
       self.assertEqual(tf.make_ndarray(event.summary.value[0].tensor), value)
 
-  @mock.patch('jax.process_index')
-  def test_write_metrics_summary(self, mock_process_index):
+  def test_write_metrics_summary(self):
     gfile.makedirs(os.path.join(self.model_dir, 'eval'))
 
     def summarize_fn(metrics, duration, num_steps):
@@ -148,21 +144,37 @@ class MetricsManagerTest(absltest.TestCase):
     }
 
     # Only host 0 has a summary writer.
-    mock_process_index.return_value = 1
-    mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
-    mm.write_metrics_summary(accumulated_metrics, step=4, num_steps=2)
+    with mock.patch('jax.process_index', return_value=1):
+      mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
+      mm.start_duration_timer()
+      mm.write_metrics_summary(accumulated_metrics, step=4, num_steps=2)
+      mm.flush()
     self.assertEmpty(gfile.listdir(mm.summary_dir))
 
-    mock_process_index.return_value = 0
     with mock.patch(
-        'time.time',
-        side_effect=[0, 40]  # start_time, end_time
-    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+        'jax.process_index', return_value=0), mock.patch(
+            'time.time',
+            side_effect=[0, 40]  # start_time, end_time
+        ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
       mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
+      mm.start_duration_timer()
       mm.write_metrics_summary(accumulated_metrics, step=4, num_steps=2)
+      mm.flush()
 
-    mm.flush()
     _validate_events(self, mm.summary_dir, expected_events, steps=[4, 4, 4])
+
+  def test_timer_blocking_on_donated_buffer(self):
+    mm = trainer_lib.MetricsManager('train', lambda x, y: x, summary_dir=None)
+    x = jnp.zeros(1)
+
+    # Not deleted.
+    mm.start_duration_timer(block_on=x)
+    mm._duration_timer._start_future.result()
+
+    # Deleted/donated.
+    x.device_buffer.delete()
+    mm.start_duration_timer(block_on=x)
+    mm._duration_timer._start_future.result()
 
 
 def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
@@ -260,7 +272,6 @@ class TrainerTest(parameterized.TestCase):
         'time.time',
         side_effect=[1, 5]  # start_time, end_time
     ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
-      trainer.train_metrics_manager.reset_duration_timer()
       trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
 
     initial_metrics = {
