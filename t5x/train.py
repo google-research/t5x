@@ -101,7 +101,7 @@ def train(
                                   None],
     inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator,
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
-    concurrent_metrics: bool = True,
+    concurrent_metrics: bool = False,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None
 ) -> Tuple[int, train_state_lib.TrainState]:
