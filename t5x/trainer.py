@@ -791,17 +791,10 @@ class Trainer(BaseTrainer):
       """Produces summaries for metrics added by the trainer."""
       del duration
       summary_metrics = {
-          k: v for k, v in metrics.items() if k in trainer_metric_names
+          k: v.compute()
+          for k, v in metrics.items()
+          if k in trainer_metric_names
       }
-
-      for k, v in summary_metrics.items():
-        # All of the Sum metrics should be divided by num_steps, since they've
-        # been accumulated that many times.
-        if isinstance(v, metrics_lib.Sum):
-          summary = v.compute() / num_steps
-        else:
-          summary = v.compute()
-        summary_metrics[k] = summary
 
       return summary_metrics
 
