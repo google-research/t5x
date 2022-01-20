@@ -86,7 +86,7 @@ Following are the required params:
 
 +   `CHECKPOINT_PATH`: This is the path to the model checkpoint (from Step 1).
     For the example run, set this to
-    `'gs://t5-data//pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'`.
+    `'gs://t5-data/pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'`.
 +   `TF_EXAMPLE_FILE_PATHS`: This is a list of paths or glob patterns to read TF
     Examples from. For the example run, set this to
     `['/path/to/tfds/data/dir/natural_questions_open/1.0.0/natural_questions_open-validation.tfrecord*']`.
@@ -137,7 +137,7 @@ Finally, your Gin file should look like this:
 include 'runs/infer_from_tfexample_file.gin'
 include 'models/t5_1_1_small.gin'
 
-CHECKPOINT_PATH = 'gs://t5-data//pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'
+CHECKPOINT_PATH = 'gs://t5-data/pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'
 TF_EXAMPLE_FILE_PATHS = ['/path/to/tfds/data/dir/natural_questions_open/1.0.0/natural_questions_open-validation.tfrecord*']
 TF_EXAMPLE_FILE_TYPE = 'tfrecord'
 FEATURE_LENGTHS = {'inputs': 38, 'targets': 18}

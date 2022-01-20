@@ -21,7 +21,7 @@ RANDOM_SEED = 0
 # set to `pretraining batch_size` * `target_token_length`. For T5 and T5.1.1:
 # `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
 LOSS_NORMALIZING_FACTOR = 233472
-INITIAL_CHECKPOINT_PATH = "gs://t5-data//pretrained_models/t5x/t5_1_1_base/checkpoint_1000000"
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000"
 
 train_script.train:
   eval_period = 500

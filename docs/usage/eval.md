@@ -90,7 +90,7 @@ Gin file, or via commandline flags. Following are the required params:
 
 +   `CHECKPOINT_PATH`: This is the path to the model checkpoint (from Step 1).
     For the example run, set this to
-    `'gs://t5-data//pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'`.
+    `'gs://t5-data/pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'`.
 +   `MIXTURE_OR_TASK_NAME`: This is the SeqIO Task or Mixture name to run eval
     on (from Step 2). For the example run, set this to
     `'natural_questions_open'`.
@@ -146,7 +146,7 @@ include 't5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin'
 # Register necessary SeqIO Tasks/Mixtures.
 import google_research.t5_closed_book_qa.t5_cbqa.tasks
 
-CHECKPOINT_PATH = 'gs://t5-data//pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'
+CHECKPOINT_PATH = 'gs://t5-data/pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'
 MIXTURE_OR_TASK_NAME = 'natural_questions_open'
 ```
 

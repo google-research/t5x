@@ -88,7 +88,7 @@ Following are the required params:
 
 +   `CHECKPOINT_PATH`: This is the path to the model checkpoint (from Step 1).
     For the example run, set this to
-    `'gs://t5-data//pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'`.
+    `'gs://t5-data/pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'`.
 +   `MIXTURE_OR_TASK_NAME`: This is the SeqIO Task or Mixture name to run
     inference on (from Step 2). For the example run, set this to
     `'natural_questions_open'`.
@@ -136,7 +136,7 @@ Finally, your Gin file should look like this:
 include 'runs/infer.gin'
 include 'models/t5_1_1_small.gin'
 
-CHECKPOINT_PATH = 'gs://t5-data//pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'
+CHECKPOINT_PATH = 'gs://t5-data/pretrained_models/cbqa/small_ssm_nq/model.ckpt-1110000'
 MIXTURE_OR_TASK_NAME = 'closed_book_qa'
 MIXTURE_OR_TASK_MODULE = 'google_research.t5_closed_book_qa.t5_cbqa.tasks'
 TASK_FEATURE_LENGTHS = {'inputs': 38, 'targets': 18}

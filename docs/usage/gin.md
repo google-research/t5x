@@ -116,7 +116,7 @@ partitioning.PjitPartitioner:
 
 utils.RestoreCheckpointConfig:
   mode = 'specific'
-  path = 'gs://t5-data//pretrained_models/cbqa/large_ssm_nqo'
+  path = 'gs://t5-data/pretrained_models/cbqa/large_ssm_nqo'
   assignment_map = None
   strict = True
   dtype = None
@@ -223,7 +223,7 @@ partitioning.PjitPartitioner:
 
 utils.RestoreCheckpointConfig:
   mode = 'specific'
-  path = 'gs://t5-data//pretrained_models/cbqa/large_ssm_nqo'
+  path = 'gs://t5-data/pretrained_models/cbqa/large_ssm_nqo'
   assignment_map = None
   strict = True
   dtype = None
@@ -361,7 +361,7 @@ python -m t5x.train \
   --gin.TASK_FEATURE_LENGTHS="{'inputs': 256, 'targets': 256}" \
   --gin.TRAIN_STEPS=1_020_000 \
   --gin.MODEL_DIR="'/tmp/t5_1_1_base_finetune_gin'" \
-  --gin.INITIAL_CHECKPOINT_PATH="'gs://t5-data//pretrained_models/t5x/t5_1_1_small/checkpoint_1000000'" \
+  --gin.INITIAL_CHECKPOINT_PATH="'gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000'" \
   --logtostderr
 ```
 

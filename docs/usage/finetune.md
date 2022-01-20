@@ -47,11 +47,11 @@ objective.
 
 Model    | Gin File Location                                                              | Checkpoint Location
 -------- | ------------------------------------------------------------------------------ | -------------------
-T5 Small | [t5_small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/small.gin) | [gs://t5-data//pretrained_models/t5x/t5_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_small)
-T5 Base  | [t5_base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/base.gin)   | [gs://t5-data//pretrained_models/t5x/t5_base/checkpoint_999900](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_base)
-T5 Large | [t5_large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/large.gin) | [gs://t5-data//pretrained_models/t5x/t5_large/checkpoint_1000700](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_large)
-T5 3B    | [t5_3B.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/3B.gin)       | [gs://t5-data//pretrained_models/t5x/t5_3B/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_3B)
-T5 11B   | [t5_11B.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/11B.gin)     | [gs://t5-data//pretrained_models/t5x/t5_11B/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_11B)
+T5 Small | [t5_small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/small.gin) | [gs://t5-data/pretrained_models/t5x/t5_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_small)
+T5 Base  | [t5_base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/base.gin)   | [gs://t5-data/pretrained_models/t5x/t5_base/checkpoint_999900](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_base)
+T5 Large | [t5_large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/large.gin) | [gs://t5-data/pretrained_models/t5x/t5_large/checkpoint_1000700](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_large)
+T5 3B    | [t5_3B.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/3B.gin)       | [gs://t5-data/pretrained_models/t5x/t5_3B/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_3B)
+T5 11B   | [t5_11B.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/11B.gin)     | [gs://t5-data/pretrained_models/t5x/t5_11B/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_11B)
 
 #### T5 1.1 Checkpoints
 
@@ -74,11 +74,11 @@ best models to fine-tune.
 
 Model        | Gin File Location                                                                  | Checkpoint Location
 ------------ | ---------------------------------------------------------------------------------- | -------------------
-T5 1.1 Small | [t5_1_1/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin) | [gs://t5-data//pretrained_models/t5x/t5_1_1_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_small)
-T5 1.1 Base  | [t5_1_1/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/base.gin)   | [gs://t5-data//pretrained_models/t5x/t5_1_1_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_base)
-T5 1.1 Large | [t5_1_1_large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/large.gin) | [gs://t5-data//pretrained_models/t5x/t5_1_1_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_large)
-T5 1.1 XL    | [t5_1_1_xl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/xl.gin)       | [gs://t5-data//pretrained_models/t5x/t5_1_1_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_xl)
-T5 1.1 XXL   | [t5_1_1_xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/xxl.gin)     | [gs://t5-data//pretrained_models/t5x/t5_1_1_xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_xxl)
+T5 1.1 Small | [t5_1_1/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin) | [gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_small)
+T5 1.1 Base  | [t5_1_1/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/base.gin)   | [gs://t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_base)
+T5 1.1 Large | [t5_1_1_large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/large.gin) | [gs://t5-data/pretrained_models/t5x/t5_1_1_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_large)
+T5 1.1 XL    | [t5_1_1_xl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/xl.gin)       | [gs://t5-data/pretrained_models/t5x/t5_1_1_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_xl)
+T5 1.1 XXL   | [t5_1_1_xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/xxl.gin)     | [gs://t5-data/pretrained_models/t5x/t5_1_1_xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_xxl)
 
 #### T5 1.1 LM-Adapted Checkpoints
 
@@ -108,18 +108,18 @@ non-English sequence-to-sequence tasks.
 
 Model     | Gin File Location                                                            | Checkpoint Location
 --------- | ---------------------------------------------------------------------------- | -------------------
-MT5 Small | [mt5/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/small.gin) | [gs://t5-data//pretrained_models/t5x/mt5_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_small)
-MT5 Base  | [mt5/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/base.gin)   | [gs://t5-data//pretrained_models/t5x/mt5_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_base)
-MT5 Large | [mt5/large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/large.gin) | [gs://t5-data//pretrained_models/t5x/mt5_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_large)
-MT5 XL    | [mt5/xl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/xl.gin)       | [gs://t5-data//pretrained_models/t5x/mt5_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_xl)
-MT5 XXL   | [mt5/xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/xxl.gin)     | [gs://t5-data//pretrained_models/t5x/mt5_xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_xxl)
+MT5 Small | [mt5/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/small.gin) | [gs://t5-data/pretrained_models/t5x/mt5_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_small)
+MT5 Base  | [mt5/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/base.gin)   | [gs://t5-data/pretrained_models/t5x/mt5_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_base)
+MT5 Large | [mt5/large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/large.gin) | [gs://t5-data/pretrained_models/t5x/mt5_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_large)
+MT5 XL    | [mt5/xl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/xl.gin)       | [gs://t5-data/pretrained_models/t5x/mt5_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_xl)
+MT5 XXL   | [mt5/xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/xxl.gin)     | [gs://t5-data/pretrained_models/t5x/mt5_xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_xxl)
 
 
 For the example run, you will use the T5 Small model. The Gin file for this
 model is located at
 [`/t5x/examples/t5/t5_1_0/small.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/small.gin),
 and the checkpoint is located at
-[`gs://t5-data//pretrained_models/t5x/t5_small`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_small).
+[`gs://t5-data/pretrained_models/t5x/t5_small`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_small).
 
 ## Step 2: Choose a SeqIO Task/Mixture
 
@@ -178,7 +178,7 @@ Gin file, or via commandline flags. Following are the required params:
 
 +   `INITIAL_CHECKPOINT_PATH`: This is the path to the pre-trained checkpoint
     (from Step 1). For the example run, set this to
-    `'gs://t5-data//pretrained_models/t5x/t5_small/checkpoint_1000000'`.
+    `'gs://t5-data/pretrained_models/t5x/t5_small/checkpoint_1000000'`.
 +   `TRAIN_STEPS`: Number of fine-tuning steps. This includes the number of
     steps that the model was pre-trained for, so make sure to add the step
     number from the `INITIAL_CHECKPOINT_PATH`. For the example run, to fine-tune
@@ -226,7 +226,7 @@ include 't5x/examples/t5/t5_1_1/small.gin'
 # Register necessary SeqIO Tasks/Mixtures.
 import t5.data.mixtures
 
-INITIAL_CHECKPOINT_PATH = 'gs://t5-data//pretrained_models/t5x/t5_1_1_base/checkpoint_1000000'
+INITIAL_CHECKPOINT_PATH = 'gs://t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000'
 TRAIN_STEPS = 1_020_000  # includes 1_000_000 pretrain steps
 MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
 TASK_FEATURE_LENGTHS = {"inputs": 256, "targets": 256}
@@ -359,7 +359,7 @@ MIXTURE_OR_TASK_NAME = 'glue_v002_proportional'
 MIXTURE_OR_TASK_MODULE = 't5.data.mixtures'
 TASK_FEATURE_LENGTHS =  {'inputs': 512, 'targets': 84}
 TRAIN_STEPS = 1_500_000  # includes 1_000_000 pretrain steps
-INITIAL_CHECKPOINT_PATH = 'gs://t5-data//pretrained_models/t5x/t5_small/checkpoint_1000000'
+INITIAL_CHECKPOINT_PATH = 'gs://t5-data/pretrained_models/t5x/t5_small/checkpoint_1000000'
 infer_eval/utils.DatasetConfig.mixture_or_task_name = 'glue_stsb_v002'
 ```
 
