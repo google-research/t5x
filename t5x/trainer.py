@@ -353,18 +353,20 @@ class MetricsManager(object):
         real scalar value on host 0. For other hosts, return None.
     """
 
+    # Must be called in the main thread to avoid race condition.
+    duration_future = self._duration_timer.stop(block_on=metrics)
+
     def _summarize_and_write():
-      duration = self._duration_timer.stop(block_on=metrics)
       # For thread safety, since `_summarize_fn` may do additional computations,
       # we first copy the metrics to host.
       fetched_metrics = jax.tree_map(jax.device_get, metrics)
+
+      duration = duration_future.result()
       # We set the duration on TimeRate metrics.
       final_metrics = metrics_lib.set_time_metrics_duration(
-          fetched_metrics, duration.result())
+          fetched_metrics, duration)
       summary = self._summarize_fn(
-          metrics=final_metrics,
-          duration=duration.result(),
-          num_steps=num_steps)
+          metrics=final_metrics, duration=duration, num_steps=num_steps)
       self.write_scalars(step, summary)
 
       return summary
