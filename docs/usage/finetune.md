@@ -31,7 +31,7 @@ available for use in T5X. Following is a list of these pre-trained models and
 their Gin and checkpoint locations.
 
 +   All checkpoints:
-    [`placer/prod/home/brain-ogm-data-writer/pretrained_models/t5x/`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/)
+    [`gs://t5-data/pretrained_models/t5x/`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/)
 +   All Gin files:
     [`t5x/configs/models/`](https://github.com/google-research/t5x/tree/main/t5x/configs/)
 
