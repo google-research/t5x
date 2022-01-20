@@ -80,6 +80,23 @@ T5 1.1 Large | [t5_1_1_large.gin](https://github.com/google-research/t5x/tree/ma
 T5 1.1 XL    | [t5_1_1_xl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/xl.gin)       | [gs://t5-data//pretrained_models/t5x/t5_1_1_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_xl)
 T5 1.1 XXL   | [t5_1_1_xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/xxl.gin)     | [gs://t5-data//pretrained_models/t5x/t5_1_1_xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_xxl)
 
+#### T5 1.1 LM-Adapted Checkpoints
+
+These "LM-adapted" models are initialized from T5 1.1 (above) and trained for
+an additional 100K steps on the LM objective discussed in the [T5
+paper](https://arxiv.org/abs/1910.10683). This adaptation improves the ability
+of the model to be used for [prompt tuning](https://arxiv.org/abs/2104.08691).
+These checkpoints were also used within the BigScience
+[T0](https://arxiv.org/abs/2110.08207) project.
+
+Model        | Gin File Location                                                                                                   | Checkpoint Location
+------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------
+T5 1.1 LM-100K Small | [t5_1_1_small.gin](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin) | [t5_1_1_lm100k_small/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_lm100k_small)
+T5 1.1 LM-100K Base  | [t5_1_1_base.gin](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_base.gin)   | [t5_1_1_lm100k_base/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_lm100k_base)
+T5 1.1 LM-100K Large | [t5_1_1_large.gin](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_large.gin) | [t5_1_1_lm100k_large/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_lm100k_large)
+T5 1.1 LM-100K XL    | [t5_1_1_xl.gin](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_xl.gin)       | [t5_1_1_lm100k_xl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_lm100k_xl)
+T5 1.1 LM-100K XXL   | [t5_1_1_xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_xxl.gin)     | [t5_1_1_lm100k_xxl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_lm100k_xxl)
+
 #### MT5 Checkpoints
 
 These are the checkpoints used in the paper
