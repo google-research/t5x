@@ -307,10 +307,15 @@ class MetricsManager(object):
     self._duration_timer = _AsyncTimer()
 
   def __del__(self):
+    self.close()
+
+  def close(self):
     try:
       self._summary_pool.close()
     finally:
-      self._writer.close()
+      if self._writer:
+        self._writer.close()
+        self._writer = None
 
   @property
   def summary_writer(self) -> metric_writers.MetricWriter:

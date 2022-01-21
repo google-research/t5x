@@ -76,25 +76,25 @@ class MetricsManagerTest(absltest.TestCase):
     with mock.patch('jax.process_index', return_value=0):
       mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertEqual(mm.summary_dir, os.path.join(self.model_dir, 'eval'))
-    del mm
+    mm.close()
 
     with mock.patch('jax.process_index', return_value=1):
       mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertEqual(mm.summary_dir, os.path.join(self.model_dir, 'eval'))
-    del mm
+    mm.close()
 
   def test_summary_writer(self):
     # Only host 0 creates a non-empty summary writer.
     with mock.patch('jax.process_index', return_value=1):
       mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertFalse(gfile.exists(mm.summary_dir))
-    del mm
+    mm.close()
 
     with mock.patch('jax.process_index', return_value=0):
       mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
     self.assertIsInstance(mm.summary_writer, metric_writers.MetricWriter)
     self.assertTrue(gfile.exists(mm.summary_dir))
-    del mm
+    mm.close()
 
   def test_write_scalar(self):
     gfile.makedirs(os.path.join(self.model_dir, 'eval'))
@@ -108,7 +108,7 @@ class MetricsManagerTest(absltest.TestCase):
       for s in scalars:
         mm.write_scalar(*s)
     self.assertEmpty(gfile.listdir(mm.summary_dir))
-    del mm
+    mm.close()
 
     with mock.patch('jax.process_index', return_value=0):
       mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
@@ -128,7 +128,7 @@ class MetricsManagerTest(absltest.TestCase):
       self.assertLen(event.summary.value, 1)
       self.assertEqual(event.summary.value[0].tag, tag)
       self.assertEqual(tf.make_ndarray(event.summary.value[0].tensor), value)
-    del mm
+    mm.close()
 
   def test_write_metrics_summary(self):
     gfile.makedirs(os.path.join(self.model_dir, 'eval'))
@@ -157,7 +157,7 @@ class MetricsManagerTest(absltest.TestCase):
       mm.write_metrics_summary(accumulated_metrics, step=4, num_steps=2)
       mm.flush()
     self.assertEmpty(gfile.listdir(mm.summary_dir))
-    del mm
+    mm.close()
 
     with mock.patch(
         'jax.process_index', return_value=0), mock.patch(
@@ -170,7 +170,7 @@ class MetricsManagerTest(absltest.TestCase):
       mm.flush()
 
     _validate_events(self, mm.summary_dir, expected_events, steps=[4, 4, 4])
-    del mm
+    mm.close()
 
   def test_timer_blocking_on_donated_buffer(self):
     mm = trainer_lib.MetricsManager('train', lambda x, y: x, summary_dir=None)
@@ -270,10 +270,10 @@ class TrainerTest(parameterized.TestCase):
         num_microbatches=None)
 
   def tearDown(self) -> None:
-    # Manually delete managers to avoid phantom threads crossing test cases.
-    del self.test_trainer.train_metrics_manager
+    # Manually close managers to avoid phantom threads crossing test cases.
+    self.test_trainer.train_metrics_manager.close()
     for mm in self.test_trainer.eval_metrics_managers.values():
-      del mm
+      mm.close()
     return super().tearDown()
 
   @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_accum_grads)
