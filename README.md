@@ -107,13 +107,13 @@ TFDS_DATA_DIR="..."
 T5X_DIR="..."  # directory where the T5X repo is cloned.
 
 python3 ${T5X_DIR}/t5x/train.py \
-  --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_train.gin" \
+  --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin" \
   --gin.MODEL_DIR="'${MODEL_DIR}'" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
 The configuration for this training run is defined in the Gin file
-[base_wmt_train.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_train.gin).
+[base_wmt_from_scratch.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin).
 [Gin-config](https://github.com/google/gin-config) is a library to handle
 configurations based on dependency injection. Among many benefits, Gin allows
 users to pass custom components such as a custom model to the T5X library
@@ -191,7 +191,7 @@ via a flag, you must put it in quotes. In the case of strings, it requires
 Gin makes it easy to change a number of configurations. For example, you can
 change the `partitioning.ModelBasedPjitPartitioner.num_partitions` (overriding
 the value in
-[base_wmt_train.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_train.gin))
+[base_wmt_from_scratch.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin))
 to chanage the parallelism strategy and pass it as a commandline arg.
 
 ```sh
@@ -303,7 +303,7 @@ flag.
 from __gin__ import dynamic_registration
 import tasks  # This imports the task defined in dir1/user_dir/tasks.py.
 
-include "t5x-tmp/t5x/examples/t5/t5_1_1/examples/base_wmt_train.gin"
+include "t5x-tmp/t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin"
 MIXTURE_OR_TASK_NAME = "wmt_t2t_de_en_v003"
 ```
 
