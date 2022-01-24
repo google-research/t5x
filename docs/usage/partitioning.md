@@ -162,7 +162,7 @@ to the `ModelBasedPjitPartitioner`.
     dimension.
 *   `"mlp"`: Intermediate dimension of the feed-forward layer.
 *   `"vocab"`: For embeddings, the input/output vocabulary size.
-*   `"activations"`: For fused MLP matrices that have a dimension for the
+*   `"mlp_activations"`: For fused MLP matrices that have a dimension for the
     activation function index.
 *   `"stack"`: For KV and QKV fused attention implementations, the manual
     parameter-fusion stacked dimension.
@@ -210,6 +210,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     ('length', None),
     ('layers', None),
     ('stack', None),
+    ('mlp_activations', None),
 ]
 ```
 
@@ -232,6 +233,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     ('length', None),
     ('layers', None),
     ('stack', None),
+    ('mlp_activations', None),
 ]
 ```
 
@@ -253,6 +255,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     ('length', None),
     ('layers', None),
     ('stack', None),
+    ('mlp_activations', None),
 ]
 ```
 
@@ -275,6 +278,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     ('length', None),
     ('layers', None),
     ('stack', None),
+    ('mlp_activations', None),
 ]
 ```
 
@@ -297,6 +301,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     ('length', None),
     ('layers', None),
     ('stack', None),
+    ('mlp_activations', None),
 ]
 ```
 

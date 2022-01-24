@@ -459,6 +459,7 @@ def standard_logical_axis_rules(
         ('length', None),
         ('layers', None),
         ('stack', None),
+        ('mlp_activations', None),
     )
   elif activation_partitioning_dims == 2 and parameter_partitioning_dims == 1:
     rules = [
@@ -473,6 +474,7 @@ def standard_logical_axis_rules(
         ('length', None),
         ('layers', None),
         ('stack', None),
+        ('mlp_activations', None),
     ]
   elif activation_partitioning_dims == 1 and parameter_partitioning_dims == 2:
     rules = [
@@ -487,6 +489,7 @@ def standard_logical_axis_rules(
         ('length', None),
         ('layers', None),
         ('stack', None),
+        ('mlp_activations', None),
     ]
   elif activation_partitioning_dims == 2 and parameter_partitioning_dims == 2:
     rules = [
@@ -502,6 +505,7 @@ def standard_logical_axis_rules(
         ('length', None),
         ('layers', None),
         ('stack', None),
+        ('mlp_activations', None),
     ]
   else:
     raise ValueError(
