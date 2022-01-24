@@ -158,7 +158,7 @@ cause issues), run the following on commandline:
 MODEL_DIR="/tmp/pretrain-model/"
 python -m t5x.train \
   --gin_file=t5x/examples/t5/t5_1_1/c4_pretrain_small.gin \
-  --gin.MODEL_DIR="'${MODEL_DIR}'" \
+  --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --alsologtostderr
 ```
 

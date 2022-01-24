@@ -312,8 +312,8 @@ two ways: gin files and override flags.
     any previously assigned value in the gin files.
 
 **Note:** when supplying a string, dict, list, or tuple value via a flag, you
-must put it in quotes. In the case of strings, it requires "triple quotes"
-(`"'<string>'"`). For example: `--gin.utils.DatasetConfig.split="'validation'"`,
+must put it in quotes. In the case of strings, it requires escaped quotes
+(`\"<string>\"`). For example: `--gin.utils.DatasetConfig.split=\"validation\"`,
 `--gin.utils.DatasetConfig.task_feature_lengths="{'inputs': 512, 'targets':
 84}"`, and `--gin.dense.MlpBlock.activations="('dense', 'gelu')"`
 
@@ -356,12 +356,12 @@ on WMT in the updated launch command here:
 python -m t5x.train \
   --gin_file=t5x/examples/t5/t5_1_1/small.gin \
   --gin_file=t5x/configs/runs/finetune.gin \
-  --gin.MIXTURE_OR_TASK_NAME="'wmt_t2t_ende_v003'" \
-  --gin.MIXTURE_OR_TASK_MODULE="'t5.data.mixtures'" \
+  --gin.MIXTURE_OR_TASK_NAME=\"wmt_t2t_ende_v003\" \
+  --gin.MIXTURE_OR_TASK_MODULE=\"t5.data.mixtures\" \
   --gin.TASK_FEATURE_LENGTHS="{'inputs': 256, 'targets': 256}" \
   --gin.TRAIN_STEPS=1_020_000 \
-  --gin.MODEL_DIR="'/tmp/t5_1_1_base_finetune_gin'" \
-  --gin.INITIAL_CHECKPOINT_PATH="'gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000'" \
+  --gin.MODEL_DIR=\"/tmp/t5_1_1_base_finetune_gin\" \
+  --gin.INITIAL_CHECKPOINT_PATH=\"gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000\" \
   --logtostderr
 ```
 

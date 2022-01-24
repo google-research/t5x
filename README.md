@@ -108,7 +108,7 @@ T5X_DIR="..."  # directory where the T5X repo is cloned.
 
 python3 ${T5X_DIR}/t5x/train.py \
   --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin" \
-  --gin.MODEL_DIR="'${MODEL_DIR}'" \
+  --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
@@ -178,15 +178,15 @@ T5X_DIR="..."  # directory where the T5X repo is cloned.
 
 python3 ${T5X_DIR}/t5x/train.py \
   --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_finetune.gin" \
-  --gin.MODEL_DIR="'${MODEL_DIR}'" \
+  --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
 **Note:** when supplying a string, dict, list, tuple value, or a bash variable
 via a flag, you must put it in quotes. In the case of strings, it requires
-"triple quotes" (`"'<string>'"`). For example:
-`--gin.utils.DatasetConfig.split="'validation'"` or
-`--gin.MODEL_DIR="'${MODEL_DIR}'"`.
+escaped quotes (`\"<string>\"`). For example:
+`--gin.utils.DatasetConfig.split=\"validation\"` or
+`--gin.MODEL_DIR=\"${MODEL_DIR}\"`.
 
 Gin makes it easy to change a number of configurations. For example, you can
 change the `partitioning.ModelBasedPjitPartitioner.num_partitions` (overriding
@@ -211,8 +211,8 @@ CHECKPOINT_PATH="..."
 
 python3 ${T5X_DIR}/t5x/eval.py \
   --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_eval.gin" \
-  --gin.CHECKPOINT_PATH="'${CHECKPOINT_PATH}'" \
-  --gin.EVAL_OUTPUT_DIR="'${EVAL_OUTPUT_DIR}'" \
+  --gin.CHECKPOINT_PATH=\"${CHECKPOINT_PATH}\" \
+  --gin.EVAL_OUTPUT_DIR=\"${EVAL_OUTPUT_DIR}\" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
@@ -231,8 +231,8 @@ CHECKPOINT_PATH="..."
 
 python3 ${T5X_DIR}/t5x/infer.py \
   --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_infer.gin" \
-  --gin.CHECKPOINT_PATH="'${CHECKPOINT_PATH}'" \
-  --gin.INFER_OUTPUT_DIR="'${INFER_OUTPUT_DIR}'" \
+  --gin.CHECKPOINT_PATH=\"${CHECKPOINT_PATH}\" \
+  --gin.INFER_OUTPUT_DIR=\"${INFER_OUTPUT_DIR}\" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
@@ -321,7 +321,7 @@ export PYTHONPATH=${PROJECT_DIR}
 python3 ${T5X_DIR}/t5x/train.py \
   --gin_search_paths=${PROJECT_DIR} \
   --gin_file="t5_1_1_base_de_en.gin" \
-  --gin.MODEL_DIR="'${MODEL_DIR}'" \
+  --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 
@@ -355,9 +355,9 @@ T5X_DIR="..."  # directory where the T5X repo is cloned.
 
 python3 ${T5X_DIR}/t5x/train.py \
   --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt19_ende_train.gin" \
-  --gin.MODEL_DIR="'${MODEL_DIR}'" \
-  --gin.MIXTURE_OR_TASK_NAME="'wmt_t2t_ende_v003'" \
-  --gin.INIT_CHECKPOINT="'gs://t5-data/pretrained_models/t5.1.1.base/model.ckpt-1000000'" \
+  --gin.MODEL_DIR=\"${MODEL_DIR}\" \
+  --gin.MIXTURE_OR_TASK_NAME=\"wmt_t2t_ende_v003\" \
+  --gin.INIT_CHECKPOINT=\"gs://t5-data/pretrained_models/t5.1.1.base/model.ckpt-1000000\" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
 

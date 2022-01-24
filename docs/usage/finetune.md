@@ -247,7 +247,7 @@ cause issues), run the following on commandline:
 MODEL_DIR="/tmp/finetune-model/"
 python -m t5x.train \
   --gin_file=t5x/examples/t5/t5_0_0/examples/small_glue_finetune.gin \
-  --gin.MODEL_DIR="'${MODEL_DIR}'" \
+  --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --alsologtostderr
 ```
 

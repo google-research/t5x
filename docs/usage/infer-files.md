@@ -163,7 +163,7 @@ cause issues), run the following on commandline:
 INFER_OUTPUT_DIR="/tmp/model-infer/"
 python -m t5x.infer \
   --gin_file=t5x/google/examples/flaxformer_t5/configs/examples/inference/t5_1_1_small_cbqa_natural_questions_tfexample.gin \
-  --gin.INFER_OUTPUT_DIR="'${INFER_OUTPUT_DIR}'" \
+  --gin.INFER_OUTPUT_DIR=\"${INFER_OUTPUT_DIR}\" \
   --alsologtostderr
 ```
 
