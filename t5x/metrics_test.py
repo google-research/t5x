@@ -69,6 +69,29 @@ class MetricsTest(parameterized.TestCase):
     with self.assertRaises(ValueError):
       metric.compute()
 
+  @parameterized.named_parameters(
+      ("0d_values", 2., 2.),
+      ("1d_values", [1, 2, 3], 6.),
+  )
+  def test_average_per_step(self, values, expected_result):
+    a = metrics.AveragePerStep.from_model_output(values)
+    m = metrics.set_microbatch_adjusted_metrics_microbatches({"a": a}, 1)
+    self.assertAlmostEqual(m["a"].compute(), expected_result)
+
+    steps = 5
+    b = metrics.AveragePerStep.from_model_output(values, steps=steps)
+    m = metrics.set_microbatch_adjusted_metrics_microbatches({"b": b}, 2)
+    self.assertAlmostEqual(m["b"].compute(), expected_result / steps * 2)
+
+  def test_steps_per_time(self):
+    steps = 8.
+    duration = 2.
+    metric = metrics.StepsPerTime.from_model_output(
+        steps=steps).replace_duration(duration)
+    metrics_dict = metrics.set_microbatch_adjusted_metrics_microbatches(
+        {"metric": metric}, 1)
+    self.assertAlmostEqual(metrics_dict["metric"].compute(), steps / duration)
+
 
 if __name__ == "__main__":
   absltest.main()

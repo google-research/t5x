@@ -23,7 +23,6 @@ from typing import MutableMapping, Optional, Union
 
 from clu import metrics as clu_metrics
 import flax  # Only used for flax.struct.dataclass.
-from flax import struct
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -82,45 +81,70 @@ class Sum(clu_metrics.Metric):
 
 
 @flax.struct.dataclass
-class MicrobatchAdjusted(clu_metrics.Metric):
-  """Metric class that allows adjusting for values depending on microbatch size.
+class Step(clu_metrics.Metric):
+  """Abstract class representing a per-step or step-per metric.
 
-  Attributes:
-    metric: the underlying Metric.
-    per_step: whether metric is computed per step (True) or step per (False)
-    num_microbatches: number of microbatches. 1 by default if no microbatches
-      are used. Use replace_num_microbatches to set.
+  Tracks number of steps and num_microbatches. Use replace_num_microbatches to
+  set.
 
-  Returns:
-    A MicrobatchAdjusted Metric.
+  See also documentation of `Metric`.
   """
-
-  metric: clu_metrics.Metric
-  per_step: bool = struct.field(pytree_node=False)
+  steps: Optional[int] = 1
   num_microbatches: Optional[int] = None
 
-  def merge(self, other: "MicrobatchAdjusted") -> "MicrobatchAdjusted":
-    assert type(self.metric) is type(other.metric)
-    assert self.per_step == other.per_step
-    return type(self)(
-        metric=self.metric.merge(other.metric),
-        per_step=self.per_step,
-        num_microbatches=self.num_microbatches)
-
-  def replace_num_microbatches(self, num_microbatches) -> "MicrobatchAdjusted":
+  def replace_num_microbatches(self, num_microbatches) -> "Step":
     if num_microbatches is None:
       return self
-    return self.replace(num_microbatches=num_microbatches)
+    o = self.replace(num_microbatches=num_microbatches)
+    return o
 
   def compute(self) -> Scalar:
     if self.num_microbatches is None:
       raise ValueError(
           "`num_microbatches` must be set by calling `replace_num_microbatches` before computing metric."
       )
-    if self.per_step:
-      return self.metric.compute() * self.num_microbatches
-    else:
-      return self.metric.compute() / self.num_microbatches
+    return self.steps
+
+
+@flax.struct.dataclass
+class AveragePerStep(Step):
+  """Represents per-step average (total divided by number of steps).
+
+  See also documentation of `Step`.
+  """
+  total: Optional[Scalar] = None
+
+  @classmethod
+  def from_model_output(cls,
+                        values: Scalar,
+                        steps: Optional[int] = 1,
+                        **_) -> clu_metrics.Metric:
+    """Initializes an AveragePerStep Metric from array (or singular) values.
+
+    Args:
+      values: array of values to sum (or a single value).
+      steps: number of steps, defaults to 1.
+
+    Returns:
+      AveragePerStep object.
+    """
+    values = jnp.asarray(values)
+    if values.ndim == 0:
+      values = values[None]
+    return cls(total=values.sum(), steps=steps)
+
+  def merge(self, other: "AveragePerStep") -> "AveragePerStep":
+    assert type(self) is type(other)
+    return type(self)(
+        total=self.total + other.total,
+        steps=self.steps + other.steps,
+        num_microbatches=self.num_microbatches)
+
+  def compute(self) -> Scalar:
+    steps = super().compute()
+    if self.total is None:
+      raise ValueError("`AveragePerStep` `total` cannot be None.")
+    return self.total / steps * self.num_microbatches
 
 
 @flax.struct.dataclass
@@ -204,13 +228,44 @@ class TimeRate(Time):
     return super().replace_duration(duration)
 
 
+@flax.struct.dataclass
+class StepsPerTime(Step, Time):
+  """Represents a metric computed as number of steps per time.
+
+  See also documentation of `Step`.
+  """
+
+  @classmethod
+  def from_model_output(cls,
+                        steps: Optional[int] = 1,
+                        **_) -> clu_metrics.Metric:
+    """Initializes an StepsPerTime Metric.
+
+    Args:
+      steps: number of steps, defaults to 1.
+
+    Returns:
+      StepsPerTime object.
+    """
+    return cls(steps=steps)
+
+  def merge(self, other: "StepsPerTime") -> "StepsPerTime":
+    assert type(self) is type(other)
+    return type(self)(
+        steps=self.steps + other.steps, num_microbatches=self.num_microbatches)
+
+  def compute(self) -> Scalar:
+    steps = Step.compute(self)
+    duration = Time.compute(self)
+    return (steps / duration) / self.num_microbatches
+
+
 def is_metric_obj(obj):
   return isinstance(obj, clu_metrics.Metric)
 
 
 def is_time_metric(obj):
-  return isinstance(obj, Time) or (isinstance(obj, MicrobatchAdjusted) and
-                                   isinstance(obj.metric, Time))
+  return isinstance(obj, Time)
 
 
 def create_metrics_dict(float_metrics_dict):
@@ -261,11 +316,11 @@ def set_time_metrics_duration(metrics, duration):
 
 
 def set_microbatch_adjusted_metrics_microbatches(metrics, num_microbatches):
-  """Sets num_microbatches for MicrobatchAdjusted objects in metrics pytree."""
+  """Sets num_microbatches for Step objects in metrics pytree."""
 
   @jax.jit
   def fn(o):
-    if isinstance(o, MicrobatchAdjusted):
+    if isinstance(o, Step):
       return o.replace_num_microbatches(num_microbatches)
     else:
       return o

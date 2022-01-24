@@ -1076,8 +1076,7 @@ def compute_base_metrics(
           clu_metrics.Accuracy.from_model_output(
               logits=logits, labels=targets.astype(jnp.int32), mask=mask),
       'loss':
-          metrics_lib.MicrobatchAdjusted(
-              metric=clu_metrics.Average(total=loss, count=1), per_step=True),
+          metrics_lib.AveragePerStep(total=loss),
       'loss_per_nonpadding_target_token':
           clu_metrics.Average(total=loss, count=nonpadding_tokens),
       'loss_per_all_target_tokens':
@@ -1085,8 +1084,7 @@ def compute_base_metrics(
       'timing/seqs_per_second':
           metrics_lib.TimeRate.from_model_output(numerator=num_examples),
       'timing/steps_per_second':
-          metrics_lib.MicrobatchAdjusted(
-              metric=metrics_lib.TimeRate(numerator=1), per_step=False),
+          metrics_lib.StepsPerTime.from_model_output(),
       'timing/seconds':
           metrics_lib.Time(),
       'timing/seqs':
@@ -1105,16 +1103,11 @@ def compute_base_metrics(
   if z_loss is not None:
     metrics.update({
         'z_loss':
-            metrics_lib.MicrobatchAdjusted(
-                metric=clu_metrics.Average(total=z_loss, count=1),
-                per_step=True),
+            metrics_lib.AveragePerStep(total=z_loss),
         'z_loss_per_all_target_tokens':
             clu_metrics.Average(total=z_loss, count=num_tokens),
         'cross_ent_loss':
-            metrics_lib.MicrobatchAdjusted(
-                metric=clu_metrics.Average(
-                    total=jnp.sum(loss - z_loss), count=1),
-                per_step=True),
+            metrics_lib.AveragePerStep(total=loss - z_loss),
         'cross_ent_loss_per_all_target_tokens':
             clu_metrics.Average(total=jnp.sum(loss - z_loss), count=num_tokens)
     })
