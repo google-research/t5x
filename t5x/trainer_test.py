@@ -61,6 +61,13 @@ def _validate_events(test_case, summary_dir, expected_metrics, steps):
     test_case.assertLen(event.summary.value, 1)
     actual_events[event.summary.value[0].tag] = float(
         tf.make_ndarray(event.summary.value[0].tensor))
+
+  for e, v in actual_events.items():
+    print(e, v)
+  print()
+  for e, v in expected_metrics.items():
+    print(e, v)
+  print()
   jax.tree_multimap(test_case.assertAlmostEqual, actual_events,
                     expected_metrics)
 
@@ -309,8 +316,8 @@ class TrainerTest(parameterized.TestCase):
         k: (v + 2 * num_steps) / 4  # divide by duration
         for k, v in initial_metrics.items()
     }
-    # (0 + 2) / 2 = 1
-    expected_metrics['learning_rate'] = 1
+    # (0 + 2) / 2 = 1 / duration = 0.25
+    expected_metrics['learning_rate'] = 0.25
     # 0+1+2+3 = 6
     expected_train_state = jax.tree_map(lambda x: np.array(x + 6),
                                         self.init_train_state)

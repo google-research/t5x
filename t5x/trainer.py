@@ -24,6 +24,7 @@ import os
 import threading
 import time
 from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple, Union
+import warnings
 
 from absl import logging
 import cached_property
@@ -147,8 +148,8 @@ class WeightMetricsComputer(object):
   def _make_rms_metrics(name, tree):
     """Calculates the root-mean-square metric for a pytree."""
     return {
-        f"{name}/{k}":
-        metrics_lib.Sum.from_model_output(jnp.sqrt(jnp.mean(jnp.square(v))))
+        f"{name}/{k}": metrics_lib.AveragePerStep.from_model_output(
+            jnp.sqrt(jnp.mean(jnp.square(v))))
         for k, v in utils.flatten_dict_string_keys(tree).items()
     }
 
@@ -156,35 +157,10 @@ class WeightMetricsComputer(object):
   def _make_max_metrics(name, tree):
     """Calculates the L-inf norm for a pytree."""
     return {
-        f"{name}/{k}": metrics_lib.Sum.from_model_output(jnp.max(jnp.abs(v)))
+        f"{name}/{k}":
+        metrics_lib.AveragePerStep.from_model_output(jnp.max(jnp.abs(v)))
         for k, v in utils.flatten_dict_string_keys(tree).items()
     }
-
-  def get_initial_metrics(
-      self,
-      initial_train_state: train_state_lib.TrainState) -> MutableMetricMapType:
-    """Returns a set of zero-initialized metrics.
-
-    Args:
-      initial_train_state: A training state that determines the set of weights
-        the model has, which in turn determines what weight statistics will be
-        computed.
-
-    Returns:
-      A map of metrics, indexed by metric name.
-    """
-
-    initial_metrics = {
-        "weight_gradient_norm": metrics_lib.Sum.from_model_output(0.)
-    }
-    targets = utils.flatten_dict_string_keys(
-        initial_train_state.state_dict()["target"])
-    for name in self._WEIGHT_METRICS:
-      initial_metrics.update({
-          f"{name}/{k}": metrics_lib.Sum.from_model_output(0.)
-          for k in targets.keys()
-      })
-    return initial_metrics
 
   def compute_metrics(
       self, gradients: ModelWeights,
@@ -212,8 +188,10 @@ class WeightMetricsComputer(object):
     grad_norm = jnp.sqrt(
         jnp.sum(
             jnp.array([jnp.vdot(x, x) for x in jax.tree_leaves(gradients)])))
-    metrics.update(
-        {"weight_gradient_norm": metrics_lib.Sum.from_model_output(grad_norm)})
+    metrics.update({
+        "weight_gradient_norm":
+            metrics_lib.AveragePerStep.from_model_output(grad_norm)
+    })
     metrics.update(
         self._make_rms_metrics(
             "weight_update_rms",
@@ -410,6 +388,18 @@ class BaseTrainer(abc.ABC):
       rng: jax PRNGKey seed for random operations, to be combined with step
         number for a deterministic RNG.
     """
+    if hasattr(model, "get_initial_metrics") and callable(
+        getattr(model, "get_initial_metrics")):
+      warnings.warn(
+          "get_initial_metrics is deprecated and will be removed on Mar-01-22."
+          " Please see https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/metrics for migration instructions.",
+          DeprecationWarning)
+    if hasattr(model, "summarize_metrics_fn") and callable(
+        getattr(model, "summarize_metrics_fn")):
+      warnings.warn(
+          "summarize_metrics_fn is deprecated and will be removed on Mar-01-22."
+          " Please see https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/metrics for migration instructions.",
+          DeprecationWarning)
     self._model = model
     self._train_state_axes = train_state_axes
     self._base_rng = rng
@@ -429,8 +419,7 @@ class BaseTrainer(abc.ABC):
     self.train_metrics_manager = MetricsManager(
         "train",
         summarize_fn=lambda *args, **kwargs: {  # pylint:disable=g-long-lambda
-            **model.summarize_metrics_fn(*args, **kwargs),
-            **self._summarize_metrics_fn(*args, **kwargs)
+            **model.summarize_metrics_fn(*args, **kwargs)
         },
         summary_dir=summary_dir)
 
@@ -573,16 +562,6 @@ class BaseTrainer(abc.ABC):
       tock = time.time()
       self.eval_metrics_managers[eval_name].write_scalar(
           "timing/compilation_seconds", tock - tick, self.train_state.step)
-
-  @property
-  def _summarize_metrics_fn(self) -> SummarizeMetricsCallable:
-    """Summary function for Trainer metrics (excludes model metrics)."""
-    raise NotImplementedError
-
-  @abc.abstractmethod
-  def _get_initial_metrics(self) -> MutableMetricMapType:
-    """Returns initial metrics map for Trainer (excludes model metrics)."""
-    raise NotImplementedError
 
   @property
   @abc.abstractmethod
@@ -782,39 +761,6 @@ class Trainer(BaseTrainer):
         summary_dir=summary_dir,
         train_state_axes=train_state_axes,
         rng=rng)
-
-  @cached_property
-  def _summarize_metrics_fn(self) -> SummarizeMetricsCallable:
-
-    trainer_metric_names = set(["learning_rate"])
-    if self._weight_metrics_computer is not None:
-      trainer_metric_names.update(
-          self._weight_metrics_computer.get_initial_metrics(self.train_state))
-
-    def _summarize_trainer_metrics(metrics: MetricMapType, duration: float,
-                                   num_steps: int) -> Mapping[str, jnp.ndarray]:
-      """Produces summaries for metrics added by the trainer."""
-      del duration
-      summary_metrics = {
-          k: v for k, v in metrics.items() if k in trainer_metric_names
-      }
-
-      for k, v in summary_metrics.items():
-        # All of the Sum metrics should be divided by num_steps, since they've
-        # been accumulated that many times.
-        if isinstance(v, metrics_lib.Sum):
-          summary = v.compute() / num_steps
-        else:
-          summary = v.compute()
-        summary_metrics[k] = summary
-
-      return summary_metrics
-
-    return _summarize_trainer_metrics
-
-  # TODO(cpgaffney) clean up when there are no overrides.
-  def _get_initial_metrics(self) -> MutableMetricMapType:
-    return {}
 
   @cached_property
   def _partitioned_train_step(self) -> PartitionedTrainCallable:
