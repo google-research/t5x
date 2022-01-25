@@ -36,6 +36,7 @@ from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 import seqio
+from t5x import dataset
 from t5x import models
 from t5x import partitioning
 from t5x import train_state as train_state_lib
@@ -237,6 +238,7 @@ def train(
   train_ds = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
                             model.FEATURE_CONVERTER_CLS)
 
+  logging.error('swl %s', train_ds.element_spec)
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
     train_eval_datasets = utils.get_training_eval_datasets(
@@ -245,8 +247,9 @@ def train(
         num_ds_shards,
         eval_steps,
         model.FEATURE_CONVERTER_CLS,
-        get_dataset_fn=train_eval_get_dataset_fn if train_eval_get_dataset_fn
-        is not None else get_dataset_fn)  # type: Mapping[str, tf.data.Dataset]
+        get_dataset_fn=train_eval_get_dataset_fn
+        if train_eval_get_dataset_fn is not None else
+        get_dataset_fn)  # type: Mapping[str, dataset.TensorFlowDatasetIterator]
     if not train_eval_datasets:
       logging.warning(
           'No train_eval datasets loaded from config `train_eval_dataset_cfg`: '
