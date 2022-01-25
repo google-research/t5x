@@ -907,9 +907,13 @@ def get_dataset_inner(cfg: DatasetConfig,
                       num_epochs: Optional[int] = None):
   """Internal fn to load a dataset from SeqIO based on a `DatasetConfig`."""
   batch_size = cfg.batch_size // shard_info.num_shards
+  multihost_utils.assert_same(
+      np.array(seed),
+      f'`seed` is not same across hosts; {jax.process_index} has a seed of '
+      f'{seed}')
   logging.info(
-      "Initializing dataset for task '%s' with a replica batch size of %d.",
-      cfg.mixture_or_task_name, batch_size)
+      "Initializing dataset for task '%s' with a replica batch size of %d and "
+      'a seed of %d', cfg.mixture_or_task_name, batch_size, seed)
 
   ds = seqio.get_dataset(
       mixture_or_task_name=cfg.mixture_or_task_name,
