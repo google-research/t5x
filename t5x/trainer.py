@@ -255,7 +255,10 @@ class MetricsManager(object):
     * ABSL
   """
 
-  def __init__(self, name: str, summarize_fn: SummarizeMetricsCallable,
+  # TODO(cpgaffney) Remove summarize_fn argument when summarize_metrics_fn is
+  # fully deprecated
+  def __init__(self, name: str,
+               summarize_fn: Optional[SummarizeMetricsCallable],
                summary_dir: Optional[str]):
     """MetricsManager constructor.
 
@@ -348,8 +351,14 @@ class MetricsManager(object):
       # We set the duration on TimeRate metrics.
       final_metrics = metrics_lib.set_time_metrics_duration(
           fetched_metrics, duration)
-      summary = self._summarize_fn(
-          metrics=final_metrics, duration=duration, num_steps=num_steps)
+      # Set num_steps for Step metrics (AveragePerStep, StepsPerTime, ...)
+      final_metrics = metrics_lib.set_step_metrics_num_steps(
+          final_metrics, num_steps)
+      if self._summarize_fn is None:
+        summary = {k: v.compute() for k, v in final_metrics.items()}
+      else:
+        summary = self._summarize_fn(
+            metrics=final_metrics, duration=duration, num_steps=num_steps)
       self.write_scalars(step, summary)
 
       return summary
@@ -388,18 +397,6 @@ class BaseTrainer(abc.ABC):
       rng: jax PRNGKey seed for random operations, to be combined with step
         number for a deterministic RNG.
     """
-    if hasattr(model, "get_initial_metrics") and callable(
-        getattr(model, "get_initial_metrics")):
-      warnings.warn(
-          "get_initial_metrics is deprecated and will be removed on Mar-01-22."
-          " Please see https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/metrics for migration instructions.",
-          DeprecationWarning)
-    if hasattr(model, "summarize_metrics_fn") and callable(
-        getattr(model, "summarize_metrics_fn")):
-      warnings.warn(
-          "summarize_metrics_fn is deprecated and will be removed on Mar-01-22."
-          " Please see https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/metrics for migration instructions.",
-          DeprecationWarning)
     self._model = model
     self._train_state_axes = train_state_axes
     self._base_rng = rng
@@ -414,20 +411,30 @@ class BaseTrainer(abc.ABC):
 
     self.stop_training = False
 
+    if hasattr(model, "get_initial_metrics") and callable(
+        getattr(model, "get_initial_metrics")):
+      warnings.warn(
+          "get_initial_metrics is deprecated and will be removed on Mar-01-22."
+          " Please see https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/metrics for migration instructions.",
+          DeprecationWarning)
+    summarize_fn = None
+    if hasattr(model, "summarize_metrics_fn") and callable(
+        getattr(model, "summarize_metrics_fn")):
+      warnings.warn(
+          "summarize_metrics_fn is deprecated and will be removed on Mar-01-22."
+          " Please see https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/metrics for migration instructions.",
+          DeprecationWarning)
+      summarize_fn = model.summarize_metrics_fn
     # The training metrics combine metrics added by the Model (e.g., loss and
     # accuracy) and Trainer (e.g., learning rate).
     self.train_metrics_manager = MetricsManager(
-        "train",
-        summarize_fn=lambda *args, **kwargs: {  # pylint:disable=g-long-lambda
-            **model.summarize_metrics_fn(*args, **kwargs)
-        },
-        summary_dir=summary_dir)
+        "train", summarize_fn=summarize_fn, summary_dir=summary_dir)
 
     # The eval metrics only include metrics added by the Model.
     self.eval_metrics_managers = {  # pylint:disable=g-complex-comprehension
         n: MetricsManager(
             f"training_eval/{n}",
-            summarize_fn=model.summarize_metrics_fn,
+            summarize_fn=summarize_fn,
             summary_dir=summary_dir) for n in eval_names
     }
 
@@ -603,8 +610,6 @@ def accumulate_grads_microbatched(
   if num_microbatches is None or num_microbatches <= 1:
     (_, (_, metrics)), grad_accum = grad_fn(train_state.params, batch,
                                             dropout_rng)
-    metrics = metrics_lib.set_microbatch_adjusted_metrics_microbatches(
-        metrics, 1)
   else:
     assert batch_size % num_microbatches == 0, (
         "Batch size isn't divided evenly by num_microbatches.")
@@ -665,8 +670,6 @@ def accumulate_grads_microbatched(
     new_dropout_rng, grad_accum, metrics = jax.lax.fori_loop(
         0, num_microbatches, per_microbatch_train_step, loop_init)
     del new_dropout_rng
-    metrics = metrics_lib.set_microbatch_adjusted_metrics_microbatches(
-        metrics, num_microbatches)
 
   return grad_accum, metrics
 
@@ -712,7 +715,6 @@ def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
               batch: jnp.ndarray) -> MetricMapType:
   """Default evaluation step."""
   _, (_, metrics) = model.eval_fn(train_state.params, batch)
-  metrics = metrics_lib.set_microbatch_adjusted_metrics_microbatches(metrics, 1)
   return metrics
 
 

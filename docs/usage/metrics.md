@@ -206,20 +206,19 @@ When dealing with per-step metrics, use `AveragePerStep`. This could correspond
 to metrics such as loss per step. It cannot be implemented simply using a
 standard `Average` metric because the loss function, where the metric is
 initially computed, may be run multiple times if we have multiple microbatches.
-If we have two microbatches, this results in the metric being initialzed twice
-per step. Thus, we need to add an adjustment for such metrics involving number
-of steps.
+If we have two microbatches, this results in the metric being initialized twice
+per step. Thus, we defer setting number of steps at creation time and set it
+before the metrics are summarized.
 
 For example, we need to initialize `z_loss` and `steps_per_second` as follows:
 
 ```py
-# steps is optional and defaults to 1.
 'z_loss': AveragePerStep.from_model_output(z_loss)
 ```
 
-Then, later in the training loop,
-[`set_microbatch_adjusted_metrics_microbatches(metrics, num_microbatches)`](https://github.com/google-research/t5x/tree/main/t5x/metrics.py;l=222)
-is called automatically to ensure that per-step metrics are properly adjusted.
+Then, before summarization
+[`set_step_metrics_num_steps(metrics, num_steps)`](https://github.com/google-research/t5x/tree/main/t5x/metrics.py;l=222)
+is called automatically to set the number of steps for relevant metrics.
 
 #### `TimeRate`
 
@@ -244,7 +243,6 @@ This metric represents the sythesis of the above two, which can represent a
 metric such as `steps_per_second`.
 
 ```py
-# steps defaults to 1
 'timing/steps_per_second': StepsPerTime()
 ```
 

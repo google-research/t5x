@@ -702,7 +702,6 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
 
     test_trainer = trainer_lib.Trainer(
         mock.Mock(
-            get_initial_metrics=lambda: {},
             summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
             {k: v.compute() for k, v in metrics.items()}),
         init_train_state,
@@ -742,7 +741,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     expected_rng_sum = np.sum(
         [jax.random.fold_in(base_rng, i) for i in range(start_step, end_step)],
         axis=0,
-        dtype=np.uint64)
+        dtype=np.uint32)
     np.testing.assert_array_equal(metrics.result()['rng'], expected_rng_sum)
 
 

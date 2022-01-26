@@ -194,22 +194,6 @@ class BaseModel(abc.ABC):
     """Dictionary of metrics and initial values."""
     return {}
 
-  # TODO(cpgaffney) clean up summarize_metrics_fn
-  def summarize_metrics_fn(self, metrics: MetricsMap, duration: float,
-                           num_steps: int) -> Mapping[str, Array]:
-    """Converts metrics into tensorboard-friendly summary.
-
-    Args:
-      metrics: Metrics obtained from `loss_fn`, summed across multiple batches.
-      duration: The duration of the run being summarized.
-      num_steps: The number of steps the metrics are summed across.
-
-    Returns:
-      summary: Metrics in tensorboard friendly format.
-    """
-    del duration, num_steps
-    return {k: v.compute() for k, v in metrics.items()}
-
 
 # Sentinel used instead of None to indicate missing values. For backward
 # compatibility purposes; will be removed in an upcoming revision.

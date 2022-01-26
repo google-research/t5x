@@ -75,21 +75,20 @@ class MetricsTest(parameterized.TestCase):
   )
   def test_average_per_step(self, values, expected_result):
     a = metrics.AveragePerStep.from_model_output(values)
-    m = metrics.set_microbatch_adjusted_metrics_microbatches({"a": a}, 1)
+    m = metrics.set_step_metrics_num_steps({"a": a}, 1)
     self.assertAlmostEqual(m["a"].compute(), expected_result)
 
     steps = 5
     b = metrics.AveragePerStep.from_model_output(values, steps=steps)
-    m = metrics.set_microbatch_adjusted_metrics_microbatches({"b": b}, 2)
-    self.assertAlmostEqual(m["b"].compute(), expected_result / steps * 2)
+    m = metrics.set_step_metrics_num_steps({"b": b}, steps)
+    self.assertAlmostEqual(m["b"].compute(), expected_result / steps)
 
   def test_steps_per_time(self):
     steps = 8.
     duration = 2.
     metric = metrics.StepsPerTime.from_model_output(
         steps=steps).replace_duration(duration)
-    metrics_dict = metrics.set_microbatch_adjusted_metrics_microbatches(
-        {"metric": metric}, 1)
+    metrics_dict = metrics.set_step_metrics_num_steps({"metric": metric}, steps)
     self.assertAlmostEqual(metrics_dict["metric"].compute(), steps / duration)
 
 
