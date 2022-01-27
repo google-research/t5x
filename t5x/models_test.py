@@ -85,11 +85,15 @@ class EncoderDecoderModelTest(parameterized.TestCase):
           testcase_name='float32',
           shapes={
               'encoder_input_tokens': [1, 512],
-              'decoder_input_tokens': [1, 62]
+              'decoder_input_tokens': [1, 62],
+              'encoder_positions': [1, 512],
+              'decoder_positions': [1, 62],
           },
           types={
               'encoder_input_tokens': jnp.int32,
-              'decoder_input_tokens': jnp.int32
+              'decoder_input_tokens': jnp.int32,
+              'encoder_positions': jnp.int32,
+              'decoder_positions': jnp.int32
           }),
   )
   def test_get_initial_variables_shapes_and_types(self, shapes, types):
@@ -126,10 +130,19 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     np.testing.assert_allclose(called_with[0][1], encoder_input)
     np.testing.assert_allclose(called_with[0][2], decoder_input)
     np.testing.assert_allclose(called_with[0][3], decoder_input)
-    self.assertEqual(mock_transformer.init.call_args[1], {
-        'decode': False,
-        'enable_dropout': False
-    })
+
+    if 'encoder_positions' in shapes:
+      encoder_positions = jnp.ones(
+          shapes['encoder_positions'], dtype=types['encoder_positions'])
+      np.testing.assert_allclose(called_with[1]['encoder_positions'],
+                                 encoder_positions)
+    if 'decoder_positions' in shapes:
+      decoder_positions = jnp.ones(
+          shapes['decoder_positions'], dtype=types['decoder_positions'])
+      np.testing.assert_allclose(called_with[1]['decoder_positions'],
+                                 decoder_positions)
+    self.assertFalse(called_with[1]['decode'])
+    self.assertFalse(called_with[1]['enable_dropout'])
 
   def test_score_batch(self):
     encoder_input_tokens = jnp.ones((2, 3))
