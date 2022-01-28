@@ -71,7 +71,7 @@ class DecodeFnCallable(typing_extensions.Protocol):
   def __call__(self, *, inputs: jnp.ndarray, cache: Mapping[str, jnp.ndarray],
                tokens_to_logits: TokensIdsToLogitsCallable, eos_id: int,
                num_decodes: int, decode_rng: Optional[jnp.ndarray],
-               **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
+               cache_offset: int, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Decoding function interface.
 
     Args:
@@ -83,6 +83,7 @@ class DecodeFnCallable(typing_extensions.Protocol):
       eos_id: end-of-sentence token for target vocabulary.
       num_decodes: number of decoded sequences to be returned.
       decode_rng: an optional JAX PRNG Key for stochastic sampling routines.
+      cache_offset: axis offset for cache, arising from scanned layers.
       **kwargs: an optional kwargs. One common usecase of this is passing
         decoding parameters at the callsite.
 
