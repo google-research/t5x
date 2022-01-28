@@ -30,7 +30,8 @@ from absl import logging
 import cached_property
 from clu import asynclib
 from clu import metric_writers
-from clu import metrics as clu_metrics
+import clu.metrics
+import clu.values
 from flax.core import FrozenDict
 import jax.lax
 import jax.numpy as jnp
@@ -49,10 +50,10 @@ Array = Union[np.ndarray, jnp.ndarray]
 BatchSpec = Mapping[str, jax.ShapeDtypeStruct]
 BatchType = Mapping[str, np.ndarray]
 Rng = jnp.ndarray
-MetricMapType = MutableMapping[str, clu_metrics.Metric]
+MetricMapType = MutableMapping[str, clu.metrics.Metric]
 MetricMapSpec = Mapping[str, jax.ShapeDtypeStruct]
 ModelWeights = Any
-MutableMetricMapType = Dict[str, clu_metrics.Metric]
+MutableMetricMapType = Dict[str, clu.metrics.Metric]
 PyTreeDef = type(jax.tree_structure(None))
 
 if TYPE_CHECKING:  # See b/163639353
@@ -84,6 +85,12 @@ def merge_metrics(a, b):
 class ArrayMapFuture(typing_extensions.Protocol):
 
   def result(self) -> Mapping[str, Array]:
+    ...
+
+
+class MetricValueMapFuture(typing_extensions.Protocol):
+
+  def result(self) -> Mapping[str, clu.values.Value]:
     ...
 
 
@@ -257,9 +264,10 @@ class MetricsManager(object):
 
   # TODO(cpgaffney) Remove summarize_fn argument when summarize_metrics_fn is
   # fully deprecated
-  def __init__(self, name: str,
-               summarize_fn: Optional[SummarizeMetricsCallable],
-               summary_dir: Optional[str]):
+  def __init__(self,
+               name: str,
+               summarize_fn: Optional[SummarizeMetricsCallable] = None,
+               summary_dir: Optional[str] = None):
     """MetricsManager constructor.
 
     Constructs an empty MetricWriter on all but host 0.
@@ -320,7 +328,7 @@ class MetricsManager(object):
     self._duration_timer.start(block_on=block_on)
 
   def write_metrics_summary(self, metrics: MetricMapType, step: int,
-                            num_steps: int) -> ArrayMapFuture:
+                            num_steps: int) -> MetricValueMapFuture:
     """Writes summary based on accumulated metrics in a background thread.
 
     Duration is automatically computed as the interval between completion of
@@ -355,11 +363,12 @@ class MetricsManager(object):
       final_metrics = metrics_lib.set_step_metrics_num_steps(
           final_metrics, num_steps)
       if self._summarize_fn is None:
-        summary = {k: v.compute() for k, v in final_metrics.items()}
+        summary = {k: v.compute_value() for k, v in final_metrics.items()}
       else:
         summary = self._summarize_fn(
             metrics=final_metrics, duration=duration, num_steps=num_steps)
-      self.write_scalars(step, summary)
+      with self._writer_lock:
+        metric_writers.write_values(self._writer, step, summary)
 
       return summary
 
@@ -702,7 +711,7 @@ def apply_grads(
   # Update optimizer using accumulated gradient.
   new_train_state = train_state.apply_gradient(
       grad_accum, learning_rate=learning_rate, **other_state_variables)
-  metrics["learning_rate"] = clu_metrics.Average.from_model_output(
+  metrics["learning_rate"] = clu.metrics.Average.from_model_output(
       jnp.asarray([learning_rate]))
   if weight_metrics_computer is not None:
     metrics.update(

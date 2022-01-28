@@ -21,6 +21,7 @@ from absl.testing import absltest
 from absl.testing import parameterized
 from clu import metric_writers
 import clu.metrics
+import clu.values
 import flax
 from flax import optim
 import jax
@@ -59,15 +60,12 @@ def _validate_events(test_case, summary_dir, expected_metrics, steps):
   for step, event in zip(steps, events[1:]):
     test_case.assertEqual(event.step, step)
     test_case.assertLen(event.summary.value, 1)
-    actual_events[event.summary.value[0].tag] = float(
-        tf.make_ndarray(event.summary.value[0].tensor))
+    tensor = event.summary.value[0].tensor
+    if tensor.string_val:
+      actual_events[event.summary.value[0].tag] = tensor.string_val[0].decode()
+    else:
+      actual_events[event.summary.value[0].tag] = float(tf.make_ndarray(tensor))
 
-  for e, v in actual_events.items():
-    print(e, v)
-  print()
-  for e, v in expected_metrics.items():
-    print(e, v)
-  print()
   jax.tree_multimap(test_case.assertAlmostEqual, actual_events,
                     expected_metrics)
 
@@ -179,6 +177,46 @@ class MetricsManagerTest(absltest.TestCase):
     _validate_events(self, mm.summary_dir, expected_events, steps=[4, 4, 4])
     mm.close()
 
+  def test_write_metrics_summary_no_summarize_fn(self):
+    gfile.makedirs(os.path.join(self.model_dir, 'eval'))
+
+    @flax.struct.dataclass
+    class MockTextMetric(clu.metrics.Metric):
+
+      def compute_value(self):
+        return clu.values.Text('test metric')
+
+    accumulated_metrics = {
+        'loss': metrics_lib.Sum(40.0),
+        'accuracy': metrics_lib.AveragePerStep.from_model_output(20.0),
+        'steps_per_second': metrics_lib.StepsPerTime(),
+        'text': MockTextMetric()
+    }
+    expected_values = {
+        'loss': clu.values.Scalar(40.0),
+        'accuracy': clu.values.Scalar(10.0),
+        'steps_per_second': clu.values.Scalar(0.05),
+        'text': clu.values.Text('test metric')
+    }
+    with mock.patch(
+        'jax.process_index', return_value=0), mock.patch(
+            'time.time',
+            side_effect=[0, 40]  # start_time, end_time
+        ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+      mm = trainer_lib.MetricsManager('eval', summary_dir=self.model_dir)
+      mm.start_duration_timer()
+      summary = mm.write_metrics_summary(
+          accumulated_metrics, step=4, num_steps=2)
+      mm.flush()
+
+    self.assertDictEqual(summary.result(), expected_values)
+    _validate_events(
+        self,
+        mm.summary_dir, {k: v.value for k, v in expected_values.items()},
+        steps=[4, 4, 4, 4])
+
+    mm.close()
+
   def test_timer_blocking_on_donated_buffer(self):
     mm = trainer_lib.MetricsManager('train', lambda x, y: x, summary_dir=None)
     x = jnp.zeros(1)
@@ -193,11 +231,7 @@ class MetricsManagerTest(absltest.TestCase):
     mm._duration_timer._start_future.result()
 
   def test_timer_concurrency(self):
-    actual_durations = []
-    mm = trainer_lib.MetricsManager(
-        'train',
-        lambda metrics, duration, num_steps: actual_durations.append(duration),
-        summary_dir=None)
+    mm = trainer_lib.MetricsManager('train')
 
     n = 10
     with mock.patch(
@@ -206,9 +240,9 @@ class MetricsManagerTest(absltest.TestCase):
     ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
       for _ in range(n):
         mm.start_duration_timer()
-        mm.write_metrics_summary({}, 0, 1)
+        summary = mm.write_metrics_summary({'time': metrics_lib.Time()}, 0, 1)
+        self.assertEqual(1, summary.result()['time'].value)
       mm.flush()
-    self.assertSequenceEqual(actual_durations, [1] * n)
 
 
 def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
@@ -675,13 +709,6 @@ class TrainerTest(parameterized.TestCase):
         })
 
 
-@flax.struct.dataclass
-class RNG(clu.metrics.CollectingMetric.from_outputs(('values',))):
-
-  def compute(self):
-    return np.sum(self.values['values'], axis=0)
-
-
 class TrainerRngDeterminismTest(parameterized.TestCase):
 
   def create_trainer(self, step, random_seed):
@@ -701,9 +728,8 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     train_state_axes = jax.tree_map(lambda x: None, init_train_state)
 
     test_trainer = trainer_lib.Trainer(
-        mock.Mock(
-            summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
-            {k: v.compute() for k, v in metrics.items()}),
+        mock.Mock(summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
+                  {k: v.compute() for k, v in metrics.items()}),
         init_train_state,
         partitioning.ModelBasedPjitPartitioner(num_partitions=1),
         eval_names=['task1', 'task2'],
@@ -722,7 +748,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
       del model, batch, num_microbatches
       # Add 1, which will increment the step as a side effect.
       grad_accum = jax.tree_map(lambda x: 1, optimizer)
-      m = {'rng': RNG.from_model_output(values=jnp.expand_dims(rng, 0))}
+      m = {'rng': metrics_lib.Sum(jnp.sum(rng))}
       return grad_accum, m
 
     mock_accum_grads.side_effect = fake_accum_grads_rng
@@ -740,7 +766,6 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     base_rng = jax.random.PRNGKey(random_seed)
     expected_rng_sum = np.sum(
         [jax.random.fold_in(base_rng, i) for i in range(start_step, end_step)],
-        axis=0,
         dtype=np.uint32)
     np.testing.assert_array_equal(metrics.result()['rng'], expected_rng_sum)
 
