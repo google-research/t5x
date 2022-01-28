@@ -298,7 +298,6 @@ class TrainerTest(parameterized.TestCase):
 
     self.test_trainer = trainer_lib.Trainer(
         mock.Mock(
-            get_initial_metrics=lambda: {},
             summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
             {k: v.compute() / duration for k, v in metrics.items()}),
         self.init_train_state,

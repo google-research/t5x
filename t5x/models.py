@@ -191,10 +191,6 @@ class BaseModel(abc.ABC):
     """Returns the initial variables of the model."""
     pass
 
-  def get_initial_metrics(self) -> MetricsMap:
-    """Dictionary of metrics and initial values."""
-    return {}
-
 
 # Sentinel used instead of None to indicate missing values. For backward
 # compatibility purposes; will be removed in an upcoming revision.
@@ -306,9 +302,6 @@ class BaseTransformerModel(BaseModel):
         loss=loss,
         weight_sum=weight_sum,
         additional_metrics=additional_metrics)
-
-  def get_initial_metrics(self):
-    return {}
 
 
 class EncoderDecoderModel(BaseTransformerModel):
