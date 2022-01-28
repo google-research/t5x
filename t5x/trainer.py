@@ -315,13 +315,13 @@ class MetricsManager(object):
   def write_scalar(self, key: str, val: metric_writers.interface.Scalar,
                    step: int):
     """Writes scalar value to metric writers in a threadsafe manner."""
-    self.write_scalars(step, {key: val})
+    self.write_scalars(int(step), {key: val})
 
   def write_scalars(self, step: int,
                     scalars: Mapping[str, metric_writers.interface.Scalar]):
     """Writes scalar value to metric writers in a threadsafe manner."""
     with self._writer_lock:
-      self._writer.write_scalars(step, scalars)
+      self._writer.write_scalars(int(step), scalars)
 
   def start_duration_timer(self, block_on: PyTreeDef = ()):
     """Starts the duration timer."""
