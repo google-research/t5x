@@ -31,6 +31,8 @@ jax.config.parse_flags_with_absl()
 mock = absltest.mock
 TpuDevice = ptu.TpuDevice
 TPUV3_32 = ptu.make_devices(4, 4, 1, 2, kind='TPU v3')
+AxisMetadata = nn_partitioning.AxisMetadata
+PartitionSpec = partitioning.PartitionSpec
 
 
 class PartitioningTest(absltest.TestCase):
@@ -148,109 +150,173 @@ class PartitioningTest(absltest.TestCase):
       self.assertEqual(local_chunk_info.replica_id, expected_chunk)
       self.assertEqual(local_chunk_info.slice, (slice(None), slice(0, 16)))
 
-  def test_model_based_partitioner_get_mesh_axes(self):
-    AxisMetadata = nn_partitioning.AxisMetadata  # pylint: disable=invalid-name
-    rules = (('batch', 'data'), ('embed', None), ('vocab', 'model'), ('mlp',
-                                                                      'model'))
-    adafactor_rules = {
-        'batch': adafactor.FactorDim.NONE,
-        'embed': adafactor.FactorDim.ROW,
-        'vocab': adafactor.FactorDim.COLUMN,
-        'mlp': adafactor.FactorDim.COLUMN,
-    }
-    ppm = partitioning.ModelBasedPjitPartitioner(
-        num_partitions=1, logical_axis_rules=rules)
 
-    target = {
+class ModelBasedPartitionerTest(absltest.TestCase):
+
+  def get_axes_spec(self, partitioner, factored, momentum):
+    opt_def = adafactor.Adafactor(
+        learning_rate=0.1,
+        factored=factored,
+        min_dim_size_to_factor=8,
+        beta1=0.1 if momentum else None,
+        logical_factor_rules={
+            'batch': adafactor.FactorDim.NONE,
+            'embed': adafactor.FactorDim.ROW,
+            'vocab': adafactor.FactorDim.COLUMN,
+            'mlp': adafactor.FactorDim.COLUMN,
+        })
+    optimizer = opt_def.create({
         'logits_dense': np.ones((16, 16), np.float32),
         'mlp': {
             'wo': {
                 'kernel': np.ones((32, 16), np.float32)
             }
         }
-    }
+    })
+    state = train_state.TrainState.from_flax_optimizer(optimizer)
+    state = state.replace(
+        axes_variables={
+            'params_axes': {
+                'logits_dense_axes': AxisMetadata(names=('vocab', 'embed')),
+                'mlp': {
+                    'wo': {
+                        'kernel_axes': AxisMetadata(names=('embed', 'mlp'))
+                    }
+                }
+            }
+        })
+    axis_names = nn_partitioning.get_axis_names(
+        state.axes_variables['params_axes'])
+    state._optimizer.optimizer_def.set_param_axes(axis_names)
+    return partitioner.get_mesh_axes(state).state_dict()
 
-    def get_axes_spec(factored, momentum):
-      opt_def = adafactor.Adafactor(
-          learning_rate=0.1,
-          factored=factored,
-          min_dim_size_to_factor=8,
-          beta1=0.1 if momentum else None,
-          logical_factor_rules=adafactor_rules)
-      optimizer = opt_def.create(target)
-      state = train_state.TrainState.from_flax_optimizer(optimizer)
-      state = state.replace(
-          axes_variables={
-              'params_axes': {
-                  'logits_dense_axes': AxisMetadata(names=('vocab', 'embed')),
-                  'mlp': {
-                      'wo': {
-                          'kernel_axes': AxisMetadata(names=('embed', 'mlp'))
-                      }
-                  }
-              }
-          })
-      axis_names = nn_partitioning.get_axis_names(
-          state.axes_variables['params_axes'])
-      state._optimizer.optimizer_def.set_param_axes(axis_names)
-      return ppm.get_mesh_axes(state).state_dict()
+  def get_expected_axes_spec(self,
+                             spec_0,
+                             spec_1,
+                             kernel_spec=PartitionSpec(None, 'model')):
+    return train_state.TrainState.from_flax_optimizer(
+        optimizer=optim.Optimizer(
+            # opt_def,
+            adafactor.Adafactor(0.1),  # opt_def not compared.
+            state=optim.OptimizerState(
+                step=None,
+                param_states={
+                    'logits_dense': spec_0,
+                    'mlp': {
+                        'wo': {
+                            'kernel': spec_1
+                        }
+                    }
+                }),
+            target={
+                'logits_dense': PartitionSpec('model', None),
+                'mlp': {
+                    'wo': {
+                        'kernel': kernel_spec
+                    }
+                }
+            })).state_dict()
 
-    def get_expected_axes_spec(spec_0, spec_1):
-      return train_state.TrainState.from_flax_optimizer(
-          optimizer=optim.Optimizer(
-              # opt_def,
-              adafactor.Adafactor(0.1),  # opt_def not compared.
-              state=optim.OptimizerState(
-                  step=None,
-                  param_states={
-                      'logits_dense': spec_0,
-                      'mlp': {
-                          'wo': {
-                              'kernel': spec_1
-                          }
-                      }
-                  }),
-              target={
-                  'logits_dense': partitioning.PartitionSpec('model', None),
-                  'mlp': {
-                      'wo': {
-                          'kernel': partitioning.PartitionSpec(None, 'model')
-                      }
-                  }
-              })).state_dict()
+  def test_get_mesh_axes(self):
+    partitioner = partitioning.ModelBasedPjitPartitioner(
+        num_partitions=1,
+        logical_axis_rules=(('batch', 'data'), ('embed', None),
+                            ('vocab', 'model'), ('mlp', 'model')))
 
-    p0_spec = partitioning.PartitionSpec('model', None)
-    p1_spec = partitioning.PartitionSpec(None, 'model')
+    p0_spec = PartitionSpec('model', None)
+    p1_spec = PartitionSpec(None, 'model')
 
     # Test quadrant of conditions: factored or not / momentum or not.
-    axes_spec = get_axes_spec(factored=True, momentum=False)
-    expected_axes_spec = get_expected_axes_spec(
+    axes_spec = self.get_axes_spec(partitioner, factored=True, momentum=False)
+    expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(m=None, v=None, v_col=None, v_row=None),
         adafactor._AdafactorParamState(m=None, v=None, v_col=None, v_row=None))
     jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
 
-    axes_spec = get_axes_spec(factored=True, momentum=True)
-    expected_axes_spec = get_expected_axes_spec(
+    axes_spec = self.get_axes_spec(partitioner, factored=True, momentum=True)
+    expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(
             m=p0_spec, v=None, v_col=None, v_row=None),
         adafactor._AdafactorParamState(
             m=p1_spec, v=None, v_col=None, v_row=None))
     jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
 
-    axes_spec = get_axes_spec(factored=False, momentum=True)
-    expected_axes_spec = get_expected_axes_spec(
+    axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=True)
+    expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(
             m=p0_spec, v=p0_spec, v_col=None, v_row=None),
         adafactor._AdafactorParamState(
             m=p1_spec, v=p1_spec, v_col=None, v_row=None))
     jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
 
-    axes_spec = get_axes_spec(factored=False, momentum=False)
-    expected_axes_spec = get_expected_axes_spec(
+    axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=False)
+    expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(
             m=None, v=p0_spec, v_col=None, v_row=None),
         adafactor._AdafactorParamState(
             m=None, v=p1_spec, v_col=None, v_row=None))
+    jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
+
+  def test_get_mesh_axes_with_non_subtree_override(self):
+    bad_partitioner = partitioning.ModelBasedPjitPartitioner(
+        num_partitions=1,
+        logical_axis_rules=(('batch', 'data'), ('embed', None),
+                            ('vocab', 'model'), ('mlp', 'model')),
+        logical_param_axis_names_override={
+            'mlp': {
+                'wo': {
+                    'kernel': ('embed', 'mlp'),
+                    'bias': ('embed')
+                }
+            }
+        })
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, 'Model does not contain parameter in '
+        '`logical_param_axis_name_override`: mlp/wo/bias'):
+      self.get_axes_spec(bad_partitioner, factored=False, momentum=False)
+
+  def test_get_mesh_axes_with_wrong_rank_override(self):
+    bad_partitioner = partitioning.ModelBasedPjitPartitioner(
+        num_partitions=1,
+        logical_axis_rules=(('batch', 'data'), ('embed', None),
+                            ('vocab', 'model'), ('mlp', 'model')),
+        logical_param_axis_names_override={
+            'mlp': {
+                'wo': {
+                    'kernel': ('embed',),
+                }
+            }
+        })
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        'Provided axis name override for mlp/wo/kernel does not match original '
+        "length: PartitionSpec('embed',) (override) vs "
+        "PartitionSpec('embed', 'mlp') (original)"):
+      self.get_axes_spec(bad_partitioner, factored=False, momentum=False)
+
+  def test_get_mesh_axes_with_override(self):
+    partitioner = partitioning.ModelBasedPjitPartitioner(
+        num_partitions=1,
+        logical_axis_rules=(('batch', 'data'), ('embed', None),
+                            ('vocab', 'model'), ('mlp', 'model')),
+        logical_param_axis_names_override={
+            'mlp': {
+                'wo': {
+                    'kernel': ('batch', 'embed'),
+                }
+            }
+        })
+
+    axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=False)
+
+    expected_axes_spec = self.get_expected_axes_spec(
+        adafactor._AdafactorParamState(
+            m=None, v=PartitionSpec('model', None), v_col=None, v_row=None),
+        adafactor._AdafactorParamState(
+            m=None, v=PartitionSpec('data', None), v_col=None, v_row=None),
+        kernel_spec=PartitionSpec('data', None))
     jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
 
 
