@@ -311,7 +311,6 @@ def set_time_metrics_duration(metrics, duration):
 def set_step_metrics_num_steps(metrics, num_steps):
   """Sets steps for Step objects in metrics pytree."""
 
-  @jax.jit
   def fn(o):
     if isinstance(o, Step):
       return o.replace_steps(num_steps)

@@ -215,7 +215,7 @@ class _AsyncTimer(object):
   def __init__(self):
     # We use a thread pool with a single worker to ensure that calls to the
     # function are run in order (but in a background thread).
-    self._pool = asynclib.Pool(max_workers=1)
+    self._pool = asynclib.Pool(thread_name_prefix="AsyncTimer", max_workers=1)
     self._start_future = None
 
   def __del__(self):
@@ -362,6 +362,13 @@ class MetricsManager(object):
       # Set num_steps for Step metrics (AveragePerStep, StepsPerTime, ...)
       final_metrics = metrics_lib.set_step_metrics_num_steps(
           final_metrics, num_steps)
+
+      # Ensure the metrics are not on device, which could lead to a deadlock.
+      def _ensure_not_on_device(x):
+        assert not isinstance(x, jax.numpy.DeviceArray)
+
+      jax.tree_map(_ensure_not_on_device, final_metrics)
+
       if self._summarize_fn is None:
         summary = {k: v.compute_value() for k, v in final_metrics.items()}
       else:
