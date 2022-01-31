@@ -432,12 +432,15 @@ class LocalChunker:
 
 def standard_logical_axis_rules(
     activation_partitioning_dims: int = 1,
-    parameter_partitioning_dims: int = 1) -> LogicalAxisRules:
+    parameter_partitioning_dims: int = 1,
+    additional_rules: Optional[LogicalAxisRules] = None) -> LogicalAxisRules:
   """Default sharding rules for T5X model in terms of logical axis names.
 
   Args:
     activation_partitioning_dims: enables 2-D activation sharding when set to 2.
     parameter_partitioning_dims: enables 2-D parameter sharding when set to 2.
+    additional_rules: additional rules (a sequence of tuples) that will be
+      appended to the standard rules.
 
   Returns:
     Sequence of logical axis rules
@@ -516,6 +519,9 @@ def standard_logical_axis_rules(
         f'`activation_partitioning_dims` = {activation_partitioning_dims} '
         f'`parameter_partitioning_dims` = {parameter_partitioning_dims} '
         'is not supported.')
+
+  if additional_rules:
+    rules.extend(additional_rules)
 
   return rules
 
