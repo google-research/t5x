@@ -145,6 +145,37 @@ See the [Minimal](https://github.com/google-research/t5x/tree/main/t5x/examples/
 T5 implementations for examples of how these annotations are applied in
 practice.
 
+### Overriding Axis Names from External Codebase
+
+You may wish to incorporate Flax modules from an external codebase into your
+model implementation that uses `self.param` instead of
+`flax.linen.partitioning.param_with_axes`, or that may use axis names that are
+incompatible with your codebase.
+
+To deal with this situation, we provide the `logical_param_axis_names_override`
+argument to the `ModelBasedPjitPartitioner` constructor. This argument takes a
+dictionary PyTree with tuple leaves containing string logical axis names to
+replace model-derived names. The tree's structure must be a subtree of the
+parameters.
+
+For example, the following configuration provides logical axis names for an
+external module called 'external_mlp' used in the model's encoder, without
+modifying any other modules:
+
+```py
+ModelBasedPjitPartitioner.logical_param_axis_names_override = {
+    'encoder': {
+        'external_mlp': {
+          'kernel': ('embed', 'mlp')
+          'bias': ('mlp',)
+        }
+    }
+}
+```
+
+Note: It is not possible to add or modify activation partitioning in an
+external module.
+
 ### Canonical Logical Axis Names
 
 We recommend you use logical axis names from the following list for
