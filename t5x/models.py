@@ -540,7 +540,7 @@ class EncoderDecoderModel(BaseTransformerModel):
 
     # For beam search, `decoder_prompt_inputs` is only used to obtain batch size
     # and max decode length information. For temperature sampling,
-    # `decod_prompt_inputs` will be filled with the sampled ids.
+    # `decoder_prompt_inputs` will be filled with the sampled ids.
     decoder_prompt_inputs = jnp.zeros_like(batch['decoder_input_tokens'])
 
     # TODO(hwchung): rename the returned value names to more generic ones.
