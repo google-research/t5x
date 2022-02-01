@@ -912,9 +912,9 @@ def get_dataset_inner(cfg: DatasetConfig,
         np.array(seed),
         f'`seed` is not same across hosts; {jax.process_index} has a seed of '
         f'{seed}')
-  logging.info(
-      "Initializing dataset for task '%s' with a replica batch size of %d and "
-      'a seed of %d', cfg.mixture_or_task_name, batch_size, seed)
+    logging.info(
+        "Initializing dataset for task '%s' with a replica batch size of %d and "
+        'a seed of %d', cfg.mixture_or_task_name, batch_size, seed)
 
   ds = seqio.get_dataset(
       mixture_or_task_name=cfg.mixture_or_task_name,
