@@ -83,6 +83,7 @@ def evaluate(
       model loading and having fallback_to_scratch enabled will result in an
       error.
   """
+  logging.info('Process ID: %d', jax.process_index())
   if dataset_cfg.module:
     utils.import_module(dataset_cfg.module)
   batch_size = dataset_cfg.batch_size

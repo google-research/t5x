@@ -158,6 +158,7 @@ def train(
   Returns:
     The tuple of (last_step, last_train_state).
   """
+  logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
   # Each "epoch" of the training loop should be the min of the eval period,

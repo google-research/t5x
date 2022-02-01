@@ -271,6 +271,7 @@ def infer(*,
       model loading and having fallback_to_scratch enabled will result in an
       error.
   """
+  logging.info('Process ID: %d', jax.process_index())
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
         "`mode` must be one of 'predict', 'score' or 'predict_with_aux'. "
