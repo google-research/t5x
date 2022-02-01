@@ -24,6 +24,7 @@ import jax
 import tensorflow as tf
 
 
+
 def parse_gin_flags(gin_search_paths: Sequence[str],
                     gin_files: Sequence[str],
                     gin_bindings: Sequence[str],
@@ -51,6 +52,7 @@ def parse_gin_flags(gin_search_paths: Sequence[str],
   # Register .gin file search paths with gin
   for gin_file_path in gin_search_paths:
     gin.add_config_file_search_path(gin_file_path)
+
 
   # Parse config files and bindings passed via flag.
   gin.parse_config_files_and_bindings(
