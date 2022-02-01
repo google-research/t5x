@@ -154,23 +154,18 @@ incompatible with your codebase.
 
 To deal with this situation, we provide the `logical_param_axis_names_override`
 argument to the `ModelBasedPjitPartitioner` constructor. This argument takes a
-dictionary PyTree with tuple leaves containing string logical axis names to
-replace model-derived names. The tree's structure must be a subtree of the
-parameters.
+priority-ordered mapping from regex patterns (fully matching parameter names) to
+tuples containing string logical axis names to replace model-derived names.
 
 For example, the following configuration provides logical axis names for an
-external module called 'external_mlp' used in the model's encoder, without
-modifying any other modules:
+external module called 'external_mlp' used in every layer of model's encoder,
+without modifying any other modules:
 
 ```py
-ModelBasedPjitPartitioner.logical_param_axis_names_override = {
-    'encoder': {
-        'external_mlp': {
-          'kernel': ('embed', 'mlp')
-          'bias': ('mlp',)
-        }
-    }
-}
+ModelBasedPjitPartitioner.logical_param_axis_names_override = [
+    ('encoder/layer_\\d/external_mlp/kernel':, ('embed', 'mlp')),
+    ('encoder/layer_\\d/external_mlp/bias':, ('mlp',)),
+]
 ```
 
 Note: It is not possible to add or modify activation partitioning in an

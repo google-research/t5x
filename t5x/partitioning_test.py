@@ -257,37 +257,12 @@ class ModelBasedPartitionerTest(absltest.TestCase):
             m=None, v=p1_spec, v_col=None, v_row=None))
     jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
 
-  def test_get_mesh_axes_with_non_subtree_override(self):
-    bad_partitioner = partitioning.ModelBasedPjitPartitioner(
-        num_partitions=1,
-        logical_axis_rules=(('batch', 'data'), ('embed', None),
-                            ('vocab', 'model'), ('mlp', 'model')),
-        logical_param_axis_names_override={
-            'mlp': {
-                'wo': {
-                    'kernel': ('embed', 'mlp'),
-                    'bias': ('embed')
-                }
-            }
-        })
-
-    with self.assertRaisesWithLiteralMatch(
-        ValueError, 'Model does not contain parameter in '
-        '`logical_param_axis_name_override`: mlp/wo/bias'):
-      self.get_axes_spec(bad_partitioner, factored=False, momentum=False)
-
   def test_get_mesh_axes_with_wrong_rank_override(self):
     bad_partitioner = partitioning.ModelBasedPjitPartitioner(
         num_partitions=1,
         logical_axis_rules=(('batch', 'data'), ('embed', None),
                             ('vocab', 'model'), ('mlp', 'model')),
-        logical_param_axis_names_override={
-            'mlp': {
-                'wo': {
-                    'kernel': ('embed',),
-                }
-            }
-        })
+        logical_param_axis_names_override=[('mlp/wo/kernel', ('embed',))])
 
     with self.assertRaisesWithLiteralMatch(
         ValueError,
@@ -301,13 +276,11 @@ class ModelBasedPartitionerTest(absltest.TestCase):
         num_partitions=1,
         logical_axis_rules=(('batch', 'data'), ('embed', None),
                             ('vocab', 'model'), ('mlp', 'model')),
-        logical_param_axis_names_override={
-            'mlp': {
-                'wo': {
-                    'kernel': ('batch', 'embed'),
-                }
-            }
-        })
+        logical_param_axis_names_override=[
+            ('wo/kernel', ('batch',)),  # unused since not a full match
+            ('.*/wo/kernel', ('batch', 'embed')),  # this one is used
+            ('mlp/wo/kernel', ('embed',)),  # unused since already matched
+        ])
 
     axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=False)
 
