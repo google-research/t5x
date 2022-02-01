@@ -121,7 +121,7 @@ def evaluate(
 
   # Initialize optimizer from the existing checkpoint.
   input_shapes = {
-      k: (batch_size, l) for k, l in evaluator.model_feature_lengths.items()
+      k: (batch_size,) + s for k, s in evaluator.model_feature_shapes.items()
   }
 
   train_state_initializer = utils.TrainStateInitializer(
