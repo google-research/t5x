@@ -41,6 +41,11 @@ class Metric:
   def compute(self) -> Union[float, np.ndarray]:
     # computes the writable value of a metric (as a float, array, etc.)
     pass
+
+  def compute_value(self) -> clu.values.Value:
+    # computes metric as a writable type (Scalar, Image, Histogram, etc.)
+    # defaults to Scalar
+    return clu.values.Scalar(self.compute())
 ```
 
 `Metric`s can then be extended into concrete representations, such as Sum:
@@ -60,10 +65,11 @@ class Sum(Metric):
 
   def compute(self) -> Union[float, array]:
     return self.total
-```
 
-TODO(cpgaffney): Update depending on resolution of CLU generic write interface
-discussion.
+  # If Metric is non-Scalar, return a different Value type as needed.
+  def compute_value() -> clu.values.Value:
+    return clu.values.Scalar(self.compute())
+```
 
 We will elaborate in more detail [below](#a-metric-example) on how Metrics are
 practically used in T5X.
@@ -95,6 +101,21 @@ class MetricWriter:
 
 A `MetricWriter` implements a specific write method for each type, including
 scalars, images, audios, texts, histograms, and hyperparameters.
+
+CLU provides a convenience method for easily writing metric values of diverse
+types,
+[`clu.metric_writers.write_values`](https://github.com/google/CommonLoopUtils/tree/main/clu/metric_writers/utils.py?q=symbol:%5Cbwrite_values%5Cb).
+
+```
+def write_values(writer: MetricWriter, step: int,
+                 metrics: Mapping[str, Union[values.Value, values.ArrayType,
+                                             values.ScalarType]]):
+```
+
+Given a mapping of string to
+[`clu.values.Value`](https://github.com/google/CommonLoopUtils/tree/main/clu/values.py?q=symbol:%5CbValue%5Cb),
+the method automatically calls the writer's appropriate write method. Such a
+mapping can be easily obtained by calling `metric.compute_value()`.
 
 `MetricWriter` is subclassed by several specific writers, which enable writing
 to the console, TF summary files, XManager, and others. See
