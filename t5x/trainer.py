@@ -371,10 +371,14 @@ class MetricsManager(object):
 
       if self._summarize_fn is None:
         summary = {k: v.compute_value() for k, v in final_metrics.items()}
+        print("None")
       else:
+        print("not None")
         summary = self._summarize_fn(
             metrics=final_metrics, duration=duration, num_steps=num_steps)
       with self._writer_lock:
+        print("metrics")
+        print(summary)
         metric_writers.write_values(self._writer, step, summary)
 
       return summary

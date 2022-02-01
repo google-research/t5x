@@ -28,6 +28,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from t5x import metrics as metrics_lib
+from t5x import models as models_lib
 from t5x import partitioning
 from t5x import test_utils
 from t5x import train_state as train_state_lib
@@ -297,9 +298,7 @@ class TrainerTest(parameterized.TestCase):
         2, drop_remainder=True)
 
     self.test_trainer = trainer_lib.Trainer(
-        mock.Mock(
-            summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
-            {k: v.compute() / duration for k, v in metrics.items()}),
+        mock.create_autospec(models_lib.BaseModel, instance=True),
         self.init_train_state,
         partitioning.ModelBasedPjitPartitioner(num_partitions=1),
         eval_names=['task1', 'task2'],
@@ -346,11 +345,10 @@ class TrainerTest(parameterized.TestCase):
         'accuracy': 0.,
     }
     expected_metrics = {
-        k: (v + 2 * num_steps) / 4  # divide by duration
-        for k, v in initial_metrics.items()
+        k: (v + 2 * num_steps) for k, v in initial_metrics.items()
     }
-    # (0 + 2) / 2 = 1 / duration = 0.25
-    expected_metrics['learning_rate'] = 0.25
+    # (0 + 2) / 2 = 1
+    expected_metrics['learning_rate'] = 1
     # 0+1+2+3 = 6
     expected_train_state = jax.tree_map(lambda x: np.array(x + 6),
                                         self.init_train_state)
@@ -421,13 +419,13 @@ class TrainerTest(parameterized.TestCase):
     all_expected_metrics = {
         # 0+1+2+3 = 6
         'task1': {
-            'loss': 6 / 4,  # divide by duration
-            'accuracy': 6 / 4
+            'loss': 6,
+            'accuracy': 6,
         },
         # 0+1+2+3+4+5+0+1+2+3 = 21
         'task2': {
-            'loss': 21 / 3,  # divide by duration
-            'accuracy': 21 / 3
+            'loss': 21,
+            'accuracy': 21,
         },
     }
 
@@ -727,8 +725,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     train_state_axes = jax.tree_map(lambda x: None, init_train_state)
 
     test_trainer = trainer_lib.Trainer(
-        mock.Mock(summarize_metrics_fn=lambda metrics, duration, num_steps:  # pylint:disable=g-long-lambda
-                  {k: v.compute() for k, v in metrics.items()}),
+        mock.create_autospec(models_lib.BaseModel, instance=True),
         init_train_state,
         partitioning.ModelBasedPjitPartitioner(num_partitions=1),
         eval_names=['task1', 'task2'],
@@ -766,7 +763,8 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     expected_rng_sum = np.sum(
         [jax.random.fold_in(base_rng, i) for i in range(start_step, end_step)],
         dtype=np.uint32)
-    np.testing.assert_array_equal(metrics.result()['rng'], expected_rng_sum)
+    np.testing.assert_array_equal(metrics.result()['rng'].value,
+                                  expected_rng_sum)
 
 
 if __name__ == '__main__':
