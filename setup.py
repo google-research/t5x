@@ -27,6 +27,8 @@ from version import __version__  # pylint: disable=g-import-not-at-top
 with open('README.md') as fp:
   _LONG_DESCRIPTION = fp.read()
 
+_jax_version = '0.2.27'
+
 setuptools.setup(
     name='t5x',
     version=__version__,
@@ -49,7 +51,7 @@ setuptools.setup(
         'clu @ git+https://github.com/google/CommonLoopUtils#egg=clu',
         'flax',
         'gin-config',
-        'jax[tpu] >= 0.2.27',
+        f'jax >= {_jax_version}',
         'numpy',
         'seqio-nightly',
         't5',
@@ -62,6 +64,9 @@ setuptools.setup(
             'google-cloud-storage', 'oauth2client'
         ],
         'test': ['pytest'],
+
+        # Cloud TPU requirements.
+        'tpu': [f'jax[tpu] >= {_jax_version}'],
     },
     classifiers=[
         'Development Status :: 4 - Beta',

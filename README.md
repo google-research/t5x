@@ -50,7 +50,7 @@ the TPU VM instance unless otherwise stated.
     git clone --branch=main https://github.com/google-research/t5x
     cd t5x
 
-    python3 -m pip install -e . -f \
+    python3 -m pip install -e '.[tpu]' -f \
       https://storage.googleapis.com/jax-releases/libtpu_releases.html
 
     ```
