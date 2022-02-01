@@ -568,6 +568,7 @@ class TrainerTest(parameterized.TestCase):
   def test_early_stopping_action(self, mode, metrics, atol, rtol,
                                  stop_training):
     trainer = self.test_trainer
+    metrics = [clu.values.Scalar(metric) for metric in metrics]
     hook = trainer_lib.EarlyStoppingAction(('test_task', 'metric'),
                                            mode=mode,
                                            patience=3,
@@ -581,6 +582,41 @@ class TrainerTest(parameterized.TestCase):
                                        }})
 
     self.assertEqual(trainer_stop_training, stop_training)
+
+  @parameterized.named_parameters([
+      {
+          'testcase_name': 'invalid_task',
+          'task': 'wrong_task',
+          'metric': 'metric',
+          'value': clu.values.Scalar(np.nan),
+      },
+      {
+          'testcase_name': 'invalid_metric_name',
+          'task': 'task',
+          'metric': 'wrong_metric_name',
+          'value': clu.values.Scalar(np.nan),
+      },
+      {
+          'testcase_name': 'invalid_value',
+          'task': 'task',
+          'metric': 'metric',
+          'value': 1.0,
+      },
+  ])
+  def test_early_stopping_action_error(self, task, metric, value):
+    trainer = self.test_trainer
+    hook = trainer_lib.EarlyStoppingAction((task, metric),
+                                           mode='min',
+                                           patience=5,
+                                           atol=1,
+                                           rtol=1)
+
+    trainer_stop_training = hook.run(trainer.train_state,
+                                     {task: {
+                                         metric: value
+                                     }})
+
+    self.assertFalse(trainer_stop_training)
 
   @parameterized.named_parameters([{
       'testcase_name': 'valid_loss',
@@ -605,6 +641,7 @@ class TrainerTest(parameterized.TestCase):
   }])
   def test_terminate_on_nan_action(self, metric, value, stop_training):
     trainer = self.test_trainer
+    value = clu.values.Scalar(value)
     hook = trainer_lib.TerminateOnNanAction(task='test_task', metric=metric)
 
     trainer_stop_training = hook.run(trainer.train_state,
@@ -613,6 +650,37 @@ class TrainerTest(parameterized.TestCase):
                                      }})
 
     self.assertEqual(trainer_stop_training, stop_training)
+
+  @parameterized.named_parameters([
+      {
+          'testcase_name': 'invalid_task',
+          'task': 'wrong_task',
+          'metric': 'metric',
+          'value': clu.values.Scalar(np.nan),
+      },
+      {
+          'testcase_name': 'invalid_metric_name',
+          'task': 'task',
+          'metric': 'wrong_metric_name',
+          'value': clu.values.Scalar(np.nan),
+      },
+      {
+          'testcase_name': 'invalid_value',
+          'task': 'task',
+          'metric': 'metric',
+          'value': 1.0,
+      },
+  ])
+  def test_terminate_on_nan_action_error(self, task, metric, value):
+    trainer = self.test_trainer
+    hook = trainer_lib.TerminateOnNanAction(task=task, metric=metric)
+
+    trainer_stop_training = hook.run(trainer.train_state,
+                                     {'task': {
+                                         'metric': value
+                                     }})
+
+    self.assertFalse(trainer_stop_training)
 
   def test_compile_train(self):
     trainer = self.test_trainer

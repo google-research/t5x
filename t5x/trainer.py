@@ -52,6 +52,7 @@ BatchType = Mapping[str, np.ndarray]
 Rng = jnp.ndarray
 MetricMapType = MutableMapping[str, clu.metrics.Metric]
 MetricMapSpec = Mapping[str, jax.ShapeDtypeStruct]
+MetricValueMapType = Mapping[str, clu.values.Value]
 ModelWeights = Any
 MutableMetricMapType = Dict[str, clu.metrics.Metric]
 PyTreeDef = type(jax.tree_structure(None))
@@ -812,6 +813,12 @@ class Trainer(BaseTrainer):
         out_axis_resources=None)
 
 
+def _warn_action_not_run(action, task, metric):
+  logging.warning(
+      "The action: %s that tracks metric: %s for task: %s is not run", action,
+      metric, task)
+
+
 # TODO(b/200701930): Support dynamic registration for enum.
 @enum.unique
 class ActionMode(enum.Enum):
@@ -829,7 +836,7 @@ class BaseAction(abc.ABC):
 
   @abc.abstractmethod
   def run(self, train_state: train_state_lib.TrainState,
-          metrics_by_task: Mapping[str, Array]) -> bool:
+          metrics_by_task: Mapping[str, MetricValueMapType]) -> bool:
     """Runs an action for the given train_state and metrics.
 
     Args:
@@ -904,17 +911,28 @@ class EarlyStoppingAction(BaseAction):
     return compare_fn(current, previous - delta)
 
   def run(self, train_state: train_state_lib.TrainState,
-          metrics_by_task: Mapping[str, MetricMapType]) -> bool:
+          metrics_by_task: Mapping[str, MetricValueMapType]) -> bool:
     if self._task not in metrics_by_task.keys():
       logging.warning(
           "Monitoring task: %s does not exist in all task metrics. "
           "Available tasks are : %s", self._task, metrics_by_task.keys())
-      logging.warning(
-          "The action that tracks metric : %s for task : %s is not run",
-          self._metric, self._task)
+      _warn_action_not_run(type(self), self._task, self._metric)
       return False
-    else:
-      self._metric_history.append(metrics_by_task[self._task][self._metric])
+    if self._metric not in metrics_by_task[self._task].keys():
+      logging.warning("Metric : %s does not exist in metrics for task : %s",
+                      self._metric, self._task)
+      _warn_action_not_run(type(self), self._task, self._metric)
+      return False
+
+    m = metrics_by_task[self._task][self._metric]
+
+    if not isinstance(m, clu.values.Scalar):
+      logging.warning("Metric %s does not have Scalar type. Found %s.",
+                      self._metric, type(m))
+      _warn_action_not_run(type(self), self._task, self._metric)
+      return False
+
+    self._metric_history.append(m.value)
 
     # Not enough history.
     if len(self._metric_history) < self._patience:
@@ -952,23 +970,29 @@ class TerminateOnNanAction(BaseAction):
     self._metric = metric
 
   def run(self, train_state: train_state_lib.TrainState,
-          metrics_by_task: Mapping[str, MetricMapType]) -> bool:
+          metrics_by_task: Mapping[str, MetricValueMapType]) -> bool:
     if self._task not in metrics_by_task.keys():
       logging.warning(
           "Monitoring task: %s does not exist in all task metrics. "
           "Available tasks are : %s", self._task, metrics_by_task.keys())
-      logging.warning("TerminateOnNanAction for task : %s is not run.",
-                      self._task)
+      _warn_action_not_run(type(self), self._task, self._metric)
       return False
     if self._metric not in metrics_by_task[self._task].keys():
       logging.warning("Metric : %s does not exist in metrics for task : %s",
                       self._metric, self._task)
-      logging.warning("TerminateOnNanAction for task : %s is not run.",
-                      self._task)
+      _warn_action_not_run(type(self), self._task, self._metric)
       return False
 
     metric = metrics_by_task[self._task][self._metric]
-    if np.isnan(metric) or np.isinf(metric):
+
+    if not isinstance(metric, clu.values.Scalar):
+      logging.warning("Metric %s does not have Scalar type. Found %s.",
+                      self._metric, type(metric))
+      _warn_action_not_run(type(self), self._task, self._metric)
+      return False
+
+    value = metric.value
+    if np.isnan(value) or np.isinf(value):
       logging.warning(
           "Requested `stop_training` in training loop (Details below).\n "
           "NaN encountered in metric for task : %s", self._task)

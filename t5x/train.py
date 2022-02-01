@@ -54,7 +54,7 @@ def run_actions(
     mode: trainer_lib.ActionMode,
     actions: Mapping[trainer_lib.ActionMode, Sequence[trainer_lib.BaseAction]],
     train_state: train_state_lib.TrainState,
-    metrics_by_task: Mapping[str, Mapping[str, trainer_lib.Array]]) -> bool:
+    metrics_by_task: Mapping[str, trainer_lib.MetricValueMapType]) -> bool:
   """Invokes all actions on the given mode on host 0, then broadcasts to all.
 
   Args:
