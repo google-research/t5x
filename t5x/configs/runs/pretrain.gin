@@ -62,7 +62,7 @@ train_script.train:
 
 partitioning.ModelBasedPjitPartitioner:
   num_partitions = 1
-  model_parallel_submesh = ()
+  model_parallel_submesh = None
   logical_axis_rules = @partitioning.standard_logical_axis_rules()
 
 train/utils.DatasetConfig:
