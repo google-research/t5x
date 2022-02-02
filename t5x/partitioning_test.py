@@ -17,6 +17,7 @@
 import collections
 
 from absl.testing import absltest
+from absl.testing import parameterized
 from flax import optim
 from flax.linen import partitioning as nn_partitioning
 import jax
@@ -151,7 +152,7 @@ class PartitioningTest(absltest.TestCase):
       self.assertEqual(local_chunk_info.slice, (slice(None), slice(0, 16)))
 
 
-class ModelBasedPartitionerTest(absltest.TestCase):
+class ModelBasedPartitionerTest(parameterized.TestCase):
 
   def get_axes_spec(self, partitioner, factored, momentum):
     opt_def = adafactor.Adafactor(
@@ -291,6 +292,17 @@ class ModelBasedPartitionerTest(absltest.TestCase):
             m=None, v=PartitionSpec('data', None), v_col=None, v_row=None),
         kernel_spec=PartitionSpec('data', None))
     jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
+
+  @parameterized.product(activation_dims=(1, 2), param_dims=(1, 2))
+  def test_standard_logical_axis_rules(self, activation_dims, param_dims):
+    default_rules = partitioning.standard_logical_axis_rules(
+        activation_dims, param_dims, additional_rules=None)
+    custom_rules = (('my-new-axis', 'data'), ('another-axis', None),
+                    ('another-one', 'model'))
+    new_rules = partitioning.standard_logical_axis_rules(
+        activation_dims, param_dims, additional_rules=custom_rules)
+    self.assertEqual(new_rules[:len(default_rules)], default_rules)
+    self.assertEqual(new_rules[len(default_rules):], list(custom_rules))
 
 
 if __name__ == '__main__':
