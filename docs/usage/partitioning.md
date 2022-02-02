@@ -168,8 +168,8 @@ ModelBasedPjitPartitioner.logical_param_axis_names_override = [
 ]
 ```
 
-Note: It is not possible to add or modify activation partitioning in an
-external module.
+Note: It is not possible to add or modify activation partitioning in an external
+module.
 
 ### Canonical Logical Axis Names
 
