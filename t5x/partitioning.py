@@ -21,7 +21,6 @@ import collections
 import dataclasses
 import re
 from typing import Any, Callable, Iterable, Optional, Sequence, TYPE_CHECKING, Tuple, Union
-import warnings
 
 from absl import logging
 import cached_property
@@ -570,15 +569,23 @@ class BasePartitioner(metaclass=abc.ABCMeta):
         this setting, for example if they don't support storing all params on
         device memory.
     """
-    if num_partitions is model_parallel_submesh is None:
+
+    if not num_partitions and not model_parallel_submesh:
       raise ValueError('At least one of `num_partitions` or '
                        '`model_parallel_submesh` must be set.')
 
-    if num_partitions is not None and model_parallel_submesh is not None:
-      warnings.warn(
-          'At most one of `num_partitions` or `model_parallel_submesh` must be '
-          'set. A ValueError will be thrown from 2022/01/18. Please specify '
-          'one of them', DeprecationWarning)
+    if model_parallel_submesh is not None and len(model_parallel_submesh) != 4:
+      logging.error(
+          '`model_parallel_submesh` must be either None or a 4-tuple. Got '
+          'Got `num_partitions=%s`. A ValueError will be raised beginning '
+          'March 1, 2022.', model_parallel_submesh)
+
+    if bool(num_partitions) and bool(model_parallel_submesh):
+      logging.error(
+          'At most one of `num_partitions` or `model_parallel_submesh` can be '
+          'set. Got `num_partitions=%s` and `model_parallel_submesh`=%s. A '
+          'ValueError will be raised beginning March 1, 2022.', num_partitions,
+          model_parallel_submesh)
 
     self._num_partitions = num_partitions
     self._model_parallel_submesh = model_parallel_submesh
