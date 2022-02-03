@@ -125,7 +125,7 @@ def evaluate(
   }
 
   train_state_initializer = utils.TrainStateInitializer(
-      optimizer_def=model.optimizer_def,
+      optimizer_def=None,  # Do not load optimizer state.
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
       partitioner=partitioner)
@@ -133,6 +133,8 @@ def evaluate(
 
   predict_fn = None
   score_fn = None
+
+  restore_checkpoint_cfg.strict = False
 
   if fallback_init_rng is not None:
     fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)

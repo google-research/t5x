@@ -14,37 +14,105 @@
 
 """Train state for passing around objects during training."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Mapping, MutableMapping, Optional
 
-from flax import core as flax_core
 from flax import optim
-from flax import struct
+import flax.core
 from flax.core import scope as flax_scope
-import jax
+import flax.serialization
+import flax.struct
 import jax.numpy as jnp
 
-PyTreeDef = type(jax.tree_structure(None))
-EMPTY_DICT = flax_core.freeze({})
+import typing_extensions
+
+EMPTY_DICT = flax.core.freeze({})
 
 
-class TrainState(struct.PyTreeNode):
+class TrainState(typing_extensions.Protocol):
+  """TrainState interface."""
+
+  @property
+  def step(self) -> int:
+    ...
+
+  @property
+  def params(self) -> flax_scope.FrozenVariableDict:
+    ...
+
+  @property
+  def param_states(self) -> flax_scope.FrozenVariableDict:
+    ...
+
+  @property
+  def axes_variables(self) -> Optional[flax_scope.FrozenVariableDict]:
+    ...
+
+  @property
+  def flax_mutables(self) -> Optional[flax_scope.FrozenVariableDict]:
+    ...
+
+  def state_dict(self) -> Mapping[str, Any]:
+    ...
+
+  def apply_gradient(self,
+                     grads,
+                     learning_rate,
+                     flax_mutables=EMPTY_DICT) -> 'TrainState':
+    ...
+
+  def restore_state(self, state_dict: Mapping[str, Any]) -> 'TrainState':
+    ...
+
+  def update_step(self, step: int) -> 'TrainState':
+    ...
+
+
+class InferenceTrainState(flax.struct.PyTreeNode):
   """Simple train state for holding parameters, step, optimizer state."""
-  _optimizer: optim.Optimizer
-  # Variables related with axes specification.
+
+  step: jnp.ndarray
+  params: flax_scope.FrozenVariableDict
   axes_variables: Optional[flax_scope.FrozenVariableDict] = None
   # Flax mutable fields.
-  flax_mutables: Optional[flax_scope.FrozenDict] = EMPTY_DICT
+  flax_mutables: flax_scope.FrozenDict = EMPTY_DICT
+
+  def state_dict(self) -> MutableMapping[str, Any]:
+    state_dict = {
+        'target': flax.core.unfreeze(self.params),
+        'state': {
+            'step': self.step
+        }
+    }
+    if self.flax_mutables:
+      state_dict['flax_mutables'] = flax.core.unfreeze(self.flax_mutables)
+    return state_dict
+
+  def restore_state(self, state_dict: Mapping[str,
+                                              Any]) -> 'InferenceTrainState':
+    return self.replace(
+        params=flax.core.freeze(state_dict['target']),
+        step=state_dict['state']['step'],
+        flax_mutables=flax.core.freeze(state_dict['flax_mutables'])
+        if 'flax_mutables' in state_dict else EMPTY_DICT)
+
+
+class FlaxOptimTrainState(flax.struct.PyTreeNode):
+  """Simple train state for holding parameters, step, optimizer state."""
+  _optimizer: optim.Optimizer
+  axes_variables: Optional[flax_scope.FrozenVariableDict] = None
+  # Flax mutable fields.
+  flax_mutables: flax_scope.FrozenDict = EMPTY_DICT
 
   @property
   def step(self) -> jnp.ndarray:
     return self._optimizer.state.step
 
   @property
-  def params(self) -> PyTreeDef:
+  def params(self) -> flax_scope.FrozenVariableDict:
     return self._optimizer.target
 
   @property
-  def param_states(self) -> PyTreeDef:
+  def param_states(self) -> flax_scope.FrozenVariableDict:
     return self._optimizer.state.param_states
 
   @property
@@ -52,28 +120,28 @@ class TrainState(struct.PyTreeNode):
     """Returns the name of the used optimizer."""
     return self._optimizer.optimizer_def.__class__.__name__
 
-  def state_dict(self) -> Dict[str, Any]:
+  def state_dict(self) -> MutableMapping[str, Any]:
     state_dict = self._optimizer.state_dict()
     if self.flax_mutables:
-      state_dict['flax_mutables'] = flax_core.unfreeze(self.flax_mutables)
+      state_dict['flax_mutables'] = flax.core.unfreeze(self.flax_mutables)
     return state_dict
 
   def apply_gradient(self,
                      grads,
                      learning_rate,
-                     flax_mutables=EMPTY_DICT) -> 'TrainState':
+                     flax_mutables=EMPTY_DICT) -> 'FlaxOptimTrainState':
     new_optimizer = self._optimizer.apply_gradient(
         grads, learning_rate=learning_rate)
     return self.replace(_optimizer=new_optimizer, flax_mutables=flax_mutables)
 
-  def restore_state(self, state_dict: Dict[str, Any]) -> 'TrainState':
+  def restore_state(self, state_dict: MutableMapping[str, Any]) -> 'TrainState':
     new_optimizer = self._optimizer.restore_state(state_dict)
     return self.replace(
         _optimizer=new_optimizer,
-        flax_mutables=flax_core.freeze(state_dict['flax_mutables'])
+        flax_mutables=flax.core.freeze(state_dict['flax_mutables'])
         if 'flax_mutables' in state_dict else EMPTY_DICT)
 
-  def update_step(self, step: int) -> 'TrainState':
+  def update_step(self, step: int) -> 'FlaxOptimTrainState':
     return self.replace(
         _optimizer=self._optimizer.replace(
             state=self._optimizer.state.replace(step=step)),
@@ -85,7 +153,7 @@ class TrainState(struct.PyTreeNode):
       optimizer: optim.Optimizer,
       axes_variables: Optional[flax_scope.FrozenVariableDict] = None,
       flax_mutables: Optional[flax_scope.FrozenDict] = EMPTY_DICT
-  ) -> 'TrainState':
+  ) -> 'FlaxOptimTrainState':
     return cls(
         _optimizer=optimizer,
         axes_variables=axes_variables,

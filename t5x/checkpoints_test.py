@@ -61,7 +61,7 @@ def make_train_state(
       flax_optimizer_def,
       state=optim.OptimizerState(step=step, param_states=param_states),
       target=params)
-  return train_state_lib.TrainState.from_flax_optimizer(optimizer)
+  return train_state_lib.FlaxOptimTrainState(optimizer)
 
 
 def make_train_state_multi_optimizer(params: Mapping[str, Any],
@@ -74,7 +74,7 @@ def make_train_state_multi_optimizer(params: Mapping[str, Any],
            optim.GradientDescent())),
       state=optim.OptimizerState(step=step, param_states=param_states),
       target=params)
-  return train_state_lib.TrainState.from_flax_optimizer(optimizer)
+  return train_state_lib.FlaxOptimTrainState(optimizer)
 
 
 def update_train_state_step(train_state: train_state_lib.TrainState, step: int):
@@ -955,8 +955,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'kernel': np.arange(32, dtype=np.float32).reshape((2, 16))
             }
         })
-    self.train_state = train_state_lib.TrainState.from_flax_optimizer(
-        optimizer=optimizer)
+    self.train_state = train_state_lib.FlaxOptimTrainState(optimizer)
 
     actual_train_state = self.call_host_checkpointer(
         0,
@@ -1045,7 +1044,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'kernel': np.arange(32, dtype=np.float32).reshape((2, 16))
             }
         })
-    self.train_state = train_state_lib.TrainState.from_flax_optimizer(optimizer)
+    self.train_state = train_state_lib.FlaxOptimTrainState(optimizer)
 
     actual_train_state = self.call_host_checkpointer(
         0,
@@ -1473,7 +1472,7 @@ class CheckpointsTest(parameterized.TestCase):
       other_initial_variables, initial_params = initial_variables.pop('params')
       return model.optimizer_def.create(initial_params), other_initial_variables
 
-    train_state = train_state_lib.TrainState.from_flax_optimizer(
+    train_state = train_state_lib.FlaxOptimTrainState(
         *jax.eval_shape(initialize_params_fn, jax.random.PRNGKey(0)))
     checkpointer = checkpoints.Checkpointer(train_state, partitioner,
                                             self.tmp_dir)

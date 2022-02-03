@@ -330,7 +330,7 @@ class TrainStateInitializer:
 
   # TODO(adarob): Replace input_shapes and input_types with sample batch.
   def __init__(self,
-               optimizer_def: optim.OptimizerDef,
+               optimizer_def: Optional[optim.OptimizerDef],
                init_fn: InitFnCallable,
                input_shapes: Mapping[str, Array],
                partitioner: partitioning.BasePartitioner,
@@ -355,24 +355,32 @@ class TrainStateInitializer:
       other_initial_variables, initial_params = initial_variables.pop('params')
       # If the optimizer supports `set_param_axes`, then assume that the model
       # code is emitting these axes and use it.
-      if hasattr(optimizer_def, 'set_param_axes'):
-        if 'params_axes' not in other_initial_variables:
-          raise ValueError('The optimizer supports params_axes for model-based '
-                           'partitioning, but the model is not emitting them.')
-        axis_names = nn.partitioning.get_axis_names(
-            other_initial_variables['params_axes'])
-        optimizer_def.set_param_axes(axis_names)
       if 'params_axes' in other_initial_variables:
         flax_mutables, params_axes = other_initial_variables.pop('params_axes')
         axes_variables = freeze({'params_axes': params_axes})
       else:
         flax_mutables, axes_variables = other_initial_variables, None
       # Initialize optimizer and initial train state.
-      optimizer = optimizer_def.create(initial_params)
-      return train_state_lib.TrainState.from_flax_optimizer(
-          optimizer=optimizer,
-          flax_mutables=flax_mutables,
-          axes_variables=axes_variables)
+      if optimizer_def:
+        if optimizer_def and hasattr(optimizer_def, 'set_param_axes'):
+          if 'params_axes' not in other_initial_variables:
+            raise ValueError(
+                'The optimizer supports params_axes for model-based '
+                'partitioning, but the model is not emitting them.')
+          axis_names = nn.partitioning.get_axis_names(
+              other_initial_variables['params_axes'])
+          optimizer_def.set_param_axes(axis_names)
+        optimizer = optimizer_def.create(initial_params)
+        return train_state_lib.FlaxOptimTrainState(
+            optimizer,
+            flax_mutables=flax_mutables,
+            axes_variables=axes_variables)
+      else:
+        return train_state_lib.InferenceTrainState(
+            params=initial_params,
+            step=jnp.array(0, jnp.int32),
+            flax_mutables=flax_mutables,
+            axes_variables=axes_variables)
 
     self._partitioner = partitioner
     self.global_train_state_shape = jax.eval_shape(
