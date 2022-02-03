@@ -123,69 +123,6 @@ def evaluate(
   input_shapes = {
       k: (batch_size,) + s for k, s in evaluator.model_feature_shapes.items()
   }
-
-  train_state_initializer = utils.TrainStateInitializer(
-      optimizer_def=model.optimizer_def,
-      init_fn=model.get_initial_variables,
-      input_shapes=input_shapes,
-      partitioner=partitioner)
-  train_state_axes = train_state_initializer.train_state_axes
-
-  predict_fn = None
-  score_fn = None
-
-  if fallback_init_rng is not None:
-    fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
-  for train_state in train_state_initializer.from_checkpoints(
-      [restore_checkpoint_cfg], init_rng=fallback_init_rng):
-
-    # Compile the model only once.
-    if not predict_fn:
-      predict_fn = utils.get_infer_fn(
-          infer_step=model.predict_batch,
-          batch_size=batch_size,
-          train_state_axes=train_state_axes,
-          partitioner=partitioner)
-
-      score_fn = utils.get_infer_fn(
-          infer_step=model.score_batch,
-          batch_size=batch_size,
-          train_state_axes=train_state_axes,
-          partitioner=partitioner)
-
-    # ----------------------------------------------------------------------------
-    # Main training loop
-    # ----------------------------------------------------------------------------
-
-    # Run final evaluation (with decoding) on the full eval dataset.
-    all_metrics, _, _ = evaluator.evaluate(
-        compute_metrics=jax.process_index() == 0,
-        step=int(train_state.step),
-        predict_fn=functools.partial(predict_fn, train_state=train_state),
-        score_fn=functools.partial(score_fn, train_state=train_state))
-    all_metrics.result()  # Ensure metrics are finished being computed.
-    # Wait until computations are done before continuing.
-    multihost_utils.sync_devices(f'step_{train_state.step}:complete')
-
-  logging.info('Finished.')
-
-
-if __name__ == '__main__':
-  from absl import app
-  from absl import flags
-  import gin
-
-  FLAGS = flags.FLAGS
-
-  jax.config.parse_flags_with_absl()
-
-  flags.DEFINE_multi_string(
-      'gin_file',
-      default=None,
-      help='Path to gin configuration file. Multiple paths may be passed and '
-      'will be imported in the given order, with later configurations  '
-      'overriding earlier ones.')
-
   flags.DEFINE_multi_string(
       'gin_bindings', default=[], help='Individual gin bindings.')
 
