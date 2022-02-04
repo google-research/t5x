@@ -16,6 +16,7 @@
 
 from typing import Any, Dict, Optional
 
+from absl import logging
 from flax import core as flax_core
 from flax import optim
 from flax import struct
@@ -28,7 +29,10 @@ EMPTY_DICT = flax_core.freeze({})
 
 
 class TrainState(struct.PyTreeNode):
-  """Simple train state for holding parameters, step, optimizer state."""
+  """Simple train state for holding parameters, step, optimizer state.
+
+  This copy will soon become an interface rather than an implementation.
+  """
   _optimizer: optim.Optimizer
   # Variables related with axes specification.
   axes_variables: Optional[flax_scope.FrozenVariableDict] = None
@@ -86,7 +90,23 @@ class TrainState(struct.PyTreeNode):
       axes_variables: Optional[flax_scope.FrozenVariableDict] = None,
       flax_mutables: Optional[flax_scope.FrozenDict] = EMPTY_DICT
   ) -> 'TrainState':
+    logging.error(
+        '`from_flax_optimizer` is deprecated and will be removed shortly. '
+        'Please instantiate `FlaxOptimTrainState` directly instead.')
     return cls(
         _optimizer=optimizer,
         axes_variables=axes_variables,
         flax_mutables=flax_mutables)
+
+
+class FlaxOptimTrainState(TrainState):
+  """Train state flax.optim.Optimizer-based optimization."""
+
+  @classmethod
+  def from_flax_optimizer(
+      cls,
+      optimizer: optim.Optimizer,
+      axes_variables: Optional[flax_scope.FrozenVariableDict] = None,
+      flax_mutables: Optional[flax_scope.FrozenDict] = EMPTY_DICT
+  ) -> 'FlaxOptimTrainState':
+    raise NotImplementedError('Initialize `FlaxOptimTrainState` directly.')
