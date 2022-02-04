@@ -376,7 +376,7 @@ class MetricsManager(object):
         summary = self._summarize_fn(
             metrics=final_metrics, duration=duration, num_steps=num_steps)
       with self._writer_lock:
-        metric_writers.write_values(self._writer, step, summary)
+        metric_writers.write_values(self._writer, int(step), summary)
 
       return summary
 
