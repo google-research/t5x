@@ -12,10 +12,8 @@ jobs:
       with:
         python-version: '3.8.x'
     - name: Install dependencies
-      # TODO(adarob): Remove the tensorflow-text requirement once fixed.
       run: |
         pip install -e .[test] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
-        pip install tensorflow-text==2.8.0-rc0
     - name: Test with pytest
       run: pytest
     # The below step just reports the success or failure of tests as a "commit status".
