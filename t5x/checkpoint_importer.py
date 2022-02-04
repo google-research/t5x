@@ -18,7 +18,7 @@ import abc
 import asyncio
 from concurrent.futures import thread
 import re
-from typing import Callable, MutableMapping, Sequence, Tuple, Union
+from typing import Callable, MutableMapping, Optional, Sequence, Tuple, Union
 
 from flax import optim
 from flax import traverse_util
@@ -455,10 +455,12 @@ def update_optimizer(optimizer: optim.Optimizer,
 
 
 # TODO(bastings,jbulian): restore from TrainState not optim.Optimizer.
-def restore_from_t5_checkpoint(optimizer: optim.Optimizer,
-                               path: str,
-                               lazy_parameters: bool = False,
-                               strict: bool = True) -> optim.Optimizer:
+def restore_from_t5_checkpoint(
+    optimizer: optim.Optimizer,
+    path: str,
+    lazy_parameters: bool = False,
+    strict: bool = True,
+    translator: Optional[CheckpointTranslator] = None) -> optim.Optimizer:
   """Load T5 checkpoint and update Adafactor optimizer and T5 model from it.
 
   We require that the final translated checkpoint structure exactly matches
@@ -474,13 +476,17 @@ def restore_from_t5_checkpoint(optimizer: optim.Optimizer,
       same set of names (variables). If False, updating will succeed even if
       t5_data contains variables not in the optimizer. If the optimizer has
       variables not in t5_data, this function will still fail.
+    translator: The mapping rules for conversion. If None, then default T5
+      conversion rules will be used.
 
   Returns:
     Adafactor optimizer updated with parameters and optimizer state from
     T5 checkpoint.
   """
+  if translator is None:
+    translator = t5_importer
   ckpt_data = load_tf_ckpt(path)
-  t5_data = t5_importer.apply(ckpt_data)
+  t5_data = translator.apply(ckpt_data)
   t5_data = _add_missing_param_states(t5_data)
   t5_data = _maybe_correct_relpos_bias(t5_data)
   optimizer = update_optimizer(optimizer, t5_data, strict=strict)

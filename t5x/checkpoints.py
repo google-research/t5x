@@ -918,13 +918,16 @@ class Checkpointer(object):
   def restore_from_tf_checkpoint(
       self,
       path_or_dir: str,
-      strict: bool = True) -> train_state_lib.TrainState:
+      strict: bool = True,
+      translator: Optional[checkpoint_importer.CheckpointTranslator] = None
+  ) -> train_state_lib.TrainState:
     """Restore from a TensorFlow-based T5 checkpoint."""
     full_optimizer = checkpoint_importer.restore_from_t5_checkpoint(
         self._train_state._optimizer,  # pylint: disable=protected-access
         path_or_dir,
         lazy_parameters=False,
-        strict=strict)
+        strict=strict,
+        translator=translator)
 
     def _partition_parameter(maybe_arr: Any, param_info: _ParameterInfo):
       if isinstance(maybe_arr, np.ndarray) and param_info:
@@ -951,10 +954,14 @@ class Checkpointer(object):
       path_or_dir: str,
       *,
       state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
-      concurrent_gb: int = 16):
+      concurrent_gb: int = 16,
+      translator: Optional[checkpoint_importer.CheckpointTranslator] = None):
     """Convert from a TensorFlow-based T5 checkpoint."""
     full_optimizer = checkpoint_importer.restore_from_t5_checkpoint(
-        self._train_state._optimizer, path_or_dir, lazy_parameters=True)  # pylint: disable=protected-access
+        self._train_state._optimizer,  # pylint: disable=protected-access
+        path_or_dir,
+        lazy_parameters=True,
+        translator=translator)
     train_state = train_state_lib.TrainState.from_flax_optimizer(full_optimizer)
     self.save(
         train_state,
