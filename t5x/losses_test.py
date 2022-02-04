@@ -16,6 +16,7 @@
 
 from absl.testing import absltest
 import jax
+import jax.numpy as jnp
 import numpy as np
 from t5x import losses
 
@@ -48,6 +49,88 @@ class LossTest(absltest.TestCase):
     # TODO(t5x): Expand test
     print(jax.device_get(((loss, (z_loss, weight_sum)), dlogits)))
 
+
+class SpecialLossNormalizingFactorTest(absltest.TestCase):
+
+  def test_num_real_target_tokens(self):
+    batch = {
+        'decoder_target_tokens':
+            jnp.asarray([[1, 2, 3, 4, 0], [5, 6, 0, 0, 0]], jnp.int32)
+    }
+
+    (output_lnf,
+     output_loss_weights) = losses.get_loss_normalizing_factor_and_weights(
+         loss_normalizing_factor=losses.SpecialLossNormalizingFactor
+         .NUM_REAL_TARGET_TOKENS,
+         batch=batch)
+
+    np.testing.assert_allclose(output_lnf, 6.0, rtol=1e-3)
+    np.testing.assert_allclose(
+        output_loss_weights,
+        np.array([[1.0, 1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 0.0, 0.0, 0.0]],
+                 dtype=np.float32),
+        rtol=1e-3)
+
+  def test_num_total_target_tokens(self):
+    batch = {
+        'decoder_target_tokens':
+            jnp.asarray([[1, 2, 3, 4, 0], [5, 6, 0, 0, 0]], jnp.int32)
+    }
+
+    (output_lnf,
+     output_loss_weights) = losses.get_loss_normalizing_factor_and_weights(
+         loss_normalizing_factor=losses.SpecialLossNormalizingFactor
+         .NUM_TOTAL_TARGET_TOKENS,
+         batch=batch)
+
+    np.testing.assert_allclose(output_lnf, 10.0, rtol=1e-3)
+    np.testing.assert_allclose(
+        output_loss_weights,
+        np.array([[1.0, 1.0, 1.0, 1.0, 0.0], [1.0, 1.0, 0.0, 0.0, 0.0]],
+                 dtype=np.float32),
+        rtol=1e-3)
+
+  def test_average_per_sequence(self):
+    batch = {
+        'decoder_target_tokens':
+            jnp.asarray([[1, 2, 3, 4, 0], [5, 6, 0, 0, 0]], jnp.int32)
+    }
+
+    (output_lnf,
+     output_loss_weights) = losses.get_loss_normalizing_factor_and_weights(
+         loss_normalizing_factor=losses.SpecialLossNormalizingFactor
+         .AVERAGE_PER_SEQUENCE,
+         batch=batch)
+
+    np.testing.assert_allclose(output_lnf, 2.0, rtol=1e-3)
+    np.testing.assert_allclose(
+        output_loss_weights,
+        jnp.asarray([[0.25, 0.25, 0.25, 0.25, 0.0], [0.5, 0.5, 0.0, 0.0, 0.0]],
+                    jnp.float32),
+        rtol=1e-3)
+
+  def test_average_per_sequence_with_weights(self):
+    batch = {
+        'decoder_target_tokens':
+            jnp.asarray([[1, 2, 3, 4, 0], [5, 6, 0, 0, 0]], jnp.int32),
+        'decoder_loss_weights':
+            jnp.asarray([[0.5, 1.0, 0.25, 2.0, 0.0], [1.0, 1.0, 0.0, 0.0, 0.0]],
+                        jnp.float32)
+    }
+
+    (output_lnf,
+     output_loss_weights) = losses.get_loss_normalizing_factor_and_weights(
+         loss_normalizing_factor=losses.SpecialLossNormalizingFactor
+         .AVERAGE_PER_SEQUENCE,
+         batch=batch)
+
+    np.testing.assert_allclose(output_lnf, 2.0, rtol=1e-3)
+    np.testing.assert_allclose(
+        output_loss_weights,
+        jnp.asarray(
+            [[0.1333, 0.2666, 0.0666, 0.5333, 0.0], [0.5, 0.5, 0.0, 0.0, 0.0]],
+            jnp.float32),
+        rtol=1e-3)
 
 if __name__ == '__main__':
   absltest.main()
