@@ -214,4 +214,4 @@ def get_train_state_from_variables(variables,
                                    optimizer_def=optim.Adafactor(0.0)):
   """Returns a default Train State with Adafactor optimizer."""
   optimizer = optimizer_def.create(variables['params'])
-  return train_state_lib.TrainState.from_flax_optimizer(optimizer)
+  return train_state_lib.FlaxOptimTrainState(optimizer)

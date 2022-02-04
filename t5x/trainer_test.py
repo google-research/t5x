@@ -288,7 +288,7 @@ class TrainerTest(parameterized.TestCase):
             'bias': np.zeros(4),
             'kernel': np.zeros((2, 4))
         })
-    self.init_train_state = train_state_lib.TrainState.from_flax_optimizer(
+    self.init_train_state = train_state_lib.FlaxOptimTrainState(
         self.init_optimizer)
     train_state_axes = jax.tree_map(lambda x: None, self.init_train_state)
     model_dir = self.create_tempdir().full_path
@@ -788,8 +788,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
             'bias': np.zeros(4),
             'kernel': np.zeros((2, 4))
         })
-    init_train_state = train_state_lib.TrainState.from_flax_optimizer(
-        init_optimizer)
+    init_train_state = train_state_lib.FlaxOptimTrainState(init_optimizer)
     train_state_axes = jax.tree_map(lambda x: None, init_train_state)
 
     test_trainer = trainer_lib.Trainer(

@@ -369,10 +369,8 @@ class TrainStateInitializer:
         flax_mutables, axes_variables = other_initial_variables, None
       # Initialize optimizer and initial train state.
       optimizer = optimizer_def.create(initial_params)
-      return train_state_lib.TrainState.from_flax_optimizer(
-          optimizer=optimizer,
-          flax_mutables=flax_mutables,
-          axes_variables=axes_variables)
+      return train_state_lib.FlaxOptimTrainState(
+          optimizer, flax_mutables=flax_mutables, axes_variables=axes_variables)
 
     self._partitioner = partitioner
     self.global_train_state_shape = jax.eval_shape(
