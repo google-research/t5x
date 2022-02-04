@@ -174,7 +174,7 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
             }
         }
     })
-    state = train_state.TrainState.from_flax_optimizer(optimizer)
+    state = train_state.FlaxOptimTrainState(optimizer)
     state = state.replace(
         axes_variables={
             'params_axes': {
@@ -195,8 +195,8 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
                              spec_0,
                              spec_1,
                              kernel_spec=PartitionSpec(None, 'model')):
-    return train_state.TrainState.from_flax_optimizer(
-        optimizer=optim.Optimizer(
+    return train_state.FlaxOptimTrainState(
+        optim.Optimizer(
             # opt_def,
             adafactor.Adafactor(0.1),  # opt_def not compared.
             state=optim.OptimizerState(

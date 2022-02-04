@@ -25,7 +25,7 @@ from t5x import train_state as train_state_lib
 
 class TrainStateTest(absltest.TestCase):
 
-  def test_create_train_state(self):
+  def test_create_flax_optim_train_state(self):
     """Tests creating a train state."""
     model = nn.Dense(10)
     inputs = np.ones([2, 3], dtype=np.float32)
@@ -33,7 +33,7 @@ class TrainStateTest(absltest.TestCase):
     optimizer_def = optim.GradientDescent(learning_rate=0.1)
     optimizer = optimizer_def.create(params)
     flax_mutables = flax_core.freeze({'flax_mutable1': np.ones(10)})
-    state = train_state_lib.TrainState.from_flax_optimizer(
+    state = train_state_lib.FlaxOptimTrainState(
         optimizer, flax_mutables=flax_mutables)
     self.assertEqual(state.step, 0)
     self.assertIsInstance(state._optimizer, optim.Optimizer)

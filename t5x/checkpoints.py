@@ -962,7 +962,7 @@ class Checkpointer(object):
         path_or_dir,
         lazy_parameters=True,
         translator=translator)
-    train_state = train_state_lib.TrainState.from_flax_optimizer(full_optimizer)
+    train_state = train_state_lib.FlaxOptimTrainState(full_optimizer)
     self.save(
         train_state,
         state_transformation_fns=state_transformation_fns,
