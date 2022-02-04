@@ -18,9 +18,8 @@ import abc
 import asyncio
 from concurrent.futures import thread
 import re
-from typing import Callable, MutableMapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
-from flax import optim
 from flax import traverse_util
 import jax
 from jax import numpy as jnp
@@ -237,12 +236,14 @@ TOWER_MAP = {'transformer': 'decoder'}
 
 @t5_importer.add(r'global_step')
 def global_step(opts, key, val):
+  del opts, key
   return 'state/step', val.astype(np.int32).get() if isinstance(
       val, LazyArray) else val
 
 
 @t5_importer.add(r'shared/embedding(\w*)')
 def shared_embeddings(opts, key, val, slot):
+  del opts, key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   newkey = f'{prefix}/token_embedder/embedding{suffix}'
@@ -251,6 +252,7 @@ def shared_embeddings(opts, key, val, slot):
 
 @t5_importer.add(r'(encoder|decoder|transformer)/embedding(\w*)')
 def separate_embeddings(opts, key, val, encdec, slot):
+  del opts, key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   encdec = TOWER_MAP.get(encdec, encdec)
@@ -265,6 +267,7 @@ def separate_embeddings(opts, key, val, encdec, slot):
 )
 def rel_embeddings(opts, key, val, encdec, blocknum, slot):
   """Process relpos bias assuming that they are not shared across layers."""
+  del opts, key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   blocknum = int(blocknum)
@@ -280,6 +283,8 @@ def rel_embeddings(opts, key, val, encdec, blocknum, slot):
     r'(encoder|decoder|transformer)/block_(\d+)/layer_\d+/(SelfAttention|EncDecAttention)/(q|k|v|o)(\w*)'
 )
 def attention_layers(opts, key, val, encdec, blocknum, attntype, qkvo, slot):
+  """Process attention layers."""
+  del opts, key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   blocknum = int(blocknum)
@@ -301,7 +306,8 @@ def attention_layers(opts, key, val, encdec, blocknum, attntype, qkvo, slot):
     r'(encoder|decoder|transformer)/block_(\d+)/layer_\d+/DenseReluDense/(wi|wo)(?:_(\d+))?/kernel(\w*)'
 )
 def mlpblock(opts, key, val, encdec, blocknum, io_name, io_num, slot):
-  del opts
+  """Process MLP blocks."""
+  del opts, key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   blocknum = int(blocknum)
@@ -316,6 +322,7 @@ def mlpblock(opts, key, val, encdec, blocknum, io_name, io_num, slot):
 )
 def layernorms(opts, key, val, encdec, blocknum, lyrnum, slot):
   """Process layer norms assuming that they are pre-layernorms."""
+  del opts, key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   lyrnum = int(lyrnum)
@@ -340,6 +347,8 @@ def layernorms(opts, key, val, encdec, blocknum, lyrnum, slot):
 @t5_importer.add(
     r'(encoder|decoder|transformer)/(?:final_layer|rms)_norm/scale(\w*)')
 def final_layernorms(opts, key, val, encdec, slot):
+  """Process final layer norms."""
+  del opts, key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   norm = {
@@ -354,6 +363,7 @@ def final_layernorms(opts, key, val, encdec, slot):
 
 @t5_importer.add(r'(?:decoder|transformer)/logits/kernel(\w*)')
 def final_logits(opts, key, val, slot):
+  del opts, key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   newkey = f'{prefix}/decoder/logits_dense/kernel{suffix}'
@@ -416,13 +426,13 @@ def load_tf_ckpt(path):
   return datamap
 
 
-def update_optimizer(optimizer: optim.Optimizer,
-                     t5_data: MutableMapping[str, LazyArray],
-                     strict: bool = True) -> optim.Optimizer:
+def _update_state_dict(state_dict: Mapping[str, Any],
+                       t5_data: MutableMapping[str, LazyArray],
+                       strict: bool = True) -> Mapping[str, Any]:
   """Update flax optimizer for T5 model.
 
   Args:
-    optimizer: Optimizer to update with T5 parameters.
+    state_dict: Optimizer to update with T5 parameters.
     t5_data: T5 model parameters, typically loaded from a checkpoint.
     strict: If True requires that optimizer and t5_data mappings contain the
       same set of names (variables). If False, updating will succeed even if
@@ -432,35 +442,35 @@ def update_optimizer(optimizer: optim.Optimizer,
   Returns:
     Updated optimizer.
   """
-  optimizer_data = traverse_util.flatten_dict(optimizer.state_dict())
-  optimizer_data = {'/'.join(k): v for k, v in optimizer_data.items()}
+  flat_state_dict = {
+      '/'.join(k): v for k, v in traverse_util.flatten_dict(state_dict).items()
+  }
 
   # Remove parameters from the checkpoint not found in the optimizer (this
   # allows us to load checkpoints that contain more parameters than our current
   # model).
   if not strict:
     for k in list(t5_data):
-      if k not in optimizer_data:
+      if k not in flat_state_dict:
         t5_data.pop(k)
 
   # Shape check.
   for k, v in t5_data.items():
-    if optimizer_data[k].shape != v.shape:
+    if flat_state_dict[k].shape != v.shape:
       raise ValueError(
-          f'Variable {k} has shape {v.shape} != {optimizer_data[k].shape}')
-  optimizer_data = t5_data
-  optimizer_data = traverse_util.unflatten_dict(
-      {tuple(k.split('/')): v for k, v in optimizer_data.items()})
-  return optimizer.restore_state(optimizer_data)
+          f'Variable {k} has shape {v.shape} != {flat_state_dict[k].shape}')
+  flat_state_dict = t5_data
+  state_dict = traverse_util.unflatten_dict(
+      {tuple(k.split('/')): v for k, v in flat_state_dict.items()})
+  return state_dict
 
 
-# TODO(bastings,jbulian): restore from TrainState not optim.Optimizer.
 def restore_from_t5_checkpoint(
-    optimizer: optim.Optimizer,
+    state_dict: Mapping[str, Any],
     path: str,
     lazy_parameters: bool = False,
     strict: bool = True,
-    translator: Optional[CheckpointTranslator] = None) -> optim.Optimizer:
+    translator: Optional[CheckpointTranslator] = None) -> Mapping[str, Any]:
   """Load T5 checkpoint and update Adafactor optimizer and T5 model from it.
 
   We require that the final translated checkpoint structure exactly matches
@@ -468,7 +478,7 @@ def restore_from_t5_checkpoint(
   the leaves.
 
   Args:
-    optimizer: Flax Adafactor Optimizer for T5 transformer encoder-decoder.
+    state_dict: Flax Adafactor Optimizer for T5 transformer encoder-decoder.
     path: a path to checkpoint file or directory.
     lazy_parameters: whether to leave the parameters as LazyArrays to preserve
       memory.
@@ -489,8 +499,8 @@ def restore_from_t5_checkpoint(
   t5_data = translator.apply(ckpt_data)
   t5_data = _add_missing_param_states(t5_data)
   t5_data = _maybe_correct_relpos_bias(t5_data)
-  optimizer = update_optimizer(optimizer, t5_data, strict=strict)
+  state_dict = _update_state_dict(state_dict, t5_data, strict=strict)
   if not lazy_parameters:
-    optimizer = jax.tree_map(
-        lambda x: x.get() if isinstance(x, LazyArray) else x, optimizer)
-  return optimizer
+    state_dict = jax.tree_map(
+        lambda x: x.get() if isinstance(x, LazyArray) else x, state_dict)
+  return state_dict

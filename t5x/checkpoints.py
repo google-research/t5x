@@ -922,8 +922,8 @@ class Checkpointer(object):
       translator: Optional[checkpoint_importer.CheckpointTranslator] = None
   ) -> train_state_lib.TrainState:
     """Restore from a TensorFlow-based T5 checkpoint."""
-    full_optimizer = checkpoint_importer.restore_from_t5_checkpoint(
-        self._train_state._optimizer,  # pylint: disable=protected-access
+    full_state_dict = checkpoint_importer.restore_from_t5_checkpoint(
+        self._train_state.state_dict(),
         path_or_dir,
         lazy_parameters=False,
         strict=strict,
@@ -941,8 +941,7 @@ class Checkpointer(object):
         return arr
       return maybe_arr
 
-    state_dict = jax.tree_multimap(_partition_parameter,
-                                   full_optimizer.state_dict(),
+    state_dict = jax.tree_multimap(_partition_parameter, full_state_dict,
                                    self._parameter_infos)
     if self.restore_dtype is not None:
       state_dict['target'] = _cast(state_dict['target'], self.restore_dtype)
@@ -957,12 +956,12 @@ class Checkpointer(object):
       concurrent_gb: int = 16,
       translator: Optional[checkpoint_importer.CheckpointTranslator] = None):
     """Convert from a TensorFlow-based T5 checkpoint."""
-    full_optimizer = checkpoint_importer.restore_from_t5_checkpoint(
-        self._train_state._optimizer,  # pylint: disable=protected-access
+    full_state_dict = checkpoint_importer.restore_from_t5_checkpoint(
+        self._train_state.state_dict(),
         path_or_dir,
         lazy_parameters=True,
         translator=translator)
-    train_state = train_state_lib.FlaxOptimTrainState(full_optimizer)
+    train_state = self._train_state.restore_state(full_state_dict)
     self.save(
         train_state,
         state_transformation_fns=state_transformation_fns,

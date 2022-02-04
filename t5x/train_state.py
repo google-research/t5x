@@ -14,7 +14,7 @@
 
 """Train state for passing around objects during training."""
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 from absl import logging
 from flax import core as flax_core
@@ -70,7 +70,7 @@ class TrainState(struct.PyTreeNode):
         grads, learning_rate=learning_rate)
     return self.replace(_optimizer=new_optimizer, flax_mutables=flax_mutables)
 
-  def restore_state(self, state_dict: Dict[str, Any]) -> 'TrainState':
+  def restore_state(self, state_dict: Mapping[str, Any]) -> 'TrainState':
     new_optimizer = self._optimizer.restore_state(state_dict)
     return self.replace(
         _optimizer=new_optimizer,
