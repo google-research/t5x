@@ -28,7 +28,7 @@ To use a pre-trained model, you need a Gin config file that defines the model
 params, and the model checkpoint to load from. For your convenience, TensorFlow
 checkpoints and Gin configs for common T5 pre-trained models have been made
 available for use in T5X. A list of all the available pre-trained models (with
-model checkpoints and Gin config files) are available in the [Models](models.md)
+model checkpoints and Gin config files) are available in the [Models](../models)
 documentation.
 
 For the example run, you will use the T5 Small model. The Gin file for this
