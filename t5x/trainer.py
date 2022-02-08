@@ -279,16 +279,17 @@ class MetricsManager(object):
       summary_dir: the summary directory. If provided, TensorBoard summaries
         will be written to a `name` subdirectory.
     """
-    self._name = name
+    self._name = name.replace("/", "_")
     self._summarize_fn = summarize_fn
     if jax.process_index() == 0:
       self._writer = metric_writers.create_default_writer(
           summary_dir,
-          collection=name,
+          collection=self._name,
           asynchronous=True)
     else:
       self._writer = metric_writers.MultiWriter([])
-    self.summary_dir = os.path.join(summary_dir, name) if summary_dir else None
+    self.summary_dir = os.path.join(summary_dir,
+                                    self._name) if summary_dir else None
     self._writer_lock = threading.Lock()
     # We use a thread pool with a single worker to ensure that calls to the
     # function are run in order (but in a background thread).
