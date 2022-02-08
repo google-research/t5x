@@ -25,7 +25,6 @@ from typing import Any, Callable, Iterable, Optional, Sequence, TYPE_CHECKING, T
 from absl import logging
 import cached_property
 from flax import traverse_util
-from flax.core import frozen_dict
 from flax.linen import partitioning as flax_partitioning
 import jax
 from jax import numpy as jnp
@@ -755,14 +754,11 @@ class BasePjitPartitioner(BasePartitioner):
 class ModelBasedPjitPartitioner(BasePjitPartitioner):
   """Partitioner that uses T5X version of jax.pjit and model annotations."""
 
-  def __init__(
-      self,
-      num_partitions: Optional[int],
-      model_parallel_submesh: Optional[HardwareMesh] = None,
-      params_on_devices: bool = True,
-      logical_axis_rules: Optional[LogicalAxisRules] = None,
-      logical_param_axis_names_override: Sequence[Tuple[str, Tuple[str,
-                                                                   ...]]] = ()):
+  def __init__(self,
+               num_partitions: Optional[int],
+               model_parallel_submesh: Optional[HardwareMesh] = None,
+               params_on_devices: bool = True,
+               logical_axis_rules: Optional[LogicalAxisRules] = None):
     """ModelBasedPjitPartitioner constructor.
 
     See https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/user/partitioning for details.
@@ -793,9 +789,6 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
         logical axis names to either `None` (not sharded), 'model' (to shard
         across the model-parallel submesh), or 'data' (to shard across the
         data-parallel submesh).
-      logical_param_axis_names_override: a priority-ordered mapping from regex
-        patterns (fully matching parameter names) to tuples containing string
-        logical axis names to replace model-derived names.
     """
     super().__init__(
         num_partitions=num_partitions,
@@ -804,9 +797,6 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
     if logical_axis_rules is None:
       logical_axis_rules = standard_logical_axis_rules()
     self._logical_axis_rules = logical_axis_rules
-    self._logical_param_axis_names_override_map = _RegexMap([
-        (p, PartitionSpec(*t)) for p, t in logical_param_axis_names_override
-    ])
 
   def partition(
       self,
@@ -832,26 +822,6 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
 
     params_axes = flax_partitioning.get_axis_names(
         train_state.axes_variables['params_axes'])
-
-    flat_params_axes = traverse_util.flatten_dict(
-        frozen_dict.unfreeze(params_axes))
-
-    for param_key, curr_axis_names in flat_params_axes.items():
-      param_name = '/'.join(param_key)
-      override = self._logical_param_axis_names_override_map.get(param_name)
-      if override is None:
-        continue
-
-      if curr_axis_names is not None and len(override) != len(curr_axis_names):
-        raise ValueError(
-            f'Provided axis name override for {param_name} does not match '
-            f'original length: {override} (override) vs {curr_axis_names} '
-            '(original)')
-      logging.info('Replacing axis names for %s (%s) with %s.', param_name,
-                   curr_axis_names, override)
-      flat_params_axes[param_key] = override
-    params_axes = frozen_dict.freeze(
-        traverse_util.unflatten_dict(flat_params_axes))
 
     optimizer_axes = train_state._optimizer.optimizer_def.derive_logical_axes(  # pylint: disable=protected-access
         train_state._optimizer, params_axes)  # pylint: disable=protected-access

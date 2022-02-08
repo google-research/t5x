@@ -22,6 +22,8 @@ from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
 
+import flax.core
+from flax.linen import partitioning as flax_partitioning
 import jax
 import numpy as np
 
@@ -34,6 +36,7 @@ import tensorflow as tf
 mock = absltest.mock
 Evaluator = seqio.Evaluator
 PartitionSpec = partitioning.PartitionSpec
+AxisMetadata = flax_partitioning.AxisMetadata
 
 # Parse absl flags test_srcdir and test_tmpdir.
 jax.config.parse_flags_with_absl()
@@ -358,6 +361,74 @@ class UtilsTest(parameterized.TestCase):
             num_epochs=2)
     ]
     mock_get_dataset.assert_has_calls(expected_calls)
+
+  def test_override_params_axes_names(self):
+    model_variables = flax.core.freeze({
+        "params": {
+            "logits_dense": np.zeros((2, 4)),
+            "mlp": {
+                "wo": {
+                    "kernel": np.zeros((4, 6)),
+                    "bias": np.zeros(6),
+                }
+            }
+        },
+        "params_axes": {
+            "logits_dense_axes": AxisMetadata(names=("vocab", "embed")),
+            "mlp": {
+                "wo": {
+                    "kernel_axes": AxisMetadata(names=("embed", "mlp"))
+                }
+            }
+        }
+    })
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Model variables do not contain a 'params_axes' collection to apply an "
+        "override to."):
+      utils.override_params_axes_names({"params": model_variables["params"]},
+                                       [("mlp/wo/kernel", ("embed",))])
+
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Provided axis name override for mlp/wo/kernel does not match param "
+        "rank (2): ('embed',)"):
+      utils.override_params_axes_names(model_variables,
+                                       [("mlp/wo/kernel", ("embed",))])
+
+    overridden_variables = utils.override_params_axes_names(
+        model_variables,
+        [
+            ("wo/kernel", ("batch",)),  # unused since not a full match
+            (".*/wo/kernel", ("batch", "embed")),  # this one is used
+            ("mlp/wo/kernel", ("embed",)),  # unused since already matched
+            ("mlp/wo/bias", ("embed",)),  # used
+        ])
+
+    jax.tree_multimap(
+        np.testing.assert_equal, overridden_variables,
+        flax.core.freeze({
+            "params": {
+                "logits_dense": np.zeros((2, 4)),
+                "mlp": {
+                    "wo": {
+                        "kernel": np.zeros((4, 6)),
+                        "bias": np.zeros(6),
+                    }
+                }
+            },
+            "params_axes": {
+                "logits_dense_axes": AxisMetadata(names=("vocab", "embed")),
+                "mlp": {
+                    "wo": {
+                        "kernel_axes": AxisMetadata(names=("batch", "embed")),
+                        "bias_axes": AxisMetadata(names=("embed",)),
+                    }
+                }
+            }
+        }))
+
 
 if __name__ == "__main__":
   absltest.main()

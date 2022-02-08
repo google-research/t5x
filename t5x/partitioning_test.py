@@ -258,41 +258,6 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
             m=None, v=p1_spec, v_col=None, v_row=None))
     jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
 
-  def test_get_mesh_axes_with_wrong_rank_override(self):
-    bad_partitioner = partitioning.ModelBasedPjitPartitioner(
-        num_partitions=1,
-        logical_axis_rules=(('batch', 'data'), ('embed', None),
-                            ('vocab', 'model'), ('mlp', 'model')),
-        logical_param_axis_names_override=[('mlp/wo/kernel', ('embed',))])
-
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        'Provided axis name override for mlp/wo/kernel does not match original '
-        "length: PartitionSpec('embed',) (override) vs "
-        "PartitionSpec('embed', 'mlp') (original)"):
-      self.get_axes_spec(bad_partitioner, factored=False, momentum=False)
-
-  def test_get_mesh_axes_with_override(self):
-    partitioner = partitioning.ModelBasedPjitPartitioner(
-        num_partitions=1,
-        logical_axis_rules=(('batch', 'data'), ('embed', None),
-                            ('vocab', 'model'), ('mlp', 'model')),
-        logical_param_axis_names_override=[
-            ('wo/kernel', ('batch',)),  # unused since not a full match
-            ('.*/wo/kernel', ('batch', 'embed')),  # this one is used
-            ('mlp/wo/kernel', ('embed',)),  # unused since already matched
-        ])
-
-    axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=False)
-
-    expected_axes_spec = self.get_expected_axes_spec(
-        adafactor._AdafactorParamState(
-            m=None, v=PartitionSpec('model', None), v_col=None, v_row=None),
-        adafactor._AdafactorParamState(
-            m=None, v=PartitionSpec('data', None), v_col=None, v_row=None),
-        kernel_spec=PartitionSpec('data', None))
-    jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
-
   @parameterized.product(activation_dims=(1, 2), param_dims=(1, 2))
   def test_standard_logical_axis_rules(self, activation_dims, param_dims):
     default_rules = partitioning.standard_logical_axis_rules(

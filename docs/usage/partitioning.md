@@ -152,20 +152,33 @@ model implementation that uses `self.param` instead of
 `flax.linen.partitioning.param_with_axes`, or that may use axis names that are
 incompatible with your codebase.
 
-To deal with this situation, we provide the `logical_param_axis_names_override`
-argument to the `ModelBasedPjitPartitioner` constructor. This argument takes a
-priority-ordered mapping from regex patterns (fully matching parameter names) to
-tuples containing string logical axis names to replace model-derived names.
+To deal with this situation, we provide the `utils.override_params_axes_names`
+helper function. This helper can be called at the end of
+`Model.get_initial_variables` to apply a priority-ordered mapping from regex
+patterns (fully matching parameter names) to tuples containing string logical
+axis names to replace model-derived names.
 
 For example, the following configuration provides logical axis names for an
 external module called 'external_mlp' used in every layer of model's encoder,
 without modifying any other modules:
 
 ```py
-ModelBasedPjitPartitioner.logical_param_axis_names_override = [
-    ('encoder/layer_\\d/external_mlp/kernel':, ('embed', 'mlp')),
-    ('encoder/layer_\\d/external_mlp/bias':, ('mlp',)),
-]
+class MyCustomEncoderDecoderModel(models.EncoderDecoderModel):
+
+  def get_initial_variables():
+    self,
+    rng: jnp.ndarray,
+    input_shapes: Mapping[str, Array],
+    input_types: Optional[Mapping[str, jnp.dtype]] = None
+  ) -> flax_scope.FrozenVariableDict:
+    initial_variables = super().get_initial_variables(
+        rng=rng, input_shapes=input_shapes, input_types=input_types)
+    return utils.override_params_axes_names(
+        initial_variables,
+        params_axes_names_override=[
+            ('encoder/layer_\\d/external_mlp/kernel':, ('embed', 'mlp')),
+            ('encoder/layer_\\d/external_mlp/bias':, ('mlp',)),
+        ])
 ```
 
 Note: It is not possible to add or modify activation partitioning in an external

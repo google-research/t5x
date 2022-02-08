@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """General utility functions for t5x."""
+import collections.abc
 from concurrent.futures import thread
 import dataclasses
 import functools
@@ -20,16 +21,17 @@ import importlib
 import os
 import re
 import time
-from typing import Any, Iterator, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
 import warnings
 
 from absl import logging
 from flax import linen as nn
 from flax import optim
-from flax.core import freeze
+from flax import traverse_util
+import flax.core
 from flax.core import scope as flax_scope
-from flax.core import unfreeze
-from flax.traverse_util import flatten_dict
+from flax.linen import partitioning as flax_partitioning
+
 import jax
 from jax import prng
 import jax.numpy as jnp
@@ -353,9 +355,9 @@ class TrainStateInitializer:
       initial_variables = init_fn(
           rng=rng, input_shapes=input_shapes, input_types=input_types)
       other_initial_variables, initial_params = initial_variables.pop('params')
-      # If the optimizer supports `set_param_axes`, then assume that the model
+      # If the optimizer supports `set_params_axes`, then assume that the model
       # code is emitting these axes and use it.
-      if hasattr(optimizer_def, 'set_param_axes'):
+      if hasattr(optimizer_def, 'set_params_axes'):
         if 'params_axes' not in other_initial_variables:
           raise ValueError('The optimizer supports params_axes for model-based '
                            'partitioning, but the model is not emitting them.')
@@ -364,7 +366,7 @@ class TrainStateInitializer:
         optimizer_def.set_param_axes(axis_names)
       if 'params_axes' in other_initial_variables:
         flax_mutables, params_axes = other_initial_variables.pop('params_axes')
-        axes_variables = freeze({'params_axes': params_axes})
+        axes_variables = flax.core.freeze({'params_axes': params_axes})
       else:
         flax_mutables, axes_variables = other_initial_variables, None
       # Initialize optimizer and initial train state.
@@ -411,7 +413,7 @@ class TrainStateInitializer:
       restore_cfgs: Sequence[RestoreCheckpointConfig],
       ds_iter: Optional[tf.data.Iterator] = None,
       init_rng: Optional[jnp.ndarray] = None,
-  ) -> Iterator[train_state_lib.TrainState]:
+  ) -> Iterable[train_state_lib.TrainState]:
     """Yields 0 or more restored partitioned Optimizers, and maybe datasets.
 
     The manner in which parameters are initialized depends on `restore_cfgs` and
@@ -999,6 +1001,84 @@ def round_vocab_size_to_multiple(vocabulary: seqio.Vocabulary,
 
 def flatten_dict_string_keys(x):
   """Flattens a nested dictionary to have string keys and '/' separators."""
-  return {'/'.join(k): v for k, v in flatten_dict(unfreeze(x)).items()}
+  return {
+      '/'.join(k): v
+      for k, v in traverse_util.flatten_dict(flax.core.unfreeze(x)).items()
+  }
+
+
+class _RegexMap(collections.abc.Mapping):
+  """Ordered mapping from regexes to values requiring a full match."""
+
+  def __init__(self, kvs: Sequence[Tuple[str, Any]]):
+    self._kvs = [(re.compile(k), v) for k, v in kvs]
+
+  def __getitem__(self, key: str) -> Any:
+    for pattern, v in self._kvs:
+      if pattern.fullmatch(key):
+        return v
+    raise KeyError(f'No pattern matching key: {key}')
+
+  def __len__(self) -> int:
+    return len(self._kvs)
+
+  def __iter__(self) -> Iterable[Tuple[re.Pattern, Any]]:
+    return iter(self._kvs)
+
+
+def override_params_axes_names(
+    model_variables: flax_scope.FrozenVariableDict,
+    params_axes_names_override: Sequence[Tuple[str, Tuple[str, ...]]] = ()
+) -> flax_scope.FrozenVariableDict:
+  """Applies parameter axis names overrides to axes variables.
+
+  Args:
+    model_variables: the original model variables containing the 'params_axes'
+      collection.
+    params_axes_names_override: a priority-ordered mapping from regex patterns
+      (fully matching parameter names) to tuples containing string logical axis
+      names to replace model-derived names.
+
+  Returns:
+    an updated set of model variables with the overrides applied to the
+    'params_axes' collection.
+  """
+  params_axes_names_override_map = _RegexMap(params_axes_names_override)
+
+  if 'params_axes' not in model_variables:
+    raise ValueError(
+        "Model variables do not contain a 'params_axes' collection to apply an "
+        'override to.')
+  model_variables = model_variables.unfreeze()
+  flat_params = traverse_util.flatten_dict(model_variables['params'])
+  flat_params_axes = traverse_util.flatten_dict(model_variables['params_axes'])
+
+  for key, param in flat_params.items():
+    param_name = '/'.join(key)
+    override = params_axes_names_override_map.get(param_name)
+    if override is None:
+      continue
+
+    param_axes_key = key[:-1] + (f'{key[-1]}_axes',)
+
+    curr_metadata = flat_params_axes.get(param_axes_key)
+
+    if curr_metadata is None:
+      logging.info('Adding axis names for %s: %s', param_name, override)
+    else:
+      assert isinstance(curr_metadata, flax_partitioning.AxisMetadata)
+      logging.info('Replacing axis names for %s (%s) with %s.', param_name,
+                   curr_metadata.names, override)
+
+    if param.ndim != len(override):
+      raise ValueError(
+          f'Provided axis name override for {param_name} does not match '
+          f'param rank ({param.ndim}): {override}')
+    flat_params_axes[param_axes_key] = flax_partitioning.AxisMetadata(
+        names=override)
+
+  model_variables['params_axes'] = traverse_util.unflatten_dict(
+      flat_params_axes)
+  return flax.core.freeze(model_variables)
 
 
