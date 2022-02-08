@@ -594,7 +594,7 @@ class MlpBlock(nn.Module):
   def __call__(self, inputs, decode: bool = False, deterministic: bool = False):
     """Applies Transformer MlpBlock module."""
     # Iterate over specified MLP input activation functions.
-    # e.g. ('relu',) or ('linear', 'gelu') for gated-gelu.
+    # e.g. ('relu',) or ('gelu', 'linear') for gated-gelu.
     activations = []
     for idx, act_fn in enumerate(self.activations):
       dense_name = 'wi' if len(self.activations) == 1 else f'wi_{idx}'
