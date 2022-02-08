@@ -169,6 +169,7 @@ class BaseModel(abc.ABC):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
+      decoder_params: Optional[Mapping[str, Any]] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predicts batch with auxiliary outputs."""
     pass
