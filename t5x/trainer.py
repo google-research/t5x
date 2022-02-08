@@ -45,7 +45,6 @@ from t5x import train_state as train_state_lib
 from t5x import utils
 import typing_extensions
 
-
 Array = Union[np.ndarray, jnp.ndarray]
 BatchSpec = Mapping[str, jax.ShapeDtypeStruct]
 BatchType = Mapping[str, np.ndarray]
@@ -282,12 +281,15 @@ class MetricsManager(object):
     """
     self._name = name
     self._summarize_fn = summarize_fn
+    if jax.process_index() == 0:
+      self._writer = metric_writers.create_default_writer(
+          summary_dir,
+          write_to_xm_measurements=True,
+          collection=name,
+          asynchronous=True)
+    else:
+      self._writer = metric_writers.MultiWriter([])
     self.summary_dir = os.path.join(summary_dir, name) if summary_dir else None
-    writers = []
-    if self.summary_dir and jax.process_index() == 0:
-      writers.append(metric_writers.SummaryWriter(self.summary_dir))
-      writers.append(metric_writers.LoggingWriter(prefix=f"{name}: "))
-    self._writer = metric_writers.AsyncMultiWriter(writers)
     self._writer_lock = threading.Lock()
     # We use a thread pool with a single worker to ensure that calls to the
     # function are run in order (but in a background thread).
