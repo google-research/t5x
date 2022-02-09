@@ -389,6 +389,18 @@ class EncoderDecoderModel(BaseTransformerModel):
           input_types.get('decoder_positions', jnp.int32))
     else:
       decoder_positions = None
+    if 'encoder_segment_ids' in input_shapes:
+      encoder_segment_ids = jnp.ones(
+          input_shapes['encoder_segment_ids'],
+          input_types.get('encoder_segment_ids', jnp.int32))
+    else:
+      encoder_segment_ids = None
+    if 'decoder_segment_ids' in input_shapes:
+      decoder_segment_ids = jnp.ones(
+          input_shapes['decoder_segment_ids'],
+          input_types.get('decoder_segment_ids', jnp.int32))
+    else:
+      decoder_segment_ids = None
     initial_variables = self.module.init(
         rng,
         jnp.ones(encoder_shape, encoder_type),
@@ -396,6 +408,8 @@ class EncoderDecoderModel(BaseTransformerModel):
         jnp.ones(decoder_shape, decoder_type),
         encoder_positions=encoder_positions,
         decoder_positions=decoder_positions,
+        encoder_segment_ids=encoder_segment_ids,
+        decoder_segment_ids=decoder_segment_ids,
         decode=False,
         enable_dropout=False)
     return initial_variables

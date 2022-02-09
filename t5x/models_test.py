@@ -95,6 +95,20 @@ class EncoderDecoderModelTest(parameterized.TestCase):
               'encoder_positions': jnp.int32,
               'decoder_positions': jnp.int32
           }),
+      dict(
+          testcase_name='float32_segment_ids',
+          shapes={
+              'encoder_input_tokens': [1, 512],
+              'decoder_input_tokens': [1, 62],
+              'encoder_segment_ids': [1, 512],
+              'decoder_segment_ids': [1, 62],
+          },
+          types={
+              'encoder_input_tokens': jnp.int32,
+              'decoder_input_tokens': jnp.int32,
+              'encoder_segment_ids': jnp.int32,
+              'decoder_segment_ids': jnp.int32
+          }),
   )
   def test_get_initial_variables_shapes_and_types(self, shapes, types):
     mock_transformer = mock.Mock()
@@ -136,11 +150,31 @@ class EncoderDecoderModelTest(parameterized.TestCase):
           shapes['encoder_positions'], dtype=types['encoder_positions'])
       np.testing.assert_allclose(called_with[1]['encoder_positions'],
                                  encoder_positions)
+    else:
+      self.assertIsNone(called_with[1]['encoder_positions'])
     if 'decoder_positions' in shapes:
       decoder_positions = jnp.ones(
           shapes['decoder_positions'], dtype=types['decoder_positions'])
       np.testing.assert_allclose(called_with[1]['decoder_positions'],
                                  decoder_positions)
+    else:
+      self.assertIsNone(called_with[1]['decoder_positions'])
+
+    if 'encoder_segment_ids' in shapes:
+      encoder_positions = jnp.ones(
+          shapes['encoder_segment_ids'], dtype=types['encoder_segment_ids'])
+      np.testing.assert_allclose(called_with[1]['encoder_segment_ids'],
+                                 encoder_positions)
+    else:
+      self.assertIsNone(called_with[1]['encoder_segment_ids'])
+    if 'decoder_segment_ids' in shapes:
+      decoder_segment_ids = jnp.ones(
+          shapes['decoder_segment_ids'], dtype=types['decoder_segment_ids'])
+      np.testing.assert_allclose(called_with[1]['decoder_segment_ids'],
+                                 decoder_segment_ids)
+    else:
+      self.assertIsNone(called_with[1]['decoder_segment_ids'])
+
     self.assertFalse(called_with[1]['decode'])
     self.assertFalse(called_with[1]['enable_dropout'])
 
