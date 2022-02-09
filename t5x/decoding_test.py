@@ -15,6 +15,7 @@
 """Tests for t5x.decoding."""
 
 import functools
+from typing import Mapping, Tuple
 from unittest import mock
 
 from absl.testing import absltest
@@ -25,6 +26,7 @@ import numpy as np
 from t5x import decoding
 
 EOS_ID = 1
+NEG_INF = decoding.NEG_INF
 
 
 class DecodeTest(parameterized.TestCase):
@@ -443,6 +445,103 @@ class DecodeTest(parameterized.TestCase):
     jax.tree_multimap(np.testing.assert_array_equal,
                       decoding.cache_map(fn, cache, apply_to_index=True),
                       gold_cache)
+
+  def test_beam_search(self):
+    # Toy problem, we have 4 states, A, B, START, END, (plus PAD).
+    # Scores are given by a first-order Markov model.
+    batch_size = 2
+    beam_size = 2
+    # PAD doesn't matter for this test, but part of the contract for beam_search
+    # is giving the PAD token id 0.
+    states = ['PAD', 'A', 'B', 'START-', '-END']
+    num_states = len(states)
+    decode_length = 7
+
+    # Edge potentials (written inside edges for diagonals):
+    #            1      -1     1      -1
+    #         A ---- A ---- A ---- A ---- A
+    #       0   \  -1  \  1   \  -1  \  1   0
+    # START      X      X      X      X       END
+    #       0   /  -1  /  1   /  -1  /  1   0
+    #         B ---- B ---- B ---- B ---- B
+    #            1      -1     1      -1
+
+    # put the above edge potentials in a 3-tensor
+    ab_edge_potentials = np.asarray([[[1, -1], [-1, 1]], [[-1, 1], [1, -1]],
+                                     [[1, -1], [-1, 1]], [[-1, 1], [1, -1]]])
+    # now we have to add on the START, END states
+    # and PAD at 0
+    edge_potentials = np.ones([6, 5, 5]) * NEG_INF
+    edge_potentials[1:5, 1:3, 1:3] = ab_edge_potentials
+    # START can go to either A or B for free at t0
+    edge_potentials[0, 3, 1] = 0
+    edge_potentials[0, 3, 2] = 0
+    # either A or B can go to END for free at t5
+    edge_potentials[5, 1, 4] = 0
+    edge_potentials[5, 2, 4] = 0
+    # PAD can go to anything for free (doesn't matter for this test)
+    edge_potentials[:, 0, :] = 0
+
+    edge_potentials = jnp.asarray(edge_potentials)
+
+    # at time 0, we start with state=START=3
+    logits0 = jnp.asarray([NEG_INF, NEG_INF, NEG_INF, 0, NEG_INF])
+
+    # add dummy flattened batch x beam dim for broadcasting
+    logits0 = jnp.expand_dims(logits0, axis=0)
+    edge_potentials = jnp.expand_dims(edge_potentials, axis=0)
+
+    def tokens_to_logits(
+        token_indices: jnp.ndarray, state_cache: Mapping[str, jnp.ndarray]
+    ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
+      cur_iter = state_cache['cur_iter']
+      # grab edge potentials for the current timestep
+      cur_edge_potentials = jnp.take_along_axis(
+          edge_potentials,
+          jnp.reshape(
+              jnp.maximum(0, cur_iter[:, 0] - 1),
+              (batch_size * beam_size, 1, 1, 1)),
+          axis=1)
+      cur_edge_potentials = jnp.squeeze(cur_edge_potentials, axis=1)
+      # get "logits" from edge potentials for requested tokens (except at t0)
+      cur_logits = jnp.matmul(
+          jnp.reshape(
+              jax.nn.one_hot(token_indices, num_states, axis=1),
+              (batch_size * beam_size, 1, num_states)), cur_edge_potentials)
+      cur_logits = jnp.squeeze(cur_logits, axis=1)
+      # use our START-only logits for t0, otherwise use the edge potentials
+      logits_for_tokens = jnp.where(cur_iter == 0, logits0, cur_logits)
+      # update state in the cache
+      new_cache = state_cache.copy()
+      new_cache['cur_iter'] = cur_iter + 1
+      return logits_for_tokens, new_cache
+
+    init_cache = {}
+    init_cache['cur_iter'] = jnp.zeros((batch_size, 1))
+
+    top_scoring, _ = decoding.beam_search(
+        inputs=np.zeros([batch_size, decode_length]),
+        cache=init_cache,
+        tokens_to_logits=tokens_to_logits,
+        eos_id=4,
+        num_decodes=beam_size,
+        alpha=0.0,
+        max_decode_len=decode_length)
+
+    # The two top scoring sequences should be a tie between
+    # START-AABBA-END
+    # and
+    # START-BBAAB-END
+    # (and greedy beam search will find both these with just two beams)
+
+    top_scoring_strings = [
+        ''.join(states[tok]
+                for tok in top_scoring[0, i, :])
+        for i in range(beam_size)
+    ]
+
+    expected = ['START-AABBA-END', 'START-BBAAB-END']
+    np.testing.assert_array_equal(expected, top_scoring_strings)
 
 
 if __name__ == '__main__':
