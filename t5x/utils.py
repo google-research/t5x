@@ -25,7 +25,6 @@ from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Type, Unio
 import warnings
 
 from absl import logging
-from flax import linen as nn
 from flax import optim
 from flax import traverse_util
 import flax.core
@@ -354,25 +353,8 @@ class TrainStateInitializer:
     def initialize_train_state(rng: Array):
       initial_variables = init_fn(
           rng=rng, input_shapes=input_shapes, input_types=input_types)
-      other_initial_variables, initial_params = initial_variables.pop('params')
-      # If the optimizer supports `set_params_axes`, then assume that the model
-      # code is emitting these axes and use it.
-      if hasattr(optimizer_def, 'set_params_axes'):
-        if 'params_axes' not in other_initial_variables:
-          raise ValueError('The optimizer supports params_axes for model-based '
-                           'partitioning, but the model is not emitting them.')
-        axis_names = nn.partitioning.get_axis_names(
-            other_initial_variables['params_axes'])
-        optimizer_def.set_param_axes(axis_names)
-      if 'params_axes' in other_initial_variables:
-        flax_mutables, params_axes = other_initial_variables.pop('params_axes')
-        axes_variables = flax.core.freeze({'params_axes': params_axes})
-      else:
-        flax_mutables, axes_variables = other_initial_variables, None
-      # Initialize optimizer and initial train state.
-      optimizer = optimizer_def.create(initial_params)
-      return train_state_lib.FlaxOptimTrainState(
-          optimizer, flax_mutables=flax_mutables, axes_variables=axes_variables)
+      return train_state_lib.FlaxOptimTrainState.create(optimizer_def,
+                                                        initial_variables)
 
     self._partitioner = partitioner
     self.global_train_state_shape = jax.eval_shape(

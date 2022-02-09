@@ -817,16 +817,7 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
 
   def get_logical_axes(self, train_state: TrainState) -> TrainState:
     """Returns a copy of TrainState with Optional[AxisNames] as leaves."""
-    if 'params_axes' not in train_state.axes_variables:
-      raise ValueError('Missing model params_axes collection.')
-
-    params_axes = flax_partitioning.get_axis_names(
-        train_state.axes_variables['params_axes'])
-
-    optimizer_axes = train_state._optimizer.optimizer_def.derive_logical_axes(  # pylint: disable=protected-access
-        train_state._optimizer, params_axes)  # pylint: disable=protected-access
-
-    return train_state.restore_state(optimizer_axes.state_dict())
+    return train_state.as_logical_axes()
 
   def get_mesh_axes(self, train_state: TrainState) -> TrainState:
     """Returns a copy of TrainState with Optional[PartitionSpecs] as leaves."""
@@ -836,24 +827,5 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
                                     logical_axes.state_dict())
 
     return logical_axes.restore_state(mesh_axes_dict)
-
-
-class _RegexMap(collections.abc.Mapping):
-  """Ordered mapping from regexes to values requring a full match."""
-
-  def __init__(self, kvs: Sequence[Tuple[str, Any]]):
-    self._kvs = [(re.compile(k), v) for k, v in kvs]
-
-  def __getitem__(self, key: str) -> Any:
-    for pattern, v in self._kvs:
-      if pattern.fullmatch(key):
-        return v
-    raise KeyError(f'No pattern matching key: {key}')
-
-  def __len__(self) -> int:
-    return len(self._kvs)
-
-  def __iter__(self) -> Iterable[Tuple[re.Pattern, Any]]:
-    return iter(self._kvs)
 
 

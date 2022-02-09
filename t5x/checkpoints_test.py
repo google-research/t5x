@@ -48,6 +48,8 @@ LazyArray = checkpoints.LazyArray
 
 TESTDATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'testdata')
 
+FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
+
 
 def make_train_state(
     *,
@@ -55,18 +57,18 @@ def make_train_state(
     params: Mapping[str, Any],
     param_states: Mapping[str, Any],
     flax_optimizer_def: optim.OptimizerDef = optim.GradientDescent()
-) -> train_state_lib.TrainState:
+) -> FlaxOptimTrainState:
   """Helper to construct a train state for testing."""
   optimizer = optim.Optimizer(
       flax_optimizer_def,
       state=optim.OptimizerState(step=step, param_states=param_states),
       target=params)
-  return train_state_lib.FlaxOptimTrainState(optimizer)
+  return FlaxOptimTrainState(optimizer)
 
 
 def make_train_state_multi_optimizer(params: Mapping[str, Any],
                                      param_states: Mapping[str, Any],
-                                     step: int) -> train_state_lib.TrainState:
+                                     step: int) -> FlaxOptimTrainState:
   """Helper to construct a train state with multi optimizer for testing."""
   optimizer = optim.Optimizer(
       optim.MultiOptimizer(
@@ -74,12 +76,15 @@ def make_train_state_multi_optimizer(params: Mapping[str, Any],
            optim.GradientDescent())),
       state=optim.OptimizerState(step=step, param_states=param_states),
       target=params)
-  return train_state_lib.FlaxOptimTrainState(optimizer)
+  return FlaxOptimTrainState(optimizer)
 
 
-def update_train_state_step(train_state: train_state_lib.TrainState, step: int):
+def update_train_state_step(train_state: FlaxOptimTrainState,
+                            step: int) -> FlaxOptimTrainState:
   """Helper to update the step inside TrainState."""
-  return train_state.update_step(step)
+  state_dict = train_state.state_dict()
+  state_dict['state']['step'] = step
+  return train_state.restore_state(state_dict)
 
 
 class CheckpointChunkShapeTest(absltest.TestCase):
@@ -460,8 +465,8 @@ class CheckpointsTest(parameterized.TestCase):
           ds_iter if checkpoint_dataset else None)
       if lazy_parameters:
         actual_train_state = jax.tree_map(lambda x: x.get(), actual_train_state)
-      self.assertEqual(actual_train_state.optimizer_name,
-                       self.train_state.optimizer_name)
+      self.assertEqual(actual_train_state._optimizer.optimizer_def,
+                       self.train_state._optimizer.optimizer_def)
 
       self.assertEqual(actual_train_state.step, step)
       jax.tree_multimap(np.testing.assert_array_equal,
@@ -605,6 +610,7 @@ class CheckpointsTest(parameterized.TestCase):
             param_states=param_states,
             flax_optimizer_def=optimizer_def)
         checkpointer.save(train_state)
+
       # pylint:enable=cell-var-from-loop
 
       self.call_host_checkpointer(i, host_count, partitioner, _save_ckpt,
@@ -955,7 +961,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'kernel': np.arange(32, dtype=np.float32).reshape((2, 16))
             }
         })
-    self.train_state = train_state_lib.FlaxOptimTrainState(optimizer)
+    self.train_state = FlaxOptimTrainState(optimizer)
 
     actual_train_state = self.call_host_checkpointer(
         0,
@@ -973,8 +979,8 @@ class CheckpointsTest(parameterized.TestCase):
         np.float32,
         None)
     self.assertEqual(actual_train_state.step, 42)
-    self.assertEqual(actual_train_state.optimizer_name,
-                     self.train_state.optimizer_name)
+    self.assertEqual(actual_train_state._optimizer.optimizer_def,
+                     self.train_state._optimizer.optimizer_def)
     jax.tree_multimap(np.testing.assert_array_equal,
                       actual_train_state.param_states,
                       self.train_state.param_states)
@@ -1044,7 +1050,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'kernel': np.arange(32, dtype=np.float32).reshape((2, 16))
             }
         })
-    self.train_state = train_state_lib.FlaxOptimTrainState(optimizer)
+    self.train_state = FlaxOptimTrainState(optimizer)
 
     actual_train_state = self.call_host_checkpointer(
         0,
@@ -1083,8 +1089,8 @@ class CheckpointsTest(parameterized.TestCase):
             }),
         np.float32,
         None)
-    self.assertEqual(actual_train_state.optimizer_name,
-                     self.train_state.optimizer_name)
+    self.assertEqual(actual_train_state._optimizer.optimizer_def,
+                     self.train_state._optimizer.optimizer_def)
     self.assertEqual(actual_train_state.step, 1337)  # note: from-scratch
     jax.tree_multimap(np.testing.assert_array_equal,
                       actual_train_state.param_states,
@@ -1469,11 +1475,9 @@ class CheckpointsTest(parameterized.TestCase):
               'encoder_input_tokens': (2, 512),
               'decoder_input_tokens': (2, 114),
           })
-      other_initial_variables, initial_params = initial_variables.pop('params')
-      return model.optimizer_def.create(initial_params), other_initial_variables
+      return FlaxOptimTrainState.create(model.optimizer_def, initial_variables)
 
-    train_state = train_state_lib.FlaxOptimTrainState(
-        *jax.eval_shape(initialize_params_fn, jax.random.PRNGKey(0)))
+    train_state = jax.eval_shape(initialize_params_fn, jax.random.PRNGKey(0))
     checkpointer = checkpoints.Checkpointer(train_state, partitioner,
                                             self.tmp_dir)
     _ = checkpointer.convert_from_tf_checkpoint(checkpoint_path)
@@ -1485,6 +1489,8 @@ class CheckpointsTest(parameterized.TestCase):
     state_dict = train_state._optimizer.state_dict()
     ckpt = checkpoints.load_t5x_checkpoint(checkpoint)
     jax.tree_multimap(np.testing.assert_array_equal, state_dict, ckpt)
+
+
 
 if __name__ == '__main__':
   absltest.main()

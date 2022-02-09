@@ -19,6 +19,7 @@ import collections
 from absl.testing import absltest
 from absl.testing import parameterized
 from flax import optim
+import flax.core
 from flax.linen import partitioning as nn_partitioning
 import jax
 import numpy as np
@@ -166,17 +167,17 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
             'vocab': adafactor.FactorDim.COLUMN,
             'mlp': adafactor.FactorDim.COLUMN,
         })
-    optimizer = opt_def.create({
-        'logits_dense': np.ones((16, 16), np.float32),
-        'mlp': {
-            'wo': {
-                'kernel': np.ones((32, 16), np.float32)
-            }
-        }
-    })
-    state = train_state.FlaxOptimTrainState(optimizer)
-    state = state.replace(
-        axes_variables={
+    state = train_state.FlaxOptimTrainState.create(
+        opt_def,
+        flax.core.freeze({
+            'params': {
+                'logits_dense': np.ones((16, 16), np.float32),
+                'mlp': {
+                    'wo': {
+                        'kernel': np.ones((32, 16), np.float32)
+                    }
+                }
+            },
             'params_axes': {
                 'logits_dense_axes': AxisMetadata(names=('vocab', 'embed')),
                 'mlp': {
@@ -185,10 +186,7 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
                     }
                 }
             }
-        })
-    axis_names = nn_partitioning.get_axis_names(
-        state.axes_variables['params_axes'])
-    state._optimizer.optimizer_def.set_param_axes(axis_names)
+        }))
     return partitioner.get_mesh_axes(state).state_dict()
 
   def get_expected_axes_spec(self,
