@@ -311,7 +311,7 @@ def create_learning_rate_scheduler(
 
 # TODO(b/188897586): Add test coverage for the logic in this class.
 class TrainStateInitializer:
-  """Helper for initializing partitioned Optimizers from checkpoints or scratch.
+  """Helper for initializing partitioned TrainState from checkpoints or scratch.
 
   Common use cases:
 
@@ -331,7 +331,7 @@ class TrainStateInitializer:
 
   # TODO(adarob): Replace input_shapes and input_types with sample batch.
   def __init__(self,
-               optimizer_def: optim.OptimizerDef,
+               optimizer_def: Optional[optim.OptimizerDef],
                init_fn: InitFnCallable,
                input_shapes: Mapping[str, Array],
                partitioner: partitioning.BasePartitioner,
@@ -339,7 +339,8 @@ class TrainStateInitializer:
     """TrainStateInitializer constructor.
 
     Args:
-      optimizer_def: Optimizer def to be initialized.
+      optimizer_def: Optimizer def to be initialized, or None to create a
+        `InferenceState` without an optimizer.
       init_fn: callable that initializes model variables from a PRNGKey and the
         input shapes.
       input_shapes: a mapping from key to array shape for each feature in the
@@ -353,8 +354,10 @@ class TrainStateInitializer:
     def initialize_train_state(rng: Array):
       initial_variables = init_fn(
           rng=rng, input_shapes=input_shapes, input_types=input_types)
-      return train_state_lib.FlaxOptimTrainState.create(optimizer_def,
-                                                        initial_variables)
+      if optimizer_def:
+        return train_state_lib.FlaxOptimTrainState.create(
+            optimizer_def, initial_variables)
+      return train_state_lib.InferenceState.create(initial_variables)
 
     self._partitioner = partitioner
     self.global_train_state_shape = jax.eval_shape(

@@ -14,7 +14,7 @@
 
 """Train state for passing around objects during training."""
 
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, MutableMapping, Optional
 
 from flax import optim
 import flax.core
@@ -57,7 +57,7 @@ class TrainState(typing_extensions.Protocol):
     ...
 
   def state_dict(self) -> MutableVariableDict:
-    """Returns a mutable representation of the state."""
+    """Returns a mutable representation of the state for checkpointing."""
     ...
 
   def restore_state(self, state_dict: Mapping[str, Any]) -> 'TrainState':
@@ -82,7 +82,7 @@ class TrainState(typing_extensions.Protocol):
     ...
 
 
-class FlaxOptimTrainState(flax.struct.PyTreeNode, TrainState):
+class FlaxOptimTrainState(flax.struct.PyTreeNode):
   """Simple train state for holding parameters, step, optimizer state."""
   _optimizer: optim.Optimizer
   # Contains axis metadata (e.g., names) matching parameter tree.
@@ -164,3 +164,65 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode, TrainState):
         _optimizer=self._optimizer.optimizer_def.derive_logical_axes(
             self._optimizer, flax_partitioning.get_axis_names(
                 self.params_axes)))
+
+
+class InferenceState(flax.struct.PyTreeNode):
+  """State compatible with FlaxOptimTrainState without optimizer state."""
+
+  step: jnp.ndarray
+  params: flax_scope.FrozenVariableDict
+  params_axes: Optional[flax_scope.FrozenVariableDict] = None
+  flax_mutables: flax_scope.FrozenDict = EMPTY_DICT
+
+  @classmethod
+  def create(cls, model_variables: FrozenVariableDict) -> 'InferenceState':
+    other_variables, params = model_variables.pop('params')
+    if 'params_axes' in other_variables:
+      flax_mutables, params_axes = other_variables.pop('params_axes')
+    else:
+      params_axes = None
+      flax_mutables = other_variables
+
+    return InferenceState(
+        step=jnp.array(0),
+        params=params,
+        params_axes=params_axes,
+        flax_mutables=flax_mutables)
+
+  @property
+  def param_states(self) -> FrozenVariableDict:
+    """The optimizer states of the parameters as a PyTree."""
+    raise NotImplementedError('InferenceState has no optimizer states.')
+
+  def apply_gradient(self, *args, **kwargs) -> 'InferenceState':
+    raise NotImplementedError(
+        'InferenceState does not support `apply_gradient`.')
+
+  def state_dict(self) -> MutableMapping[str, Any]:
+    state_dict = {
+        'target': flax.core.unfreeze(self.params),
+        'state': {
+            'step': self.step
+        }
+    }
+    if self.flax_mutables:
+      state_dict['flax_mutables'] = flax.core.unfreeze(self.flax_mutables)
+    return state_dict
+
+  def replace_step(self, step: jnp.ndarray) -> 'InferenceState':
+    return self.replace(step=step)
+
+  def replace_params(self, params: FrozenVariableDict) -> 'InferenceState':
+    return self.replace(params=params)
+
+  def restore_state(self, state_dict: Mapping[str, Any]) -> 'InferenceState':
+    return self.replace(
+        params=flax.core.freeze(state_dict['target']),
+        step=state_dict['state']['step'],
+        flax_mutables=flax.core.freeze(state_dict['flax_mutables'])
+        if 'flax_mutables' in state_dict else EMPTY_DICT)
+
+  def as_logical_axes(self) -> 'InferenceState':
+    return InferenceState(
+        step=self.step,
+        params=flax_partitioning.get_axis_names(self.params_axes))

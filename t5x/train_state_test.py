@@ -29,7 +29,7 @@ AxisMetadata = flax_partitioning.AxisMetadata
 FactorDim = adafactor.FactorDim
 
 
-class FlaxOptimTrainState(absltest.TestCase):
+class FlaxOptimTrainStateTest(absltest.TestCase):
 
   def test_init(self):
     model = nn.Dense(10)
@@ -66,8 +66,8 @@ class FlaxOptimTrainState(absltest.TestCase):
     self.assertEqual(state._optimizer.optimizer_def, optmizer_def)
     jax.tree_multimap(np.testing.assert_array_equal, state.flax_mutables,
                       flax.core.freeze({'mutables': np.ones(3)}))
-    jax.tree_multimap(np.testing.assert_array_equal, model_variables['params'],
-                      state.params)
+    jax.tree_multimap(np.testing.assert_array_equal, state.params,
+                      model_variables['params'])
     self.assertIsNone(state.params_axes)
 
   def test_create_with_params_axes(self):
@@ -221,6 +221,271 @@ class FlaxOptimTrainState(absltest.TestCase):
         "Optimizer 'GradientDescent' requires a `derive_logical_axes` method "
         'to be used with named axis partitioning.'):
       state.as_logical_axes()
+
+  def test_to_state_dict(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'kernel': np.zeros((2, 4))
+        },
+        'params_axes': {
+            'kernel_axes': AxisMetadata(names=('vocab', 'embed')),
+        },
+        'mutables': np.ones(3)
+    })
+    optmizer_def = adafactor.Adafactor(
+        0.42,
+        logical_factor_rules={
+            'vocab': FactorDim.COLUMN,
+            'embed': FactorDim.ROW
+        })
+    state = train_state_lib.FlaxOptimTrainState.create(optmizer_def,
+                                                       model_variables)
+    jax.tree_multimap(
+        np.testing.assert_array_equal, state.state_dict(), {
+            'state': {
+                'step': np.array(0),
+                'param_states': {
+                    'kernel': {
+                        'm': np.zeros(1),
+                        'v': np.zeros((2, 4)),
+                        'v_col': np.zeros(1),
+                        'v_row': np.zeros(1)
+                    },
+                }
+            },
+            'target': {
+                'kernel': np.zeros((2, 4))
+            },
+            'flax_mutables': {
+                'mutables': np.ones(3)
+            }
+        })
+
+  def test_restore_state(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'kernel': np.zeros((2, 4))
+        },
+        'params_axes': {
+            'kernel_axes': AxisMetadata(names=('vocab', 'embed')),
+        },
+        'mutables': np.ones(3)
+    })
+    optmizer_def = adafactor.Adafactor(
+        0.42,
+        logical_factor_rules={
+            'vocab': FactorDim.COLUMN,
+            'embed': FactorDim.ROW
+        })
+    state = train_state_lib.FlaxOptimTrainState.create(optmizer_def,
+                                                       model_variables)
+    restored = state.restore_state({
+        'state': {
+            'step': np.array(1),
+            'param_states': {
+                'kernel': {
+                    'm': np.ones(1),
+                    'v': np.ones((2, 4)),
+                    'v_col': np.ones(1),
+                    'v_row': np.ones(1)
+                },
+            }
+        },
+        'target': {
+            'kernel': np.ones((2, 4))
+        },
+        'flax_mutables': {
+            'mutables': np.zeros(3)
+        }
+    })
+
+    self.assertEqual(restored.step, 1)
+    self.assertIsInstance(restored._optimizer, optim.Optimizer)
+    self.assertEqual(restored._optimizer.optimizer_def, optmizer_def)
+    jax.tree_multimap(np.testing.assert_array_equal, restored.flax_mutables,
+                      flax.core.freeze({'mutables': np.zeros(3)}))
+    jax.tree_multimap(np.testing.assert_array_equal, restored.params,
+                      flax.core.freeze({'kernel': np.ones((2, 4))}))
+    jax.tree_multimap(
+        np.testing.assert_array_equal, restored.param_states,
+        flax.core.freeze({
+            'kernel':
+                adafactor._AdafactorParamState(
+                    np.ones(1), np.ones(1), np.ones((2, 4)), np.ones(1))
+        }))
+    jax.tree_multimap(np.testing.assert_array_equal, restored.params_axes,
+                      model_variables['params_axes'])
+
+
+class InferenceStateTest(absltest.TestCase):
+
+  def test_init(self):
+    model = nn.Dense(10)
+    inputs = np.ones([2, 3], dtype=np.float32)
+    params = model.init(jax.random.PRNGKey(0), inputs)['params']
+    flax_mutables = flax.core.freeze({'flax_mutable1': np.ones(10)})
+    state = train_state_lib.InferenceState(
+        step=jax.numpy.array(1), params=params, flax_mutables=flax_mutables)
+    self.assertEqual(state.step, 1)
+    self.assertEqual(state.flax_mutables, flax.core.unfreeze(flax_mutables))
+    jax.tree_multimap(np.testing.assert_array_equal, params, state.params)
+    self.assertIsNone(state.params_axes)
+
+  def test_create(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'dense': {
+                'bias': np.zeros(4),
+                'kernel': np.zeros((2, 4))
+            }
+        },
+        'params_axes': {
+            'dense': {
+                'bias_axes': AxisMetadata(names=('embed',)),
+                'kernel_axes': AxisMetadata(names=('vocab', 'embed')),
+            }
+        },
+        'mutables': np.ones(3)
+    })
+    state = train_state_lib.InferenceState.create(model_variables)
+    self.assertEqual(state.step, 0)
+    jax.tree_multimap(np.testing.assert_array_equal, state.flax_mutables,
+                      flax.core.freeze({'mutables': np.ones(3)}))
+    jax.tree_multimap(np.testing.assert_array_equal, state.params,
+                      model_variables['params'])
+    jax.tree_multimap(np.testing.assert_array_equal, state.params_axes,
+                      model_variables['params_axes'])
+
+  def test_replace_params(self):
+    model_variables = flax.core.freeze({'params': {'test': np.ones(10)}})
+    state = train_state_lib.InferenceState.create(model_variables)
+
+    new_params = {'test': np.zeros(10)}
+    new_state = state.replace_params(new_params)
+    jax.tree_multimap(np.testing.assert_array_equal, new_params,
+                      new_state.params)
+
+  def test_replace_step(self):
+    model_variables = flax.core.freeze({'params': {'test': np.ones(10)}})
+    state = train_state_lib.InferenceState.create(model_variables)
+
+    self.assertEqual(state.step, 0)
+    self.assertEqual(state.replace_step(jax.numpy.array(1)).step, 1)
+
+  def test_as_logical_axes(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'dense': {
+                'bias': np.zeros(4),
+                'kernel': np.zeros((2, 4))
+            }
+        },
+        'params_axes': {
+            'dense': {
+                'bias_axes': AxisMetadata(names=('embed',)),
+                'kernel_axes': AxisMetadata(names=('vocab', 'embed')),
+            }
+        },
+    })
+    state = train_state_lib.InferenceState.create(model_variables)
+    axes_state = state.as_logical_axes()
+    self.assertIsNone(axes_state.params_axes)
+    jax.tree_multimap(
+        np.testing.assert_array_equal, axes_state.params,
+        flax.core.freeze({
+            'dense': {
+                'bias': partitioning.PartitionSpec('embed'),
+                'kernel': partitioning.PartitionSpec('vocab', 'embed'),
+            }
+        }))
+
+  def test_to_state_dict(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'bias': np.zeros(4),
+        },
+        'params_axes': {
+            'bias_axes': AxisMetadata(names=('embed',)),
+        },
+        'mutables': np.ones(3)
+    })
+    state = train_state_lib.InferenceState.create(model_variables)
+    jax.tree_multimap(
+        np.testing.assert_array_equal, state.state_dict(), {
+            'state': {
+                'step': np.array(0)
+            },
+            'target': {
+                'bias': np.zeros(4),
+            },
+            'flax_mutables': {
+                'mutables': np.ones(3)
+            }
+        })
+
+  def test_to_state_dict_no_mutables(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'bias': np.zeros(4),
+        },
+        'params_axes': {
+            'bias_axes': AxisMetadata(names=('embed',)),
+        },
+    })
+    state = train_state_lib.InferenceState.create(model_variables)
+    jax.tree_multimap(np.testing.assert_array_equal, state.state_dict(), {
+        'state': {
+            'step': np.array(0)
+        },
+        'target': {
+            'bias': np.zeros(4),
+        },
+    })
+
+  def test_restore_state(self):
+    state = train_state_lib.InferenceState(
+        np.array(0), {'bias': np.zeros(4)},
+        {'bias_axes': AxisMetadata(names=('embed',))})
+
+    state_dict = {
+        'state': {
+            'step': np.array(10)
+        },
+        'target': {
+            'bias': np.ones(4),
+        },
+        'flax_mutables': {
+            'mutables': np.ones(3)
+        }
+    }
+    restored = state.restore_state(state_dict)
+
+    self.assertEqual(restored.step, 10)
+    jax.tree_multimap(np.testing.assert_array_equal, restored.flax_mutables,
+                      flax.core.freeze(state_dict['flax_mutables']))
+    jax.tree_multimap(np.testing.assert_array_equal, restored.params,
+                      flax.core.freeze(state_dict['target']))
+    self.assertEqual(restored.params_axes,
+                     {'bias_axes': AxisMetadata(names=('embed',))})
+
+  def test_restore_state_no_mutables_no_axes(self):
+    state = train_state_lib.InferenceState(np.array(0), {})
+
+    state_dict = {
+        'state': {
+            'step': np.array(10)
+        },
+        'target': {
+            'bias': np.zeros(4),
+        },
+    }
+    restored = state.restore_state(state_dict)
+
+    self.assertEqual(restored.step, 10)
+    self.assertEqual(restored.flax_mutables, train_state_lib.EMPTY_DICT)
+    jax.tree_multimap(np.testing.assert_array_equal, restored.params,
+                      flax.core.freeze(state_dict['target']))
+    self.assertIsNone(restored.params_axes)
 
 
 if __name__ == '__main__':
