@@ -77,7 +77,7 @@ class TrainState(typing_extensions.Protocol):
     """Applies gradient, increments step, and returns an updated TrainState."""
     ...
 
-  def to_logical_axes(self) -> 'TrainState':
+  def as_logical_axes(self) -> 'TrainState':
     """Replaces `param` and `param-states` with their logical axis names."""
     ...
 
