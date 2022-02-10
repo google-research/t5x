@@ -282,13 +282,24 @@ class BaseTransformerModel(BaseModel):
         label_smoothing=label_smoothing,
         z_loss=z_loss,
         loss_normalizing_factor=loss_normalizing_factor)
-    metrics = compute_base_metrics(
+    metrics = self.compute_base_metrics(
         logits=logits,
         targets=batch['decoder_target_tokens'],
         mask=weights,
         loss=loss,
         z_loss=z_loss)
     return loss, (weight_sum, metrics)
+
+  def compute_base_metrics(
+      self,
+      logits: jnp.ndarray,
+      targets: jnp.ndarray,
+      mask: jnp.ndarray,
+      loss: jnp.ndarray,
+      z_loss: Optional[jnp.ndarray] = None,
+  ) -> MetricsMap:
+    return compute_base_metrics(
+        logits=logits, targets=targets, mask=mask, loss=loss, z_loss=z_loss)
 
   # TODO(cpgaffney) Modify when all users are able to use compute_base_metrics
   def _compute_metrics(
