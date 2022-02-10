@@ -45,6 +45,7 @@ from t5x import train_state as train_state_lib
 from t5x import utils
 import typing_extensions
 
+
 Array = Union[np.ndarray, jnp.ndarray]
 BatchSpec = Mapping[str, jax.ShapeDtypeStruct]
 BatchType = Mapping[str, np.ndarray]
