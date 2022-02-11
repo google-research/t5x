@@ -544,6 +544,9 @@ def train(
                                             all_metrics_done)
       train_metrics.write_scalar('timing/evaluate_seconds',
                                  time.time() - evaluate_tick, host_step)
+      # Make sure the metrics are flushed before exiting.
+      if final_epoch:
+        all_metrics.result()
 
   # Wait until computations are done before exiting
   logging.info('Finished.')
