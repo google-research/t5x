@@ -366,10 +366,8 @@ inefficient if heavy model parallelism is used for large models. This is
 because each host loads the entire copy of the model first and then keep only
 the relevant slices dictated by the model parallelism specification. If you have
 Mesh TensorFlow checkpoints that you run often, we recommend converting the
-checkpoints to T5X native format using
-[`Checkpointer.convert_from_tf_checkpoint`](https://github.com/google-research/t5x/blob/fba685d1d49bfb1000f37b5952a9a0533f24ed36/t5x/checkpoints.py#L886).
-
-TODO(hwchung): Add a conversion script.
+checkpoints to T5X native format using the
+[convert_tf_checkpoint script](t5x/scripts/convert_tf_checkpoint.py).
 
 
 ## Note
