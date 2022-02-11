@@ -254,12 +254,17 @@ def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
   # Add j to each metric.
   j = batch['j'].sum()
   metrics = {'loss': metrics_lib.Sum(j), 'accuracy': metrics_lib.Sum(j)}
-  return grad_accum, metrics
+  return grad_accum, metrics, None
 
 
-def fake_apply_grads(optimizer, grad_accum, metrics, learning_rate,
-                     weight_metrics_computer):
+def fake_apply_grads(optimizer,
+                     grad_accum,
+                     metrics,
+                     learning_rate,
+                     weight_metrics_computer,
+                     other_state_variables=None):
   del weight_metrics_computer
+  del other_state_variables
   metrics['learning_rate'] = clu.metrics.Average(learning_rate, count=1)
   optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics
@@ -812,7 +817,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
       # Add 1, which will increment the step as a side effect.
       grad_accum = jax.tree_map(lambda x: 1, optimizer)
       m = {'rng': metrics_lib.Sum(jnp.sum(rng))}
-      return grad_accum, m
+      return grad_accum, m, None
 
     mock_accum_grads.side_effect = fake_accum_grads_rng
     # Create a trainer at a given step (53) with a given random seed (23),
@@ -833,6 +838,103 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     np.testing.assert_array_equal(metrics.result()['rng'].value,
                                   expected_rng_sum)
 
+
+def fake_mut_accum_grads(model, optimizer, batch, rng, num_microbatches):
+  del model, num_microbatches, rng
+  # Add `i` to each optimzer value.
+  i = batch['i'].sum()
+  grad_accum = jax.tree_map(lambda x: i, optimizer)
+  # Add j to each metric.
+  j = batch['j'].sum()
+  metrics = {
+      'loss': metrics_lib.Sum.from_model_output(j),
+      'accuracy': metrics_lib.Sum.from_model_output(j)
+  }
+  return grad_accum, metrics, {'mutables': 0}
+
+
+def fake_mut_apply_grads(optimizer, grad_accum, metrics, learning_rate,
+                         weight_metrics_computer, other_state_variables):
+  del weight_metrics_computer, other_state_variables
+  metrics['learning_rate'] = clu.metrics.Average.from_model_output(
+      learning_rate)
+  optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
+  return optimizer, metrics
+
+
+class MutableTrainerTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+    self.init_optimizer = optim.Optimizer(
+        optim.GradientDescent(),
+        state=optim.OptimizerState(
+            step=0, param_states={
+                'bias': 0,
+                'kernel': 0
+            }),
+        target={
+            'bias': np.zeros(4),
+            'kernel': np.zeros((2, 4))
+        })
+    self.init_train_state = train_state_lib.FlaxOptimTrainState(
+        self.init_optimizer)
+    train_state_axes = jax.tree_map(lambda x: None, self.init_train_state)
+    model_dir = self.create_tempdir().full_path
+
+    mapfn = lambda i: {'i': [tf.cast(i, tf.int32)], 'j': [tf.cast(1, tf.int32)]}
+    self.dataset = tf.data.Dataset.range(6).map(mapfn).batch(
+        2, drop_remainder=True)
+    self.dataset1 = tf.data.Dataset.range(6).map(mapfn).batch(
+        2, drop_remainder=True)
+
+    self.test_trainer = trainer_lib.Trainer(
+        mock.create_autospec(models_lib.BaseModel, instance=True),
+        self.init_train_state,
+        partitioning.ModelBasedPjitPartitioner(num_partitions=1),
+        eval_names=['task1', 'task2'],
+        summary_dir=model_dir,
+        train_state_axes=train_state_axes,
+        rng=np.ones(2, np.uint32),
+        learning_rate_fn=lambda step: 2 * (step + 1),
+        num_microbatches=None)
+
+  @mock.patch('time.time')
+  @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_mut_accum_grads)
+  @mock.patch('t5x.trainer.apply_grads', fake_mut_apply_grads)
+  # avoids calls time.time() during logging
+  @mock.patch('absl.logging.info', lambda *_: None)
+  @mock.patch('absl.logging.log_every_n_seconds', lambda *_: None)
+  def test_train(self, mock_time=None):
+    trainer = self.test_trainer
+    initial_rng = trainer._base_rng
+
+    trainer._partitioned_train_step = mock.Mock(
+        side_effect=trainer._partitioned_train_step)
+
+    # train start, logging, train end, logging
+    mock_time.side_effect = [1, 5, 5, 5]
+    num_steps = 1
+    ds_iter = self.dataset.as_numpy_iterator()
+    batch = next(ds_iter)
+    train_state, _ = trainer._partitioned_train_step(trainer.train_state, batch)
+
+    expected_train_state = jax.tree_map(lambda x: np.array(x + 1),
+                                        self.init_train_state)
+    # Base rng must remain the same
+    np.testing.assert_array_equal(trainer._base_rng, initial_rng)
+    jax.tree_multimap(np.testing.assert_equal, train_state,
+                      expected_train_state)
+
+    self.assertIsNone(trainer._compiled_train_step)
+    self.assertEqual(trainer._partitioned_train_step.call_count, num_steps)
+
+  def tearDown(self) -> None:
+    # Manually close managers to avoid phantom threads crossing test cases.
+    self.test_trainer.train_metrics_manager.close()
+    for mm in self.test_trainer.eval_metrics_managers.values():
+      mm.close()
+    return super().tearDown()
 
 if __name__ == '__main__':
   absltest.main()

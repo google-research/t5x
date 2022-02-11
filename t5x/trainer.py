@@ -49,6 +49,7 @@ import typing_extensions
 Array = Union[np.ndarray, jnp.ndarray]
 BatchSpec = Mapping[str, jax.ShapeDtypeStruct]
 BatchType = Mapping[str, np.ndarray]
+FlaxMutables = FrozenDict
 Rng = jnp.ndarray
 MetricMapType = MutableMapping[str, clu.metrics.Metric]
 MetricMapSpec = Mapping[str, jax.ShapeDtypeStruct]
@@ -605,7 +606,8 @@ class BaseTrainer(abc.ABC):
 def accumulate_grads_microbatched(
     model: models.BaseModel, train_state: train_state_lib.TrainState,
     batch: BatchType, dropout_rng: Rng, num_microbatches: Optional[int]
-) -> Tuple[train_state_lib.TrainState, MutableMetricMapType]:
+) -> Tuple[train_state_lib.TrainState, MutableMetricMapType,
+           Optional[FlaxMutables]]:
   """Implements optional microbatched gradient accumulation.
 
   Args:
@@ -626,9 +628,24 @@ def accumulate_grads_microbatched(
 
   grad_fn = jax.value_and_grad(model.loss_fn, has_aux=True)
 
+  # We assume that the model loss_fn supports flax mutables if and only if
+  # the train state includes non-empty flax mutables.
+  # Note: Default t5x models don't support flax_mutables. One needs to subclass
+  # them and return flax_mutables from `get_initial_variables` and `loss_fn`.
+
+  initial_flax_mutables = train_state.flax_mutables if train_state.flax_mutables else None
+
   if num_microbatches is None or num_microbatches <= 1:
-    (_, (_, metrics)), grad_accum = grad_fn(train_state.params, batch,
-                                            dropout_rng)
+
+    if initial_flax_mutables is None:
+      (_, (_, metrics)), grad_accum = grad_fn(train_state.params, batch,
+                                              dropout_rng)
+      flax_mutables = None
+    else:
+      (_, (_, metrics,
+           flax_mutables)), grad_accum = grad_fn(train_state.params, batch,
+                                                 dropout_rng,
+                                                 initial_flax_mutables)
   else:
     assert batch_size % num_microbatches == 0, (
         "Batch size isn't divided evenly by num_microbatches.")
@@ -647,7 +664,7 @@ def accumulate_grads_microbatched(
           for k, b in batch.items()
       }
 
-    def metrics_and_grad(loop_cnt, dropout_rng):
+    def metrics_and_grad(loop_cnt, dropout_rng, flax_mutables=None):
       dropout_rng, sub_dropout_rng = jax.random.split(dropout_rng)
       mbatch = get_microbatch(batch, loop_cnt)
       # We need to annotate the microbatch sharding as we would a batch.
@@ -656,41 +673,50 @@ def accumulate_grads_microbatched(
               x, partitioning.PartitionSpec("data")),
           mbatch)
 
-      (_, (_, metrics)), grad = grad_fn(train_state.params, mbatch,
-                                        sub_dropout_rng)
-      return metrics, grad
+      if flax_mutables is None:
+        (_, (_, metrics)), grad = grad_fn(train_state.params, mbatch,
+                                          sub_dropout_rng)
+      else:
+        (_, (_, metrics,
+             flax_mutables)), grad = grad_fn(train_state.params, mbatch,
+                                             sub_dropout_rng, flax_mutables)
+      return metrics, grad, flax_mutables
 
     def per_microbatch_train_step(
         loop_cnt: int, state: Tuple[jnp.ndarray, jnp.ndarray,
-                                    Mapping[str, jnp.ndarray]]
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, Mapping[str, jnp.ndarray]]:
-      (dropout_rng, grad_accum, prev_metrics) = state
-
-      metrics, grad = metrics_and_grad(loop_cnt, dropout_rng)
+                                    Mapping[str, jnp.ndarray],
+                                    Optional[FlaxMutables]]
+    ) -> Tuple[jnp.ndarray, jnp.ndarray, Mapping[str, jnp.ndarray],
+               Optional[FlaxMutables]]:
+      (dropout_rng, grad_accum, prev_metrics, flax_mutables) = state
+      metrics, grad, flax_mutables = metrics_and_grad(loop_cnt, dropout_rng,
+                                                      flax_mutables)
 
       grad_accum = jax.tree_multimap(jnp.add, grad_accum, grad)
       metrics = jax.lax.cond(loop_cnt == 0, lambda _: metrics,
                              lambda _: merge_metrics(prev_metrics, metrics),
                              None)
-      return dropout_rng, grad_accum, metrics
+      return dropout_rng, grad_accum, metrics, flax_mutables
 
     # Initialize gradient accumulation loop state.
     accum_dtype = jnp.float32
     grad_accum_init = jax.tree_map(lambda x: jnp.zeros(x.shape, accum_dtype),
                                    train_state.params)
-    initial_metrics_shape, _ = jax.eval_shape(
+    initial_metrics_shape, _, _ = jax.eval_shape(
         metrics_and_grad, loop_cnt=0, dropout_rng=dropout_rng)
 
     initial_metrics = {
         k: metrics_lib.shape_obj_to_defined_obj(v)
         for k, v in initial_metrics_shape.items()
     }
-    loop_init = (dropout_rng, grad_accum_init, initial_metrics)
-    new_dropout_rng, grad_accum, metrics = jax.lax.fori_loop(
+    loop_init = (dropout_rng, grad_accum_init, initial_metrics,
+                 initial_flax_mutables)
+    new_dropout_rng, grad_accum, metrics, flax_mutables = jax.lax.fori_loop(
         0, num_microbatches, per_microbatch_train_step, loop_init)
+
     del new_dropout_rng
 
-  return grad_accum, metrics
+  return grad_accum, metrics, flax_mutables
 
 
 def apply_grads(
@@ -791,12 +817,19 @@ class Trainer(BaseTrainer):
 
       learning_rate = self._learning_rate_fn(train_state.step)
       dropout_rng = self._get_step_rng(train_state.step)
-      grad_accum, metrics = (
+
+      grad_accum, metrics, flax_mutables = (
           accumulate_grads_microbatched(self._model, train_state, batch,
                                         dropout_rng, self._num_microbatches))
-      new_train_state, metrics = apply_grads(train_state, grad_accum, metrics,
-                                             learning_rate,
-                                             self._weight_metrics_computer)
+      new_train_state, metrics = apply_grads(
+          train_state,
+          grad_accum,
+          metrics,
+          learning_rate,
+          self._weight_metrics_computer,
+          other_state_variables={"flax_mutables": flax_mutables}
+          if flax_mutables else None)
+
       return new_train_state, metrics
 
     return self._partitioner.partition(
