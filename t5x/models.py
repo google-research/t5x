@@ -282,7 +282,7 @@ class BaseTransformerModel(BaseModel):
         label_smoothing=label_smoothing,
         z_loss=z_loss,
         loss_normalizing_factor=loss_normalizing_factor)
-    metrics = compute_base_metrics(
+    metrics = self._compute_metrics(
         logits=logits,
         targets=batch['decoder_target_tokens'],
         mask=weights,
@@ -290,27 +290,16 @@ class BaseTransformerModel(BaseModel):
         z_loss=z_loss)
     return loss, (weight_sum, metrics)
 
-  # TODO(cpgaffney) Modify when all users are able to use compute_base_metrics
   def _compute_metrics(
       self,
-      batch: Mapping[str, jnp.ndarray],
       logits: jnp.ndarray,
+      targets: jnp.ndarray,
+      mask: jnp.ndarray,
       loss: jnp.ndarray,
-      total_z_loss: jnp.ndarray,
-      weight_sum: jnp.ndarray,
+      z_loss: Optional[jnp.ndarray] = None,
   ) -> MetricsMap:
-    """Compute metrics given the logits, targets and loss."""
-    additional_metrics = {
-        'z_loss': metrics_lib.Sum.from_model_output(total_z_loss),
-        'cross_ent_loss': metrics_lib.Sum.from_model_output(loss - total_z_loss)
-    }
-    return compute_metrics(
-        logits=logits,
-        targets=batch['decoder_target_tokens'],
-        weights=batch.get('decoder_loss_weights', None),
-        loss=loss,
-        weight_sum=weight_sum,
-        additional_metrics=additional_metrics)
+    return compute_base_metrics(
+        logits=logits, targets=targets, mask=mask, loss=loss, z_loss=z_loss)
 
 
 class EncoderDecoderModel(BaseTransformerModel):
