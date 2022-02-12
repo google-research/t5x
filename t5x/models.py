@@ -1072,9 +1072,7 @@ def compute_base_metrics(
   # Note: apply mask again even though mask has already been applied to loss.
   # This is needed to divide by mask sum, but should not affect correctness of
   # the numerator.
-  nonpadding_tokens = np.prod(targets.size)
-  if mask is not None:
-    nonpadding_tokens = jnp.sum(mask)
+  nonpadding_tokens = jnp.sum(mask) if mask is not None else targets.size
   metrics = {
       'accuracy':
           clu_metrics.Accuracy.from_model_output(
