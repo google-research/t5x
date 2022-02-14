@@ -223,6 +223,9 @@ class InferenceState(flax.struct.PyTreeNode):
         if 'flax_mutables' in state_dict else EMPTY_DICT)
 
   def as_logical_axes(self) -> 'InferenceState':
+    # Set step to None so that when the logical axes are processed by the
+    # flax.partitioning.logical_to_mesh_axes function, it will be skipped
+    # because jax.tree_map will short circut and never call the function on the
+    # step.
     return InferenceState(
-        step=self.step,
-        params=flax_partitioning.get_axis_names(self.params_axes))
+        step=None, params=flax_partitioning.get_axis_names(self.params_axes))
