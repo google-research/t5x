@@ -4,7 +4,7 @@
 ## Introduction
 
 This page outlines the steps to pretrain a model with T5X on common tasks
-defined with [SeqIO](https://github.com/google/seqio/blob/main/README.md).
+defined with [SeqIO](go/seqio).
 
 ## Overview
 
@@ -231,4 +231,4 @@ In addition to the params configured in `pretrain.gin`,
 
 ### Defining a custom SeqIO Task/Mixture to pretrain on {.no-toc}
 
-Refer to [SeqIO documentation](https://github.com/google/seqio/blob/main/README.md).
+Refer to [SeqIO documentation](go/seqio).

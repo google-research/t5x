@@ -214,4 +214,4 @@ is set to `32` by default).
 
 ### Defining a custom SeqIO Task/Mixture to run inference on {.no-toc}
 
-Refer to [SeqIO documentation](https://github.com/google/seqio/blob/main/README.md).
+Refer to [SeqIO documentation](go/seqio).
