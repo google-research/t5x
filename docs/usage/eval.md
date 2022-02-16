@@ -4,7 +4,7 @@
 ## Introduction
 
 This page outlines the steps to evaluate a model with T5X on downstream tasks
-defined with [SeqIO](go/seqio).
+defined with [SeqIO](https://github.com/google/seqio/blob/main/README.md).
 
 Refer to this tutorial when you have an existing model that you want to
 evaluate. If you would like to fine-tune your model before evaluation, please
@@ -216,4 +216,4 @@ be useful, especially when customizing your eval job.
 
 ### Defining a custom SeqIO Task/Mixture to evaluate on {.no-toc}
 
-Refer to [SeqIO documentation](go/seqio).
+Refer to [SeqIO documentation](https://github.com/google/seqio/blob/main/README.md).

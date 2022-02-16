@@ -4,7 +4,7 @@
 ## Introduction
 
 This page outlines the steps to run inference a model with T5X on Tasks/Mixtures
-defined with [SeqIO](go/seqio).
+defined with [SeqIO](https://github.com/google/seqio/blob/main/README.md).
 
 ## Overview
 
@@ -215,4 +215,4 @@ is set to `32` by default).
 
 ### Defining a custom SeqIO Task/Mixture to run inference on {.no-toc}
 
-Refer to [SeqIO documentation](go/seqio).
+Refer to [SeqIO documentation](https://github.com/google/seqio/blob/main/README.md).

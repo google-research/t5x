@@ -4,9 +4,9 @@
 ## Introduction
 
 This page outlines the steps to fine-tune an existing pre-trained model with T5X
-on common downstream tasks defined with [SeqIO](go/seqio). This is one of the
-simplest and most common use cases of T5X. If you're new to T5X, this tutorial
-is the recommended starting point.
+on common downstream tasks defined with [SeqIO](https://github.com/google/seqio/blob/main/README.md). This is one of
+the simplest and most common use cases of T5X. If you're new to T5X, this
+tutorial is the recommended starting point.
 
 ## Overview
 
@@ -66,8 +66,8 @@ Mixture.
 ### Custom Tasks
 
 It is also possible to define your own custom task. See the
-[SeqIO documentation](go/seqio) for how to do this. As a note, Tasks defined
-using the
+[SeqIO documentation](https://github.com/google/seqio/blob/main/README.md) for how to do this. As a note, Tasks
+defined using the
 [old T5 codebase](https://github.com/google-research/text-to-text-transfer-transformer/tree/main/t5/data/dataset_providers.py)
 may also be used by T5X. If using a custom Task, you will need to follow the
 instructions in the [Advanced Topics section](#custom-t5x-binaries) at the end
@@ -75,9 +75,9 @@ of this tutorial to make sure the module containing your task is included.
 
 When defining a custom task, you have the option to cache it on disk before
 fine-tuning. The instructions for this are
-[here](go/seqio#optional-offline-caching). Caching may improve performance for
-tasks with expensive pre-processing. By default, T5X expects tasks to be cached.
-To finetune on a task that has not been cached, set
+[here](https://github.com/google/seqio/blob/main/README.md#optional-offline-caching). Caching may improve
+performance for tasks with expensive pre-processing. By default, T5X expects
+tasks to be cached. To finetune on a task that has not been cached, set
 `--gin.USE_CACHED_TASKS=False`.
 
 ## Step 3: Write a Gin Config
@@ -283,4 +283,4 @@ Other params in `finetune.gin` can be overridden in the same way.
 
 ### Defining a custom SeqIO Task/Mixture to fine-tune on {.no-toc}
 
-Refer to [SeqIO documentation](go/seqio).
+Refer to [SeqIO documentation](https://github.com/google/seqio/blob/main/README.md).
