@@ -822,10 +822,23 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
   def get_mesh_axes(self, train_state: TrainState) -> TrainState:
     """Returns a copy of TrainState with Optional[PartitionSpecs] as leaves."""
     logical_axes = self.get_logical_axes(train_state)
-    with flax_partitioning.axis_rules(self._logical_axis_rules):
-      mesh_axes_dict = jax.tree_map(flax_partitioning.logical_to_mesh_axes,
-                                    logical_axes.state_dict())
 
-    return logical_axes.restore_state(mesh_axes_dict)
+    def _logical_to_mesh_axes(param_name, logical_axes):
+      if logical_axes is None:
+        return None
+      try:
+        return flax_partitioning.logical_to_mesh_axes(logical_axes,
+                                                      self._logical_axis_rules)
+      except ValueError as e:
+        raise ValueError(f'Failed to map logical axes for {param_name}') from e
+
+    flat_logical_axes = traverse_util.flatten_dict(
+        logical_axes.state_dict(), sep='/')
+    flat_mesh_axes = {
+        k: _logical_to_mesh_axes(k, v) for k, v in flat_logical_axes.items()
+    }
+
+    return logical_axes.restore_state(
+        traverse_util.unflatten_dict(flat_mesh_axes, sep='/'))
 
 
