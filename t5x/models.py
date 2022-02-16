@@ -408,14 +408,19 @@ class EncoderDecoderModel(BaseTransformerModel):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jnp.ndarray] = None,
-      mutable: flax_scope.CollectionFilter = False
+      mutable: flax_scope.CollectionFilter = False,
+      other_variables: Optional[PyTreeDef] = None,
   ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, flax_scope.FrozenVariableDict]]:
     """Computes logits via a forward pass of `self.module_cls`."""
     # Dropout is provided only for the training mode.
     rngs = {'dropout': dropout_rng} if dropout_rng is not None else None
-
+    if other_variables is None:
+      other_variables = {}
     return self.module.apply(
-        {'params': params},
+        {
+            'params': params,
+            **other_variables
+        },
         batch['encoder_input_tokens'],
         batch['decoder_input_tokens'],
         batch['decoder_target_tokens'],
