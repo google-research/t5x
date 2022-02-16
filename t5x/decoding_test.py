@@ -300,6 +300,64 @@ class DecodeTest(parameterized.TestCase):
     np.testing.assert_array_equal(decodes, expected_output)
     np.testing.assert_array_equal(scores, [[0.], [0.]])
 
+  def test_temperature_sample_topp(self):
+    rng0 = jax.random.PRNGKey(0)
+    inputs = np.zeros((1, 4), dtype=np.int32)
+
+    token_to_logits = mock.Mock()
+    token_to_logits.return_value = (np.array([[-1.2, -1e7, -2.3, 0.51]],
+                                             dtype=np.float32), {})
+
+    decodes, scores = decoding.temperature_sample(
+        inputs, {}, token_to_logits, EOS_ID, rng0,
+        topp=0.6)  # anything under 0.6 will trigger deterministic decoding.
+
+    expected_output = np.array([[3, 3, 3, 3]])
+    expected_output = jnp.expand_dims(expected_output, 1)
+
+    np.testing.assert_array_equal(decodes, expected_output)
+    np.testing.assert_array_equal(scores, [[0.]])
+
+    decodes, scores = decoding.temperature_sample(
+        inputs, {}, token_to_logits, EOS_ID, rng0, temperature=0.8, topp=0.55)
+
+    expected_output = np.array([[3, 3, 3, 3]])
+    expected_output = jnp.expand_dims(expected_output, 1)
+
+    np.testing.assert_array_equal(decodes, expected_output)
+    np.testing.assert_array_equal(scores, [[0.]])
+
+  def test_topp_topk_log_probs(self):
+    rng0 = jax.random.PRNGKey(0)
+    inputs = np.zeros((1, 1), dtype=np.int32)
+
+    token_to_logits = mock.Mock()
+    token_to_logits.return_value = (np.array([[-1.2, NEG_INF, -2.3, 0.51]],
+                                             dtype=np.float32), {})
+
+    with jax.disable_jit():
+      with mock.patch.object(jax.random, 'categorical') as mocked:
+        mocked.return_value = jnp.array([1], dtype=jnp.int32)
+        decodes, _ = decoding.temperature_sample(
+            inputs, {},
+            token_to_logits,
+            EOS_ID,
+            rng0,
+            temperature=1.4,
+            topp=0.7,
+            topk=2)
+
+    self.assertLen(token_to_logits.call_args_list, 1)
+    np.testing.assert_array_equal(decodes, jnp.asarray([[[1]]]))
+
+    # this tests that topp and topk are performed in the correct order.
+    # topk is performed first, so the logits are truncated to the top-2 (0 and
+    # 3), and then topp is performed, which keeps only the last logit. If topp
+    # is performed first, the first and last are kept, and then topk is a noop.
+    np.testing.assert_array_almost_equal(
+        mocked.call_args_list[0][0][1],
+        jnp.asarray([[NEG_INF, NEG_INF, NEG_INF, .3642857]]))
+
   def test_add_beam_dim(self):
     x = np.array([[0, 5, 1, 0], [0, 8, 6, 9]], dtype=np.int32)
     y = decoding.add_beam_dim(x, beam_size=3)

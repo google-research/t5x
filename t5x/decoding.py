@@ -276,8 +276,7 @@ def _temperature_sample_single_trial(
     initial_index: Optional[jnp.ndarray] = None,
     max_decode_steps: Optional[int] = None) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
-  if topp and topk:
-    raise ValueError('At most one of `topp` or `topk` must be non-zero.')
+
   batch_size, max_decode_len = inputs.shape
 
   if max_decode_steps is not None:
@@ -358,6 +357,17 @@ def _temperature_sample_single_trial(
     # Call fast-decoder model on current tokens to get next-position logits.
     logits, new_cache = tokens_to_logits(cur_token, cache)
     # Sample next token from logits.
+
+    # Here we apply temperature rescaling
+    logits = logits / temperature
+
+    if topk:
+      # Get top-k logits and their indices, sample within these top-k tokens.
+      topk_logits, _ = lax.top_k(logits, topk)
+      cutoff_logit = topk_logits[:, -1, None]
+      logits = jnp.where(logits < cutoff_logit, jnp.full_like(logits, NEG_INF),
+                         logits)
+
     if topp:
       logits_sorted = jnp.sort(logits, axis=-1)[:, ::-1]  # sort descending
       sorted_cum_probs = jnp.cumsum(
@@ -366,20 +376,9 @@ def _temperature_sample_single_trial(
       cutoff_logit = jnp.take_along_axis(logits_sorted, cutoff_index, axis=-1)
       logits = jnp.where(logits < cutoff_logit, jnp.full_like(logits, NEG_INF),
                          logits)
-    if topk:
-      # Get top-k logits and their indices, sample within these top-k tokens.
-      topk_logits, topk_idxs = lax.top_k(logits, topk)
-      topk_token = jnp.expand_dims(
-          random.categorical(rng1, topk_logits / temperature).astype(jnp.int32),
-          axis=-1)
-      # Return the original indices corresponding to the sampled top-k tokens.
-      # [batch]
-      next_token = jnp.squeeze(
-          jnp.take_along_axis(topk_idxs, topk_token, axis=-1), axis=-1)
-    else:
-      # [batch]
-      next_token = random.categorical(rng1,
-                                      logits / temperature).astype(jnp.int32)
+
+    # [batch]
+    next_token = random.categorical(rng1, logits).astype(jnp.int32)
 
     # log probability of the current token conditioned on the previously sampled
     # and prefix tokens.
