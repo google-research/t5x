@@ -424,8 +424,9 @@ def train(
 
   steps_per_epoch = min(steps_per_epoch, total_steps)
   first_epoch = first_step // steps_per_epoch
-  num_epochs = first_epoch + math.ceil(
-      (total_steps - first_step) / steps_per_epoch)
+  # Force at least one epoch.
+  num_epochs = first_epoch + max(
+      math.ceil((total_steps - first_step) / steps_per_epoch), 1)
   logging.info('Training with artificial "epochs" of %d steps.',
                steps_per_epoch)
 
@@ -454,6 +455,7 @@ def train(
       break
 
     logging.info('BEGIN Train loop.')
+    train_summary = None
     try:
       # Until the last epoch, `num_steps = steps_per_epoch`
       num_steps = min(total_steps - host_step, steps_per_epoch)
@@ -481,6 +483,10 @@ def train(
               {TRAIN_METRIC_KEY: train_summary.result()})
 
         host_step += inner_num_steps
+      # Make sure the training was run before trying to get the summary.
+      if train_summary is not None:
+        # Make sure last train step has completed telling user it is done.
+        train_summary.result()
       logging.info('END Train loop.')
     except trainer_lib.PreemptionError as e:
       logging.info('Saving emergency checkpoint.')
@@ -494,8 +500,6 @@ def train(
     # Maybe save a checkpoint.
     if checkpoint_period and (final_epoch or
                               step_offset % checkpoint_period == 0):
-      # Make sure last train step has completed before starting the clock.
-      train_summary.result()
       logging.info('Saving checkpoint.')
       checkpoint_tick = time.time()
       checkpointer.save(trainer.train_state,
