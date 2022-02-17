@@ -105,7 +105,7 @@ def evaluate(
   # Init evaluator to set up cached datasets
   evaluator = inference_evaluator_cls(
       mixture_or_task_name=dataset_cfg.mixture_or_task_name,
-      feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),  # pytype:disable=not-instantiable
+      feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),
       eval_split=dataset_cfg.split,
       use_cached=dataset_cfg.use_cached,
       seed=dataset_cfg.seed,

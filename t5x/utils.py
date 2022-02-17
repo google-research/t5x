@@ -21,7 +21,7 @@ import importlib
 import os
 import re
 import time
-from typing import Any, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
 import warnings
 
 from absl import logging
@@ -922,7 +922,7 @@ class GetDatasetCallable(typing_extensions.Protocol):
                cfg: DatasetConfig,
                shard_id: int,
                num_shards: int,
-               feature_converter_cls: Type[seqio.FeatureConverter],
+               feature_converter_cls: Callable[..., seqio.FeatureConverter],
                num_epochs: Optional[int] = None,
                continue_from_last_checkpoint: bool = True) -> tf.data.Dataset:
     ...
@@ -933,7 +933,7 @@ def get_training_eval_datasets(
     shard_id: int,
     num_shards: int,
     eval_steps: int,
-    feature_converter_cls: Type[seqio.FeatureConverter],
+    feature_converter_cls: Callable[..., seqio.FeatureConverter],
     get_dataset_fn: GetDatasetCallable = get_dataset,
 ) -> Mapping[str, tf.data.Dataset]:
   """Returns a mapping from eval task name to its dataset."""

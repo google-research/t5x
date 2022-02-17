@@ -295,7 +295,7 @@ def infer(*,
   host_shard_info = seqio.ShardInfo(index=shard_id, num_shards=num_shards)
   task_or_mixture = seqio.get_mixture_or_task(dataset_cfg.mixture_or_task_name)
 
-  feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)  # pytype:disable=not-instantiable
+  feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)
 
   def _get_dataset(dataset_provider):
     # TODO(adarob): assert pack is false, shuffle is false, seed?

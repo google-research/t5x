@@ -367,7 +367,7 @@ def train(
     evaluator = inference_evaluator_cls(
         log_dir=os.path.join(model_dir, 'inference_eval'),
         mixture_or_task_name=infer_eval_dataset_cfg.mixture_or_task_name,
-        feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),  # pytype:disable=not-instantiable
+        feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),
         eval_split=infer_eval_dataset_cfg.split,
         use_cached=infer_eval_dataset_cfg.use_cached,
         seed=infer_eval_dataset_cfg.seed,

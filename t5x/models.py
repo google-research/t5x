@@ -21,7 +21,7 @@ steps.
 
 import abc
 import functools
-from typing import Any, Callable, Mapping, MutableMapping, Optional, Tuple, Type, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Tuple, Union
 
 import clu.metrics as clu_metrics
 from flax import core as flax_core
@@ -106,7 +106,7 @@ class BaseModel(abc.ABC):
   functions.
   """
 
-  FEATURE_CONVERTER_CLS: Type[seqio.FeatureConverter]
+  FEATURE_CONVERTER_CLS: Callable[..., seqio.FeatureConverter]
 
   def __init__(self, optimizer_def: optim.OptimizerDef):
     # TODO(jbulian): Move the optimizer out of the model and make it a training
