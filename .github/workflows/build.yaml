@@ -15,7 +15,10 @@ jobs:
       run: |
         pip install -e .[test] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
     - name: Test with pytest
-      run: pytest
+      # TODO(adarob): Re-enable once tests are updated.
+      run: |
+        export FLAX_LAZY_RNG=no
+        pytest
     # The below step just reports the success or failure of tests as a "commit status".
     # This is needed for copybara integration.
     - name: Report success or failure as github status

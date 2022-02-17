@@ -24,11 +24,13 @@ import functools
 import os
 from typing import Optional, Sequence, Type
 
-from absl import logging
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
 # pylint:disable=g-import-not-at-top
 os.environ['FLAX_PROFILE'] = 'true'
+# TODO(adarob): Re-enable once users are notified and tests are updated.
+os.environ['FLAX_LAZY_RNG'] = 'no'
+from absl import logging
 from clu import metric_writers
 import jax
 import seqio
