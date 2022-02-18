@@ -30,11 +30,9 @@ import shutil
 import time
 from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, Tuple, Type
 
-# Set Linen to add profiling information when constructing Modules.
+# TODO(adarob): Re-enable once users are notified and tests are updated.
 # Must be set before flax imports.
 # pylint:disable=g-import-not-at-top
-os.environ['FLAX_PROFILE'] = 'true'
-# TODO(adarob): Re-enable once users are notified and tests are updated.
 os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 import jax
