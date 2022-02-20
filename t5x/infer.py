@@ -228,21 +228,21 @@ WriteFn = Callable[
     None]
 
 
-def infer(
-    *,
-    mode: str,
-    model: models.BaseTransformerModel,
-    dataset_cfg: utils.DatasetConfig,
-    restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
-    partitioner: partitioning.BasePartitioner,
-    output_dir: str,
-    checkpoint_period: int,
-    shard_id: int = 0,
-    num_shards: int = 1,
-    merge_chunked_results: bool = True,
-    write_fn: WriteFn = write_inferences_to_file,
-    checkpoint_ds_iter: bool = True,
-    fallback_init_rng: Optional[int] = None):
+def infer(*,
+          mode: str,
+          model: models.BaseTransformerModel,
+          dataset_cfg: utils.DatasetConfig,
+          restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
+          partitioner: partitioning.BasePartitioner,
+          output_dir: str,
+          checkpoint_period: int,
+          shard_id: int = 0,
+          num_shards: int = 1,
+          run_xprof: bool = True,
+          merge_chunked_results: bool = True,
+          write_fn: WriteFn = write_inferences_to_file,
+          checkpoint_ds_iter: bool = True,
+          fallback_init_rng: Optional[int] = None):
   """Infer function.
 
   Args:
@@ -260,6 +260,7 @@ def infer(
     shard_id: Index of dataset shard for this instance to use if splitting the
       work across multiple jobs.
     num_shards: Total number of dataset shards to split dataset across.
+    run_xprof: Whether to take an xprof snapshot during run.
     merge_chunked_results: Whether to merge results of all chunks into a single
       json file.
     write_fn: Callable function used to serialized and write inferences out to
