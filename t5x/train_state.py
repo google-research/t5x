@@ -17,6 +17,7 @@
 from typing import Any, Mapping, MutableMapping, Optional
 
 from flax import optim
+from flax import traverse_util
 import flax.core
 from flax.core import scope as flax_scope
 from flax.linen import partitioning as flax_partitioning
@@ -82,6 +83,16 @@ class TrainState(typing_extensions.Protocol):
     ...
 
 
+def _validate_params_axes(params_axes, params):
+  axis_names = flax_partitioning.get_axis_names(params_axes)
+  missing_params_axes = (
+      set(traverse_util.flatten_dict(params, sep='/')) -
+      set(traverse_util.flatten_dict(axis_names, sep='/')))
+  if missing_params_axes:
+    raise ValueError(
+        f'Missing axis names for parameters: {missing_params_axes}')
+
+
 class FlaxOptimTrainState(flax.struct.PyTreeNode):
   """Simple train state for holding parameters, step, optimizer state."""
   _optimizer: optim.Optimizer
@@ -96,6 +107,7 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
     other_variables, params = model_variables.pop('params')
     if 'params_axes' in other_variables:
       flax_mutables, params_axes = other_variables.pop('params_axes')
+      _validate_params_axes(params_axes, params)
     else:
       params_axes = None
       flax_mutables = other_variables
@@ -179,6 +191,7 @@ class InferenceState(flax.struct.PyTreeNode):
     other_variables, params = model_variables.pop('params')
     if 'params_axes' in other_variables:
       flax_mutables, params_axes = other_variables.pop('params_axes')
+      _validate_params_axes(params_axes, params)
     else:
       params_axes = None
       flax_mutables = other_variables

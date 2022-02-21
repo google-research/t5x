@@ -124,6 +124,26 @@ class FlaxOptimTrainStateTest(absltest.TestCase):
       train_state_lib.FlaxOptimTrainState.create(adafactor.Adafactor(),
                                                  model_variables)
 
+  def test_create_mismatched_params_axes(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'dense': {
+                'bias': np.zeros(4),
+                'kernel': np.zeros((2, 4))
+            }
+        },
+        'params_axes': {
+            'dense': {
+                'bias_axes': AxisMetadata(names=('embed',)),
+            }
+        },
+        'mutables': np.ones(3)
+    })
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "Missing axis names for parameters: {'dense/kernel'}"):
+      train_state_lib.FlaxOptimTrainState.create(adafactor.Adafactor(),
+                                                 model_variables)
+
   def test_replace_params(self):
     optimizer_def = optim.GradientDescent(learning_rate=0.1)
     optimizer = optimizer_def.create({'test': np.ones(10)})
@@ -355,6 +375,25 @@ class InferenceStateTest(absltest.TestCase):
                       model_variables['params'])
     jax.tree_multimap(np.testing.assert_array_equal, state.params_axes,
                       model_variables['params_axes'])
+
+  def test_create_mismatched_params_axes(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'dense': {
+                'bias': np.zeros(4),
+                'kernel': np.zeros((2, 4))
+            }
+        },
+        'params_axes': {
+            'dense': {
+                'bias_axes': AxisMetadata(names=('embed',)),
+            }
+        },
+        'mutables': np.ones(3)
+    })
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, "Missing axis names for parameters: {'dense/kernel'}"):
+      train_state_lib.InferenceState.create(model_variables)
 
   def test_replace_params(self):
     model_variables = flax.core.freeze({'params': {'test': np.ones(10)}})
