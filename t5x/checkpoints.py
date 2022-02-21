@@ -1397,12 +1397,9 @@ def load_t5x_checkpoint(
       k: fake_param_info(v) for k, v in ckpt_optimizer_state_with_specs.items()
   }
 
-  ckpt_optimizer_state_with_specs = traverse_util.unflatten_dict({
-      tuple(k.split('/')): v
-      for k, v in ckpt_optimizer_state_with_specs.items()
-  })
-  param_infos = traverse_util.unflatten_dict(
-      {tuple(k.split('/')): v for k, v in param_infos.items()})
+  ckpt_optimizer_state_with_specs = traverse_util.unflatten_dict(
+      ckpt_optimizer_state_with_specs, sep='/')
+  param_infos = traverse_util.unflatten_dict(param_infos, sep='/')
 
   state_dict = jax.tree_multimap(
       functools.partial(_create_lazy_awaitable_array, ckpt_path=path),

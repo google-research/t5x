@@ -563,9 +563,7 @@ class Adafactor(OptimizerDef):
       return axis_rules
 
     factor_map = jax.tree_map(apply_rules, param_logical_axes)
-    factor_map = {
-        '/'.join(k): v for k, v in flatten_dict(unfreeze(factor_map)).items()
-    }
+    factor_map = utils.flatten_dict_string_keys(factor_map)
 
     self.hyper_params = self.hyper_params.replace(factor_map=factor_map)
 

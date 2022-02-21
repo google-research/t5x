@@ -442,9 +442,7 @@ def _update_state_dict(state_dict: Mapping[str, Any],
   Returns:
     Updated optimizer.
   """
-  flat_state_dict = {
-      '/'.join(k): v for k, v in traverse_util.flatten_dict(state_dict).items()
-  }
+  flat_state_dict = traverse_util.flatten_dict(state_dict, sep='/')
 
   # Remove parameters from the checkpoint not found in the optimizer (this
   # allows us to load checkpoints that contain more parameters than our current

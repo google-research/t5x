@@ -49,10 +49,11 @@ def flatten_state_dict(state_dict, keep_empty_nodes: bool = False):
   Returns:
     Flattened dictionary, though keeping tensor store state unflattened.
   """
-  flat_dict = traverse_util.flatten_dict(
-      state_dict, is_leaf=tensorstore_leaf, keep_empty_nodes=keep_empty_nodes)
-  # Join path into parameter name.
-  return {"/".join(k): v for k, v in flat_dict.items()}
+  return traverse_util.flatten_dict(
+      state_dict,
+      is_leaf=tensorstore_leaf,
+      keep_empty_nodes=keep_empty_nodes,
+      sep="/")
 
 
 def get_name_tree(state_dict, keep_empty_nodes: bool = False):
@@ -83,8 +84,7 @@ def intersect_state(
       state_dict_flat.pop(k)
       logging.warning("Ignoring param=%s from checkpoint", k)
 
-  state_dict = traverse_util.unflatten_dict(
-      {tuple(k.split("/")): v for k, v in state_dict_flat.items()})
+  state_dict = traverse_util.unflatten_dict(state_dict_flat, sep="/")
 
   return state_dict
 
@@ -109,8 +109,7 @@ def merge_state(state_dict: Mapping[str, Any],
       logging.warning("Initializing param=%s from scratch", k)
       state_dict_flat[k] = from_scratch_state_flat[k]
 
-  state_dict = traverse_util.unflatten_dict(
-      {tuple(k.split("/")): v for k, v in state_dict_flat.items()})
+  state_dict = traverse_util.unflatten_dict(state_dict_flat, sep="/")
 
   return state_dict
 
@@ -142,8 +141,8 @@ def apply_assignment_map(ckpt_optimizer_state,
       regex-compatible group match codes) or None if the matching state should
       be dropped.
     require_all_rules_match: Whether to require that all rules match.
-    is_resuming: Whether we are resuming a training run (True) or initializing
-      a new one (False).
+    is_resuming: Whether we are resuming a training run (True) or initializing a
+      new one (False).
 
   Returns:
     New, remapped optimizer state.
@@ -213,5 +212,4 @@ def apply_assignment_map(ckpt_optimizer_state,
     raise ValueError("Unused patterns in `assignment_map`: {" +
                      unused_patterns_str + "}")
 
-  return traverse_util.unflatten_dict(
-      {tuple(k.split("/")): v for k, v in result.items()})
+  return traverse_util.unflatten_dict(result, sep="/")

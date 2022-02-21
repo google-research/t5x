@@ -66,7 +66,7 @@ def check_eq(xs, ys, atol=None, rtol=None):
 
 def flattened_state_dict(x):
   s = flax.serialization.to_state_dict(x)
-  return {'/'.join(k): v for k, v in flax.traverse_util.flatten_dict(s).items()}
+  return flax.traverse_util.flatten_dict(s, sep='/')
 
 
 def tree_shape(x):

@@ -986,10 +986,7 @@ def round_vocab_size_to_multiple(vocabulary: seqio.Vocabulary,
 
 def flatten_dict_string_keys(x):
   """Flattens a nested dictionary to have string keys and '/' separators."""
-  return {
-      '/'.join(k): v
-      for k, v in traverse_util.flatten_dict(flax.core.unfreeze(x)).items()
-  }
+  return traverse_util.flatten_dict(flax.core.unfreeze(x), sep='/')
 
 
 class _RegexMap(collections.abc.Mapping):
