@@ -277,6 +277,9 @@ def _temperature_sample_single_trial(
     max_decode_steps: Optional[int] = None) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
+  if topp and topk:
+    raise ValueError('At most one of `topp` or `topk` may be non-zero.')
+
   batch_size, max_decode_len = inputs.shape
 
   if max_decode_steps is not None:
