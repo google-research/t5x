@@ -59,6 +59,7 @@ from flax.serialization import from_state_dict
 from flax.serialization import to_state_dict
 from flax.traverse_util import flatten_dict
 from flax.traverse_util import unflatten_dict
+import gin
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -67,6 +68,9 @@ from t5x import utils
 Dtype = Any
 
 
+# TODO(b/221101833): Remove gin dependency once enums are
+#  dynamically-registerable.
+@gin.constants_from_enum
 class FactorDim(enum.Enum):
   # Don't factorize this dimension.
   NONE = None
