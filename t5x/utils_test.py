@@ -46,13 +46,14 @@ FLAGS = flags.FLAGS
 
 def get_mock_train_state(params, param_states=None, step=0):
   """Returns a mock TrainState."""
-  state = mock.Mock(param_states=param_states, step=np.array(step))
+  step = np.array(step) if step is not None else None
+  state = mock.Mock(param_states=param_states, step=step)
   state_dict = dict(
-      target=params, state=dict(param_states=param_states, step=np.array(step)))
+      target=params, state=dict(param_states=param_states, step=step))
   return mock.Mock(
       params=params,
       param_states=param_states,
-      step=np.array(step),
+      step=step,
       state_dict=lambda: state_dict,
       optimizer=mock.Mock(
           target=params, state=state, state_dict=lambda: state_dict),
@@ -130,15 +131,16 @@ class UtilsTest(parameterized.TestCase):
         param_states={
             "a": {
                 "aa": {
-                    "v_row": None,
-                    "v_col": None
+                    "v_row": partitioning.AxisNames(None,),
+                    "v_col": partitioning.AxisNames(None,)
                 }
             },
             "c": {
-                "v_row": None,
-                "v_col": None
+                "v_row": partitioning.AxisNames("a1",),
+                "v_col": partitioning.AxisNames("a2",)
             }
-        })
+        },
+        step=None)
 
     mock_mesh_axes = get_mock_train_state(
         params={
@@ -150,15 +152,16 @@ class UtilsTest(parameterized.TestCase):
         param_states={
             "a": {
                 "aa": {
-                    "v_row": None,
-                    "v_col": None
+                    "v_row": partitioning.AxisNames(None,),
+                    "v_col": partitioning.AxisNames(None,)
                 }
             },
             "c": {
-                "v_row": None,
-                "v_col": None
+                "v_row": partitioning.AxisNames("b1",),
+                "v_col": partitioning.AxisNames("b2",)
             }
-        })
+        },
+        step=None)
 
     partitioner = mock.Mock(
         get_logical_axes=lambda _: mock_logical_axes,
@@ -171,11 +174,11 @@ class UtilsTest(parameterized.TestCase):
         "Variable a/aa size 6 shape (a1=2, None=3) partition spec ('b1', None) "
         "Variable c size 56 shape (None=7, a1=8) partition spec (None, 'b1') "
         "Total number of parameters: 62 "
-        "State param_states/a/aa/v_col size 3 shape (3,) "
-        "State param_states/a/aa/v_row size 2 shape (2,) "
-        "State param_states/c/v_col size 3 shape (3,) "
-        "State param_states/c/v_row size 2 shape (2,) "
-        "State step size 1 shape () ")
+        "Variable param_states/a/aa/v_col size 3 shape (None=3) partition spec (None,) "
+        "Variable param_states/a/aa/v_row size 2 shape (None=2) partition spec (None,) "
+        "Variable param_states/c/v_col size 3 shape (a2=3) partition spec ('b2',) "
+        "Variable param_states/c/v_row size 2 shape (a1=2) partition spec ('b1',) "
+        "Variable step size 1 shape () partition spec None ")
 
   @mock.patch(
       "t5x.multihost_utils.host_allgather",
