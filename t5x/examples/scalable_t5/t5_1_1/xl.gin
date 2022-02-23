@@ -5,8 +5,6 @@ include 't5x/examples/scalable_t5/t5_1_1/base.gin'  # imports vocab, optimizer a
 # ------------------- Network specification overrides --------------------------
 network.Transformer.config = @network.T5Config()
 network.T5Config:
-  vocab_size = 32128  # vocab size rounded to a multiple of 128 for TPU efficiency
-  dtype = 'bfloat16'
   emb_dim = 2048
   num_heads = 32
   num_encoder_layers = 24

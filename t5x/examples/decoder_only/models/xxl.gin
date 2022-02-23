@@ -4,13 +4,8 @@ include 't5x/examples/decoder_only/models/base.gin'  # imports vocab, optimizer 
 
 # ------------------- Network specification overrides --------------------------
 network.TransformerConfig:
-  vocab_size = 32128  # vocab size rounded to a multiple of 128 for TPU efficiency
-  dtype = 'bfloat16'
   emb_dim = 4096
   num_heads = 64
   num_layers = 24
   head_dim = 64
   mlp_dim = 10240
-  mlp_activations = ('gelu', 'linear')
-  dropout_rate = %gin.REQUIRED
-  logits_via_embedding = True
