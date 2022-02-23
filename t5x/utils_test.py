@@ -117,7 +117,7 @@ class UtilsTest(parameterized.TestCase):
             },
             "c": {
                 "v_row": jax.ShapeDtypeStruct(shape=(2,), dtype=np.int32),
-                "v_col": jax.ShapeDtypeStruct(shape=(3,), dtype=np.int32)
+                "v_col": None
             }
         })
 
@@ -176,7 +176,7 @@ class UtilsTest(parameterized.TestCase):
         "Total number of parameters: 62 "
         "Variable param_states/a/aa/v_col size 3 shape (None=3) partition spec (None,) "
         "Variable param_states/a/aa/v_row size 2 shape (None=2) partition spec (None,) "
-        "Variable param_states/c/v_col size 3 shape (a2=3) partition spec ('b2',) "
+        "Variable param_states/c/v_col None "
         "Variable param_states/c/v_row size 2 shape (a1=2) partition spec ('b1',) "
         "Variable step size 1 shape () partition spec None ")
 

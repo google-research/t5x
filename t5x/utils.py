@@ -551,9 +551,12 @@ def log_model_info(log_file: str, full_train_state: train_state_lib.TrainState,
   with gfile.GFile(log_file, 'w') as writer:
 
     # Log params
-    def _log_variable(name: str, arr: np.ndarray,
+    def _log_variable(name: str, arr: Optional[np.ndarray],
                       logical_axes: Optional[partitioning.AxisNames],
                       mesh_axes: Optional[partitioning.PartitionSpec]):
+      if arr is None:
+        _log_info_and_write_to_file(writer, 'Variable    %-80s None', name)
+        return
       if logical_axes is None:
         shape_str = str(arr.shape)
       else:
