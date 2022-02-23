@@ -30,7 +30,6 @@ import jax
 from jax import numpy as jnp
 from jax import random
 from jax.experimental.maps import Mesh
-from jax.experimental.maps import mesh
 from jax.experimental.pjit import pjit as jax_pjit
 from jax.interpreters.sharded_jit import PartitionSpec
 import numpy as np
@@ -706,13 +705,13 @@ class PjittedFnWithContext(PartitionedCallable):
     self._logical_axis_rules = logical_axis_rules
 
   def __call__(self, *args):
-    with mesh(self._mesh.devices,
+    with Mesh(self._mesh.devices,
               self._mesh.axis_names), flax_partitioning.axis_rules(
                   self._logical_axis_rules):
       return self._pjitted_fn(*args)
 
   def lower(self, *args):
-    with mesh(self._mesh.devices,
+    with Mesh(self._mesh.devices,
               self._mesh.axis_names), flax_partitioning.axis_rules(
                   self._logical_axis_rules):
       return self._pjitted_fn.lower(*args)
