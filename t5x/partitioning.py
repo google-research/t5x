@@ -754,7 +754,7 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
   """Partitioner that uses T5X version of jax.pjit and model annotations."""
 
   def __init__(self,
-               num_partitions: Optional[int],
+               num_partitions: Optional[int] = None,
                model_parallel_submesh: Optional[HardwareMesh] = None,
                params_on_devices: bool = True,
                logical_axis_rules: Optional[LogicalAxisRules] = None):
