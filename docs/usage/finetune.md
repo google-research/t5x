@@ -20,7 +20,8 @@ Fine-tuning a model with T5X consists of the following steps:
 5.  Monitor your experiment and parse metrics.
 
 These steps are explained in detail in the following sections. An example run
-that fine-tunes a T5-small checkpoint on GLUE benchmark is also showcased.
+that fine-tunes a T5-small checkpoint on WMT14 English to German translation
+benchmark is also showcased.
 
 ## Step 1: Choose a pre-trained model
 
@@ -31,11 +32,11 @@ available for use in T5X. A list of all the available pre-trained models (with
 model checkpoints and Gin config files) are available in the
 [Models](https://github.com/google-research/t5x/blob/main/docs/models.md) documentation.
 
-For the example run, you will use the T5 Small model. The Gin file for this
+For the example run, you will use the T5 1.1 Small model. The Gin file for this
 model is located at
-[`/t5x/examples/t5/t5_1_0/small.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/small.gin),
+[`/t5x/examples/t5/t5_1_1/small.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin),
 and the checkpoint is located at
-[`gs://t5-data/pretrained_models/t5x/t5_small`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_small).
+[`gs://t5-data/pretrained_models/t5x/t5_1_1_small`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_small).
 
 ## Step 2: Choose a SeqIO Task/Mixture
 
@@ -58,10 +59,10 @@ Tasks/Mixtures are defined in
 and
 [`third_party/py/t5/data/mixtures.py`](https://github.com/google-research/text-to-text-transfer-transformer/tree/main/t5/data/mixtures.py).
 
-For the example run, you will fine-tune the model on the GLUE benchmark, which
-has been implemented as the
-[`glue_v002_proportional`](https://github.com/google-research/text-to-text-transfer-transformer/tree/main/t5/data/mixtures.py?l=52&rcl=367537028)
-Mixture.
+For the example run, you will fine-tune the model on the WMT14 English to German
+translation benchmark, which has been implemented as the
+[`wmt_t2t_ende_v003`](https://github.com/google-research/text-to-text-transfer-transformer/tree/main/t5/data/tasks.py;l=209;rcl=417815592)
+Task.
 
 ### Custom Tasks
 
@@ -94,18 +95,18 @@ Gin file, or via commandline flags. Following are the required params:
 
 +   `INITIAL_CHECKPOINT_PATH`: This is the path to the pre-trained checkpoint
     (from Step 1). For the example run, set this to
-    `'gs://t5-data/pretrained_models/t5x/t5_small/checkpoint_1000000'`.
+    `'gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000'`.
 +   `TRAIN_STEPS`: Number of fine-tuning steps. This includes the number of
     steps that the model was pre-trained for, so make sure to add the step
     number from the `INITIAL_CHECKPOINT_PATH`. For the example run, to fine-tune
-    for `500_000` steps, set this to `1_500_000`, since the initial checkpoint
+    for `20_000` steps, set this to `1_020_000`, since the initial checkpoint
     is the `1_000_000`th step.
 +   `MIXTURE_OR_TASK_NAME`: This is the SeqIO Task or Mixture name to run (from
-    Step 2). For the example run, set this to `'glue_v002_proportional'`.
+    Step 2). For the example run, set this to `'wmt_t2t_ende_v003'`.
 +   `TASK_FEATURE_LENGTHS`: This is a dict mapping feature key to maximum int
     length for that feature. After preprocessing, features are truncated to the
-    provided value. For the example run, set this to `{'inputs': 512, 'targets':
-    84}`.
+    provided value. For the example run, set this to `{'inputs': 256, 'targets':
+    256}`.
 +   `MODEL_DIR`: A path to write fine-tuned checkpoints to. When launching using
     XManager, this path is automatically set and can be accessed from the
     XManager Artifacts page. When running locally using Blaze, you can
@@ -129,8 +130,8 @@ include 't5x/examples/t5/t5_1_1/small.gin'
 ```
 
 You will also need to import the Python module(s) that register SeqIO Tasks and
-Mixtures used in your run. For the example run, we add `import t5.data.mixtures`
-since it is where 'glue_v002_proportional' is registered.
+Mixtures used in your run. For the example run, we add `import t5.data.tasks`
+since it is where `wmt_t2t_ende_v003` is registered.
 
 
 Finally, your Gin file should look like this:
@@ -140,12 +141,13 @@ include 't5x/configs/runs/finetune.gin'
 include 't5x/examples/t5/t5_1_1/small.gin'
 
 # Register necessary SeqIO Tasks/Mixtures.
-import t5.data.mixtures
+import t5.data.tasks
 
-INITIAL_CHECKPOINT_PATH = 'gs://t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000'
-TRAIN_STEPS = 1_020_000  # includes 1_000_000 pretrain steps
 MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
 TASK_FEATURE_LENGTHS = {"inputs": 256, "targets": 256}
+TRAIN_STEPS = 1_020_000  # 1000000 pre-trained steps + 20000 fine-tuning steps.
+DROPOUT_RATE = 0.0
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000"
 LOSS_NORMALIZING_FACTOR = 233472
 ```
 
@@ -162,7 +164,7 @@ cause issues), run the following on commandline:
 ```sh
 MODEL_DIR="/tmp/finetune-model/"
 python -m t5x.train \
-  --gin_file=t5x/examples/t5/t5_0_0/examples/small_glue_finetune.gin \
+  --gin_file=t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin \
   --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --alsologtostderr
 ```
@@ -218,7 +220,7 @@ In summary, the metric you actually care about most likely lives under the
 
 ## Next Steps
 
-Now that you have successfully fine-tuned a pre-trained model on GLUE, here are
+Now that you have successfully fine-tuned a pre-trained model on WMT, here are
 some topics you might want to explore next:
 
 +   [Evaluating a fine-tuned model.](eval)
@@ -271,7 +273,7 @@ include 'runs/finetune.gin'
 include 'models/t5_small.gin'
 
 MIXTURE_OR_TASK_NAME = 'glue_v002_proportional'
-MIXTURE_OR_TASK_MODULE = 't5.data.mixtures'
+MIXTURE_OR_TASK_MODULE = 't5.data.tasks'
 TASK_FEATURE_LENGTHS =  {'inputs': 512, 'targets': 84}
 TRAIN_STEPS = 1_500_000  # includes 1_000_000 pretrain steps
 INITIAL_CHECKPOINT_PATH = 'gs://t5-data/pretrained_models/t5x/t5_small/checkpoint_1000000'

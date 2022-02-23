@@ -145,7 +145,7 @@ BATCH_SIZE = 256
 ```
 
 See
-[`t5x/examples/t5/t5_1_1/examples/small_c4_pretrain.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small_c4_pretrain.gin)
+[`t5x/examples/t5/t5_1_1/examples/small_c4_pretrain.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/examples/small_c4_pretrain.gin)
 for this example.
 
 

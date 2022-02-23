@@ -12,22 +12,10 @@ include "t5x/configs/runs/finetune.gin"
 MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
 TASK_FEATURE_LENGTHS = {"inputs": 256, "targets": 256}
 TRAIN_STEPS = 1_020_000  # 1000000 pre-trained steps + 20000 fine-tuning steps.
-USE_CACHED_TASKS = False
 DROPOUT_RATE = 0.0
-RANDOM_SEED = 0
-
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000"
 # `LOSS_NORMALIZING_FACTOR`: When fine-tuning a model that was pre-trained
 # using Mesh Tensorflow (e.g. the public T5 / mT5 / ByT5 models), this should be
 # set to `pretraining batch_size` * `target_token_length`. For T5 and T5.1.1:
 # `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
 LOSS_NORMALIZING_FACTOR = 233472
-INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000"
-
-train_script.train:
-  eval_period = 500
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
-
-# `num_decodes` is equivalent to a beam size in a beam search decoding.
-models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 4
-
-partitioning.ModelBasedPjitPartitioner.num_partitions = 2
