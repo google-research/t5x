@@ -12,15 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# pytype: skip-file
-# Lint as: python3
 """Utilities for partitioning."""
 
 import abc
 import collections
 import dataclasses
-import re
-from typing import Any, Callable, Iterable, Optional, Sequence, TYPE_CHECKING, Tuple, Union
+import typing
+from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 from absl import logging
 import cached_property
@@ -31,7 +29,7 @@ from jax import numpy as jnp
 from jax import random
 from jax.experimental.maps import Mesh
 from jax.experimental.pjit import pjit as jax_pjit
-from jax.interpreters.sharded_jit import PartitionSpec
+from jax.interpreters.sharded_jit import PartitionSpec  # pylint:disable=unused-import
 import numpy as np
 from t5x import train_state as train_state_lib
 
@@ -43,7 +41,7 @@ PyTreeDef = type(jax.tree_structure(None))
 TrainState = train_state_lib.TrainState
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
 
-if TYPE_CHECKING:  # See b/163639353
+if typing.TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
 else:
   cached_property = cached_property.cached_property
@@ -183,6 +181,10 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
   tile_by_host = tile_by_host_if_needed
   if len(global_hardware_mesh) == 4:
     # enable contiguous local chunks without host tiling by making Z major
+    global_hardware_mesh = typing.cast(Tuple[int, int, int, int],
+                                       global_hardware_mesh)
+    model_parallel_submesh = typing.cast(Tuple[int, int, int, int],
+                                         model_parallel_submesh)
     gx, gy, gz, gc = global_hardware_mesh
     mx, my, mz, mc = model_parallel_submesh
     if (mx == gx > 1 and my == mz == 1) or (mx == 1 and my == gy > 1 and
@@ -213,7 +215,7 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
         'submesh must be either a factor or a multiple of the corresponding '
         'dimension of the per-host submesh')
 
-    def dh_dd_mh_md(g: int, m: int, l: int) -> Tuple[int]:
+    def dh_dd_mh_md(g: int, m: int, l: int) -> Tuple[int, int, int, int]:
       """Split a global mesh dimension into four tiling components.
 
       Args:
@@ -589,6 +591,10 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     self._model_parallel_submesh = model_parallel_submesh
     self._params_on_devices = params_on_devices
 
+  @property
+  def _mesh(self) -> Mesh:
+    raise NotImplementedError
+
   def get_data_layout(self,
                       batch_size: Optional[int] = None,
                       host_index: Optional[int] = None) -> DataLayout:
@@ -841,3 +847,5 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
         traverse_util.unflatten_dict(flat_mesh_axes, sep='/'))
 
 
+class PjitPartitioner(ModelBasedPjitPartitioner):
+  """Partitioner that uses named axes and jax.pjit."""
