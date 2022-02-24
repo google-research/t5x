@@ -43,7 +43,6 @@ train_script.train:
   use_hardware_rng = True
   infer_eval_dataset_cfg = @infer_eval/utils.DatasetConfig()
   inference_evaluator_cls = @seqio.Evaluator
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
 
 seqio.Evaluator:
   logger_cls = [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]
@@ -56,7 +55,7 @@ utils.SaveCheckpointConfig:
 # `num_decodes` is equivalent to a beam size in a beam search decoding.
 models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 4
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 2
+partitioning.PjitPartitioner.num_partitions = 2
 
 utils.create_learning_rate_scheduler:
   factors = 'constant * rsqrt_decay'

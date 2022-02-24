@@ -189,13 +189,13 @@ escaped quotes (`\"<string>\"`). For example:
 `--gin.MODEL_DIR=\"${MODEL_DIR}\"`.
 
 Gin makes it easy to change a number of configurations. For example, you can
-change the `partitioning.ModelBasedPjitPartitioner.num_partitions` (overriding
+change the `partitioning.PjitPartitioner.num_partitions` (overriding
 the value in
 [base_wmt_from_scratch.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin))
 to chanage the parallelism strategy and pass it as a commandline arg.
 
 ```sh
---gin.partitioning.ModelBasedPjitPartitioner.num_partitions=8
+--gin.partitioning.PjitPartitioner.num_partitions=8
 ```
 
 ### Evaluation

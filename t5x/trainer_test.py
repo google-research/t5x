@@ -305,7 +305,7 @@ class TrainerTest(parameterized.TestCase):
     self.test_trainer = trainer_lib.Trainer(
         mock.create_autospec(models_lib.BaseModel, instance=True),
         self.init_train_state,
-        partitioning.ModelBasedPjitPartitioner(num_partitions=1),
+        partitioning.PjitPartitioner(num_partitions=1),
         eval_names=['task1', 'task2'],
         summary_dir=model_dir,
         train_state_axes=train_state_axes,
@@ -799,7 +799,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     test_trainer = trainer_lib.Trainer(
         mock.create_autospec(models_lib.BaseModel, instance=True),
         init_train_state,
-        partitioning.ModelBasedPjitPartitioner(num_partitions=1),
+        partitioning.PjitPartitioner(num_partitions=1),
         eval_names=['task1', 'task2'],
         summary_dir=None,
         train_state_axes=train_state_axes,
@@ -891,7 +891,7 @@ class MutableTrainerTest(parameterized.TestCase):
     self.test_trainer = trainer_lib.Trainer(
         mock.create_autospec(models_lib.BaseModel, instance=True),
         self.init_train_state,
-        partitioning.ModelBasedPjitPartitioner(num_partitions=1),
+        partitioning.PjitPartitioner(num_partitions=1),
         eval_names=['task1', 'task2'],
         summary_dir=model_dir,
         train_state_axes=train_state_axes,

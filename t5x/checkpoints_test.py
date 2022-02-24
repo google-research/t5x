@@ -1103,7 +1103,7 @@ class CheckpointsTest(parameterized.TestCase):
       path,
       model,
       decoder_only=False,
-      partitioner_class=partitioning.ModelBasedPjitPartitioner):
+      partitioner_class=partitioning.PjitPartitioner):
     partitioner = partitioner_class(num_partitions=1)
 
     input_features = {'decoder_input_tokens': tf.zeros([2, 8])}
@@ -1466,7 +1466,7 @@ class CheckpointsTest(parameterized.TestCase):
     model = test_utils.get_t5_test_model(
         emb_dim=32, head_dim=64, num_heads=2, mlp_dim=64)
 
-    partitioner = partitioning.ModelBasedPjitPartitioner(num_partitions=1)
+    partitioner = partitioning.PjitPartitioner(num_partitions=1)
 
     def initialize_params_fn(rng):
       initial_variables = model.get_initial_variables(

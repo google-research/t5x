@@ -16,7 +16,6 @@ MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
 eval_script.evaluate:
   model = %MODEL  # imported from separate gin file
   dataset_cfg = @utils.DatasetConfig()
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
   restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
   output_dir = %EVAL_OUTPUT_DIR
 
@@ -28,7 +27,7 @@ utils.DatasetConfig:
   shuffle = False
   seed = 42
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 2
+partitioning.PjitPartitioner.num_partitions = 2
 
 utils.RestoreCheckpointConfig:
   path = %CHECKPOINT_PATH

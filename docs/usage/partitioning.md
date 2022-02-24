@@ -17,7 +17,7 @@ batch sizes, and/or train faster.
 ## Partitioning with named axes
 
 With T5X, the recommended way of configuring partitioning is to use the
-`ModelBasedPjitPartitioner`, which relies on the use of logical axis name
+`PjitPartitioner`, which relies on the use of logical axis name
 annotations (for parameters and activations).
 
 *Logical axis names* are a user-configured shorthand for grouping
@@ -41,9 +41,9 @@ in practice.
 The following subsections explain how to configure partitioning in T5X using
 named axes.
 
-### Configuring `ModelBasedPjitPartitioner`
+### Configuring `PjitPartitioner`
 
-[`ModelBasedPjitPartitioner`][model-based-partitioner] has three primary
+[`PjitPartitioner`][pjit-partitioner] has three primary
 constructor arguments, typically set via gin: `num_partitions`,
 `model_parallel_submesh`, and `logical_axis_rules`.
 
@@ -108,7 +108,7 @@ assumption that you are using
 
 ### Configuring logical axis annotations within the model
 
-In order for your model to be partitionable by the `ModelBasedPjitPartitioner`,
+In order for your model to be partitionable by the `PjitPartitioner`,
 you must apply logical axis name annotations to your model parameters and
 activations.
 
@@ -190,7 +190,7 @@ We recommend you use logical axis names from the following list for
 compatibility with
 [`t5x.partitioning.standard_logical_axis_rules`][standard-rules]. If you wish to
 use a non-canonical axis name, you will need to pass a custom set of axis rules
-to the `ModelBasedPjitPartitioner`.
+to the `PjitPartitioner`.
 
 *   `"embed"`: This is the common "activation_dim" in the network, first emitted
     by the embeding layer.
@@ -219,9 +219,9 @@ for full (parameter and activation) 2D partitioning, you can set:
 from t5x import partitioning
 
 train_script.train:
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
+  partitioner = @partitioning.PjitPartitioner()
 
-partitioning.ModelBasedPjitPartitioner:
+partitioning.PjitPartitioner:
   num_partitions = 1
   logical_axis_rules= @partitioning.standard_logical_axis_rules()
 
@@ -236,7 +236,7 @@ following options:
 *   Only data parallelism:
 
 ```py
-partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
+partitioning.PjitPartitioner.logical_axis_rules = [
     ('batch', 'data'),
     ('vocab', None),
     ('embed', None),
@@ -258,7 +258,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     with trivial MP submesh":
 
 ```py
-partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
+partitioning.PjitPartitioner.logical_axis_rules = [
     ('batch', 'data'),
     # all weight matrices have this axis; activations already shard it along 'data'
     ('embed', 'data'),
@@ -281,7 +281,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     partitioning":
 
 ```py
-partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
+partitioning.PjitPartitioner.logical_axis_rules = [
     ('batch', 'data'),
     ('mlp', 'model'),
     ('heads', 'model'),
@@ -303,7 +303,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     with 2D activation partitioning":
 
 ```py
-partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
+partitioning.PjitPartitioner.logical_axis_rules = [
     ('batch', 'data'),
     ('mlp', 'model'),
     ('heads', 'model'),
@@ -325,7 +325,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
     parameter + activation partitioning":
 
 ```py
-partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
+partitioning.PjitPartitioner.logical_axis_rules = [
     ('batch', 'data'),
     ('mlp', 'model'),
     ('heads', 'model'),
@@ -344,8 +344,7 @@ partitioning.ModelBasedPjitPartitioner.logical_axis_rules = [
 ]
 ```
 
-
 <!---TODO(b/214235006): Use symbol reference instead of line number+rcl.-->
 
 [standard-rules]: https://github.com/google-research/t5x/tree/main/t5x/partitioning.py?l=438&rcl=421294093
-[model-based-partitioner]: https://github.com/google-research/t5x/tree/main/t5x/partitioning.py?l=674&rcl=421291812
+[pjit-partitioner]: https://github.com/google-research/t5x/tree/main/t5x/partitioning.py?l=674&rcl=421291812

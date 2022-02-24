@@ -54,7 +54,7 @@ train_script.train:
   eval_steps = 3
 
 trainer.Trainer.num_microbatches = 0
-partitioning.ModelBasedPjitPartitioner:
+partitioning.PjitPartitioner:
   num_partitions = 1
   model_parallel_submesh = None
 

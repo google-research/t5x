@@ -65,7 +65,7 @@ def convert_checkpoint(model: models.BaseModel,
 
   train_state = jax.eval_shape(initialize_train_state, jax.random.PRNGKey(0))
 
-  partitioner = partitioning.ModelBasedPjitPartitioner(1)
+  partitioner = partitioning.PjitPartitioner(1)
 
   checkpointer = checkpoints.Checkpointer(
       train_state, partitioner, output_dir, save_dtype=jnp.dtype(save_dtype))

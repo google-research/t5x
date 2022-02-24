@@ -43,13 +43,12 @@ train_eval/utils.DatasetConfig:
 train_script.train:
   random_seed = 0
   eval_steps = 2
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
   actions={'TRAIN_EVAL': [@trainer.TerminateOnNanAction()]}
 
 trainer.TerminateOnNanAction:
   task = %MIXTURE_OR_TASK_NAME
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 2
+partitioning.PjitPartitioner.num_partitions = 2
 utils.SaveCheckpointConfig.period = 4
 
 # Overriding from pretrain.gin to keep magic constants in tests.
