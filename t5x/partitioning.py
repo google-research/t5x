@@ -19,6 +19,7 @@ import collections
 import dataclasses
 import typing
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
+import warnings
 
 from absl import logging
 import cached_property
@@ -756,7 +757,7 @@ class BasePjitPartitioner(BasePartitioner):
     return partitioned_fn.lower(*args).compile()
 
 
-class ModelBasedPjitPartitioner(BasePjitPartitioner):
+class PjitPartitioner(BasePjitPartitioner):
   """Partitioner that uses named axes and jax.pjit."""
 
   def __init__(self,
@@ -764,7 +765,7 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
                model_parallel_submesh: Optional[HardwareMesh] = None,
                params_on_devices: bool = True,
                logical_axis_rules: Optional[LogicalAxisRules] = None):
-    """ModelBasedPjitPartitioner constructor.
+    """PjitPartitioner constructor.
 
     See https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/user/partitioning for details.
 
@@ -847,5 +848,22 @@ class ModelBasedPjitPartitioner(BasePjitPartitioner):
         traverse_util.unflatten_dict(flat_mesh_axes, sep='/'))
 
 
-class PjitPartitioner(ModelBasedPjitPartitioner):
+class ModelBasedPjitPartitioner(PjitPartitioner):
   """Partitioner that uses named axes and jax.pjit."""
+
+  def __init__(self,
+               num_partitions: Optional[int] = None,
+               model_parallel_submesh: Optional[HardwareMesh] = None,
+               params_on_devices: bool = True,
+               logical_axis_rules: Optional[LogicalAxisRules] = None):
+
+    warnings.warn(
+        '`ModelBasedPjitPartitioner` has been renamed `PjitPartitioner`. '
+        'Please update your code to use its new name as this alias will soon '
+        'be removed.', DeprecationWarning)
+
+    super().__init__(
+        num_partitions=num_partitions,
+        model_parallel_submesh=model_parallel_submesh,
+        params_on_devices=params_on_devices,
+        logical_axis_rules=logical_axis_rules)
