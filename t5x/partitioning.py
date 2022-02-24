@@ -18,7 +18,7 @@ import abc
 import collections
 import dataclasses
 import typing
-from typing import Any, Callable, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 import warnings
 
 from absl import logging
@@ -40,7 +40,7 @@ OtherMesh = Tuple[int, int]
 HardwareMesh = Union[TpuMesh, OtherMesh]
 PyTreeDef = type(jax.tree_structure(None))
 TrainState = train_state_lib.TrainState
-LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
+LogicalAxisRules = List[Tuple[str, Optional[str]]]
 
 if typing.TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
@@ -802,7 +802,7 @@ class PjitPartitioner(BasePjitPartitioner):
         params_on_devices=params_on_devices)
     if logical_axis_rules is None:
       logical_axis_rules = standard_logical_axis_rules()
-    self._logical_axis_rules = logical_axis_rules
+    self._logical_axis_rules = tuple(logical_axis_rules)
 
   def partition(
       self,
