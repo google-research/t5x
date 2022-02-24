@@ -802,7 +802,7 @@ class PjitPartitioner(BasePjitPartitioner):
         params_on_devices=params_on_devices)
     if logical_axis_rules is None:
       logical_axis_rules = standard_logical_axis_rules()
-    self._logical_axis_rules = logical_axis_rules
+    self._logical_axis_rules = tuple(logical_axis_rules)
 
   def partition(
       self,
