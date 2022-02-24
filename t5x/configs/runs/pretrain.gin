@@ -51,7 +51,7 @@ train_script.train:
   train_eval_dataset_cfg = @train_eval/utils.DatasetConfig()
   infer_eval_dataset_cfg = None
   checkpoint_cfg = @utils.CheckpointConfig()
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
+  partitioner = @partitioning.PjitPartitioner()
   trainer_cls = @trainer.Trainer
   total_steps = %TRAIN_STEPS
   eval_steps = 20
@@ -60,7 +60,7 @@ train_script.train:
   use_hardware_rng = %USE_HARDWARE_RNG
   summarize_config_fn = @gin_utils.summarize_gin_config
 
-partitioning.ModelBasedPjitPartitioner:
+partitioning.PjitPartitioner:
   num_partitions = 1
   model_parallel_submesh = None
   logical_axis_rules = @partitioning.standard_logical_axis_rules()

@@ -49,13 +49,13 @@ infer_script.infer:
   model = %MODEL  # imported from separate gin file
   output_dir = %INFER_OUTPUT_DIR
   dataset_cfg = @utils.DatasetConfig()
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
+  partitioner = @partitioning.PjitPartitioner()
   restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
   checkpoint_period = 100
   shard_id = 0
   num_shards = 1
 
-partitioning.ModelBasedPjitPartitioner:
+partitioning.PjitPartitioner:
   num_partitions = 1
   logical_axis_rules = @partitioning.standard_logical_axis_rules()
 

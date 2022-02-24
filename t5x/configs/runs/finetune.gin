@@ -71,7 +71,7 @@ train_script.train:
   train_eval_dataset_cfg = @train_eval/utils.DatasetConfig()
   infer_eval_dataset_cfg = @infer_eval/utils.DatasetConfig()
   checkpoint_cfg = @utils.CheckpointConfig()
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
+  partitioner = @partitioning.PjitPartitioner()
   trainer_cls = @trainer.Trainer
   total_steps = %TRAIN_STEPS
   eval_steps = %EVAL_STEPS
@@ -81,10 +81,11 @@ train_script.train:
   summarize_config_fn = @gin_utils.summarize_gin_config
   inference_evaluator_cls = @seqio.Evaluator
 
-partitioning.ModelBasedPjitPartitioner:
+partitioning.PjitPartitioner:
   num_partitions = 1
   model_parallel_submesh = None
   logical_axis_rules = @partitioning.standard_logical_axis_rules()
+
 seqio.Evaluator:
   logger_cls = [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]
   num_examples = %EVALUATOR_NUM_EXAMPLES
