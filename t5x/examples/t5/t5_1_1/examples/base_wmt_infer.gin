@@ -12,10 +12,7 @@ DROPOUT_RATE = 0.0  # unused but needs to be specified
 MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
 TASK_FEATURE_LENGTHS = {"inputs": 64, "targets": 64}
 
-infer_script.infer:
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
-
-partitioning.ModelBasedPjitPartitioner.num_partitions = 1
+partitioning.PjitPartitioner.num_partitions = 1
 
 utils.DatasetConfig:
   split = "test"

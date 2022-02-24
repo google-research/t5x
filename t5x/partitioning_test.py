@@ -217,7 +217,7 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
             })).state_dict()
 
   def test_get_mesh_axes(self):
-    partitioner = partitioning.ModelBasedPjitPartitioner(
+    partitioner = partitioning.PjitPartitioner(
         num_partitions=1,
         logical_axis_rules=(('batch', 'data'), ('embed', None),
                             ('vocab', 'model'), ('mlp', 'model')))
