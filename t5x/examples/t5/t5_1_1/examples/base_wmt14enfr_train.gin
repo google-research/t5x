@@ -1,0 +1,18 @@
+from __gin__ import dynamic_registration
+import t5.data.mixtures
+import __main__ as train_script
+
+
+include 't5x/configs/runs/pretrain.gin'
+include 't5x/examples/t5/t5_1_1/base.gin'
+
+
+TRAIN_STEPS = 100000
+BATCH_SIZE = 128
+MIXTURE_OR_TASK_NAME = "wmt14_enfr_v003"
+TASK_FEATURE_LENGTHS = {'inputs': 256, 'targets': 256}
+DROPOUT_RATE = 0.1
+INITIAL_CHECKPOINT_PATH = %gin.REQUIRED
+
+train_script.train:
+  eval_period = 2000

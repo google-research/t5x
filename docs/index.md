@@ -52,5 +52,3 @@ how it can be configured in T5X.
 This tutorial provides an overview of how metrics can be used and customized to
 evaluate T5X models.
 
-
-
