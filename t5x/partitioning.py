@@ -458,12 +458,6 @@ def standard_logical_axis_rules(
         ('heads', 'model'),
         ('kv', None),
         ('joined_kv', 'model'),  # joined heads+kv dim in 2D attn param layouts
-        ('relpos_buckets', None),
-        ('abspos_buckets', None),
-        ('length', None),
-        ('layers', None),
-        ('stack', None),
-        ('mlp_activations', None),
     ]
   elif activation_partitioning_dims == 2 and parameter_partitioning_dims == 1:
     rules = [
@@ -474,12 +468,6 @@ def standard_logical_axis_rules(
         ('kv', None),
         ('joined_kv', 'model'),
         ('embed', 'model'),
-        ('relpos_buckets', None),
-        ('abspos_buckets', None),
-        ('length', None),
-        ('layers', None),
-        ('stack', None),
-        ('mlp_activations', None),
     ]
   elif activation_partitioning_dims == 1 and parameter_partitioning_dims == 2:
     rules = [
@@ -490,12 +478,6 @@ def standard_logical_axis_rules(
         ('kv', None),
         ('joined_kv', 'model'),
         ('embed', 'data'),
-        ('relpos_buckets', None),
-        ('abspos_buckets', None),
-        ('length', None),
-        ('layers', None),
-        ('stack', None),
-        ('mlp_activations', None),
     ]
   elif activation_partitioning_dims == 2 and parameter_partitioning_dims == 2:
     rules = [
@@ -507,18 +489,24 @@ def standard_logical_axis_rules(
         ('joined_kv', 'model'),
         ('embed', 'model'),
         ('embed', 'data'),
-        ('relpos_buckets', None),
-        ('abspos_buckets', None),
-        ('length', None),
-        ('layers', None),
-        ('stack', None),
-        ('mlp_activations', None),
     ]
   else:
     raise ValueError(
         f'`activation_partitioning_dims` = {activation_partitioning_dims} '
         f'`parameter_partitioning_dims` = {parameter_partitioning_dims} '
         'is not supported.')
+
+  # Add the common rules for the replicated logical axes names.
+  replicated_rules = [
+      ('relpos_buckets', None),
+      ('abspos_buckets', None),
+      ('relpos_heads', None),
+      ('length', None),
+      ('layers', None),
+      ('stack', None),
+      ('mlp_activations', None),
+  ]
+  rules.extend(replicated_rules)
 
   if additional_rules:
     rules.extend(additional_rules)
