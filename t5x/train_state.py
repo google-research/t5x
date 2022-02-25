@@ -118,6 +118,8 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
       if params_axes is None:
         raise ValueError('The optimizer supports params_axes for model-based '
                          'partitioning, but the model is not emitting them.')
+      # `get_axis_names` removes "_axes" suffix in the leaf name and replaces
+      # `AxisMetadata` with `PartitionSpec`.
       axis_names = flax_partitioning.get_axis_names(params_axes)
       optimizer_def.set_param_axes(axis_names)
 

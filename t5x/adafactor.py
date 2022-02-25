@@ -111,6 +111,11 @@ def standard_logical_factor_rules():
       'layers': FactorDim.BATCH,  # used in scanned layers
       'stack': FactorDim.BATCH,  # used in stacked params
       # 'batch', 'length' should not occur in parameters
+      'q_wi_fused': FactorDim.COLUMN,
+      'o_wo_fused': FactorDim.COLUMN,
+      'multiquery_heads': FactorDim.COLUMN,
+      'kv_fused': FactorDim.COLUMN,
+      'layer_norm_scale': FactorDim.NONE,
   })
 
 

@@ -129,6 +129,11 @@ def evaluate(
       input_shapes=input_shapes,
       partitioner=partitioner)
   train_state_axes = train_state_initializer.train_state_axes
+  # Log the variable shapes information and write to a file.
+  log_file = os.path.join(output_dir, 'model-info.txt')
+  utils.log_model_info(log_file,
+                       train_state_initializer.global_train_state_shape,
+                       partitioner)
 
   predict_fn = None
   score_fn = None
