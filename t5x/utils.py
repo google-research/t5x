@@ -557,10 +557,9 @@ def log_model_info(log_file: str, full_train_state: train_state_lib.TrainState,
       if arr is None:
         _log_info_and_write_to_file(writer, 'Variable    %-80s None', name)
         return
-      if logical_axes is None:
+      if logical_axes is None or len(logical_axes) != len(arr.shape):
         shape_str = str(arr.shape)
       else:
-        assert len(logical_axes) == len(arr.shape)
         shape_str = '({})'.format(', '.join(
             f'{name}={dimension}'
             for name, dimension in zip(logical_axes, arr.shape)))
