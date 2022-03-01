@@ -178,7 +178,6 @@ def write_inferences_to_file(
   if mode in ('predict', 'predict_with_aux') and vocabulary is None:
     raise ValueError('The `vocabulary` parameter is required in `predict` and '
                      '`predict_with_aux` modes')
-
   def _json_compat(value):
     if isinstance(value, bytes):
       return value.decode('utf-8')
@@ -316,10 +315,15 @@ def infer(
                checkpoint_period, batch_size)
 
   logging.info('Initializing model, optimizer, and step functions.')
+  element_spec = feature_converter(
+      _get_dataset(task_or_mixture),
+      dataset_cfg.task_feature_lengths).element_spec
   input_shapes = {
-      k: (batch_size,) + spec.shape for k, spec in feature_converter(
-          _get_dataset(task_or_mixture),
-          dataset_cfg.task_feature_lengths).element_spec.items()
+      k: (batch_size,) + spec.shape for k, spec in element_spec.items()
+  }
+  input_types = {
+      k: jnp.dtype(spec.dtype.as_numpy_dtype)
+      for k, spec in element_spec.items()
   }
   # Initialize optimizer from the existing checkpoint.
   # TODO(adarob): Support inference over multiple checkpoints.
@@ -327,6 +331,7 @@ def infer(
       optimizer_def=None,  # Do not load optimizer state.
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
+      input_types=input_types,
       partitioner=partitioner)
 
   # Disable strictness since we are dropping the optimizer state.
