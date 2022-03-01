@@ -515,14 +515,19 @@ class EncoderDecoderModel(BaseTransformerModel):
     # Prepare zeroed-out autoregressive cache.
     # [batch, input_len]
     inputs = batch['encoder_input_tokens']
+    input_positions = batch.get('encoder_positions', None)
+
     # [batch, target_len]
     target_shape = batch['decoder_input_tokens'].shape
     target_type = batch['decoder_input_tokens'].dtype
     _, variables_with_cache = self.module.apply(
         {'params': params},
-        jnp.ones(inputs.shape, inputs.dtype),
-        jnp.ones(target_shape, target_type),
-        jnp.ones(target_shape, target_type),
+        encoder_input_tokens=jnp.ones(inputs.shape, inputs.dtype),
+        decoder_input_tokens=jnp.ones(target_shape, target_type),
+        decoder_target_tokens=jnp.ones(target_shape, target_type),
+        encoder_positions=(jnp.ones(input_positions.shape,
+                                    input_positions.dtype)
+                           if input_positions is not None else None),
         decode=True,
         enable_dropout=False,
         mutable=['cache'])
@@ -538,7 +543,8 @@ class EncoderDecoderModel(BaseTransformerModel):
     # [batch * num_decodes, input_len, emb_dim]
     encoded_inputs = decoding.flat_batch_beam_expand(
         self.module.apply({'params': params},
-                          inputs,
+                          encoder_input_tokens=inputs,
+                          encoder_positions=input_positions,
                           enable_dropout=False,
                           method=self.module.encode), num_decodes)
 
