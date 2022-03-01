@@ -18,7 +18,7 @@ DROPOUT_RATE = 0.0  # unused boilerplate
 eval_script.evaluate:
   model = %MODEL  # imported from separate gin file
   dataset_cfg = @utils.DatasetConfig()
-  partitioner = @partitioning.ModelBasedPjitPartitioner()
+  partitioner = @partitioning.PjitPartitioner()
   restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
   output_dir = %EVAL_OUTPUT_DIR
   inference_evaluator_cls = @seqio.Evaluator
@@ -38,7 +38,7 @@ utils.DatasetConfig:
   shuffle = False
   seed = 42
 
-partitioning.ModelBasedPjitPartitioner.num_partitions = 1
+partitioning.PjitPartitioner.num_partitions = 1
 models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 4
 
 utils.RestoreCheckpointConfig:
