@@ -41,10 +41,10 @@ from flax import optim
 from flax import serialization
 from flax import traverse_util
 import jax
+from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 from t5x import checkpoint_importer
-from t5x import multihost_utils
 from t5x import partitioning
 from t5x import state_utils
 from t5x import train_state as train_state_lib
@@ -602,7 +602,7 @@ class Checkpointer(object):
     if jax.process_index() == 0:
       gfile.makedirs(tmp_dir)
     # Block all hosts until directory is ready.
-    multihost_utils.sync_devices(f'checkpointer:make_dir:{tmp_dir}')
+    multihost_utils.sync_global_devices(f'checkpointer:make_dir:{tmp_dir}')
 
     written_state_dict = self._write_state_to_tensorstore(
         tmp_dir, train_state, concurrent_gb, state_transformation_fns)
@@ -619,7 +619,8 @@ class Checkpointer(object):
         raise e
 
     # Block until complete on all hosts.
-    multihost_utils.sync_devices(f'checkpointer:write_complete:{tmp_dir}')
+    multihost_utils.sync_global_devices(
+        f'checkpointer:write_complete:{tmp_dir}')
     if jax.process_index() != 0:
       return
 
@@ -720,7 +721,8 @@ class Checkpointer(object):
     written_state_dict = _run_future_tree(future_written_state)
 
     # Block until complete on all hosts.
-    multihost_utils.sync_devices(f'checkpointer:ts_write_complete:{ckpt_dir}')
+    multihost_utils.sync_global_devices(
+        f'checkpointer:ts_write_complete:{ckpt_dir}')
 
     return written_state_dict
 

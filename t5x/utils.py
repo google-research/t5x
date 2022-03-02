@@ -32,11 +32,11 @@ from flax.core import scope as flax_scope
 from flax.linen import partitioning as flax_partitioning
 import jax
 from jax import prng
+from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 import seqio
 from t5x import checkpoints
-from t5x import multihost_utils
 from t5x import partitioning
 from t5x import state_utils
 from t5x import train_state as train_state_lib
@@ -663,7 +663,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
   def infer_fn(ds: tf.data.Dataset, train_state: train_state_lib.TrainState):
     ds_shapes = jax.tree_map(lambda x: jnp.array(x.shape), ds.element_spec)
     original_ds_length = len(ds)
-    multihost_utils.assert_same(
+    multihost_utils.assert_equal(
         ds_shapes, 'Dataset element shapes do not agree across hosts. '
         'This could be an indication that the dataset is nondeterministic.')
     try:
@@ -690,7 +690,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     # Shard the infer dataset across replica sets.
     sharded_ds = ds.shard(num_shards, shard_id).batch(
         per_shard_batch_size, drop_remainder=True)
-    multihost_utils.assert_same(
+    multihost_utils.assert_equal(
         jnp.array(len(sharded_ds)),
         'Dataset lengths do not agree across hosts.')
 
@@ -867,7 +867,7 @@ def get_dataset_inner(cfg: DatasetConfig,
   """Internal fn to load a dataset from SeqIO based on a `DatasetConfig`."""
   batch_size = cfg.batch_size // shard_info.num_shards
   if seed is not None:
-    multihost_utils.assert_same(
+    multihost_utils.assert_equal(
         np.array(seed),
         f'`seed` is not same across hosts; {jax.process_index} has a seed of '
         f'{seed}')

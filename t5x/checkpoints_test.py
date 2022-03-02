@@ -220,7 +220,8 @@ class CheckpointsTest(parameterized.TestCase):
     return TestPartitoiner()
 
   # pylint:disable=no-value-for-parameter
-  @mock.patch('t5x.multihost_utils.sync_devices', return_value=None)
+  @mock.patch(
+      'jax.experimental.multihost_utils.sync_global_devices', return_value=None)
   @mock.patch('time.time', return_value=0)
   @mock.patch('jax.host_count')
   @mock.patch('jax.process_index')
@@ -240,7 +241,8 @@ class CheckpointsTest(parameterized.TestCase):
     return fn(checkpointer)
 
   # pylint:disable=no-value-for-parameter
-  @mock.patch('t5x.multihost_utils.sync_devices', return_value=None)
+  @mock.patch(
+      'jax.experimental.multihost_utils.sync_global_devices', return_value=None)
   @mock.patch('time.time', return_value=0)
   @mock.patch('jax.host_count')
   @mock.patch('jax.process_index')
