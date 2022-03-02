@@ -18,6 +18,7 @@ from typing import Optional
 import zlib
 
 import jax
+from jax.experimental import multihost_utils as jax_mutilhost_utils
 import numpy as np
 
 PyTreeDef = type(jax.tree_structure(None))
@@ -69,7 +70,7 @@ def broadcast_one_to_all(in_tree: PyTreeDef,
 def sync_devices(name: str):
   """Creates a barrier across all hosts/devices."""
   h = np.int32(zlib.crc32(name.encode()))
-  assert_same(h, f"sync_devices name mismatch ('{name}')")
+  jax_mutilhost_utils.assert_equal(h, f"sync_devices name mismatch ('{name}')")
 
 
 def host_allgather(in_tree: PyTreeDef, num_replica_sets: int,
@@ -109,12 +110,3 @@ def host_allgather(in_tree: PyTreeDef, num_replica_sets: int,
 
   return jax.tree_map(post_pmap,
                       _host_allgather_psum(jax.tree_map(pre_pmap, in_tree)))
-
-
-def assert_same(in_tree: PyTreeDef, fail_message: str = ''):
-  """Verifies that all the hosts have the same tree of values`."""
-  expected = broadcast_one_to_all(in_tree)
-  if not jax.tree_util.tree_all(
-      jax.tree_map(lambda *x: np.all(np.equal(*x)), in_tree, expected)):
-    raise AssertionError(
-        f'{fail_message} Expected: {expected}; got: {in_tree}.')

@@ -33,13 +33,13 @@ from clu import metric_writers
 import clu.metrics
 import clu.values
 from flax.core import FrozenDict
+from jax.experimental import multihost_utils
 import jax.lax
 import jax.numpy as jnp
 import jax.random
 import numpy as np
 from t5x import metrics as metrics_lib
 from t5x import models
-from t5x import multihost_utils
 from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x import utils
@@ -541,7 +541,7 @@ class BaseTrainer(abc.ABC):
       mm.start_duration_timer(block_on=train_state)
       for batch in batch_iter:
         num_steps += 1
-        multihost_utils.assert_same(
+        multihost_utils.assert_equal(
             jnp.array(num_steps),
             "Eval step mismatch across hosts. Check for empty dataset shard.")
         metrics_update = eval_step_fn(train_state, batch)
@@ -549,7 +549,7 @@ class BaseTrainer(abc.ABC):
           metrics = merge_metrics(metrics, metrics_update)
         else:
           metrics = metrics_update
-      multihost_utils.assert_same(
+      multihost_utils.assert_equal(
           jnp.array(-1),
           "Eval step mismatch across hosts. Check for empty dataset shard.")
 
