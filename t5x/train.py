@@ -32,11 +32,11 @@ from absl import logging
 from clu import metric_writers
 import jax
 from jax import random
+from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 import seqio
 from t5x import models
-from t5x import multihost_utils
 from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x import trainer as trainer_lib
@@ -556,7 +556,7 @@ def train(
 
   # Wait until computations are done before exiting
   logging.info('Finished.')
-  multihost_utils.sync_devices('complete')
+  multihost_utils.sync_global_devices('complete')
 
   return host_step, trainer.train_state
 

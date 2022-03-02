@@ -30,10 +30,10 @@ os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
 import jax
+from jax.experimental import multihost_utils
 import seqio
 from t5x import gin_utils
 from t5x import models
-from t5x import multihost_utils
 from t5x import partitioning
 from t5x import utils
 from typing_extensions import Protocol
@@ -172,7 +172,7 @@ def evaluate(
         score_fn=functools.partial(score_fn, train_state=train_state))
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
-    multihost_utils.sync_devices(f'step_{train_state.step}:complete')
+    multihost_utils.sync_global_devices(f'step_{train_state.step}:complete')
 
   logging.info('Finished.')
 
