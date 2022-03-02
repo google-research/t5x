@@ -30,7 +30,6 @@ from flax import traverse_util
 import flax.core
 from flax.core import scope as flax_scope
 from flax.linen import partitioning as flax_partitioning
-
 import jax
 from jax import prng
 import jax.numpy as jnp
@@ -594,33 +593,17 @@ class InferStepCallable(typing_extensions.Protocol):
     ...
 
 
-def _deshard_and_remove_padding(all_inferences, all_indices):
-  """Deshard and remove padded examples.
-
-  Shape notation:
-
-    Per replica set batch size: B
-    Total number of batches: batch_count
-    Number of replica sets: H
+def _remove_padding(all_inferences, all_indices):
+  """Remove padded examples.
 
   Args:
-    all_inferences: PyTree[B * batch_count, H, ...].
-    all_indices: [B * batch_count, H].
+    all_inferences: PyTree[total_examples + padding_count, ...].
+    all_indices: [total_examples + padding_count].
 
   Returns:
     all_inferences in shape PyTree[total_examples, ...].
     all_indices in shape [total_exmamples].
   """
-  # PyTree[batch_count * B, H, ...] -> PyTree[batch_count * B * H, ...]
-  # batch_count * B * H is the total number of examples including padding
-  # examples at the end if they exist.
-  all_inferences = jax.tree_map(lambda x: x.reshape((-1,) + x.shape[2:]),
-                                all_inferences)
-
-  # [batch_count * B, H] -> [batch_count * B * H]
-  all_indices = all_indices.reshape(-1)
-
-  # Remove padding.
   non_pad_idxs = np.where(all_indices >= 0)
   all_indices = all_indices[non_pad_idxs]
   all_inferences = jax.tree_map(lambda x: x[non_pad_idxs], all_inferences)
@@ -661,10 +644,15 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     predict_fn: a callable which takes in the enumerated infer dataset and an
       optimizer and runs the prediction.
   """
-  infer_step = partitioner.partition(
-      infer_step,
-      in_axis_resources=(train_state_axes.params, PartitionSpec('data',)),
-      out_axis_resources=PartitionSpec('data',))
+
+  def infer_step_with_indices(params, batch, indices):
+    return indices, infer_step(params, batch)
+
+  partitioned_infer_step = partitioner.partition(
+      infer_step_with_indices,
+      in_axis_resources=(train_state_axes.params, PartitionSpec('data',),
+                         PartitionSpec('data',)),
+      out_axis_resources=(None, None))
 
   data_layout = partitioner.get_data_layout(batch_size)
   shard_id = data_layout.shard_id
@@ -674,6 +662,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
 
   def infer_fn(ds: tf.data.Dataset, train_state: train_state_lib.TrainState):
     ds_shapes = jax.tree_map(lambda x: jnp.array(x.shape), ds.element_spec)
+    original_ds_length = len(ds)
     multihost_utils.assert_same(
         ds_shapes, 'Dataset element shapes do not agree across hosts. '
         'This could be an indication that the dataset is nondeterministic.')
@@ -713,8 +702,11 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     batched_results, all_indices = [], []
     for index, infer_batch in sharded_ds.as_numpy_iterator():
       # Run fast inference on batch.
-      # [B, ...] -> [B, ...]
-      batch_result = infer_step(train_state.params, infer_batch)
+      # [B, ...] -> [B * shard_count, ...]
+      # partitioned_infer_step executes infer_step on sharded batched data, and
+      # returns de-sharded batched indices and result replicated on all hosts.
+      batch_indices, batch_result = partitioned_infer_step(
+          train_state.params, infer_batch, index)
       logging.info('Inference of batch %s done.', index)
       # Issue asynchronous copy request which serves as prefetching to the host.
       # The result value is synchronized with host_allgather in the loop below.
@@ -723,37 +715,26 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       except AttributeError:
         # Similar to jax.device_get, we skip transfers for non DeviceArrays.
         pass
+      assert len(batch_result) == len(batch_indices)
       batched_results.append(batch_result)
-      all_indices.append(index)
+      all_indices.append(batch_indices)
+
     logging.info('Inference of all batches done.')
-    all_inferences = []
-    for batch_result in batched_results:
-      # [B, ...] -> [H, B, ...]
-      batch_result = multihost_utils.host_allgather(
-          batch_result, num_shards, shard_id,
-          data_layout.is_first_host_in_replica_set)
-      all_inferences.append(batch_result)
+    all_inferences = batched_results
 
-    # List[H, B, ...] -> List[B, H, ...]
-    all_inferences = jax.tree_map(lambda x: np.moveaxis(x, 0, 1),
-                                  all_inferences)
-
-    # List[B, H, ...] -> [B * batch_count, H, ...]
+    # List[B * shard_count, ...] -> [B * shard_count * batch_count, ...]
     all_inferences = jax.tree_multimap(lambda *args: np.concatenate(args),
                                        *all_inferences)
-    # List[B] -> [B * batch_count]
     all_indices = np.concatenate(all_indices)
-    # Collect all batches from across hosts.
-    # [B * batch_count] -> [H, B * batch_count]
-    all_indices = multihost_utils.host_allgather(
-        all_indices, num_shards, shard_id,
-        data_layout.is_first_host_in_replica_set)
-    # [H, B * batch_count] -> [B * batch_count, H]
-    all_indices = np.transpose(all_indices)
-    all_inferences, all_indices = _deshard_and_remove_padding(
-        all_inferences, all_indices)
 
-    # Translate [B, ...] -> List[...] by flattening inferences making sure to
+    all_inferences, all_indices = _remove_padding(all_inferences, all_indices)
+
+    # Results are returned from infer_step out of order due to shard operation.
+    # Note: remove padding first, as -1 indices would mess up this operation.
+    all_inferences = all_inferences[all_indices]
+    all_indices = all_indices[all_indices]
+
+    # Translate to List[...] by flattening inferences making sure to
     # preserve structure of individual elements (inferences are not assumed to
     # be simple np.array). Finally, zip inferences with corresponding indices
     # and convert leaf np.arrays into lists.
@@ -763,6 +744,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     indices_and_outputs = list(zip(all_indices, all_inferences))
     indices_and_outputs = jax.tree_map(lambda x: np.array(x).tolist(),
                                        indices_and_outputs)
+    assert len(indices_and_outputs) == original_ds_length
     return indices_and_outputs
 
   return infer_fn
