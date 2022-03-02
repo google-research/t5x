@@ -180,6 +180,130 @@ class UtilsTest(parameterized.TestCase):
         "Variable param_states/c/v_row size 8 shape (2, 4) partition spec ('b1',) "
         "Variable step size 1 shape () partition spec None ")
 
+  @mock.patch(
+      "t5x.multihost_utils.host_allgather",
+      side_effect=lambda *x: np.expand_dims(x[0], 0))
+  def test_get_infer_fn_score(self, *unused_mock_args):
+
+    def score_batch(params, batch):
+      return params["weight"] + (batch["a"] * batch["b"]).sum(axis=-1)
+
+    batch_size = 4
+    train_state_axes = mock.Mock()
+    partitioner = mock.Mock()
+    partitioner.get_data_layout.return_value = (
+        partitioning.DataLayout(
+            batch_size=2,
+            shard_id=0,
+            num_shards=2,
+            is_first_host_in_replica_set=True))
+    partitioner.partition = lambda *x, **kw: x[0]
+
+    infer_fn = utils.get_infer_fn(
+        score_batch, batch_size, train_state_axes, partitioner=partitioner)
+
+    train_state = get_mock_train_state(params={"weight": 3})
+    ds = tf.data.Dataset.from_tensor_slices({
+        "a": np.stack([2 * np.arange(8), np.ones(8)], axis=-1),
+        "b": np.stack([2 * np.arange(8) + 1, np.ones(8)], axis=-1)
+    }).enumerate()
+
+    all_indices, all_inferences = zip(*infer_fn(ds, train_state))
+
+    self.assertSequenceEqual(all_indices, [0, 2, 4, 6])
+    self.assertSequenceEqual(all_inferences, [4, 24, 76, 160])
+
+  @mock.patch(
+      "t5x.multihost_utils.host_allgather",
+      side_effect=lambda *x: np.expand_dims(x[0], 0))
+  def test_get_infer_fn_predict(self, *unused_mock_args):
+
+    def predict_batch(params, batch):
+      return params["weight"] + (batch["a"] * batch["b"])
+
+    batch_size = 4
+    train_state = get_mock_train_state(params={"weight": 3})
+    train_state_axes = mock.Mock()
+    partitioner = mock.Mock()
+    partitioner.get_data_layout.return_value = (
+        partitioning.DataLayout(
+            batch_size=2,
+            shard_id=0,
+            num_shards=2,
+            is_first_host_in_replica_set=True))
+    partitioner.partition = lambda *x, **kw: x[0]
+
+    infer_fn = utils.get_infer_fn(
+        predict_batch, batch_size, train_state_axes, partitioner=partitioner)
+
+    ds = tf.data.Dataset.from_tensor_slices({
+        "a": np.stack([2 * np.arange(8), np.ones(8)], axis=-1),
+        "b": np.stack([2 * np.arange(8) + 1, np.ones(8)], axis=-1)
+    }).enumerate()
+
+    all_indices, all_inferences = zip(*infer_fn(ds, train_state))
+
+    self.assertSequenceEqual(all_indices, [0, 2, 4, 6])
+    np.testing.assert_equal(all_inferences,
+                            [[3, 4], [23, 4], [75, 4], [159, 4]])
+
+  @mock.patch(
+      "t5x.multihost_utils.host_allgather",
+      side_effect=lambda *x: np.expand_dims(x[0], 0))
+  def test_get_infer_fn_batch_shortfall(self, *unused_mock_args):
+
+    def score_batch(params, batch):
+      return params["weight"] + (batch["a"] * batch["b"]).sum(axis=-1)
+
+    score_batch = mock.Mock(side_effect=score_batch)
+
+    batch_size = 4
+    train_state = get_mock_train_state(params={"weight": 3})
+    train_state_axes = mock.Mock()
+
+    # 5 examples means the second shard will need an empty batch.
+    ds = tf.data.Dataset.from_tensor_slices({
+        "a": np.stack([2 * np.arange(5), np.ones(5)], axis=-1),
+        "b": np.stack([2 * np.arange(5) + 1, np.ones(5)], axis=-1)
+    }).enumerate()
+
+    # Test shard 0.
+    partitioner = mock.Mock()
+    partitioner.get_data_layout.return_value = (
+        partitioning.DataLayout(
+            batch_size=2,
+            shard_id=0,
+            num_shards=2,
+            is_first_host_in_replica_set=True))
+    partitioner.partition = lambda *x, **kw: x[0]
+
+    infer_fn = utils.get_infer_fn(
+        score_batch, batch_size, train_state_axes, partitioner=partitioner)
+    all_indices, all_inferences = zip(*infer_fn(ds, train_state))
+
+    self.assertEqual(score_batch.call_count, 2)
+    self.assertSequenceEqual(all_indices, [0, 2, 4])
+    self.assertSequenceEqual(all_inferences, [4, 24, 76])
+
+    # Test shard 1.
+    score_batch.reset_mock()
+    partitioner = mock.Mock()
+    partitioner.get_data_layout.return_value = (
+        partitioning.DataLayout(
+            batch_size=2,
+            shard_id=1,
+            num_shards=2,
+            is_first_host_in_replica_set=False))
+    partitioner.partition = lambda *x, **kw: x[0]
+
+    infer_fn = utils.get_infer_fn(
+        score_batch, batch_size, train_state_axes, partitioner=partitioner)
+    all_indices, all_inferences = zip(*infer_fn(ds, train_state))
+
+    self.assertEqual(score_batch.call_count, 2)
+    self.assertSequenceEqual(all_indices, [1, 3])
+    self.assertSequenceEqual(all_inferences, [10, 46])
+
 
   @mock.patch.object(utils, "get_dataset")
   def test_get_training_eval_datasets(self, mock_get_dataset):
