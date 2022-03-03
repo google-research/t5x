@@ -715,7 +715,11 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       except AttributeError:
         # Similar to jax.device_get, we skip transfers for non DeviceArrays.
         pass
-      assert len(batch_result) == len(batch_indices)
+
+      def _assert_equal_lengths(batch_arr, batch_idx=batch_indices):
+        assert len(batch_arr) == len(batch_idx)
+
+      jax.tree_map(_assert_equal_lengths, batch_result)
       batched_results.append(batch_result)
       all_indices.append(batch_indices)
 
@@ -731,7 +735,8 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
 
     # Results are returned from infer_step out of order due to shard operation.
     # Note: remove padding first, as -1 indices would mess up this operation.
-    all_inferences = all_inferences[all_indices]
+    # Note: all_inferences may be a PyTree, not just an array.
+    all_inferences = jax.tree_map(lambda x: x[all_indices], all_inferences)
     all_indices = all_indices[all_indices]
 
     # Translate to List[...] by flattening inferences making sure to
