@@ -175,6 +175,7 @@ class _AdafactorHyperParams:
   weight_decay_rate_lr_exponent: Optional[float] = None
   global_norm_clip_threshold: Optional[float] = None
   max_parameter_scale: Optional[float] = None
+  skip_nan_updates: Optional[bool] = False
 
 
 @struct.dataclass
@@ -208,7 +209,8 @@ class Adafactor(OptimizerDef):
                logical_factor_rules: Optional[Mapping[str, FactorDim]] = None,
                weight_decay_rate_lr_exponent: Optional[float] = None,
                global_norm_clip_threshold: Optional[float] = None,
-               max_parameter_scale: Optional[float] = None):
+               max_parameter_scale: Optional[float] = None,
+               skip_nan_updates: Optional[bool] = False):
     """Constructor for the Adafactor optimizer.
 
 
@@ -246,6 +248,9 @@ class Adafactor(OptimizerDef):
         before Adafactor stats are applied.
       max_parameter_scale: If set, clips the parameter scale to a maximum value,
         which helps prevent parameters from growing without bound.
+      skip_nan_updates: If set, any parameter that would have been updated by a
+        NaN value after a applying gradients will be kept with the earlier
+        value it had.
     """
     if not factored and factor_map is not None:
       raise ValueError('Adafactor factored is False but factorization rules '
@@ -265,7 +270,7 @@ class Adafactor(OptimizerDef):
         step_offset, clipping_threshold, weight_decay_rate,
         min_dim_size_to_factor, epsilon1, epsilon2, factor_map,
         logical_factor_rules, weight_decay_rate_lr_exponent,
-        global_norm_clip_threshold, max_parameter_scale)
+        global_norm_clip_threshold, max_parameter_scale, skip_nan_updates)
     self.dtype_momentum = jax.dtypes.canonicalize_dtype(dtype_momentum)
     super().__init__(hyper_params)
 
@@ -490,7 +495,17 @@ class Adafactor(OptimizerDef):
       new_param = (1.0 - weight_decay_rate) * param - subtrahend
     else:
       new_param = param - subtrahend
+
+    if hyper_params.skip_nan_updates:
+      updates['v_row'] = jnp.where(
+          jnp.isnan(updates['v_row']), state.v_row, updates['v_row'])
+      updates['v_col'] = jnp.where(
+          jnp.isnan(updates['v_col']), state.v_col, updates['v_col'])
+      updates['v'] = jnp.where(jnp.isnan(updates['v']), state.v, updates['v'])
+      updates['m'] = jnp.where(jnp.isnan(updates['m']), state.m, updates['m'])
+      new_param = jnp.where(jnp.isnan(new_param), param, new_param)
     new_state = _AdafactorParamState(**updates)
+
     return new_param.astype(param.dtype), new_state
 
   def apply_gradient(self, hyper_params, params, state, grads):
