@@ -400,10 +400,8 @@ class LocalChunker:
     Returns:
       LocalChunkInfo containing the logical slices of the array found on this
       host's local devices, as well as the replica index for this chunk among
-      chunks with the same slice.  The latter is used to determine which
-      host should write this chunk during checkpointing and in calls to
-      host_allgather to ensure that only one copy of a particular result is
-      gathered.
+      chunks with the same slice. The latter is used to determine which
+      host should write this chunk during checkpointing.
     """
     local_slice = [slice(None) for dim in global_shape]
     sharded_mesh_axes = set()
@@ -534,7 +532,7 @@ CompiledPartitionedCallable = Callable[..., Any]
 
 
 class BasePartitioner(metaclass=abc.ABCMeta):
-  """Interface for partitioning computations."""
+  """Interface for partitioning computations across hardware devices."""
 
   def __init__(self,
                num_partitions: Optional[int] = None,
@@ -666,7 +664,34 @@ class BasePartitioner(metaclass=abc.ABCMeta):
       static_argnums: Union[int, Sequence[int]] = (),
       donate_argnums: Union[int, Sequence[int]] = ()
   ) -> PartitionedCallable:
-    """Partitions the computation using partitioner-specific implementation."""
+    """Partitions the computation using partitioner-specific implementation.
+
+    Args:
+      fn: the function to partition.
+      in_axis_resources: Pytree of structure matching that of arguments to `fn`,
+        with all actual arguments replaced by resource assignment
+        specifications. It is also valid to specify a pytree prefix (e.g. one
+        value in place of a whole subtree), in which case the leaves get
+        broadcast to all values in that subtree.
+        The valid resource assignment specifications are:
+          `None`: in which case the value will be replicated on all devices
+          `PartitionSpec`: a tuple of length at most equal to the rank of the
+            partitioned value. Each element can be a `None`, a mesh axis or a
+            tuple of mesh axes, and specifies the set of resources assigned to
+            partition the value's dimension matching its position in the spec.
+      out_axis_resources: Like `in_axis_resources`, but specifies resource
+        assignment for function outputs.
+      static_argnums: an optional int or collection of ints that specify which
+        positional arguments to treat as static (compile-time constant) in the
+        partitioned function.
+      donate_argnums: an optional int or collection of ints that specify which
+        argument buffers are "donated" to the computation. It is safe to donate
+        argument buffers if you no longer need them once the computation has
+        finished.
+
+    Returns:
+      A partitioned version of the input function.
+    """
     raise NotImplementedError
 
   @abc.abstractmethod
@@ -798,6 +823,7 @@ class PjitPartitioner(BasePjitPartitioner):
       static_argnums: Union[int, Sequence[int]] = (),
       donate_argnums: Union[int, Sequence[int]] = ()
   ) -> PjittedFnWithContext:
+    """Partitions the function using jax.pjit."""
     pjitted = pjit(
         fn,
         in_axis_resources=in_axis_resources,
