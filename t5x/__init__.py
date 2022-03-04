@@ -20,7 +20,6 @@ import t5x.decoding
 import t5x.gin_utils
 import t5x.losses
 import t5x.models
-import t5x.multihost_utils
 import t5x.partitioning
 import t5x.state_utils
 import t5x.train_state

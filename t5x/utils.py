@@ -709,7 +709,6 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
           train_state.params, infer_batch, index)
       logging.info('Inference of batch %s done.', index)
       # Issue asynchronous copy request which serves as prefetching to the host.
-      # The result value is synchronized with host_allgather in the loop below.
       try:
         jax.tree_map(lambda x: x.copy_to_host_async(), batch_result)
       except AttributeError:
