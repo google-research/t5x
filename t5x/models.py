@@ -193,7 +193,7 @@ class BaseModel(abc.ABC):
 
 
 class BaseTransformerModel(BaseModel):
-  """Abstract base class for Transformer models using.
+  """Abstract base class for Transformer models.
 
   Subclasses must implement `predict_batch_with_aux`, `score_batch`,
   `get_initial_variables` from `BaseModel` as well as `_compute_logits`.
