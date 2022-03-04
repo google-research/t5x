@@ -178,6 +178,81 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     self.assertFalse(called_with[1]['decode'])
     self.assertFalse(called_with[1]['enable_dropout'])
 
+  @parameterized.named_parameters(
+      dict(testcase_name='no_force_decoding', prompt_with_targets=False),
+      dict(testcase_name='force_decoding', prompt_with_targets=True),
+  )
+  def test_prompt_with_targets(self, prompt_with_targets):
+    batch_size, encoder_len, max_decode_len, emb_dim = 2, 3, 4, 5
+    batch = {
+        'encoder_input_tokens':
+            np.zeros((batch_size, encoder_len), dtype=np.int32),
+        'decoder_input_tokens':
+            np.full([batch_size, max_decode_len], 2, dtype=np.int32)
+    }
+
+    # These dummy logits represent the probability distribution where all the
+    # probability mass is in one item (i.e., degenerate distribution). For
+    # batch element 0, it is vocabulary index 3.
+    # We test `_predict_step` to avoid having to define a task and its
+    # vocabulary.
+    dummy_logits = jnp.expand_dims(
+        jnp.array([[-1e7, -1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, -1e7, 0]]),
+        axis=1)
+
+    mock_decode_fn = mock.Mock()
+    mock_decode_fn.return_value = (np.full([batch_size, max_decode_len, 1],
+                                           3,
+                                           dtype=np.int32),
+                                   np.full([batch_size, 1],
+                                           1.0,
+                                           dtype=np.float32))
+
+    class MockModule:
+
+      def __init__(self):
+        self.dtype = jnp.float32
+
+      def apply(self, *args, method=None, **kwargs):
+        del args, kwargs
+        if method is None:  # use for module.`__call__`
+          return (dummy_logits, {'cache': {}})
+        else:
+          return method()
+
+      def encode(self):
+        return jnp.zeros((batch_size, encoder_len, emb_dim))
+
+      def decode(self):
+        return (dummy_logits, {'cache': {}})
+
+    def mock_init(self):
+      self.module = MockModule()
+      self.module.scan_layers = False
+      self._input_vocabulary = mock.Mock(eos_id=1)
+      self._output_vocabulary = mock.Mock(eos_id=1)
+      self._decode_fn = mock_decode_fn
+
+    with mock.patch.object(
+        models.EncoderDecoderModel, '__init__', new=mock_init):
+      model = models.EncoderDecoderModel()
+
+    model.predict_batch_with_aux({},
+                                 batch,
+                                 prompt_with_targets=prompt_with_targets)
+
+    if prompt_with_targets:
+      expected_inputs = batch['decoder_input_tokens']
+    else:
+      expected_inputs = np.zeros([batch_size, max_decode_len], dtype=np.int32)
+
+    assert mock_decode_fn.call_count == 1
+    # Look at the kwargs call list for inputs, assert_called_with doesn't
+    # work well with np.array comparison.
+    np.testing.assert_array_equal(mock_decode_fn.mock_calls[0][2]['inputs'],
+                                  expected_inputs)
+
+
   def test_score_batch(self):
     encoder_input_tokens = jnp.ones((2, 3))
     # For this test, decoder input and target tokens are dummy values.
