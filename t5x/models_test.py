@@ -29,6 +29,7 @@ import t5.data.tasks  # pylint:disable=unused-import
 from t5x import decoding
 from t5x import models
 from t5x import partitioning
+from t5x import test_utils
 from t5x import trainer as trainer_lib
 from t5x import utils
 import tensorflow as tf
@@ -252,6 +253,115 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     np.testing.assert_array_equal(mock_decode_fn.mock_calls[0][2]['inputs'],
                                   expected_inputs)
 
+  def test_predict_batch_loop_and_caches_are_equal(self):
+    vocab_size = 50
+    lengths = np.array([[2], [3]])
+    batch_size, beam_size, encoder_len, max_decode_len = 2, 2, 3, 7
+    batch = {
+        'encoder_input_tokens':
+            np.zeros((batch_size, encoder_len), dtype=np.int32),
+        'decoder_target_tokens':
+            np.zeros((batch_size, encoder_len), dtype=np.int32),
+        'decoder_input_tokens':
+            np.concatenate(
+                [
+                    np.expand_dims(
+                        np.concatenate(
+                            [[0],
+                             np.arange(9, 9 + lengths[0][0], dtype=np.int32),
+                             np.zeros((max_decode_len - lengths[0][0] - 1),
+                                      dtype=np.int32)]),
+                        axis=0),  # First element
+                    np.expand_dims(
+                        np.concatenate(
+                            [[0],
+                             np.arange(3, 3 + lengths[1][0], dtype=np.int32),
+                             np.zeros((max_decode_len - lengths[1][0] - 1),
+                                      dtype=np.int32)]),
+                        axis=0)  # Second element
+                ],
+                axis=0),
+    }
+
+    model = test_utils.get_t5_test_model(vocab_size=50)
+    module = model.module
+    params = module.init(
+        jax.random.PRNGKey(0),
+        jnp.ones((batch_size, encoder_len)),
+        jnp.ones((batch_size, max_decode_len)),
+        jnp.ones((batch_size, max_decode_len)),
+        enable_dropout=False)['params']
+
+    def mock_init(self):
+      self.module = module
+      # Set the EOS token to be larger then the vocabulary size. This forces the
+      # model to decode all the way to `max_decode_length`, allowing us to test
+      # behavior when one element reaches the end before the others.
+      self._output_vocabulary = mock.Mock(eos_id=vocab_size + 12)
+      self._decode_fn = decoding.beam_search
+
+    with mock.patch.object(
+        models.EncoderDecoderModel, '__init__', new=mock_init):
+      model = models.EncoderDecoderModel()
+
+    with mock.patch.object(
+        model, '_compute_logits_from_slice',
+        autospec=True) as tokens_to_logits_mock:
+      # Make the side effect of the mock, call the method on the class, with the
+      # instance partialed in as `self`. This lets us call the actual code,
+      # while recording the inputs, without an infinite loop you would get
+      # calling `instance.method`
+      tokens_to_logits_mock.side_effect = functools.partial(
+          models.EncoderDecoderModel._compute_logits_from_slice, model)
+      # Disable jit, so that the `lax.while_loop` isn't traced, as the
+      # collection of tracers in the mock call_args would generally trigger a
+      # tracer leak error.
+      with jax.disable_jit():
+        _ = model.predict_batch_with_aux(
+            params, batch, prompt_with_targets=True, num_decodes=2)
+
+    # Collect all the input tokens to our tokens_to_logits function
+    all_inputs = []
+    all_cache_keys = []  # Collect all the cache keys
+    all_cache_values = []  # Collect all the cache values
+    # Currently force decoding generates logits at every step. We should have
+    # `max_decode_length` calls to our tokens -> logits func.
+    self.assertLen(tokens_to_logits_mock.call_args_list, max_decode_len)
+    for tokens_call in tokens_to_logits_mock.call_args_list:
+      # Inputs: [B * Be, 1]
+      inputs, cache = tokens_call[0]
+      cache = flax.core.unfreeze(cache)
+      # Cache: [B * Be, 1] * #Layers
+      cache_keys = [
+          v for k, v in traverse_util.flatten_dict(cache).items()
+          if k[-1] == 'cached_key'
+      ]
+      cache_values = [
+          v for k, v in traverse_util.flatten_dict(cache).items()
+          if k[-1] == 'cached_value'
+      ]
+      all_inputs.append(inputs)
+      all_cache_keys.append(cache_keys)
+      all_cache_values.append(cache_values)
+    # Convert inputs to a single block [B, DL, Be]
+    all_inputs = np.concatenate(all_inputs, axis=1)
+    # Convert caches into a single block per layer [B * Be, DL] * L
+    all_cache_keys = [np.stack(c, axis=1) for c in zip(*all_cache_keys)]
+    all_cache_values = [np.stack(c, axis=1) for c in zip(*all_cache_values)]
+
+    # Make sure that for each batch, the cache for each beam is identical when
+    # prompt is being forced.
+    for b in range(batch_size):
+      for i, input_token in enumerate(all_inputs[b * beam_size]):
+        if i < lengths[b]:
+          self.assertEqual(input_token, batch['decoder_input_tokens'][b][i])
+          # For all layers.
+          for cache_keys in all_cache_keys:
+            np.testing.assert_array_equal(cache_keys[b * beam_size][i],
+                                          cache_keys[b * beam_size + 1][i])
+          for cache_values in all_cache_values:
+            np.testing.assert_array_equal(cache_values[b * beam_size][i],
+                                          cache_values[b * beam_size + 1][i])
 
   def test_score_batch(self):
     encoder_input_tokens = jnp.ones((2, 3))
@@ -294,6 +404,48 @@ class EncoderDecoderModelTest(parameterized.TestCase):
                                               rngs=None,
                                               mutable=False)
     np.testing.assert_allclose(res, [-3.222973, -1.815315], rtol=1e-4)
+
+  def test_train_transformer_wmt(self):
+    # Dummy input data
+    input_shape = (16, 8)
+    encoder_input_tokens = np.ones(shape=input_shape, dtype=np.float32)
+    decoder_input_tokens = 5 * np.ones(shape=input_shape, dtype=np.float32)
+    decoder_target_tokens = 5 * np.ones(input_shape, dtype=np.float32)
+    # input_data = {'inputs': inputs, 'targets': targets}
+    input_data = {
+        'encoder_input_tokens': encoder_input_tokens,
+        'decoder_input_tokens': decoder_input_tokens,
+        'decoder_target_tokens': decoder_target_tokens
+    }
+
+    partitioner = partitioning.PjitPartitioner(num_partitions=1)
+
+    model = test_utils.get_t5_test_model()
+
+    ds_iter = tf.data.Dataset.from_tensors(input_data).as_numpy_iterator()
+    input_shapes = {k: input_shape for k in input_data}
+
+    train_state_initializer = utils.TrainStateInitializer(
+        optimizer_def=model.optimizer_def,
+        init_fn=model.get_initial_variables,
+        input_shapes=input_shapes,
+        partitioner=partitioner)
+    train_state_axes = train_state_initializer.train_state_axes
+    train_state = train_state_initializer.from_scratch(jax.random.PRNGKey(0))
+
+    trainer = trainer_lib.Trainer(
+        model,
+        train_state=train_state,
+        partitioner=partitioner,
+        eval_names=[],
+        summary_dir=None,
+        train_state_axes=train_state_axes,
+        rng=jax.random.PRNGKey(0),
+        learning_rate_fn=lambda x: 0.001,
+        num_microbatches=1)
+
+    trainer.train(ds_iter, 1)
+    logging.info('optimizer after first step %s', train_state.params)
 
 
   @parameterized.parameters(
