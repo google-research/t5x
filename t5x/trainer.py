@@ -801,7 +801,18 @@ def apply_grads(
 def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
               batch: jnp.ndarray) -> MetricMapType:
   """Default evaluation step."""
-  _, (_, metrics) = model.eval_fn(train_state.params, batch)
+  _, (aux) = model.eval_fn(train_state.params, batch)
+  if isinstance(aux, Tuple):
+    warning_message = (
+        "The `loss_fn` returns a `weight_sum` value; this "
+        "behavior will be unsupported in the future. "
+        "Please update your loss_fn to eliminate the "
+        "`weight_sum` return value. "
+    )
+    warnings.warn(warning_message, DeprecationWarning)
+    _, metrics = aux
+  else:
+    metrics = aux
   return metrics
 
 
