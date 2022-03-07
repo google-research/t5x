@@ -434,11 +434,14 @@ def infer(
       task_ds = chunk_ds.map(lambda p, m: p, num_parallel_calls=AUTOTUNE)
       model_ds = chunk_ds.map(lambda p, m: m, num_parallel_calls=AUTOTUNE)
 
+      # Get a chunk-specific RNG key.
+      chunk_rng = jax.random.fold_in(jax.random.PRNGKey(0), chunk)
+
       logging.info('Running inference on %d batches.', checkpoint_period)
       # Sort by and strip index.
       inferences = [
-          x[1]
-          for x in sorted(infer_fn(model_ds.enumerate()), key=lambda x: x[0])
+          x[1] for x in sorted(
+              infer_fn(model_ds.enumerate(), rng=chunk_rng), key=lambda x: x[0])
       ]
 
       if jax.process_index() == 0:

@@ -100,6 +100,9 @@ class DecodeFnCallable(typing_extensions.Protocol):
 class BaseModel(abc.ABC):
   """Abstract base class for models.
 
+  Wraps a flax module to provide a basic interface for computing loss,
+  evaluation metrics, prediction, and scoring.
+
   Subclasses must implement the abstract methods. Any additional arguments added
   to these methods must have defaults or be bound at run time to fit the
   interface expected by the standard training, inference, and evaluation
@@ -158,19 +161,42 @@ class BaseModel(abc.ABC):
         dropout_rng=None,
     )
 
-  def predict_batch(self, params: PyTreeDef,
-                    batch: Mapping[str, jnp.ndarray]) -> jnp.ndarray:
-    """Thin wrapper around `self.predict_batch_with_aux`."""
-    # The first element of the return value is the predicted sequences.
-    return self.predict_batch_with_aux(params, batch)[0]
+  def predict_batch(self,
+                    params: PyTreeDef,
+                    batch: Mapping[str, jnp.ndarray],
+                    rng: Optional[jnp.ndarray] = None) -> jnp.ndarray:
+    """Predicts a batch of outputs from the model.
+
+    Args:
+      params: model parameters.
+      batch: a batch of inputs.
+      rng: an optional RNG to use during prediction (e.g., for decoding).
+
+    Returns:
+      The model predictions.
+    """
+    # For backward compatibility.
+    maybe_rng = {'rng': rng} if rng is not None else {}
+    return self.predict_batch_with_aux(params, batch, **maybe_rng)[0]
 
   @abc.abstractmethod
   def predict_batch_with_aux(
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
+      rng: Optional[jnp.ndarray] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
-    """Predicts batch with auxiliary outputs."""
+    """Predict a batch from the modelwith auxiliary outputs.
+
+    Args:
+      params: model parameters.
+      batch: a batch of inputs.
+      rng: an optional RNG to use during prediction (e.g., for decoding).
+
+    Returns:
+      predictions: the model predictions
+      aux: auxiliary data
+    """
     pass
 
   @abc.abstractmethod
@@ -425,6 +451,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
+      rng: Optional[jnp.ndarray] = None,
       decoder_params: Optional[MutableMapping[str, Any]] = None,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
@@ -468,6 +495,8 @@ class EncoderDecoderModel(BaseTransformerModel):
     Args:
       params: model parameters.
       batch: a batch of inputs.
+      rng: an optional RNG to use during prediction, which is passed as
+        'decode_rng' to the decoding function.
       decoder_params: additional (model-independent) parameters for the decoder.
       return_all_decodes: whether to return the entire beam or just the top-1.
       num_decodes: the number of beams to use in beam search.
@@ -520,6 +549,13 @@ class EncoderDecoderModel(BaseTransformerModel):
 
     if decoder_params is None:
       decoder_params = {}
+    if rng is not None:
+      if decoder_params.get('decode_rng') is not None:
+        raise ValueError(
+            f'Got RNG both from the `rng` argument ({rng}) and '
+            f"`decoder_params['decode_rng']` ({decoder_params['decode_rng']}). "
+            'Please specify one or the other.')
+      decoder_params['decode_rng'] = rng
 
     # `decoder_prompt_inputs` is initialized from the batch's
     # `decoder_input_tokens`. The EOS is stripped to avoid decoding to stop
@@ -748,6 +784,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
+      rng: Optional[jnp.ndarray] = None,
       *,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
@@ -824,6 +861,8 @@ class DecoderOnlyModel(BaseTransformerModel):
       params: model parameters.
       batch: batch element with the model features specified in
         seqio.DecoderFeatureConverter.
+      rng: an optional RNG to use during prediction, which is passed as
+        'decode_rng' to the decoding function.
       return_all_decodes: if True, will return all batch_size * num_decodes
         samples from the model as an array of shape [batch_size, num_decodes,
         sequence_length]. Otherwise returns only the most likely samples as an
@@ -911,6 +950,13 @@ class DecoderOnlyModel(BaseTransformerModel):
 
     if decoder_params is None:
       decoder_params = {}
+    if rng is not None:
+      if decoder_params.get('decode_rng') is not None:
+        raise ValueError(
+            f'Got RNG both from the `rng` argument ({rng}) and '
+            f"`decoder_params['decode_rng']` ({decoder_params['decode_rng']}). "
+            'Please specify one or the other.')
+      decoder_params['decode_rng'] = rng
 
     # Using the above-defined single-step decoder function, run temperature
     # sampling with the prefix.

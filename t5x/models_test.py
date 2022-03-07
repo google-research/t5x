@@ -503,6 +503,62 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     expected = [[2] * max_decode_len, [3] * max_decode_len]
     np.testing.assert_array_equal(actual, expected)
 
+  def test_predict_batch_rng(self):
+    batch = {
+        'encoder_input_tokens': np.zeros((2, 1), dtype=np.int32),
+        'decoder_input_tokens': np.zeros((2, 2), dtype=np.int32)
+    }
+
+    decode_fn_mock = mock.Mock(
+        return_value=(np.zeros((2, 2, 3)), np.zeros((2, 2))))
+
+    def mock_init(self):
+      self.module = mock.Mock(
+          apply=mock.Mock(side_effect=lambda *_, **kwargs: (  # pylint:disable=g-long-lambda,g-long-ternary
+              np.zeros((2, 2)), {
+                  'cache': None
+              }) if 'mutable' in kwargs else np.zeros((2, 2))))
+      self._output_vocabulary = mock.Mock(eos_id=1)
+      self._decode_fn = decode_fn_mock
+
+    with mock.patch.object(
+        models.EncoderDecoderModel, '__init__', new=mock_init):
+      model = models.EncoderDecoderModel()
+
+    # No RNG
+    model.predict_batch({}, batch)
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertNotIn('decode_rng', decode_fn_kwargs)
+
+    # No RNG (w/ aux)
+    model.predict_batch_with_aux({}, batch)
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertNotIn('decode_rng', decode_fn_kwargs)
+
+    # decoder_params RNG
+    model.predict_batch_with_aux({}, batch, decoder_params={'decode_rng': 3})
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertEqual(decode_fn_kwargs['decode_rng'], 3)
+
+    # rng RNG
+    model.predict_batch({}, batch, rng=4)
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertEqual(decode_fn_kwargs['decode_rng'], 4)
+
+    # rng RNG (w/ aux)
+    model.predict_batch_with_aux({}, batch, rng=4)
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertEqual(decode_fn_kwargs['decode_rng'], 4)
+
+    # Both
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, 'Got RNG both from the `rng` argument (4) and '
+        "`decoder_params['decode_rng']` (3). Please specify one or the other."):
+      model.predict_batch_with_aux({},
+                                   batch,
+                                   rng=4,
+                                   decoder_params={'decode_rng': 3})
+
   @parameterized.named_parameters(
       dict(
           testcase_name='int32',
@@ -678,6 +734,62 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     # [7, 3, 3, 3, 3, 3, 3] -> [3, 3, 3, 3, 3, 3, 0]
 
     np.testing.assert_array_equal(actual, expected)
+
+  def test_predict_batch_rng(self):
+    batch = {
+        'decoder_input_tokens': np.zeros((2, 2), dtype=np.int32),
+        'decoder_causal_attention': np.zeros((2, 2), dtype=np.int32)
+    }
+
+    decode_fn_mock = mock.Mock(
+        return_value=(np.zeros((2, 2, 3)), np.zeros((2, 2))))
+
+    def mock_init(self):
+      self.module = mock.Mock(
+          apply=mock.Mock(side_effect=lambda *_, **kwargs: (  # pylint:disable=g-long-lambda,g-long-ternary
+              np.zeros((2, 2)), {
+                  'cache': None
+              }) if 'mutable' in kwargs else np.zeros((2, 2))))
+      self._output_vocabulary = mock.Mock(eos_id=1)
+      self._decode_fn = decode_fn_mock
+      self._inputs_bidirectional_attention = False
+
+    with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
+      model = models.DecoderOnlyModel()
+
+    # No RNG
+    model.predict_batch({}, batch)
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertNotIn('decode_rng', decode_fn_kwargs)
+
+    # No RNG (w/ aux)
+    model.predict_batch_with_aux({}, batch)
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertNotIn('decode_rng', decode_fn_kwargs)
+
+    # decoder_params RNG
+    model.predict_batch_with_aux({}, batch, decoder_params={'decode_rng': 3})
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertEqual(decode_fn_kwargs['decode_rng'], 3)
+
+    # rng RNG
+    model.predict_batch({}, batch, rng=4)
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertEqual(decode_fn_kwargs['decode_rng'], 4)
+
+    # rng RNG (w/ aux)
+    model.predict_batch_with_aux({}, batch, rng=4)
+    _, decode_fn_kwargs = decode_fn_mock.call_args
+    self.assertEqual(decode_fn_kwargs['decode_rng'], 4)
+
+    # Both
+    with self.assertRaisesWithLiteralMatch(
+        ValueError, 'Got RNG both from the `rng` argument (4) and '
+        "`decoder_params['decode_rng']` (3). Please specify one or the other."):
+      model.predict_batch_with_aux({},
+                                   batch,
+                                   rng=4,
+                                   decoder_params={'decode_rng': 3})
 
   def test_predict_batch_num_decodes_temperature_sample(self):
     batch = {
