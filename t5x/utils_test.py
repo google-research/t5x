@@ -17,19 +17,21 @@
 import dataclasses
 import os
 import re
+from typing import Optional
+
 
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
-
 import flax.core
 from flax.linen import partitioning as flax_partitioning
 import jax
 import numpy as np
-
 import seqio
+from t5x import checkpoints
 from t5x import partitioning
 from t5x import test_utils
+from t5x import train_state as train_state_lib
 from t5x import utils
 import tensorflow as tf
 
@@ -307,6 +309,157 @@ class UtilsTest(parameterized.TestCase):
                 }
             }
         }))
+
+
+@dataclasses.dataclass
+class MockTrainState:
+  path: Optional[str] = None
+  from_scratch: Optional[bool] = None
+
+
+class MockCheckpointer(checkpoints.Checkpointer):
+
+  def __init__(self, *args, **kwargs):
+    pass
+
+  # restore should return TrainState, but we force it to return Mock with path
+  # for simplicity.
+  def restore(self, path, *args, **kwargs):
+    return MockTrainState(path=path, from_scratch=False)
+
+
+class TrainStateInitializerTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+
+    def _partition(train_state, in_axis_resources, out_axis_resources):
+      del train_state, in_axis_resources, out_axis_resources
+      partitioned_fn = lambda _: MockTrainState(from_scratch=True)
+      return partitioned_fn
+
+    partitioner = mock.Mock(get_mesh_axes=lambda _: None, partition=_partition)
+    mock_inference_state_create = self.enter_context(
+        mock.patch.object(train_state_lib.InferenceState, "create"))
+    mock_inference_state_create.return_value = None
+
+    shapes = {
+        "ones": (1, 1),
+        "twos": (2, 2),
+        "threes": (3, 3),
+    }
+    types = {
+        "ones": int,
+        "twos": float,
+        "threes": int,
+    }
+
+    def _init_fn(rng, input_shapes, input_types):
+      del rng
+      return {
+          "ones":
+              np.ones(input_shapes["ones"], dtype=input_types["ones"]),
+          "twos":
+              np.ones(input_shapes["twos"], dtype=input_types["twos"]) * 2,
+          "threes":
+              np.ones(input_shapes["threes"], dtype=input_types["threes"]) * 3
+      }
+
+    init_fn = mock.Mock()
+    init_fn.__call__ = _init_fn
+    init_fn.__self__ = None
+
+    self.train_state_init = utils.TrainStateInitializer(None, init_fn, shapes,
+                                                        partitioner, types)
+
+    self.ckptdir = self.create_tempdir(name="primary_checkpoints")
+    steps = (2, 3)
+    self.paths = []
+    for s in steps:
+      step_dir = self.ckptdir.mkdir(f"checkpoint_{s}")
+      step_dir.create_file("checkpoint")
+      self.paths += [step_dir.full_path]
+
+  def test_from_checkpoints_specific(self):
+    # multiple paths
+    ckpt_cfg = utils.RestoreCheckpointConfig(
+        path=self.paths, mode="specific", checkpointer_cls=MockCheckpointer)
+    restored = self.train_state_init.from_checkpoints([ckpt_cfg])
+    self.assertSequenceEqual(self.paths, [state.path for state in restored])
+    with self.assertRaisesRegex(ValueError, r"^Expected at most 1 checkpoint"):
+      self.train_state_init.from_checkpoint([ckpt_cfg])
+
+  def test_from_checkpoints_latest(self):
+    # only restore single latest
+    ckpt_cfg = utils.RestoreCheckpointConfig(
+        path=self.ckptdir.full_path,
+        mode="latest",
+        checkpointer_cls=MockCheckpointer)
+    restored = list(self.train_state_init.from_checkpoints([ckpt_cfg]))
+    assert len(restored) == 1
+    self.assertEqual(self.paths[-1], restored[0].path)
+    restored = self.train_state_init.from_checkpoint([ckpt_cfg])
+    self.assertEqual(self.paths[-1], restored.path)
+
+  def test_from_checkpoints_multiple_configs(self):
+    # uses first checkpoint with files present.
+    ckpt_cfg = utils.RestoreCheckpointConfig(
+        path=self.ckptdir.full_path,
+        mode="latest",
+        checkpointer_cls=MockCheckpointer)
+    secondary_ckptdir = self.create_tempdir(name="secondary_checkpoints")
+    for s in (4, 5):
+      step_dir = secondary_ckptdir.mkdir(f"checkpoint_{s}")
+      step_dir.create_file("checkpoint")
+    secondary_ckpt_cfg = utils.RestoreCheckpointConfig(
+        path=secondary_ckptdir.full_path,
+        mode="latest",
+        checkpointer_cls=MockCheckpointer)
+    restored = self.train_state_init.from_checkpoint(
+        [ckpt_cfg, secondary_ckpt_cfg])
+    self.assertEqual(self.paths[-1], restored.path)
+
+  def test_from_checkpoints_multiple_configs_one_empty(self):
+    # skips empty_checkpoints directory with no checkpoints present.
+    ckpt_cfg = utils.RestoreCheckpointConfig(
+        path=self.ckptdir.full_path,
+        mode="latest",
+        checkpointer_cls=MockCheckpointer)
+    empty_ckptdir = self.create_tempdir(name="empty_checkpoints")
+    empty_ckpt_cfg = utils.RestoreCheckpointConfig(
+        path=empty_ckptdir.full_path,
+        mode="latest",
+        checkpointer_cls=MockCheckpointer)
+    restored = self.train_state_init.from_checkpoint([empty_ckpt_cfg, ckpt_cfg])
+    self.assertEqual(self.paths[-1], restored.path)
+
+  def test_from_scratch(self):
+    self.assertTrue(
+        self.train_state_init.from_scratch(jax.random.PRNGKey(13)).from_scratch)
+
+  def test_from_checkpoint_or_scratch(self):
+    ckpt_cfg = utils.RestoreCheckpointConfig(
+        path=self.ckptdir.full_path,
+        mode="latest",
+        checkpointer_cls=MockCheckpointer)
+    empty_ckptdir = self.create_tempdir(name="empty_checkpoints")
+    empty_ckpt_cfg = utils.RestoreCheckpointConfig(
+        path=empty_ckptdir.full_path,
+        mode="latest",
+        checkpointer_cls=MockCheckpointer)
+
+    init_rng = jax.random.PRNGKey(13)
+
+    # ckpt_cfg has checkpoints, restore from there
+    restored = self.train_state_init.from_checkpoint_or_scratch(
+        [empty_ckpt_cfg, ckpt_cfg], init_rng=init_rng)
+    self.assertEqual(self.paths[-1], restored.path)
+    self.assertFalse(restored.from_scratch)
+
+    # no checkpoints available, init from scratch
+    initialized = self.train_state_init.from_checkpoint_or_scratch(
+        [empty_ckpt_cfg], init_rng=init_rng)
+    self.assertTrue(initialized.from_scratch)
 
 
 if __name__ == "__main__":
