@@ -295,11 +295,12 @@ two ways: gin files and override flags.
     specify the gin file(s) to use in your script via the `--gin_file` flag. If
     you want to load multiple gin files, you can set the flag multiple times and
     the files will be loaded in order, with the second potentially overriding
-    the first when there are conflicts. Rather than passing the full path for
-    each file, you may also supply a comma-separate list of search prefixes via
-    `--gin_search_paths` and then only specify the relative to the `--gin_file`
-    flags. If multiple search paths are provided, the first to yield a valid
-    path for each gin file will be used.
+    the first when there are conflicts. It is possible to supply a
+    comma-separate list of search prefixes via `--gin_search_paths` and then
+    only specify the relative path to the `--gin_file` flags. However, we
+    strongly recommend against using `--gin_search_paths`. Using absolute paths
+    via the `--gin_file` flags will reduce sources of ambiguity and improve
+    the consistency of your scripts.
 
 1.  **Override Flags** Gin flags allow for more fine-grained overrides of any
     configurable aspect of your run. These flags follow the single-line binding
