@@ -70,7 +70,7 @@ class DecodeFnCallable(typing_extensions.Protocol):
 
   def __call__(self, *, inputs: jnp.ndarray, cache: Mapping[str, jnp.ndarray],
                tokens_to_logits: TokensIdsToLogitsCallable, eos_id: int,
-               num_decodes: int, decode_rng: Optional[jnp.ndarray],
+               num_decodes: int, decode_rng: Optional[jax.random.KeyArray],
                cache_offset: int, **kwargs) -> Tuple[jnp.ndarray, jnp.ndarray]:
     """Decoding function interface.
 
@@ -121,7 +121,7 @@ class BaseModel(abc.ABC):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jnp.ndarray],
+      dropout_rng: Optional[jax.random.KeyArray],
   ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
     """Computes loss and metrics.
 
@@ -164,7 +164,7 @@ class BaseModel(abc.ABC):
   def predict_batch(self,
                     params: PyTreeDef,
                     batch: Mapping[str, jnp.ndarray],
-                    rng: Optional[jnp.ndarray] = None) -> jnp.ndarray:
+                    rng: Optional[jax.random.KeyArray] = None) -> jnp.ndarray:
     """Predicts a batch of outputs from the model.
 
     Args:
@@ -184,14 +184,14 @@ class BaseModel(abc.ABC):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-      rng: Optional[jnp.ndarray] = None,
+      rng: Optional[jax.random.KeyArray] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict a batch from the modelwith auxiliary outputs.
 
     Args:
       params: model parameters.
       batch: a batch of inputs.
-      rng: an optional RNG to use during prediction (e.g., for decoding).
+      rng: an optional RNG key to use during prediction (e.g., for decoding).
 
     Returns:
       predictions: the model predictions
@@ -210,7 +210,7 @@ class BaseModel(abc.ABC):
   @abc.abstractmethod
   def get_initial_variables(
       self,
-      rng: jnp.ndarray,
+      rng: jax.random.KeyArray,
       input_shapes: Mapping[str, Array],
       input_types: Optional[Mapping[str, jnp.dtype]] = None
   ) -> flax_scope.FrozenVariableDict:
@@ -260,10 +260,11 @@ class BaseTransformerModel(BaseModel):
     return self._decode_fn
 
   @abc.abstractmethod
-  def _compute_logits(self,
-                      params: PyTreeDef,
-                      batch: Mapping[str, jnp.ndarray],
-                      dropout_rng: Optional[jnp.ndarray] = None) -> jnp.ndarray:
+  def _compute_logits(
+      self,
+      params: PyTreeDef,
+      batch: Mapping[str, jnp.ndarray],
+      dropout_rng: Optional[jax.random.KeyArray] = None) -> jnp.ndarray:
     """Computes logits via a forward pass of the model."""
     pass
 
@@ -271,7 +272,7 @@ class BaseTransformerModel(BaseModel):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jnp.ndarray],
+      dropout_rng: Optional[jax.random.KeyArray],
   ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
     """Loss function used for training with a cross-entropy loss."""
     logits = self._compute_logits(params, batch, dropout_rng)
@@ -342,7 +343,7 @@ class EncoderDecoderModel(BaseTransformerModel):
 
   def get_initial_variables(
       self,
-      rng: jnp.ndarray,
+      rng: jax.random.KeyArray,
       input_shapes: Mapping[str, Array],
       input_types: Optional[Mapping[str, jnp.dtype]] = None
   ) -> flax_scope.FrozenVariableDict:
@@ -393,7 +394,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jnp.ndarray] = None,
+      dropout_rng: Optional[jax.random.KeyArray] = None,
       mutable: flax_scope.CollectionFilter = False,
       other_variables: Optional[PyTreeDef] = None,
   ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, flax_scope.FrozenVariableDict]]:
@@ -451,7 +452,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-      rng: Optional[jnp.ndarray] = None,
+      rng: Optional[jax.random.KeyArray] = None,
       decoder_params: Optional[MutableMapping[str, Any]] = None,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
@@ -495,7 +496,7 @@ class EncoderDecoderModel(BaseTransformerModel):
     Args:
       params: model parameters.
       batch: a batch of inputs.
-      rng: an optional RNG to use during prediction, which is passed as
+      rng: an optional RNG key to use during prediction, which is passed as
         'decode_rng' to the decoding function.
       decoder_params: additional (model-independent) parameters for the decoder.
       return_all_decodes: whether to return the entire beam or just the top-1.
@@ -682,7 +683,7 @@ class DecoderOnlyModel(BaseTransformerModel):
 
   def get_initial_variables(
       self,
-      rng: jnp.ndarray,
+      rng: jax.random.KeyArray,
       input_shapes: Mapping[str, Array],
       input_types: Optional[Mapping[str, jnp.dtype]] = None
   ) -> flax_scope.FrozenVariableDict:
@@ -709,10 +710,11 @@ class DecoderOnlyModel(BaseTransformerModel):
 
     return decoder_causal_attention
 
-  def _compute_logits(self,
-                      params: PyTreeDef,
-                      batch: Mapping[str, jnp.ndarray],
-                      dropout_rng: Optional[jnp.ndarray] = None) -> jnp.ndarray:
+  def _compute_logits(
+      self,
+      params: PyTreeDef,
+      batch: Mapping[str, jnp.ndarray],
+      dropout_rng: Optional[jax.random.KeyArray] = None) -> jnp.ndarray:
     """Computes logits via a forward pass of `self.module`."""
     rngs = {'dropout': dropout_rng} if dropout_rng is not None else None
     decoder_causal_attention = self._get_decoder_causal_attention(batch)
@@ -784,7 +786,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-      rng: Optional[jnp.ndarray] = None,
+      rng: Optional[jax.random.KeyArray] = None,
       *,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
@@ -861,7 +863,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       params: model parameters.
       batch: batch element with the model features specified in
         seqio.DecoderFeatureConverter.
-      rng: an optional RNG to use during prediction, which is passed as
+      rng: an optional RNG key to use during prediction, which is passed as
         'decode_rng' to the decoding function.
       return_all_decodes: if True, will return all batch_size * num_decodes
         samples from the model as an array of shape [batch_size, num_decodes,
