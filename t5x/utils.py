@@ -39,6 +39,7 @@ import jax.numpy as jnp
 import numpy as np
 import seqio
 from t5x import checkpoints
+from t5x import dataset as dataset_lib
 from t5x import partitioning
 from t5x import state_utils
 from t5x import train_state as train_state_lib
@@ -212,7 +213,7 @@ def get_zeros_batch_like_spec(
   return {k: jnp.zeros(t.shape, t.dtype) for k, t in batch_spec.items()}
 
 
-def get_zeros_batch_like_dataset(dataset: tf.data.Dataset,
+def get_zeros_batch_like_dataset(dataset: dataset_lib.DatasetIterator,
                                  batch_size=None) -> Mapping[str, jnp.ndarray]:
   reshape = lambda s: (batch_size,) + s[1:] if batch_size else tuple(s)
   batch_spec = {
@@ -855,12 +856,16 @@ def get_vocabulary(
 
 
 
-def get_dataset(cfg: DatasetConfig,
-                shard_id: int,
-                num_shards: int,
-                feature_converter_cls: Type[seqio.FeatureConverter],
-                num_epochs: Optional[int] = None,
-                continue_from_last_checkpoint: bool = False) -> tf.data.Dataset:
+# TODO(b/223473513): replace return type as dataset_lib.DatasetIterator when we
+# figure out which methods should be placed on the ABC.
+def get_dataset(
+    cfg: DatasetConfig,
+    shard_id: int,
+    num_shards: int,
+    feature_converter_cls: Type[seqio.FeatureConverter],
+    num_epochs: Optional[int] = None,
+    continue_from_last_checkpoint: bool = False,
+) -> dataset_lib.TensorFlowDatasetIterator:
   """Returns a dataset from SeqIO based on a `DatasetConfig`."""
   if continue_from_last_checkpoint:
     raise ValueError(
@@ -876,17 +881,29 @@ def get_dataset(cfg: DatasetConfig,
         f'Batch size ({cfg.batch_size}) must be divisible by number of '
         f'shards ({num_shards}).')
 
-
-  shard_info = seqio.ShardInfo(index=shard_id, num_shards=num_shards)
-
   if cfg.seed is None:
     # Use a shared timestamp across devices as the seed.
     seed = multihost_utils.broadcast_one_to_all(np.int32(time.time()))
   else:
     seed = cfg.seed
 
-  return get_dataset_inner(cfg, shard_info, feature_converter_cls, seed,
-                           num_epochs)
+  dataset_manager = dataset_lib.SeqIoDatasetManager(
+      task_feature_lengths=cfg.task_feature_lengths,
+      split=cfg.split,
+      shuffle=cfg.shuffle,
+      data_layout=dataset_lib.DataLayout(
+          batch_size=cfg.batch_size,
+          shard_id=shard_id,
+          num_shards=num_shards,
+      ),
+      use_cached=cfg.use_cached,
+      pack=cfg.pack,
+      seed=seed,
+      use_custom_packing_ops=cfg.use_custom_packing_ops,
+      feature_converter_cls=feature_converter_cls,
+      num_epochs=num_epochs,
+  )
+  return dataset_manager.get_iterator(cfg.mixture_or_task_name)
 
 
 def get_dataset_inner(cfg: DatasetConfig,
@@ -921,15 +938,48 @@ def get_dataset_inner(cfg: DatasetConfig,
 
 
 class GetDatasetCallable(typing_extensions.Protocol):
+  """A function that returns an iterator for dataset from configuration."""
 
-  def __call__(self,
-               cfg: DatasetConfig,
-               shard_id: int,
-               num_shards: int,
-               feature_converter_cls: Callable[..., seqio.FeatureConverter],
-               num_epochs: Optional[int] = None,
-               continue_from_last_checkpoint: bool = True) -> tf.data.Dataset:
+  def __call__(
+      self,
+      cfg: DatasetConfig,
+      shard_id: int,
+      num_shards: int,
+      feature_converter_cls: Callable[..., seqio.FeatureConverter],
+      num_epochs: Optional[int] = None,
+      continue_from_last_checkpoint: bool = True,
+  ) -> dataset_lib.TensorFlowDatasetIterator:
     ...
+
+
+def expand_seqio_dataset(
+    mixture_or_task_name: str,
+    split: str,
+    skip_invalid_splits: bool = True,
+) -> Sequence[str]:
+  """Expands, when it exists, SeqIO subtasks from a task name.
+
+  Args:
+    mixture_or_task_name: SeqIO Mixture or Task name.
+    split: Data split for the dataset.
+    skip_invalid_splits: Whether to skip subtasks whose splits do not contain
+      value of `split`.
+
+  Returns:
+    List of subtask names. In case `mixture_or_task_name` refers to a Mixture,
+    it returns a list with the mixture name.
+  """
+  mixture_or_task = seqio.get_mixture_or_task(mixture_or_task_name)
+  datasets = []
+  for task in seqio.get_subtasks(mixture_or_task):
+    if skip_invalid_splits and split not in task.splits:
+      continue
+    datasets.append(task.name)
+
+  if isinstance(mixture_or_task, seqio.Mixture):
+    datasets.append(mixture_or_task.name)
+
+  return datasets
 
 
 def get_training_eval_datasets(
@@ -939,20 +989,21 @@ def get_training_eval_datasets(
     eval_steps: int,
     feature_converter_cls: Callable[..., seqio.FeatureConverter],
     get_dataset_fn: GetDatasetCallable = get_dataset,
-) -> Mapping[str, tf.data.Dataset]:
+) -> Mapping[str, dataset_lib.TensorFlowDatasetIterator]:
   """Returns a mapping from eval task name to its dataset."""
-  mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
+  mixture_or_tasks = expand_seqio_dataset(
+      cfg.mixture_or_task_name,
+      cfg.split,
+      skip_invalid_splits=True,
+  )
+
   datasets = {}
-  for task in seqio.get_subtasks(mixture_or_task):
-    if cfg.split not in task.splits:
-      logging.info("Task %s has no '%s' split; skipping training evaluation.",
-                   task.name, cfg.split)
-      continue
-    logging.info('Loading task %s for training evaluation.', task.name)
-    task_cfg = dataclasses.replace(cfg, mixture_or_task_name=task.name)
+  for task_name in mixture_or_tasks:
+    logging.info('Loading task %s for training evaluation.', task_name)
+    task_cfg = dataclasses.replace(cfg, mixture_or_task_name=task_name)
     # We set `num_epochs=eval_steps` to avoid infinite loops on shards that have
     # input examples but are filtered to be empty.
-    datasets[task.name] = get_dataset_fn(
+    datasets[task_name] = get_dataset_fn(
         task_cfg,
         shard_id,
         num_shards,
@@ -960,14 +1011,15 @@ def get_training_eval_datasets(
         num_epochs=eval_steps,
         continue_from_last_checkpoint=False).repeat().take(eval_steps)
 
-  if isinstance(mixture_or_task, seqio.Mixture):
-    datasets[mixture_or_task.name] = get_dataset_fn(
-        cfg,
-        shard_id,
-        num_shards,
-        feature_converter_cls,
-        num_epochs=eval_steps,
-        continue_from_last_checkpoint=False).repeat().take(eval_steps)
+    mixture_or_task = seqio.get_mixture_or_task(task_name)
+    if isinstance(mixture_or_task, seqio.Mixture):
+      datasets[task_name] = get_dataset_fn(
+          cfg,
+          shard_id,
+          num_shards,
+          feature_converter_cls,
+          num_epochs=eval_steps,
+          continue_from_last_checkpoint=False).repeat().take(eval_steps)
 
   for task_name, ds in datasets.items():
     try:
