@@ -613,12 +613,14 @@ class EncoderDecoderModel(BaseTransformerModel):
 
       # Track per-token labels and loss weights as well. These are not
       # intermediate values of logit computation, so we manually add them here.
-      intermediates.setdefault('decoder', {})
-      intermediates['decoder']['target_tokens'] = (target_tokens,)
-      intermediates['decoder']['loss_weights'] = (weights,)
       # Note that the values are singleton tuples. This is because values inside
       # `intermediates` should be tuples tracking all instantiations of a value.
       # These values each have just one instantiation, hence singletons.
+      intermediates.setdefault('decoder', {})
+      intermediates['decoder']['target_tokens'] = (target_tokens,)
+      intermediates['decoder']['loss_weights'] = (weights,)
+      # Make the logits available for clients or sub-classes.
+      intermediates['decoder']['logits'] = (logits,)
     else:
       logits = self._compute_logits(params, batch)  # type: jnp.ndarray
 
