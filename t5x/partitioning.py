@@ -457,7 +457,7 @@ def standard_logical_axis_rules(
 
   if activation_partitioning_dims == 1 and parameter_partitioning_dims == 1:
     rules = [
-        ('batch', 'data'),
+        # ('batch', 'data'),
         ('vocab', 'model'),
         ('embed', None),
         ('mlp', 'model'),
@@ -467,7 +467,7 @@ def standard_logical_axis_rules(
     ]
   elif activation_partitioning_dims == 2 and parameter_partitioning_dims == 1:
     rules = [
-        ('batch', 'data'),
+        # ('batch', 'data'),
         ('vocab', 'model'),
         ('mlp', 'model'),
         ('heads', 'model'),
@@ -477,7 +477,7 @@ def standard_logical_axis_rules(
     ]
   elif activation_partitioning_dims == 1 and parameter_partitioning_dims == 2:
     rules = [
-        ('batch', 'data'),
+        # ('batch', 'data'),
         ('vocab', 'model'),
         ('mlp', 'model'),
         ('heads', 'model'),
