@@ -30,7 +30,7 @@ SamplingLoopState = Tuple[int, jnp.ndarray, Mapping[str, jnp.ndarray],
 
 # Constants
 # "Effective negative infinity" constant for masking in beam search.
-NEG_INF = np.array(-1.0e7)
+NEG_INF = jnp.finfo(jnp.float32).min
 
 #------------------------------------------------------------------------------
 # Temperature Sampling
@@ -923,7 +923,7 @@ def beam_search(inputs: jnp.ndarray,
     # equal to NEG_INF). We need to avoid this to have distinct beams when
     # force decoding is over. Capping the forced beam probability to a small
     # value larger than NEG_INF.
-    next_input_token_probs = lax.max(next_input_token_probs, -1.0e6)
+    next_input_token_probs = lax.max(next_input_token_probs, NEG_INF / 2)
 
     # When forcing prompts, update log probabilities to `next_input_token_probs`
     # for the top of the beam and -INF for the rest, effectively keeping only
