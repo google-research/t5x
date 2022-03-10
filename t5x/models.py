@@ -175,9 +175,7 @@ class BaseModel(abc.ABC):
     Returns:
       The model predictions.
     """
-    # For backward compatibility.
-    maybe_rng = {'rng': rng} if rng is not None else {}
-    return self.predict_batch_with_aux(params, batch, **maybe_rng)[0]
+    return self.predict_batch_with_aux(params=params, batch=batch, rng=rng)[0]
 
   @abc.abstractmethod
   def predict_batch_with_aux(
