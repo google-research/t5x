@@ -405,6 +405,57 @@ class EncoderDecoderModelTest(parameterized.TestCase):
                                               mutable=False)
     np.testing.assert_allclose(res, [-3.222973, -1.815315], rtol=1e-4)
 
+  def test_score_batch_can_return_intermediates(self):
+    encoder_input_tokens = jnp.ones((2, 3))
+    # For this test, decoder input and target tokens are dummy values.
+    decoder_input_tokens = jnp.array([[1, 2, 1, 0], [0, 1, 0, 2]])
+    decoder_target_tokens = jnp.array([[1, 2, 1, 0], [0, 1, 0, 2]])
+    decoder_loss_weights = jnp.array([[1, 1, 1, 0], [0, 1, 0, 1]])
+    logits = jnp.arange(0, 24).reshape((2, 4, 3))
+    modified_variables = {'intermediates': {'bar': jnp.ones(5)}}
+    params = {'foo': jnp.zeros(3)}
+
+    mock_transformer = mock.Mock()
+    mock_transformer.apply.return_value = (logits, modified_variables)
+    mock_transformer.dtype = jnp.float32
+
+    batch = {
+        'encoder_input_tokens': encoder_input_tokens,
+        'decoder_input_tokens': decoder_input_tokens,
+        'decoder_target_tokens': decoder_target_tokens,
+        'decoder_loss_weights': decoder_loss_weights
+    }
+
+    def mock_init(self):
+      self.module = mock_transformer
+
+    with mock.patch.object(
+        models.EncoderDecoderModel, '__init__', new=mock_init):
+      model = models.EncoderDecoderModel()
+      scores, intermediates = model.score_batch(
+          params, batch, return_intermediates=True)
+
+    mock_transformer.apply.assert_called_with({'params': params},
+                                              encoder_input_tokens,
+                                              decoder_input_tokens,
+                                              decoder_target_tokens,
+                                              encoder_segment_ids=None,
+                                              decoder_segment_ids=None,
+                                              encoder_positions=None,
+                                              decoder_positions=None,
+                                              decode=False,
+                                              enable_dropout=False,
+                                              rngs=None,
+                                              mutable=['intermediates'])
+    np.testing.assert_allclose(scores, [-3.222973, -1.815315], rtol=1e-4)
+    # Incumbent intermediates are passed out unchanged.
+    np.testing.assert_allclose(intermediates['bar'], jnp.ones(5))
+    # A new collection of decoder intermediates are inserted by score_batch()
+    np.testing.assert_allclose(intermediates['decoder']['loss_weights'][0],
+                               decoder_loss_weights)
+    np.testing.assert_allclose(intermediates['decoder']['target_tokens'][0],
+                               decoder_target_tokens)
+
   def test_train_transformer_wmt(self):
     # Dummy input data
     input_shape = (16, 8)
