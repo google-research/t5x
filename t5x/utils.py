@@ -954,29 +954,24 @@ def get_training_eval_datasets(
     # input examples but are filtered to be empty.
     datasets[task.name] = get_dataset_fn(
         task_cfg,
-        shard_id,
-        num_shards,
-        feature_converter_cls,
+        # We apply sharding later to avoid uneven file shards.
+        shard_id=0,
+        num_shards=1,
+        feature_converter_cls=feature_converter_cls,
         num_epochs=eval_steps,
-        continue_from_last_checkpoint=False).repeat().take(eval_steps)
+        continue_from_last_checkpoint=False).repeat().shard(
+            num_shards, shard_id).take(eval_steps)
 
   if isinstance(mixture_or_task, seqio.Mixture):
     datasets[mixture_or_task.name] = get_dataset_fn(
         cfg,
-        shard_id,
-        num_shards,
-        feature_converter_cls,
+        # We apply sharding later to avoid uneven file shards.
+        shard_id=0,
+        num_shards=1,
+        feature_converter_cls=feature_converter_cls,
         num_epochs=eval_steps,
-        continue_from_last_checkpoint=False).repeat().take(eval_steps)
-
-  for task_name, ds in datasets.items():
-    try:
-      next(iter(ds))
-    except StopIteration:
-      raise ValueError(
-          f"Shard {shard_id}/{num_shards} of task '{task_name}:{cfg.split}' "
-          'is empty. Try resharding your dataset for more even splits or '
-          'reducing data parallelism.')
+        continue_from_last_checkpoint=False).repeat().shard(
+            num_shards, shard_id).take(eval_steps)
 
   return datasets
 
