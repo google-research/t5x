@@ -712,7 +712,8 @@ class DecoderOnlyModel(BaseTransformerModel):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jax.random.KeyArray] = None) -> jnp.ndarray:
+      dropout_rng: Optional[jax.random.KeyArray] = None,
+      mutable: flax_scope.CollectionFilter = False) -> jnp.ndarray:
     """Computes logits via a forward pass of `self.module`."""
     rngs = {'dropout': dropout_rng} if dropout_rng is not None else None
     decoder_causal_attention = self._get_decoder_causal_attention(batch)
@@ -726,7 +727,8 @@ class DecoderOnlyModel(BaseTransformerModel):
         decoder_causal_attention=decoder_causal_attention,
         rngs=rngs,
         decode=False,
-        enable_dropout=rngs is not None)
+        enable_dropout=rngs is not None,
+        mutable=mutable)
 
   def _compute_logits_from_slice(
       self,
@@ -763,14 +765,32 @@ class DecoderOnlyModel(BaseTransformerModel):
                   return_intermediates: bool = False) -> jnp.ndarray:
     """Compute log likelihood score on a batch."""
 
-    if return_intermediates:  # TODO(jaaustin) add this
-      raise NotImplementedError(
-          'return_intermediates is not yet supported for DecoderOnlyModel.')
-
     decoder_target_tokens = batch['decoder_target_tokens']
     weights = batch['decoder_loss_weights']
 
-    logits = self._compute_logits(params=params, batch=batch, dropout_rng=None)
+    if return_intermediates:
+      logits, modified_variables = self._compute_logits(
+          params=params,
+          batch=batch,
+          dropout_rng=None,
+          mutable=['intermediates'])
+
+      # Inside self.module, we called nn.Module.sow to track various
+      # intermediate values. We extract them here.
+      intermediates = flax_core.unfreeze(
+          modified_variables.get('intermediates', {}))
+
+      # Track per-token labels and loss weights as well. These are not
+      # intermediate values of logit computation, so we manually add them here.
+      intermediates.setdefault('decoder', {})
+      intermediates['decoder']['target_tokens'] = (decoder_target_tokens,)
+      intermediates['decoder']['loss_weights'] = (weights,)
+      # Note that the values are singleton tuples. This is because values inside
+      # `intermediates` should be tuples tracking all instantiations of a value.
+      # These values each have just one instantiation, hence singletons.
+    else:
+      logits = self._compute_logits(
+          params=params, batch=batch, dropout_rng=None)
 
     token_scores = -losses.cross_entropy_with_logits(
         logits,
@@ -778,6 +798,10 @@ class DecoderOnlyModel(BaseTransformerModel):
             decoder_target_tokens, logits.shape[-1], on_value=1, off_value=0),
         z_loss=0.0)[0] * weights
     sequence_scores = token_scores.sum(-1)
+
+    if return_intermediates:
+      return sequence_scores, intermediates
+
     return sequence_scores
 
   def predict_batch_with_aux(
