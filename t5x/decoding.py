@@ -785,10 +785,6 @@ def beam_search(inputs: jnp.ndarray,
                 cache_offset: int = 0) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Beam search for transformer machine translation.
 
-  If `inputs` has non-zero entries, those values are not modified, i.e.,
-  the sampled values for those positions are discarded. This simulates the
-  teacher forcing on the prefix positions.
-
   Args:
     inputs: array: [batch_size, length] int32 sequence of tokens.
     cache: flax attention cache.
@@ -897,59 +893,17 @@ def beam_search(inputs: jnp.ndarray,
     # --> [batch, 2*beams], [batch, 2*beams]
     topk_log_probs, topk_indices = top_k_two_stage(
         flat_log_probs, k=beams_to_keep)
-
-    # Append the most probable 2*K token IDs to the top 2*K sequences
-    # Recover token id by modulo division.
-    topk_ids = topk_indices % vocab_size
-    # Force decode `inputs` into topk_ids up until PAD. When `inputs` is all
-    # PADs this is a no-op.
-    next_input_token = jnp.expand_dims(
-        inputs, axis=1).astype(jnp.int32)[:, :, state.cur_index + 1]
-    out_of_prompt = (next_input_token == 0)
-
-    # Obtain the next token probability from `log_probs` using indexing.
-    # We expect only one beam to have non-zero probabilities. In the first step,
-    # it is the first beam, afterwards the last because the top_k beams are
-    # gathered and flipped.
-    # Note that True * n = n and False * n = 0. Effectively 0 in the first step
-    # and beam_size - 1 in any other step.
-    # {[batch, beam, ...].indexing([batch, 1], 1, [batch, 1])} --> [batch, 1]
-    non_zero_beam_index = (state.cur_index > 0) * (beam_size - 1)
-    next_input_token_probs = log_probs[
-        jnp.expand_dims(jnp.arange(batch_size), axis=-1), non_zero_beam_index,
-        next_input_token]
-
-    # The forced beam probability could become NEG_INF, making all beams
-    # equal to NEG_INF). We need to avoid this to have distinct beams when
-    # force decoding is over. Capping the forced beam probability to a small
-    # value larger than NEG_INF.
-    next_input_token_probs = lax.max(next_input_token_probs, -1.0e6)
-
-    # When forcing prompts, update log probabilities to `next_input_token_probs`
-    # for the top of the beam and -INF for the rest, effectively keeping only
-    # one beam alive.
-    # --> [batch, 2*beams]
-    inside_prompt_log_probs = jnp.concatenate([
-        next_input_token_probs,
-        jnp.full_like(topk_log_probs[:, :beams_to_keep - 1], NEG_INF)
-    ],
-                                              axis=1)
-    topk_log_probs = (
-        topk_log_probs * out_of_prompt +
-        inside_prompt_log_probs * ~out_of_prompt)
-
-    topk_ids = topk_ids * out_of_prompt + next_input_token * ~out_of_prompt
-
-    # Expand id array for broadcasting
-    # --> [batch, 2*beams, 1]
-    topk_ids = jnp.expand_dims(topk_ids, axis=2)
-
     # Recover the beam index by floor division.
     topk_beam_indices = topk_indices // vocab_size
     # Gather 2*k top beams.
     # --> [batch, 2*beams, length]
     topk_seq = gather_beams(state.live_seqs, topk_beam_indices, batch_size,
                             beam_size, beams_to_keep)
+
+    # Append the most probable 2*K token IDs to the top 2*K sequences
+    # Recover token id by modulo division and expand Id array for broadcasting.
+    # --> [batch, 2*beams, 1]
+    topk_ids = jnp.expand_dims(topk_indices % vocab_size, axis=2)
     # Update sequences for the 2*K top-k new sequences.
     # --> [batch, 2*beams, length]
     topk_seq = lax.dynamic_update_slice(topk_seq, topk_ids,
