@@ -116,6 +116,7 @@ def standard_logical_factor_rules():
       'multiquery_heads': FactorDim.COLUMN,
       'kv_fused': FactorDim.COLUMN,
       'layer_norm_scale': FactorDim.NONE,
+      'mlp_activations': FactorDim.COLUMN,
   })
 
 
@@ -576,7 +577,7 @@ class Adafactor(OptimizerDef):
       axis_rules = tuple(logical_factor_rules[x] for x in axes)
       axis_rules = tuple(factor_name_to_factordim(x) for x in axis_rules)
       if ROW in axis_rules and COLUMN in axis_rules and NONE in axis_rules:
-        raise ValueError(f'Incomplete adafactor spec {axis_rules}!')
+        raise ValueError(f'Incomplete adafactor spec {axis_rules} for {axes}!')
       if ROW not in axis_rules or COLUMN not in axis_rules:
         axis_rules = tuple(
             NONE if x in (ROW, COLUMN) else x for x in axis_rules)
