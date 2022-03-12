@@ -1,6 +1,8 @@
 from __gin__ import dynamic_registration
-import t5.data.mixtures
+
 import __main__ as train_script
+import seqio
+import t5.data.mixtures
 from t5x import utils
 from t5x import models
 
