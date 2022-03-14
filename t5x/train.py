@@ -144,7 +144,6 @@ def train(
       for different shardings of the same model.
     summarize_config_fn: A function that takes in the model directory, a
       SummaryWriter, and the step number, and writes a summary of the
-      configuration.
     inference_evaluator_cls: seqio.Evaluator class to use for inference
       evaluation, potentially with bound configuration args.
     get_dataset_fn: The callable use to get the train and train-eval datasets
@@ -540,7 +539,9 @@ def train(
           compute_metrics=jax.process_index() == 0,
           step=host_step,
           predict_fn=functools.partial(
-              predict_fn, train_state=trainer.train_state),
+              predict_fn,
+              train_state=trainer.train_state,
+              rng=jax.random.PRNGKey(0)),
           score_fn=functools.partial(score_fn, train_state=trainer.train_state))
       if not concurrent_metrics:
         # Ensure metrics are finished being computed.

@@ -77,10 +77,9 @@ def evaluate(
       optional SummaryWriter, and the step number, and writes a summary of the
       configuration. SummaryWriter will be None in most cases.
     fallback_init_rng: A random seed used for parameter initialization during
-      model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch
-      is set to True. If None, parameter initialization is not allowed during
-      model loading and having fallback_to_scratch enabled will result in an
-      error.
+      model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
+      set to True. If None, parameter initialization is not allowed during model
+      loading and having fallback_to_scratch enabled will result in an error.
   """
   logging.info('Process ID: %d', jax.process_index())
   if dataset_cfg.module:
@@ -168,7 +167,8 @@ def evaluate(
     all_metrics, _, _ = evaluator.evaluate(
         compute_metrics=jax.process_index() == 0,
         step=int(train_state.step),
-        predict_fn=functools.partial(predict_fn, train_state=train_state),
+        predict_fn=functools.partial(
+            predict_fn, train_state=train_state, rng=jax.random.PRNGKey(0)),
         score_fn=functools.partial(score_fn, train_state=train_state))
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
