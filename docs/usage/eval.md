@@ -178,7 +178,7 @@ comma-separated paths can be passed to the `gin_search_paths` flag, and these
 paths should contain all Gin files used or included in your experiment.
 
 
-You can can a look inside
+You can have a look inside
 [`eval.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/eval.gin) to see
 other useful parameters that it is possible to pass in, including dataset split,
 batch size, and random seed.
