@@ -15,7 +15,7 @@
 """Fast decoding routines for inference from a trained model."""
 import functools
 
-from typing import Callable, Mapping, Optional, Tuple
+from typing import Any, Callable, Mapping, Optional, Tuple, Union
 import flax
 from flax import traverse_util
 import jax
@@ -39,6 +39,10 @@ _dynamic_update_vector_slice_in_dim = jax.vmap(
     lax.dynamic_update_slice_in_dim, in_axes=(0, 0, 0, None))
 
 
+def _is_tracer(value: Any):
+  return isinstance(value, jax.core.Tracer)
+
+
 def temperature_sample(
     inputs: jnp.ndarray,
     cache: Mapping[str, jnp.ndarray],
@@ -47,12 +51,12 @@ def temperature_sample(
     eos_id: int,
     decode_rng: Optional[jnp.ndarray] = None,
     num_decodes: int = 1,
-    temperature: float = 1.0,
+    temperature: Union[float, jnp.ndarray] = 1.0,
     topk: int = 1,
     topp: float = 0.0,
     cache_offset: int = 0,
     initial_index: Optional[jnp.ndarray] = None,
-    max_decode_steps: Optional[int] = None,
+    max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Temperature sampling for language model generation.
 
@@ -270,23 +274,25 @@ def _temperature_sample_single_trial(
                                Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     eos_id: int,
     prng_key: jnp.ndarray,
-    temperature: float = 1.0,
+    temperature: Union[float, jnp.ndarray] = 1.0,
     topk: int = 20,
-    topp: float = 0.0,
+    topp: Union[float, jnp.ndarray] = 0.0,
     initial_index: Optional[jnp.ndarray] = None,
-    max_decode_steps: Optional[int] = None) -> jnp.ndarray:
+    max_decode_steps: Optional[Union[int, jnp.ndarray]] = None) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
-  if topp and topk:
+  # We can check the values of topp and topk only if they are not dynamic.
+  if not _is_tracer(topp) and topp and topk:
     raise ValueError('At most one of `topp` or `topk` may be non-zero.')
 
   batch_size, max_decode_len = inputs.shape
 
   if max_decode_steps is not None:
-    if max_decode_steps > inputs.shape[1]:
+    # We can check the max_decode_steps bounds only if it is not dynamic.
+    if not _is_tracer(max_decode_steps) and max_decode_steps > inputs.shape[1]:
       raise ValueError('Cannot decode more steps than the sequence length.')
 
-    # the number of decode steps required to process the prefix is the number
+    # The number of decode steps required to process the prefix is the number
     # of non-zero tokens, since inputs[0] == 0 is the BOS token.
     max_decode_len = jnp.sum(inputs != 0, axis=1) + max_decode_steps
     max_decode_len = jnp.minimum(inputs.shape[1], max_decode_len)
@@ -308,7 +314,7 @@ def _temperature_sample_single_trial(
 
   # TODO(hwchung): handle zero temperature case in an optimized manner.
   # Add a small number to avoid division by zero when `temperature = 0.0`.
-  temperature = jnp.array(temperature) + 1e-7
+  temperature = jnp.asarray(temperature) + 1e-7
 
   # Initialize sampling loop state.
   # initial loop PRNGKey
@@ -371,7 +377,9 @@ def _temperature_sample_single_trial(
       logits = jnp.where(logits < cutoff_logit, jnp.full_like(logits, NEG_INF),
                          logits)
 
-    if topp:
+    # When topp is dynamic, we always use it since we cannot check non-zeroness
+    # (but it will have no effect if topp is 0.0).
+    if _is_tracer(topp) or topp:
       logits_sorted = jnp.sort(logits, axis=-1)[:, ::-1]  # sort descending
       sorted_cum_probs = jnp.cumsum(
           jax.nn.softmax(logits_sorted, axis=-1), axis=-1)
