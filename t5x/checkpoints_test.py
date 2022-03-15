@@ -266,7 +266,7 @@ class CheckpointsTest(parameterized.TestCase):
   def test_get_parameter_infos(self):
     train_state = make_train_state(
         params={
-            'bias': np.ones((8192, 8192), jnp.bfloat16),
+            'bias': np.ones((8192, 8192), np.float32),
             'kernel': np.ones((2, 16), np.float32)
         },
         param_states={
@@ -767,21 +767,22 @@ class CheckpointsTest(parameterized.TestCase):
       self.validate_restore(*restore_topology)
 
   @parameterized.parameters(TOPOLOGIES)
-  def test_save_partitioned_restore_non_paritioned(self, *restore_topology):
+  def test_save_partitioned_restore_non_partitioned(self, *restore_topology):
     # Save with default partitioning.
     self.validate_save(2, 2)
     # Restore without partitioning.
     self.validate_restore(*restore_topology, disable_partitioning=True)
 
   @parameterized.parameters(TOPOLOGIES)
-  def test_save_non_partitioned_restore_paritioned(self, *restore_topology):
+  def test_save_non_partitioned_restore_partitioned(self, *restore_topology):
     # Save without partitioning.
     self.validate_save(2, 1, disable_partitioning=True)
     # Restore with partitioning.
     self.validate_restore(*restore_topology)
 
   @parameterized.parameters(TOPOLOGIES)
-  def test_save_non_partitioned_restore_non_paritioned(self, *restore_topology):
+  def test_save_non_partitioned_restore_non_partitioned(self,
+                                                        *restore_topology):
     # Save without partitioning.
     self.validate_save(2, 1, disable_partitioning=True)
     # Restore with partitioning.
