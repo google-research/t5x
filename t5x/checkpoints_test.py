@@ -306,6 +306,7 @@ class CheckpointsTest(parameterized.TestCase):
                     shape=(8192, 8192),
                     ts_spec=ts.Spec({
                         'driver': 'zarr',
+                        'dtype': 'float32',
                         'kvstore': {  # pylint:disable=duplicate-key
                             'driver': 'file',
                             'path': 'target.bias',
@@ -315,7 +316,6 @@ class CheckpointsTest(parameterized.TestCase):
                             'compressor': {
                                 'id': 'gzip'
                             },
-                            'dtype': '<f4',
                             'shape': [8192, 8192],
                         },
                     }),
@@ -329,6 +329,7 @@ class CheckpointsTest(parameterized.TestCase):
                     shape=(2, 16),
                     ts_spec=ts.Spec({
                         'driver': 'zarr',
+                        'dtype': 'float32',
                         'kvstore': {  # pylint:disable=duplicate-key
                             'driver': 'file',
                             'path': 'target.kernel',
@@ -338,7 +339,6 @@ class CheckpointsTest(parameterized.TestCase):
                             'compressor': {
                                 'id': 'gzip'
                             },
-                            'dtype': '<f4',
                             'shape': [2, 16],
                         },
                     }),
@@ -1234,6 +1234,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'unsharded_param': np.ones((5, 5), dtype=np.int32),
                 'sharded_param': {
                     'driver': 'zarr',
+                    'dtype': 'float32',
                     'kvstore': {
                         'driver': 'file',
                         'path': 'target.sharded_param'
@@ -1244,7 +1245,6 @@ class CheckpointsTest(parameterized.TestCase):
                             'id': 'gzip',
                             'level': 1
                         },
-                        'dtype': '<f4',
                         'shape': [768, 768]
                     }
                 }
@@ -1260,6 +1260,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'unsharded_param': np.ones((5, 5), dtype=np.int32),
                 'sharded_param': {
                     'driver': 'zarr',
+                    'dtype': 'float32',
                     'kvstore': {
                         'bucket': 't5x-dummy-bucket',
                         'driver': 'gcs'
@@ -1270,7 +1271,6 @@ class CheckpointsTest(parameterized.TestCase):
                             'id': 'gzip',
                             'level': 1
                         },
-                        'dtype': '<f4',
                         'shape': [768, 768]
                     },
                     'path': 'target.sharded_param',
@@ -1290,6 +1290,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'unsharded_param': np.ones((5, 5), dtype=np.int32),
                 'sharded_param': {
                     'driver': 'zarr',
+                    'dtype': 'float32',
                     'kvstore': {
                         'bucket': 't5x-dummy-bucket',
                         'driver': 'gcs'
@@ -1300,7 +1301,6 @@ class CheckpointsTest(parameterized.TestCase):
                             'id': 'gzip',
                             'level': 1
                         },
-                        'dtype': '<f4',
                         'shape': [768, 768]
                     },
                     'path': 'target.sharded_param',
@@ -1317,6 +1317,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'unsharded_param': np.ones((5, 5), dtype=np.int32),
                 'sharded_param': {
                     'driver': 'zarr',
+                    'dtype': 'float32',
                     'kvstore': {
                         'driver': driver,
                         'path': 'target.sharded_param'
@@ -1327,7 +1328,6 @@ class CheckpointsTest(parameterized.TestCase):
                             'id': 'gzip',
                             'level': 1
                         },
-                        'dtype': '<f4',
                         'shape': [768, 768]
                     }
                 }
@@ -1359,6 +1359,7 @@ class CheckpointsTest(parameterized.TestCase):
   def test_update_ts_path_from_relative_to_absolute_gfile(self):
     ts_spec_dict = {
         'driver': 'zarr',
+        'dtype': 'float32',
         'kvstore': {
             'driver': 'file',
             'path': 'target.encoder.layers_0.attention.query.kernel'
@@ -1369,13 +1370,13 @@ class CheckpointsTest(parameterized.TestCase):
                 'id': 'gzip',
                 'level': 1
             },
-            'dtype': '<f4',
             'shape': [768, 768]
         }
     }
 
     expected = {
         'driver': 'zarr',
+        'dtype': 'float32',
         'kvstore': {
             'driver': 'file',
             # Path becomes absolute.
@@ -1387,7 +1388,6 @@ class CheckpointsTest(parameterized.TestCase):
                 'id': 'gzip',
                 'level': 1
             },
-            'dtype': '<f4',
             'shape': [768, 768]
         }
     }
@@ -1410,7 +1410,6 @@ class CheckpointsTest(parameterized.TestCase):
                 'id': 'gzip',
                 'level': 1
             },
-            'dtype': '<f4',
             'shape': [768, 768]
         },
         'path': 'target.encoder.layers_0.attention.query.kernel',
@@ -1433,7 +1432,6 @@ class CheckpointsTest(parameterized.TestCase):
                 'id': 'gzip',
                 'level': 1
             },
-            'dtype': '<f4',
             'shape': [768, 768]
         },
         # Path becomes absolute without the "gs://bucket" portion stripped.

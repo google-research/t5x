@@ -129,7 +129,7 @@ class LazyAwaitableArray(LazyArray):
     """Create a LazyAwaitableArray based on a tensorstore.Spec."""
     ts_spec = ts_spec.to_json()
     shape = ts_spec['metadata']['shape']
-    dtype = jnp.dtype(ts_spec['metadata']['dtype'])
+    dtype = jnp.dtype(ts_spec['dtype'])
     # v2 T5X checkpoints use uint16 as the TensorStore datatype and then store
     # the bfloat16 bytes as in in the 16 bytes uint16 has (no actual cast). When
     # When reading the dtype from the TensorStore, if we keep the dtype of these

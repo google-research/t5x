@@ -486,24 +486,18 @@ class Checkpointer(object):
           write_shape,
           target_elements=_DESIRED_CHUNK_SIZE_BYTES / arr.dtype.itemsize)
 
-      if arr.dtype == jnp.bfloat16:
-        # Tensorstore uses 'bfloat16', not '<V2'.
-        dtype = 'bfloat16'
-      else:
-        dtype = np.dtype(arr.dtype).str
-
       metadata = {
           'compressor': {
               'id': 'gzip'
           },
           'shape': arr.shape,
           'chunks': np.array(chunk_shape),
-          'dtype': dtype
       }
 
       if self.checkpoints_dir.startswith('gs://'):
         spec = {
             'driver': 'zarr',
+            'dtype': jnp.dtype(arr.dtype).name,
             'kvstore': {
                 'driver': 'gcs',
                 # We always write with a dummy bucket and dynamically update the
@@ -517,6 +511,7 @@ class Checkpointer(object):
       else:
         spec = {
             'driver': 'zarr',
+            'dtype': jnp.dtype(arr.dtype).name,
             'kvstore': {
                 'driver': 'file',
                 'path': name.replace('/', '.')
@@ -688,7 +683,7 @@ class Checkpointer(object):
 
         # Path and gcs bucket (if applicable) information is updated in-place.
         _update_ts_path_from_relative_to_absolute(ckpt_dir, tmp_ts_spec_dict)
-        assert tmp_ts_spec_dict['metadata']['dtype'] == np.dtype(arr.dtype)
+        assert tmp_ts_spec_dict['dtype'] == np.dtype(arr.dtype).name
 
         t = await ts.open(
             tmp_ts_spec_dict,
