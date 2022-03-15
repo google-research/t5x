@@ -310,7 +310,6 @@ def create_learning_rate_scheduler(
   return step_fn
 
 
-# TODO(b/188897586): Add test coverage for the logic in this class.
 class TrainStateInitializer:
   """Helper for initializing partitioned TrainState from checkpoints or scratch.
 
@@ -943,40 +942,47 @@ def get_training_eval_datasets(
   """Returns a mapping from eval task name to its dataset."""
   mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
   datasets = {}
+
+  if cfg.batch_size % num_shards:
+    raise ValueError(
+        f'Batch size ({cfg.batch_size}) must be divisible by number of '
+        f'shards ({num_shards}).')
+
+  def _repeat_shard_batch_take_cache(ds):
+    # We shard and batch the full, repeated dataset to avoid issues with uneven
+    # file shards.
+    return ds.unbatch().repeat().shard(num_shards, shard_id).batch(
+        cfg.batch_size // num_shards,
+        drop_remainder=True).take(eval_steps).cache()
+
   for task in seqio.get_subtasks(mixture_or_task):
     if cfg.split not in task.splits:
       logging.info("Task %s has no '%s' split; skipping training evaluation.",
                    task.name, cfg.split)
       continue
     logging.info('Loading task %s for training evaluation.', task.name)
-    task_cfg = dataclasses.replace(cfg, mixture_or_task_name=task.name)
-    # We set `num_epochs=eval_steps` to avoid infinite loops on shards that have
-    # input examples but are filtered to be empty.
-    datasets[task.name] = get_dataset_fn(
-        task_cfg,
-        shard_id,
-        num_shards,
-        feature_converter_cls,
-        num_epochs=eval_steps,
-        continue_from_last_checkpoint=False).repeat().take(eval_steps)
+    task_cfg = dataclasses.replace(
+        cfg, mixture_or_task_name=task.name, batch_size=1)
+    # We set `num_epochs` to be finite to avoid infinite loops on shards that
+    # have input examples that are all filtered.
+    datasets[task.name] = _repeat_shard_batch_take_cache(
+        get_dataset_fn(
+            task_cfg,
+            shard_id=0,
+            num_shards=1,
+            feature_converter_cls=feature_converter_cls,
+            num_epochs=eval_steps * cfg.batch_size,
+            continue_from_last_checkpoint=False))
 
   if isinstance(mixture_or_task, seqio.Mixture):
-    datasets[mixture_or_task.name] = get_dataset_fn(
-        cfg,
-        shard_id,
-        num_shards,
-        feature_converter_cls,
-        num_epochs=eval_steps,
-        continue_from_last_checkpoint=False).repeat().take(eval_steps)
-
-  for task_name, ds in datasets.items():
-    try:
-      next(iter(ds))
-    except StopIteration:
-      raise ValueError(
-          f"Shard {shard_id}/{num_shards} of task '{task_name}:{cfg.split}' "
-          'is empty. Try resharding your dataset for more even splits or '
-          'reducing data parallelism.')
+    datasets[mixture_or_task.name] = _repeat_shard_batch_take_cache(
+        get_dataset_fn(
+            dataclasses.replace(cfg, batch_size=1),
+            shard_id=0,
+            num_shards=1,
+            feature_converter_cls=feature_converter_cls,
+            num_epochs=eval_steps * cfg.batch_size,
+            continue_from_last_checkpoint=False))
 
   return datasets
 

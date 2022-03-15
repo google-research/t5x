@@ -19,7 +19,6 @@ import os
 import re
 from typing import Optional
 
-
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -183,8 +182,115 @@ class UtilsTest(parameterized.TestCase):
         "Variable step size 1 shape () partition spec None ")
 
 
-  @mock.patch.object(utils, "get_dataset")
-  def test_get_training_eval_datasets(self, mock_get_dataset):
+  def test_get_training_eval_datasets_task(self):
+    task = mock.create_autospec(seqio.Task, instance=True)
+    task.name = "mock_task"
+    task.splits = set(["train", "test"])
+    seqio.TaskRegistry.add_provider("mock_task", task)
+
+    mock_get_dataset_fn = mock.Mock(
+        return_value=tf.data.Dataset.range(10).batch(1))
+    mock_fc_cls = mock.Mock()
+
+    cfg = utils.DatasetConfig(
+        mixture_or_task_name="mock_task",
+        task_feature_lengths={},
+        split="test",
+        batch_size=4,
+        shuffle=False,
+        seed=None)
+
+    # Single shard.
+    ds = utils.get_training_eval_datasets(
+        cfg,
+        shard_id=0,
+        num_shards=1,
+        eval_steps=3,
+        feature_converter_cls=mock_fc_cls,
+        get_dataset_fn=mock_get_dataset_fn)
+
+    mock_get_dataset_fn.assert_called_once_with(
+        dataclasses.replace(cfg, batch_size=1),
+        shard_id=0,
+        num_shards=1,
+        feature_converter_cls=mock_fc_cls,
+        num_epochs=12,
+        continue_from_last_checkpoint=False)
+
+    self.assertSameElements(ds.keys(), ["mock_task"])
+    jax.tree_map(np.testing.assert_equal, list(ds["mock_task"]), [
+        np.array([0, 1, 2, 3]),
+        np.array([4, 5, 6, 7]),
+        np.array([8, 9, 0, 1]),
+    ])
+
+    # 2 shards, shard 0
+    mock_get_dataset_fn.reset_mock()
+    ds = utils.get_training_eval_datasets(
+        cfg,
+        shard_id=0,
+        num_shards=2,
+        eval_steps=3,
+        feature_converter_cls=mock_fc_cls,
+        get_dataset_fn=mock_get_dataset_fn)
+
+    # Call the underlying function loading all shards since the fn shards at the
+    # example level.
+    mock_get_dataset_fn.assert_called_once_with(
+        dataclasses.replace(cfg, batch_size=1),
+        shard_id=0,
+        num_shards=1,
+        feature_converter_cls=mock_fc_cls,
+        num_epochs=12,
+        continue_from_last_checkpoint=False)
+
+    self.assertSameElements(ds.keys(), ["mock_task"])
+    jax.tree_map(np.testing.assert_equal, list(ds["mock_task"]), [
+        np.array([0, 2]),
+        np.array([4, 6]),
+        np.array([8, 0]),
+    ])
+
+    # 2 shards, shard 1
+    mock_get_dataset_fn.reset_mock()
+    ds = utils.get_training_eval_datasets(
+        cfg,
+        shard_id=1,
+        num_shards=2,
+        eval_steps=3,
+        feature_converter_cls=mock_fc_cls,
+        get_dataset_fn=mock_get_dataset_fn)
+
+    # Call the underlying function loading all shards since the fn shards at the
+    # example level.
+    mock_get_dataset_fn.assert_called_once_with(
+        dataclasses.replace(cfg, batch_size=1),
+        shard_id=0,
+        num_shards=1,
+        feature_converter_cls=mock_fc_cls,
+        num_epochs=12,
+        continue_from_last_checkpoint=False)
+
+    self.assertSameElements(ds.keys(), ["mock_task"])
+    jax.tree_map(np.testing.assert_equal, list(ds["mock_task"]), [
+        np.array([1, 3]),
+        np.array([5, 7]),
+        np.array([9, 1]),
+    ])
+
+    # 3 shards
+    with self.assertRaisesWithLiteralMatch(
+        ValueError,
+        "Batch size (4) must be divisible by number of shards (3)."):
+      _ = utils.get_training_eval_datasets(
+          cfg,
+          shard_id=0,
+          num_shards=3,
+          eval_steps=3,
+          feature_converter_cls=mock_fc_cls,
+          get_dataset_fn=mock_get_dataset_fn)
+
+  def test_get_training_eval_datasets_mixture(self):
     # Register a mock SeqIO mixture.
     task1 = mock.create_autospec(seqio.Task, instance=True)
     task1.name = "mock_task1"
@@ -198,50 +304,62 @@ class UtilsTest(parameterized.TestCase):
         "mock_mix", ["mock_task1", "mock_task2"], default_rate=1.0)
     seqio.MixtureRegistry.add_provider("mock_mix", mixture)
 
-    mock_get_dataset.return_value = tf.data.Dataset.from_tensor_slices(
-        range(100))
+    mock_get_dataset = mock.Mock(
+        return_value=tf.data.Dataset.range(10).batch(1))
 
     # Verify calls to utils.get_dataset
     cfg = utils.DatasetConfig(
         mixture_or_task_name="mock_mix",
         task_feature_lengths={},
         split="test",
-        batch_size=2,
+        batch_size=4,
         shuffle=False,
         seed=23)
 
-    _ = utils.get_training_eval_datasets(
+    res = utils.get_training_eval_datasets(
         cfg,
         shard_id=0,
-        num_shards=1,
-        eval_steps=2,
+        num_shards=2,
+        eval_steps=3,
         feature_converter_cls=seqio.FeatureConverter,
-        get_dataset_fn=utils.get_dataset)
+        get_dataset_fn=mock_get_dataset)
 
     expected_calls = [
         mock.call(
-            dataclasses.replace(cfg, mixture_or_task_name="mock_task1"),
-            0,
-            1,
-            seqio.FeatureConverter,
+            dataclasses.replace(
+                cfg, mixture_or_task_name="mock_task1", batch_size=1),
+            shard_id=0,
+            num_shards=1,
+            feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=2),
+            num_epochs=12),
         mock.call(
-            dataclasses.replace(cfg, mixture_or_task_name="mock_task2"),
-            0,
-            1,
-            seqio.FeatureConverter,
+            dataclasses.replace(
+                cfg, mixture_or_task_name="mock_task2", batch_size=1),
+            shard_id=0,
+            num_shards=1,
+            feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=2),
+            num_epochs=12),
         mock.call(
-            dataclasses.replace(cfg, mixture_or_task_name="mock_mix"),
-            0,
-            1,
-            seqio.FeatureConverter,
+            dataclasses.replace(
+                cfg, mixture_or_task_name="mock_mix", batch_size=1),
+            shard_id=0,
+            num_shards=1,
+            feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=2)
+            num_epochs=12)
     ]
     mock_get_dataset.assert_has_calls(expected_calls)
+
+    self.assertSameElements(res.keys(),
+                            ["mock_task1", "mock_task2", "mock_mix"])
+    for ds in res.values():
+      jax.tree_map(np.testing.assert_equal, list(ds), [
+          np.array([0, 2]),
+          np.array([4, 6]),
+          np.array([8, 0]),
+      ])
 
   def test_override_params_axes_names(self):
     model_variables = flax.core.freeze({
