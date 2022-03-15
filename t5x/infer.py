@@ -159,7 +159,8 @@ def write_inferences_to_file(
     mode: str,
     vocabulary: Optional[seqio.Vocabulary] = None,
     json_encoder_cls: Type[json.JSONEncoder] = seqio.TensorAndNumpyEncoder,
-    include_all_inputs: bool = False) -> None:
+    include_all_inputs: bool = False,
+    input_fields_to_include: Optional[Sequence[str]] = None) -> None:
   """Write model predictions, along with pretokenized inputs, to JSONL file.
 
   Args:
@@ -174,6 +175,8 @@ def write_inferences_to_file(
       via json.dumps.
     include_all_inputs: if True, will include all model inputs in the output
       JSONL file (including raw tokens) in addition to the pretokenized inputs.
+    input_fields_to_include: List of input fields to include in the output JSONL
+      file. This list should be None if `include_all_inputs` is set to True.
   """
   if mode in ('predict', 'predict_with_aux') and vocabulary is None:
     raise ValueError('The `vocabulary` parameter is required in `predict` and '
@@ -191,15 +194,24 @@ def write_inferences_to_file(
     else:
       return value
 
+  if include_all_inputs and input_fields_to_include is not None:
+    raise ValueError(
+        'include_all_inputs and input_fields_to_include should not be set'
+        ' simultaneously.')
   with gfile.GFile(path, 'w') as f:
     for inp, output in zip(task_ds, inferences):
-      json_dict = {}
-      pretokenized = {
-          k: v for k, v in inp.items() if k.endswith('_pretokenized')
-      }
+      if include_all_inputs:
+        inputs = inp
+      elif input_fields_to_include is not None:
+        inputs = {
+            k: v for k, v in inp.items() if k in input_fields_to_include or
+            (k.endswith('_pretokenized') and
+             k[:-len('_pretokenized')] in input_fields_to_include)
+        }
+      else:
+        inputs = {k: v for k, v in inp.items() if k.endswith('_pretokenized')}
 
-      # if include_all_inputs, includes all inputs in the JSONL file.
-      inputs = inp if include_all_inputs else pretokenized
+      json_dict = {}
       json_dict['inputs'] = {
           k: _json_compat(v.numpy()) for k, v in inputs.items()
       }
