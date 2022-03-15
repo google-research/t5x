@@ -11,6 +11,62 @@ It is essentially a new and improved implementation of the
 Below is a quick start guide for training models with TPUs on Google Cloud. For
 additional tutorials and background, see the [complete documentation](docs/index.md).
 
+## Quickstart (Recommended)
+
+T5X can be run with [XManager](https://github.com/deepmind/xmanager) on
+[Vertex AI](https://cloud.google.com/vertex-ai). Vertex AI is a platform for
+training that creates TPU instances and runs code on the TPUs. Vertex AI will
+also shut down the TPUs when the jobs terminate. This is signifcantly easier
+than managing GCE VMs and TPU VM instances.
+
+1. Follow the pre-requisites and directions to install [XManager](https://github.com/deepmind/xmanager).
+
+2. Request TPU quota as required. GCP projects come with 8 cores by default,
+which is enough to run one training experiment on a single TPU host. If you want
+to run multi-host training or run multiple trials in parallel, you will need
+more quota. Navigate to [Quotas](https://console.cloud.google.com/quotas).
+
+  The quota you want is:
+
+  * Service: `Vertex AI API`
+  * Dimensions (location): `us-central1`
+  * If you want to run single-host experiments:
+    * `Custom model training TPU V2 cores per region`
+    * `Custom model training TPU V3 cores per region`
+  * If you want to run multi-host experiments:
+    * `Custom model training TPU V2 pod cores per region`
+    * `Custom model training TPU V3 pod cores per region`
+
+  TIP: You won't be able to run single-host experiments with multi-host quota.
+  (i.e. you can't run `tpu_v2=8` using `TPU V2 pod`)
+
+
+3. Launch the xmanager script located at `t5x/scripts/xm_launch.py`.
+
+As a running example, we use the WMT14 En-De translation which is described in
+more detail in the Examples section below.
+
+```sh
+export GOOGLE_CLOUD_BUCKET_NAME=...
+export TFDS_DATA_DIR=gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x/data
+export MODEL_DIR=gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x/$(date +%Y%m%d)
+
+# Pre-download dataset in multi-host experiments.
+tfds build wmt_t2t_translate --data_dir=$TFDS_DATA_DIR
+
+git clone https://github.com/google-research/t5x
+cd ./t5x/
+
+python3 ./t5x/scripts/xm_launch.py \
+  --gin_file=t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin \
+  --model_dir=$MODEL_DIR \
+  --tfds_data_dir=$TFDS_DATA_DIR
+```
+
+Check `gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x/` for the output artifacts, which can
+be read by TensorBoard.
+
+
 ## Installation
 
 Note that all the commands in this document should be run in the commandline of
@@ -105,6 +161,9 @@ MODEL_DIR="..."
 # Data dir to save the processed dataset in "gs://data_dir" format.
 TFDS_DATA_DIR="..."
 T5X_DIR="..."  # directory where the T5X repo is cloned.
+
+# Pre-download dataset in multi-host experiments.
+tfds build wmt_t2t_translate ${TFDS_DATA_DIR}
 
 python3 ${T5X_DIR}/t5x/train.py \
   --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin" \
