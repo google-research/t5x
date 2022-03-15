@@ -221,23 +221,23 @@ class UtilsTest(parameterized.TestCase):
     expected_calls = [
         mock.call(
             dataclasses.replace(cfg, mixture_or_task_name="mock_task1"),
-            shard_id=0,
-            num_shards=1,
-            feature_converter_cls=seqio.FeatureConverter,
+            0,
+            1,
+            seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
             num_epochs=2),
         mock.call(
             dataclasses.replace(cfg, mixture_or_task_name="mock_task2"),
-            shard_id=0,
-            num_shards=1,
-            feature_converter_cls=seqio.FeatureConverter,
+            0,
+            1,
+            seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
             num_epochs=2),
         mock.call(
             dataclasses.replace(cfg, mixture_or_task_name="mock_mix"),
-            shard_id=0,
-            num_shards=1,
-            feature_converter_cls=seqio.FeatureConverter,
+            0,
+            1,
+            seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
             num_epochs=2)
     ]
