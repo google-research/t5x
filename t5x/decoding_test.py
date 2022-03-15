@@ -337,6 +337,37 @@ class DecodeTest(parameterized.TestCase):
     np.testing.assert_array_equal(decodes, expected_output)
     np.testing.assert_array_equal(scores, [[0.]])
 
+  def test_dynamic_topp_max_decode_steps(self):
+    rng0 = jax.random.PRNGKey(0)
+    inputs = np.zeros((1, 20), dtype=np.int32)
+
+    token_to_logits = mock.Mock()
+
+    # logits correspond to (0.3, 0, 0.1, 0.6)
+    token_to_logits.return_value = (np.array([[-1.2, -1e7, -2.3, -0.51]],
+                                             dtype=np.float32), {})
+
+    def dynamic_decode_fn(inputs, temperature, topp, max_decode_steps):
+      return decoding.temperature_sample(
+          inputs, {},
+          token_to_logits,
+          EOS_ID,
+          rng0,
+          temperature=temperature,
+          topp=topp,
+          topk=0,
+          max_decode_steps=max_decode_steps)
+
+    dynamic_decode_fn_jit = jax.jit(dynamic_decode_fn)
+
+    decodes, scores = dynamic_decode_fn_jit(inputs, 0.8, 0.63, 10)
+
+    expected_output = np.array([[3] * 10 + [0] * 10])
+    expected_output = jnp.expand_dims(expected_output, 1)
+
+    np.testing.assert_array_equal(decodes, expected_output)
+    np.testing.assert_array_equal(scores, [[0.]])
+
   def test_topp_log_probs(self):
     rng0 = jax.random.PRNGKey(0)
     inputs = np.zeros((1, 1), dtype=np.int32)
