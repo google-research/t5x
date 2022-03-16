@@ -99,8 +99,12 @@ class UtilsTest(parameterized.TestCase):
             "j": np.zeros((4,), dtype=np.float32)
         })
 
-  def test_log_model_info(self):
-    log_file = self.create_tempfile()
+  @parameterized.named_parameters(
+      dict(testcase_name="write_to_file", write_to_log_file=True),
+      dict(testcase_name="do_not_write_to_file", write_to_log_file=False),
+  )
+  def test_log_model_info(self, write_to_log_file):
+    log_file = self.create_tempfile() if write_to_log_file else None
 
     mock_train_state = get_mock_train_state(
         params={
@@ -168,18 +172,34 @@ class UtilsTest(parameterized.TestCase):
         get_logical_axes=lambda _: mock_logical_axes,
         get_mesh_axes=lambda _: mock_mesh_axes)
 
-    utils.log_model_info(log_file.full_path, mock_train_state, partitioner)
+    with self.assertLogs(level="INFO") as logs:
+      utils.log_model_info(log_file and log_file.full_path, mock_train_state,
+                           partitioner)
 
-    self.assertEqual(
-        re.sub(r"\s+", " ", log_file.read_text()),
-        "Variable a/aa size 6 shape (a1=2, None=3) partition spec ('b1', None) "
-        "Variable c size 56 shape (None=7, a1=8) partition spec (None, 'b1') "
-        "Total number of parameters: 62 "
-        "Variable param_states/a/aa/v_col size 3 shape (None=3) partition spec (None,) "
-        "Variable param_states/a/aa/v_row size 2 shape (None=2) partition spec (None,) "
-        "Variable param_states/c/v_col None "
-        "Variable param_states/c/v_row size 8 shape (2, 4) partition spec ('b1',) "
-        "Variable step size 1 shape () partition spec None ")
+    relevant_logs = [
+        re.sub(r"\s+", " ", output)
+        for record, output in zip(logs.records, logs.output)
+        if "t5x/utils.py" in record.pathname
+    ]
+    self.assertLen(relevant_logs, 9)
+    self.assertIn(
+        "Variable a/aa size 6 shape (a1=2, None=3) partition spec ('b1', None)",
+        relevant_logs[0])
+    self.assertIn(
+        "Variable c size 56 shape (None=7, a1=8) partition spec (None, 'b1')",
+        relevant_logs[1])
+
+    if write_to_log_file:
+      self.assertEqual(
+          re.sub(r"\s+", " ", log_file.read_text()),
+          "Variable a/aa size 6 shape (a1=2, None=3) partition spec ('b1', None) "
+          "Variable c size 56 shape (None=7, a1=8) partition spec (None, 'b1') "
+          "Total number of parameters: 62 "
+          "Variable param_states/a/aa/v_col size 3 shape (None=3) partition spec (None,) "
+          "Variable param_states/a/aa/v_row size 2 shape (None=2) partition spec (None,) "
+          "Variable param_states/c/v_col None "
+          "Variable param_states/c/v_row size 8 shape (2, 4) partition spec ('b1',) "
+          "Variable step size 1 shape () partition spec None ")
 
 
   def test_get_training_eval_datasets_task(self):
