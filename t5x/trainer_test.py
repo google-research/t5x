@@ -280,6 +280,25 @@ def fake_eval_step(model, optimizer, batch):
   return {'loss': metrics_lib.Sum(i), 'accuracy': metrics_lib.Sum(i)}
 
 
+def fake_eval_fn_with_weight_sum(params, batch):
+  del params
+  # Add `i` to each metric.
+  i = batch['i'].sum()
+
+  loss = metrics_lib.Sum(i)
+  weight_sum = None
+  return loss, (weight_sum, {'loss': loss, 'accuracy': metrics_lib.Sum(i)})
+
+
+def fake_eval_fn_without_weight_sum(params, batch):
+  del params
+  # Add `i` to each metric.
+  i = batch['i'].sum()
+
+  loss = metrics_lib.Sum(i)
+  return loss, {'loss': loss, 'accuracy': metrics_lib.Sum(i)}
+
+
 def fake_value_and_grad_fn_with_weight_sum(callable_fn, has_aux=False):
   del callable_fn, has_aux
 
@@ -939,6 +958,42 @@ class TrainerTest(parameterized.TestCase):
     self.assertEqual(metrics['loss'].compute(), 2)
     self.assertEqual(metrics['accuracy'].compute(), 2)
     self.assertIsNone(flax_mutables)
+
+  def test_eval_step_with_weight_sum(self):
+    with warnings.catch_warnings(record=True) as warnings_list:
+      # Ensure all warnings are captured.
+      warnings.simplefilter('always')
+
+      batch_iter = self.dataset.as_numpy_iterator()
+      batch = next(batch_iter)
+      self.test_trainer._model.eval_fn = fake_eval_fn_with_weight_sum
+      metrics = trainer_lib.eval_step(self.test_trainer._model,
+                                      self.init_train_state, batch)
+
+      self.assertEqual(metrics['loss'].compute(), 1)
+      self.assertEqual(metrics['accuracy'].compute(), 1)
+      # Check that the logs contain warning message.
+      expected_warning_message = (
+          'The `loss_fn` returns a `weight_sum` value; this behavior will be '
+          'unsupported in the future. Please update your loss_fn to eliminate '
+          'the `weight_sum` return value. '
+      )
+      warning_message_seen = False
+      for warning in warnings_list:
+        print(warning.message)
+        if expected_warning_message in str(warning.message):
+          warning_message_seen = True
+      self.assertTrue(warning_message_seen)
+
+  def test_eval_step_without_weight_sum(self):
+    batch_iter = self.dataset.as_numpy_iterator()
+    batch = next(batch_iter)
+    self.test_trainer._model.eval_fn = fake_eval_fn_without_weight_sum
+    metrics = trainer_lib.eval_step(self.test_trainer._model,
+                                    self.init_train_state, batch)
+
+    self.assertEqual(metrics['loss'].compute(), 1)
+    self.assertEqual(metrics['accuracy'].compute(), 1)
 
 
 class TrainerRngDeterminismTest(parameterized.TestCase):
