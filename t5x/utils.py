@@ -15,6 +15,7 @@
 """General utility functions for t5x."""
 import collections.abc
 from concurrent.futures import thread
+import contextlib
 import dataclasses
 import functools
 import importlib
@@ -527,9 +528,10 @@ class TrainStateInitializer:
 # -----------------------------------------------------------------------------
 
 
-def log_model_info(log_file: str, full_train_state: train_state_lib.TrainState,
+def log_model_info(log_file: Optional[str],
+                   full_train_state: train_state_lib.TrainState,
                    partitioner: partitioning.BasePartitioner):
-  """Log the variable shapes information and write to a file."""
+  """Log the variable shapes information and optionally write it to a file."""
   # Only write logs on host 0.
   if jax.process_index() != 0:
     return
@@ -546,9 +548,12 @@ def log_model_info(log_file: str, full_train_state: train_state_lib.TrainState,
 
   def _log_info_and_write_to_file(writer, format_str, *args):
     logging.info(format_str, *args)
-    writer.write(format_str % args + '\n')
+    if writer is not None:
+      writer.write(format_str % args + '\n')
 
-  with gfile.GFile(log_file, 'w') as writer:
+  with contextlib.ExitStack() as stack:
+    writer = stack.enter_context(gfile.GFile(
+        log_file, 'w')) if log_file is not None else None
 
     # Log params
     def _log_variable(name: str, arr: Optional[np.ndarray],
