@@ -65,7 +65,7 @@ TensorBoardLogger = seqio.TensorBoardLogger
 class SaveCheckpointConfig:
   """Configuration for saving model checkpoints."""
   # The dtype to save ('float32' or 'bfloat16').
-  dtype: str
+  dtype: str = 'float32'
   # Number of steps between writing checkpoints.
   period: Optional[int] = None
   # Number of most recent checkpoints to keep, or None to keep them all.
