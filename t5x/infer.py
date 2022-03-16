@@ -339,19 +339,24 @@ def infer(
   }
   # Initialize optimizer from the existing checkpoint.
   # TODO(adarob): Support inference over multiple checkpoints.
-  train_step_initializer = utils.TrainStateInitializer(
+  train_state_initializer = utils.TrainStateInitializer(
       optimizer_def=None,  # Do not load optimizer state.
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
       input_types=input_types,
       partitioner=partitioner)
+  # Log the variable shapes information and write to a file.
+  model_info_log_file = os.path.join(output_dir, 'model-info.txt')
+  utils.log_model_info(model_info_log_file,
+                       train_state_initializer.global_train_state_shape,
+                       partitioner)
 
   # Disable strictness since we are dropping the optimizer state.
   restore_checkpoint_cfg.strict = False
 
   if fallback_init_rng is not None:
     fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
-  train_state = train_step_initializer.from_checkpoint(
+  train_state = train_state_initializer.from_checkpoint(
       [restore_checkpoint_cfg], init_rng=fallback_init_rng)
   if mode == 'predict':
     infer_step = model.predict_batch
@@ -364,7 +369,7 @@ def infer(
       utils.get_infer_fn(
           infer_step=infer_step,
           batch_size=batch_size,
-          train_state_axes=train_step_initializer.train_state_axes,
+          train_state_axes=train_state_initializer.train_state_axes,
           partitioner=partitioner),
       train_state=train_state)
 
