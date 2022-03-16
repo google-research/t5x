@@ -579,6 +579,7 @@ class Checkpointer(object):
     """
     step = train_state.step
     step = step.get() if isinstance(step, LazyArray) else step
+    step = int(step)  # Integer, to avoid side effects in the checkpoint path.
 
     # Share a timestamp across devices.
     timestamp = multihost_utils.broadcast_one_to_all(np.int32(time.time()))
