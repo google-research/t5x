@@ -122,7 +122,7 @@ class BaseModel(abc.ABC):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray],
-  ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
+  ) -> Tuple[jnp.ndarray, Union[Tuple[jnp.ndarray, MetricsMap], MetricsMap]]:
     """Computes loss and metrics.
 
     Args:
@@ -142,7 +142,7 @@ class BaseModel(abc.ABC):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-  ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
+  ) -> Tuple[jnp.ndarray, Union[Tuple[jnp.ndarray, MetricsMap], MetricsMap]]:
     """Computes loss and metrics during the evaluation.
 
     Args:
