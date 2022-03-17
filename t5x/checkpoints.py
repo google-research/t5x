@@ -45,6 +45,7 @@ from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 from t5x import checkpoint_importer
+from t5x import checkpoint_utils
 from t5x import partitioning
 from t5x import state_utils
 from t5x import train_state as train_state_lib
@@ -557,9 +558,7 @@ class Checkpointer(object):
       return
 
     for step in existing_steps[:to_remove]:
-      ckpt_dir = self._get_checkpoint_dir(step)
-      logging.info('Deleting old checkpoint: %s', ckpt_dir)
-      gfile.rmtree(ckpt_dir)
+      checkpoint_utils.remove_checkpoint_dir(self._get_checkpoint_dir(step))
 
   def save(self,
            train_state: train_state_lib.TrainState,
@@ -1198,9 +1197,7 @@ class SaveBestCheckpointer(Checkpointer):
     existing_steps.append(latest_checkpoint)
 
     for step in existing_steps[:to_remove]:
-      ckpt_dir = self._get_checkpoint_dir(step)
-      logging.info('Deleting checkpoint: %s', ckpt_dir)
-      gfile.rmtree(ckpt_dir)
+      checkpoint_utils.remove_checkpoint_dir(self._get_checkpoint_dir(step))
 
 
 def _get_optimizer_state_dict(

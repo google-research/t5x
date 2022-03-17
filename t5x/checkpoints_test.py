@@ -141,7 +141,8 @@ class CheckpointsTest(parameterized.TestCase):
 
     self.ds = tf.data.Dataset.range(1024)
 
-    self.tmp_dir = self.create_tempdir().full_path
+    self.checkpoints_dir = self.create_tempdir()
+    self.tmp_dir = self.checkpoints_dir.full_path
 
     fake_checkpoints = self.create_tempdir()
     self.fake_checkpoints = fake_checkpoints.full_path
@@ -836,6 +837,31 @@ class CheckpointsTest(parameterized.TestCase):
     self.assertSequenceEqual(checkpointer.all_steps(), [45, 46])
 
   @mock.patch('time.time', return_value=0)
+  def test_keep_pinned(self, unused_mock_time):
+    no_partitions_partitioner = self.get_partitioner(0, 1, 1)
+    train_state = self.train_state
+    checkpointer = checkpoints.Checkpointer(
+        train_state, no_partitions_partitioner, self.tmp_dir, keep=1)
+
+    checkpointer.save(update_train_state_step(train_state, 42))
+    self.assertSequenceEqual(checkpointer.all_steps(), [42])
+
+    # Mark the checkpoint as pinned by creating the ALWAYS KEEP file.
+    ckpt_dir = self.checkpoints_dir.mkdir(f'checkpoint_{42}')
+    ckpt_dir.create_file('PINNED')
+
+    checkpointer.save(update_train_state_step(train_state, 43))
+
+    # Assert both the pinned and the most recent checkpoints are saved.
+    self.assertSequenceEqual(checkpointer.all_steps(), [42, 43])
+
+    checkpointer.save(update_train_state_step(train_state, 44))
+
+    # Assert the non-pinned checkpoint gets deleted, but the pinned and the most
+    # recent one are still saved.
+    self.assertSequenceEqual(checkpointer.all_steps(), [42, 44])
+
+  @mock.patch('time.time', return_value=0)
   def test_keep_with_save_best_checkpointer(self, unused_mock_time):
     no_partitions_partitioner = self.get_partitioner(0, 1, 1)
     train_state = self.train_state
@@ -882,6 +908,94 @@ class CheckpointsTest(parameterized.TestCase):
     summary_writer.scalar('accuracy', 0.99, 46)
     checkpointer.save(update_train_state_step(train_state, 47))
     self.assertSequenceEqual(checkpointer.all_steps(), [42, 43, 47])
+
+  @mock.patch('time.time', return_value=0)
+  def test_keep_pinned_save_best_checkpointer(self, unused_mock_time):
+    no_partitions_partitioner = self.get_partitioner(0, 1, 1)
+    train_state = self.train_state
+
+    checkpointer = checkpoints.SaveBestCheckpointer(
+        train_state,
+        no_partitions_partitioner,
+        self.tmp_dir,
+        keep=2,
+        metric_name_to_monitor='train/accuracy',
+        metric_mode='max',
+        keep_checkpoints_without_metrics=False)
+
+    summary_writer = tensorboard.SummaryWriter(
+        os.path.join(self.tmp_dir, 'train'))
+
+    checkpointer.save(update_train_state_step(train_state, 42))
+    summary_writer.scalar('accuracy', 0.9, 42)
+    checkpointer.save(update_train_state_step(train_state, 43))
+    summary_writer.scalar('accuracy', 0.7, 43)
+    checkpointer.save(update_train_state_step(train_state, 44))
+    summary_writer.scalar('accuracy', 0.8, 44)
+    self.assertSequenceEqual(checkpointer.all_steps(), [42, 43, 44])
+
+    # Mark checkpoint 43 as always keep.
+    ckpt_dir = self.checkpoints_dir.mkdir(f'checkpoint_{43}')
+    always_keep_ckpt_43 = ckpt_dir.create_file('PINNED')
+
+    # Verify that the pinned checkpoint 43 is always saved even though it does
+    # not have the best metrics, and keep = 2.
+    checkpointer.save(update_train_state_step(train_state, 45))
+    self.assertSequenceEqual(checkpointer.all_steps(), [42, 43, 44, 45])
+    checkpointer.save(update_train_state_step(train_state, 46))
+    summary_writer.scalar('accuracy', 0.6, 46)
+
+    # Remove the ALWAYS KEEP file for checkpoint 43.
+    gfile.rmtree(always_keep_ckpt_43.full_path)
+
+    # Checkpoint 43 should get deleted in the next update since it is not
+    # pinned and does not have the best metrics.
+    checkpointer.save(update_train_state_step(train_state, 47))
+    self.assertSequenceEqual(checkpointer.all_steps(), [42, 44, 47])
+
+  @mock.patch('time.time', return_value=0)
+  def test_keep_pinned_save_best_checkpointer_missing_metrics(
+      self, unused_mock_time):
+    """Test for `keep_checkpoints_without_metrics` behavior."""
+    no_partitions_partitioner = self.get_partitioner(0, 1, 1)
+    train_state = self.train_state
+
+    # Use SaveBestCheckpointer with default keep_checkpoints_without_metrics.
+    checkpointer = checkpoints.SaveBestCheckpointer(
+        train_state,
+        no_partitions_partitioner,
+        self.tmp_dir,
+        keep=1,
+        metric_name_to_monitor='train/accuracy',
+        metric_mode='max')
+
+    # Pre-create metrics for only some of the steps.
+    summary_writer = tensorboard.SummaryWriter(
+        os.path.join(self.tmp_dir, 'train'))
+    summary_writer.scalar('accuracy', 0.5, 43)
+    summary_writer.scalar('accuracy', 0.4, 44)
+    summary_writer.scalar('accuracy', 0.8, 45)
+    summary_writer.scalar('accuracy', 0.3, 46)
+
+    # Verify that we keep checkpoints for 41 and 42 even without metrics.
+    checkpointer.save(update_train_state_step(train_state, 41))
+    checkpointer.save(update_train_state_step(train_state, 42))
+    checkpointer.save(update_train_state_step(train_state, 43))
+    self.assertSequenceEqual(checkpointer.all_steps(), [41, 42, 43])
+
+    # Mark 41 and 43 checkpoints as pinned / to not be removed.
+    ckpt_dir_41 = self.checkpoints_dir.mkdir(f'checkpoint_{41}')
+    ckpt_dir_41.create_file('PINNED')
+    ckpt_dir_43 = self.checkpoints_dir.mkdir(f'checkpoint_{43}')
+    ckpt_dir_43.create_file('PINNED')
+
+    # Checkpoints 41 and 43 should always be kept because they are pinned.
+    checkpointer.save(update_train_state_step(train_state, 44))
+    self.assertSequenceEqual(checkpointer.all_steps(), [41, 42, 43, 44])
+    # Checkpoint 44 should get deleted on next save. 43 is saved inspite of
+    #  it's low accuracy because it is pinned.
+    checkpointer.save(update_train_state_step(train_state, 45))
+    self.assertSequenceEqual(checkpointer.all_steps(), [41, 42, 43, 45])
 
   @mock.patch('time.time', return_value=0)
   def test_save_best_checkpointer_from_restart(self, unused_mock_time):
