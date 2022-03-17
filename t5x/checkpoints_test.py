@@ -225,10 +225,18 @@ class CheckpointsTest(parameterized.TestCase):
   @mock.patch('time.time', return_value=0)
   @mock.patch('jax.host_count')
   @mock.patch('jax.process_index')
-  def call_host_checkpointer(self, process_index, host_count, partitioner, fn,
-                             save_dtype, ds_iter, mock_process_index,
-                             mock_host_count, unused_mock_host_time,
-                             unused_mock_sync_devices):
+  def call_host_checkpointer(self,
+                             process_index,
+                             host_count,
+                             partitioner,
+                             fn,
+                             save_dtype,
+                             ds_iter,
+                             mock_process_index,
+                             mock_host_count,
+                             unused_mock_host_time,
+                             unused_mock_sync_devices,
+                             restore_dtype=np.float32):
     mock_process_index.return_value = process_index
     mock_host_count.return_value = host_count
 
@@ -237,7 +245,8 @@ class CheckpointsTest(parameterized.TestCase):
         partitioner,
         self.tmp_dir,
         ds_iter,
-        save_dtype=save_dtype)
+        save_dtype=save_dtype,
+        restore_dtype=restore_dtype)
     return fn(checkpointer)
 
   # pylint:disable=no-value-for-parameter
@@ -266,7 +275,7 @@ class CheckpointsTest(parameterized.TestCase):
   def test_get_parameter_infos(self):
     train_state = make_train_state(
         params={
-            'bias': np.ones((8192, 8192), jnp.bfloat16),
+            'bias': np.ones((8192, 8192), np.float32),
             'kernel': np.ones((2, 16), np.float32)
         },
         param_states={
@@ -464,13 +473,16 @@ class CheckpointsTest(parameterized.TestCase):
               step=step,
               lazy_parameters=lazy_parameters),
           np.float32,
-          ds_iter if checkpoint_dataset else None)
+          ds_iter if checkpoint_dataset else None,
+          restore_dtype=expected_restore_dtype)
       if lazy_parameters:
         actual_train_state = jax.tree_map(lambda x: x.get(), actual_train_state)
       self.assertEqual(actual_train_state._optimizer.optimizer_def,
                        self.train_state._optimizer.optimizer_def)
 
       self.assertEqual(actual_train_state.step, step)
+      self.assertEqual(actual_train_state.step.dtype, np.int32)
+      self.assertEqual(actual_train_state._optimizer.state.step.dtype, np.int32)
       jax.tree_multimap(np.testing.assert_array_equal,
                         actual_train_state.param_states, param_states)
       self.assertEqual(actual_train_state.param_states['kernel'].dtype,
@@ -520,7 +532,11 @@ class CheckpointsTest(parameterized.TestCase):
       self.assertEqual(
           actual_optimizer.optimizer_def,
           self.train_state_multi_optimizer._optimizer.optimizer_def)
+      self.assertEqual(actual_optimizer.state.step.dtype, np.int32)
+      jax.tree_map(lambda x: self.assertEqual(x.dtype, expected_restore_dtype),
+                   actual_optimizer.target)
       self.assertEqual(actual_step, step)
+      self.assertEqual(actual_step.dtype, np.int32)
       jax.tree_multimap(np.testing.assert_array_equal, actual_param_states,
                         param_states)
       self.assertSameElements(actual_params, ('bias', 'kernel'))
@@ -661,6 +677,8 @@ class CheckpointsTest(parameterized.TestCase):
     jax.tree_multimap(np.testing.assert_allclose,
                       ckpt_contents['optimizer']['state']['param_states'],
                       param_states)
+    self.assertEqual(ckpt_contents['optimizer']['state']['step'].dtype,
+                     np.int32)
     if disable_partitioning:
       # Parameters should also be in the msgpack checkpoint file.
       jax.tree_multimap(
@@ -682,6 +700,10 @@ class CheckpointsTest(parameterized.TestCase):
       (4, 1),  # 4 hosts, 1 partition
       (4, 2),  # 4 hosts, 2 partitions
       (8, 2),  # 8 hosts, 2 partitions
+  ]
+
+  DTYPES = [
+      jnp.int32, jnp.float32, jnp.bfloat16, jnp.uint32, jnp.int64, jnp.float64
   ]
 
   @parameterized.parameters(itertools.product(TOPOLOGIES, TOPOLOGIES))
@@ -743,9 +765,10 @@ class CheckpointsTest(parameterized.TestCase):
     self.validate_save(*topology, checkpoint_dataset=True)
     self.validate_restore(*topology, checkpoint_dataset=True)
 
-  def test_save_as_bfloat16(self):
-    self.validate_save(1, 1, save_dtype=jnp.bfloat16)
-    self.validate_restore(1, 1, expected_restore_dtype=jnp.bfloat16)
+  @parameterized.parameters(itertools.product(DTYPES, DTYPES))
+  def test_save_as_type(self, save_dtype, restore_dtype):
+    self.validate_save(1, 1, save_dtype=save_dtype)
+    self.validate_restore(1, 1, expected_restore_dtype=restore_dtype)
 
   @parameterized.parameters(TOPOLOGIES)
   def test_reload_wrong_shape(self, *restore_topology):
@@ -767,21 +790,22 @@ class CheckpointsTest(parameterized.TestCase):
       self.validate_restore(*restore_topology)
 
   @parameterized.parameters(TOPOLOGIES)
-  def test_save_partitioned_restore_non_paritioned(self, *restore_topology):
+  def test_save_partitioned_restore_non_partitioned(self, *restore_topology):
     # Save with default partitioning.
     self.validate_save(2, 2)
     # Restore without partitioning.
     self.validate_restore(*restore_topology, disable_partitioning=True)
 
   @parameterized.parameters(TOPOLOGIES)
-  def test_save_non_partitioned_restore_paritioned(self, *restore_topology):
+  def test_save_non_partitioned_restore_partitioned(self, *restore_topology):
     # Save without partitioning.
     self.validate_save(2, 1, disable_partitioning=True)
     # Restore with partitioning.
     self.validate_restore(*restore_topology)
 
   @parameterized.parameters(TOPOLOGIES)
-  def test_save_non_partitioned_restore_non_paritioned(self, *restore_topology):
+  def test_save_non_partitioned_restore_non_partitioned(self,
+                                                        *restore_topology):
     # Save without partitioning.
     self.validate_save(2, 1, disable_partitioning=True)
     # Restore with partitioning.
