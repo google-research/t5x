@@ -7,20 +7,25 @@ from t5x import utils
 from t5x import models
 
 
-include 't5x/configs/runs/pretrain.gin'
+include 't5x/configs/runs/finetune.gin'
 include 't5x/examples/t5/t5_1_1/base.gin'
 
 BATCH_SIZE = 128
 MIXTURE_OR_TASK_NAME = "wmt14_enfr_v003"
 TASK_FEATURE_LENGTHS = {'inputs': 256, 'targets': 256}
 DROPOUT_RATE = 0.1
+TRAIN_STEPS = 1_020_000  # 1000000 pre-trained steps + 20000 fine-tuning steps.
+
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000"
+
+# `LOSS_NORMALIZING_FACTOR`: When fine-tuning a model that was pre-trained
+# using Mesh Tensorflow (e.g. the public T5 / mT5 / ByT5 models), this should be
+# set to `pretraining batch_size` * `target_token_length`. For T5 and T5.1.1:
+# `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
+LOSS_NORMALIZING_FACTOR = 233472
 
 train_script.train:
   eval_period = 100
-
-utils.RestoreCheckpointConfig:
-  path = %INITIAL_CHECKPOINT_PATH
-  mode = 'specific'
 
 train_script.train:
   train_dataset_cfg = @train/utils.DatasetConfig()
