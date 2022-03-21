@@ -398,10 +398,7 @@ class TrainerTest(parameterized.TestCase):
         num_microbatches=None)
 
   def tearDown(self) -> None:
-    # Manually close managers to avoid phantom threads crossing test cases.
-    self.test_trainer.train_metrics_manager.close()
-    for mm in self.test_trainer.eval_metrics_managers.values():
-      mm.close()
+    self.test_trainer.close()
     return super().tearDown()
 
   @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_accum_grads)

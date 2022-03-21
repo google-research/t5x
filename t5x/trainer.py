@@ -212,7 +212,10 @@ class WeightMetricsComputer(object):
 
 
 class _AsyncTimer(object):
-  """A timer that computes computes durations between async jax operations."""
+  """A timer that computes computes durations between async jax operations.
+
+  You should call close() to wait for threads started by this class to finish.
+  """
 
   def __init__(self):
     # We use a thread pool with a single worker to ensure that calls to the
@@ -220,8 +223,11 @@ class _AsyncTimer(object):
     self._pool = asynclib.Pool(thread_name_prefix="AsyncTimer", max_workers=1)
     self._start_future = None
 
-  def __del__(self):
+  def close(self):
     self._pool.close()
+
+  def __del__(self):
+    self.close()
 
   def _get_completion_future(self, block_on: PyTreeDef = ()) -> TimeFuture:
     """Returns Future containing time when `block_on` is ready."""
@@ -262,6 +268,8 @@ class MetricsManager(object):
   Logs to:
     * TensorBoard
     * ABSL
+
+  You should call close() to wait for threads started by this class to finish.
   """
 
   # TODO(cpgaffney) Remove summarize_fn argument when summarize_metrics_fn is
@@ -306,9 +314,12 @@ class MetricsManager(object):
     try:
       self._summary_pool.close()
     finally:
-      if self._writer:
-        self._writer.close()
-        self._writer = None
+      try:
+        self._duration_timer.close()
+      finally:
+        if self._writer:
+          self._writer.close()
+          self._writer = None
 
   @property
   def summary_writer(self) -> metric_writers.MetricWriter:
@@ -397,7 +408,12 @@ class PreemptionError(Exception):
 
 
 class BaseTrainer(abc.ABC):
-  """Abstract base trainer class."""
+  """Abstract base trainer class.
+
+  Internally this uses MetricsManagers that start threads. You should
+  use the trainer as a context manager, or call close() directly in
+  order to wait for these threads to finish after training is done.
+  """
 
   def __init__(self, model: models.BaseModel,
                train_state: train_state_lib.TrainState,
@@ -457,6 +473,18 @@ class BaseTrainer(abc.ABC):
             summarize_fn=summarize_fn,
             summary_dir=summary_dir) for n in eval_names
     }
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, exc_type, exc_value, traceback):
+    self.close()
+
+  def close(self):
+    """Stops all train metric managers threads."""
+    self.train_metrics_manager.close()
+    for mm in self.eval_metrics_managers.values():
+      mm.close()
 
   def _get_step_rng(self, step: int) -> Rng:
     return jax.random.fold_in(self._base_rng, step)

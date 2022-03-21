@@ -558,6 +558,7 @@ def train(
   # Wait until computations are done before exiting
   logging.info('Finished.')
   multihost_utils.sync_global_devices('complete')
+  trainer.close()
 
   return host_step, trainer.train_state
 
