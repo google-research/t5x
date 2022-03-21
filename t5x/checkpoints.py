@@ -614,30 +614,32 @@ class Checkpointer(object):
 
     # Block until complete on all hosts.
     multihost_utils.sync_global_devices(
-        f'checkpointer:write_complete:{tmp_dir}')
-    if jax.process_index() != 0:
-      return
+        f'checkpointer:tensorstore_write_complete:{tmp_dir}')
 
-    # Host 0 only.
-    # Write msgpack file in host 0 only
-    msgpack_bytes = serialization.to_bytes({
-        'version': VERSION,
-        'optimizer': written_state_dict
-    })
-    with gfile.GFile(os.path.join(tmp_dir, 'checkpoint'), 'wb') as fp:
-      fp.write(msgpack_bytes)
+    if jax.process_index() == 0:
+      # Write msgpack file in host 0 only
+      msgpack_bytes = serialization.to_bytes({
+          'version': VERSION,
+          'optimizer': written_state_dict
+      })
+      with gfile.GFile(os.path.join(tmp_dir, 'checkpoint'), 'wb') as fp:
+        fp.write(msgpack_bytes)
 
-    # Finalize checkpoint directory.
-    if final_dir.startswith('gs://'):
-      subprocess.run(['gsutil', '-m', 'mv', tmp_dir, final_dir],
-                     stdout=subprocess.DEVNULL,
-                     check=True)
-    else:
-      gfile.rename(tmp_dir, final_dir)
-    logging.info('Saved checkpoint for step %d to %s', step, final_dir)
+      # Finalize checkpoint directory.
+      if final_dir.startswith('gs://'):
+        subprocess.run(['gsutil', '-m', 'mv', tmp_dir, final_dir],
+                       stdout=subprocess.DEVNULL,
+                       check=True)
+      else:
+        gfile.rename(tmp_dir, final_dir)
+      logging.info('Saved checkpoint for step %d to %s', step, final_dir)
 
-    # Remove old checkpoints, if necessary.
-    self._remove_old_checkpoints()
+      # Remove old checkpoints, if necessary.
+      self._remove_old_checkpoints()
+
+    # Block until complete on all hosts.
+    multihost_utils.sync_global_devices(
+        f'checkpointer:write_complete:{final_dir}')
 
   def _write_state_to_tensorstore(
       self,
