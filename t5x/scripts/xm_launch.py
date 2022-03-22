@@ -74,6 +74,11 @@ _TFDS_DATA_DIR = flags.DEFINE_string(
     None,
     'Data dir to save the processed dataset in "gs://data_dir" format.',
 )
+_SEQIO_CACHE_DIRS = flags.DEFINE_list(
+    'seqio_additional_cache_dirs',
+    [],
+    'Comma separated directories in "gs://cache_dir" format to search for cached Tasks in addition to defaults.',
+)
 
 
 @xm.run_in_asyncio_loop
@@ -121,10 +126,13 @@ async def main(_, gin_args: Dict[str, Any]):
             entrypoint=xm.CommandList([
                 f'export MODEL_DIR=\'"{_MODEL_DIR.value}/logs"\'',
                 f'export TFDS_DATA_DIR={_TFDS_DATA_DIR.value}',
+                'export SEQIO_CACHE_DIRS={}'.format(','.join(
+                    _SEQIO_CACHE_DIRS.value)),
                 'export T5X_DIR=.',
                 ('python3 ${T5X_DIR}/t5x/train.py '
                  '--gin.MODEL_DIR=${MODEL_DIR} '
-                 '--tfds_data_dir=${TFDS_DATA_DIR}'),
+                 '--tfds_data_dir=${TFDS_DATA_DIR} '
+                 '--seqio_additional_cache_dirs=${SEQIO_CACHE_DIRS}'),
             ]),
         ),
     ])
