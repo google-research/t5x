@@ -31,7 +31,7 @@ logical axis names can be found [below](#canonical-logical-axis-names).
 For `jax.pjit` to know how to partition these arrays across the hardware, the
 logical axis names must be mapped to physical axes of the accelerator (TPU/GPU)
 mesh. In T5X, the two primary hardware axes are named `'data'` and `'model'`,
-referring to the defalt mappings for data- and model-parallelism, respectively.
+referring to the default mappings for data- and model-parallelism, respectively.
 Names notwithstanding, you are free to map model parameters/activations across
 the "data" axis. In fact, this is what is done in "2D" parameter/activation
 sharding. See [`t5x.partitioning.standard_logical_axis_rules`][standard-rules]
