@@ -347,9 +347,10 @@ def infer(
       partitioner=partitioner)
   # Log the variable shapes information and write to a file.
   model_info_log_file = os.path.join(output_dir, 'model-info.txt')
-  utils.log_model_info(model_info_log_file,
-                       train_state_initializer.global_train_state_shape,
-                       partitioner)
+  if shard_id == 0:
+    utils.log_model_info(model_info_log_file,
+                         train_state_initializer.global_train_state_shape,
+                         partitioner)
 
   # Disable strictness since we are dropping the optimizer state.
   restore_checkpoint_cfg.strict = False
