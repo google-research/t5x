@@ -124,17 +124,12 @@ class LazyAwaitableArray(LazyArray):
 
   @classmethod
   def from_tensor_store_spec(
-      cls,
-      ts_spec: ts.Spec,
-      get_fn: Callable[[], np.ndarray],
-      dtype: Optional[jnp.dtype] = None) -> 'LazyAwaitableArray':
+      cls, ts_spec: ts.Spec,
+      get_fn: Callable[[], np.ndarray]) -> 'LazyAwaitableArray':
     """Create a LazyAwaitableArray based on a tensorstore.Spec."""
     ts_spec = ts_spec.to_json()
     shape = ts_spec['metadata']['shape']
-    if dtype is None:
-      dtype = jnp.dtype(ts_spec['dtype'])
-    else:
-      dtype = jnp.dtype(dtype)
+    dtype = jnp.dtype(ts_spec['dtype'])
     # v2 T5X checkpoints use uint16 as the TensorStore datatype and then store
     # the bfloat16 bytes as in in the 16 bytes uint16 has (no actual cast). When
     # When reading the dtype from the TensorStore, if we keep the dtype of these
@@ -147,27 +142,19 @@ class LazyAwaitableArray(LazyArray):
     return cls(shape, dtype, get_fn)
 
   @classmethod
-  def from_array(cls,
-                 array: np.ndarray,
-                 get_fn: Callable[[], np.ndarray],
-                 dtype: Optional[jnp.dtype] = None) -> 'LazyAwaitableArray':
+  def from_array(cls, array: np.ndarray,
+                 get_fn: Callable[[], np.ndarray]) -> 'LazyAwaitableArray':
     """Create a LazyAwaitableArray based on an array or python number."""
-    if dtype is None:
-      dtype = array.dtype
-    else:
-      dtype = jnp.dtype(dtype)
-    return cls(array.shape, dtype, get_fn)
+    return cls(array.shape, array.dtype, get_fn)
 
   @classmethod
   def from_tensor_store_spec_or_array(
-      cls,
-      maybe_ts_spec: Union[ts.Spec, np.ndarray],
-      get_fn: Callable[[], np.ndarray],
-      dtype: Optional[jnp.dtype] = None) -> 'LazyAwaitableArray':
+      cls, maybe_ts_spec: Union[ts.Spec, np.ndarray],
+      get_fn: Callable[[], np.ndarray]) -> 'LazyAwaitableArray':
     """Create a LazyAwaitableArray based on an array or a tensorstore.Spec."""
     if isinstance(maybe_ts_spec, ts.Spec):
-      return cls.from_tensor_store_spec(maybe_ts_spec, get_fn, dtype=dtype)
-    return cls.from_array(maybe_ts_spec, get_fn, dtype=dtype)
+      return cls.from_tensor_store_spec(maybe_ts_spec, get_fn)
+    return cls.from_array(maybe_ts_spec, get_fn)
 
 
 class CheckpointTranslator:
