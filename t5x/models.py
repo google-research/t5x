@@ -467,13 +467,13 @@ class EncoderDecoderModel(BaseTransformerModel):
 
     This method can be used with a customizable decoding function as long as it
     follows the signature of `DecodeFnCallable`. In order to provide a unified
-    interface for the decoding functions, we use a generic names. For example a
+    interface for the decoding functions, we use a generic names. For example, a
     beam size is a concept unique to beam search. Conceptually, it corresponds
     to the number of sequences returned by the beam search.  Therefore, the
     generic argument `num_decodes` corresponds to the beam size if
     `self._decode_fn` is a beam search. For temperature sampling, `num_decodes`
-    corresponds to the number of indepedent sequences to be sampled. Typically
-    `num_decodes = 1` is used for tempeature sampling.
+    corresponds to the number of independent sequences to be sampled. Typically
+    `num_decodes = 1` is used for temperature sampling.
 
     If `return_all_decodes = True`, the return tuple contains the predictions
     with a shape [batch, num_decodes, max_decode_len] and the scores (i.e., log
