@@ -160,7 +160,8 @@ def write_inferences_to_file(
     vocabulary: Optional[seqio.Vocabulary] = None,
     json_encoder_cls: Type[json.JSONEncoder] = seqio.TensorAndNumpyEncoder,
     include_all_inputs: bool = False,
-    input_fields_to_include: Optional[Sequence[str]] = None) -> None:
+    input_fields_to_include: Optional[Sequence[str]] = None,
+    output_ids: bool = False) -> None:
   """Write model predictions, along with pretokenized inputs, to JSONL file.
 
   Args:
@@ -177,6 +178,8 @@ def write_inferences_to_file(
       JSONL file (including raw tokens) in addition to the pretokenized inputs.
     input_fields_to_include: List of input fields to include in the output JSONL
       file. This list should be None if `include_all_inputs` is set to True.
+    output_ids: if True, will output the token ID sequence for the output,
+      in addition to the decoded text.
   """
   if mode in ('predict', 'predict_with_aux') and vocabulary is None:
     raise ValueError('The `vocabulary` parameter is required in `predict` and '
@@ -220,13 +223,24 @@ def write_inferences_to_file(
         assert vocabulary is not None
         json_dict['prediction'] = _json_compat(
             vocabulary.decode_tf(tf.constant(output)).numpy())
+        if output_ids:
+          pred = _json_compat(tf.constant(output).numpy())
+          # Truncate padding tokens.
+          assert isinstance(pred, list)
+          pred = pred[:pred.index(0)] if 0 in pred else pred
+          json_dict['prediction_tokens'] = pred
       elif mode == 'score':
         json_dict['score'] = _json_compat(output)
       elif mode == 'predict_with_aux':
         assert vocabulary is not None
-        pred_text, pred_aux = output
+        pred_ids, pred_aux = output
         json_dict['prediction'] = _json_compat(
-            vocabulary.decode_tf(tf.constant(pred_text)).numpy())
+            vocabulary.decode_tf(tf.constant(pred_ids)).numpy())
+        if output_ids:
+          pred = _json_compat(tf.constant(pred_ids).numpy())
+          # Truncate padding tokens.
+          pred = pred[:pred.index(0)] if 0 in pred else pred
+          json_dict['prediction_tokens'] = pred
         json_dict['aux'] = jax.tree_map(_json_compat, pred_aux)
       else:
         raise ValueError(f'Invalid mode: {mode}')
