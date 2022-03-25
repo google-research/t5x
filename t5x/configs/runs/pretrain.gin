@@ -19,9 +19,9 @@
 # - DROPOUT_RATE
 from __gin__ import dynamic_registration
 
-import __main__ as train_script
 from t5x import gin_utils
 from t5x import partitioning
+from t5x import train as train_script
 from t5x import utils
 from t5x import trainer
 
