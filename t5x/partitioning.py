@@ -850,10 +850,13 @@ class PjitPartitioner(BasePjitPartitioner):
       except ValueError as e:
         raise ValueError(f'Failed to map logical axes for {param_name}') from e
 
+    # We keep empty nodes as there may be the optimizer state may contain empty
+    # dicts, e.g., when we are chaining optax transformations with `EmptyState`.
     flat_logical_axes = traverse_util.flatten_dict(
-        logical_axes.state_dict(), sep='/')
+        logical_axes.state_dict(), keep_empty_nodes=True, sep='/')
     flat_mesh_axes = {
-        k: _logical_to_mesh_axes(k, v) for k, v in flat_logical_axes.items()
+        k: v if v == traverse_util.empty_node else _logical_to_mesh_axes(k, v)
+        for k, v in flat_logical_axes.items()
     }
 
     return logical_axes.restore_state(
