@@ -1326,7 +1326,8 @@ def load_t5x_checkpoint(
     state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
     remap: bool = True,
     restore_dtype: Optional[jnp.dtype] = None,
-    lazy_parameters: bool = False) -> PyTreeDef:
+    lazy_parameters: bool = False,
+    no_asyncio: bool = False) -> PyTreeDef:
   """Load a T5X checkpoint without pre-defining the optimizer.
 
   Note:
@@ -1342,6 +1343,8 @@ def load_t5x_checkpoint(
       no parameter casting is performed.
     lazy_parameters: whether to load the parameters as LazyArrays to preserve
       memory.
+    no_asyncio: if True, returns the params without using asyncio (e.g., needed
+      for Beam).
 
   Returns:
     A nested dictionary of weights and parameter states from the checkpoint.
@@ -1396,15 +1399,19 @@ def load_t5x_checkpoint(
 
   ckpt_optimizer_state_with_specs = traverse_util.unflatten_dict(
       ckpt_optimizer_state_with_specs, sep='/')
-  param_infos = traverse_util.unflatten_dict(param_infos, sep='/')
 
-  state_dict = jax.tree_multimap(
-      functools.partial(_create_lazy_awaitable_array, ckpt_path=path),
-      param_infos, ckpt_optimizer_state_with_specs)
+  if no_asyncio:
+    state_dict = ckpt_optimizer_state_with_specs
+  else:
+    param_infos = traverse_util.unflatten_dict(param_infos, sep='/')
 
-  if not lazy_parameters:
-    future_state_dict = jax.tree_map(lambda x: x.get_async(), state_dict)
-    state_dict = _run_future_tree(future_state_dict)
+    state_dict = jax.tree_multimap(
+        functools.partial(_create_lazy_awaitable_array, ckpt_path=path),
+        param_infos, ckpt_optimizer_state_with_specs)
+
+    if not lazy_parameters:
+      future_state_dict = jax.tree_map(lambda x: x.get_async(), state_dict)
+      state_dict = _run_future_tree(future_state_dict)
 
   if restore_dtype is not None:
     state_dict['target'] = _cast(state_dict['target'], restore_dtype)
