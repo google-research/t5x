@@ -22,6 +22,7 @@ r"""This script runs inference-evaluation on a T5X-compatible model.
 
 import functools
 import os
+import time
 from typing import Optional, Sequence, Type
 
 # pylint:disable=g-import-not-at-top
@@ -87,6 +88,10 @@ def evaluate(
   batch_size = dataset_cfg.batch_size
 
   summarize_config_fn(model_dir=output_dir, summary_writer=None, step=0)
+  metrics_writer = metric_writers.create_default_writer(
+      output_dir,
+      collection='inference_eval',
+      asynchronous=True)
 
   ds_vocabs = utils.get_vocabulary(dataset_cfg)
   if (ds_vocabs[0] != model.input_vocabulary or
@@ -164,6 +169,7 @@ def evaluate(
     # ----------------------------------------------------------------------------
 
     # Run final evaluation (with decoding) on the full eval dataset.
+    evaluate_tick = time.time()
     all_metrics, _, _ = evaluator.evaluate(
         compute_metrics=jax.process_index() == 0,
         step=int(train_state.step),
@@ -173,6 +179,9 @@ def evaluate(
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
     multihost_utils.sync_global_devices(f'step_{train_state.step}:complete')
+    metrics_writer.write_scalars(
+        train_state.step,
+        {'timing/evaluate_seconds': time.time() - evaluate_tick})
 
   logging.info('Finished.')
 
