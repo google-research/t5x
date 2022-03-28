@@ -183,13 +183,15 @@ class BaseModel(abc.ABC):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
+      decoder_params: Optional[MutableMapping[str, Any]] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
-    """Predict a batch from the modelwith auxiliary outputs.
+    """Predict a batch from the model with auxiliary outputs.
 
     Args:
       params: model parameters.
       batch: a batch of inputs.
       rng: an optional RNG key to use during prediction (e.g., for decoding).
+      decoder_params: additional (model-independent) parameters for the decoder.
 
     Returns:
       predictions: the model predictions
