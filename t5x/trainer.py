@@ -844,6 +844,30 @@ def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
   return metrics
 
 
+def train_with_lr(
+    train_state: train_state_lib.TrainState,
+    batch: BatchType,
+    learning_rate: jnp.ndarray,
+    dropout_rng: Rng,
+    model: models.BaseModel,
+    num_microbatches: Optional[int],
+    weight_metrics_computer: Optional[WeightMetricsComputer] = None):
+  """Main training function with LR schedule."""
+  grad_accum, metrics, flax_mutables = (
+      accumulate_grads_microbatched(model, train_state, batch, dropout_rng,
+                                    num_microbatches))
+  new_train_state, metrics = apply_grads(
+      train_state,
+      grad_accum,
+      metrics,
+      learning_rate,
+      weight_metrics_computer,
+      other_state_variables={"flax_mutables": flax_mutables}
+      if flax_mutables else None)
+
+  return new_train_state, metrics
+
+
 class Trainer(BaseTrainer):
   """Training loop with optional microbatches."""
 
@@ -893,28 +917,18 @@ class Trainer(BaseTrainer):
   @cached_property
   def _partitioned_train_step(self) -> PartitionedTrainCallable:
 
-    def train_with_lr(train_state: train_state_lib.TrainState,
-                      batch: BatchType):
-
-      learning_rate = self._learning_rate_fn(train_state.step)
-      dropout_rng = self._get_step_rng(train_state.step)
-
-      grad_accum, metrics, flax_mutables = (
-          accumulate_grads_microbatched(self._model, train_state, batch,
-                                        dropout_rng, self._num_microbatches))
-      new_train_state, metrics = apply_grads(
+    def train_step(train_state: train_state_lib.TrainState, batch: BatchType):
+      return train_with_lr(
           train_state,
-          grad_accum,
-          metrics,
-          learning_rate,
-          self._weight_metrics_computer,
-          other_state_variables={"flax_mutables": flax_mutables}
-          if flax_mutables else None)
-
-      return new_train_state, metrics
+          batch,
+          learning_rate=self._learning_rate_fn(train_state.step),
+          dropout_rng=self._get_step_rng(train_state.step),
+          model=self._model,
+          num_microbatches=self._num_microbatches,
+          weight_metrics_computer=self._weight_metrics_computer)
 
     return self._partitioner.partition(
-        train_with_lr,
+        train_step,
         in_axis_resources=(self._train_state_axes,
                            partitioning.PartitionSpec("data",)),
         out_axis_resources=(self._train_state_axes, None),
