@@ -979,6 +979,9 @@ class BaseAction(abc.ABC):
     raise NotImplementedError("Action must define its run method.")
 
 
+ActionMapType = Mapping[ActionMode, Sequence[BaseAction]]
+
+
 class EarlyStoppingAction(BaseAction):
   """Terminates training when the specified metric is not improving.
 
