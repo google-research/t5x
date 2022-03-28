@@ -97,9 +97,10 @@ def train(
     partitioner: partitioning.BasePartitioner,
     trainer_cls: Type[trainer_lib.BaseTrainer],
     model_dir: str,
-    total_steps: int,
     eval_steps: int,
     eval_period: int,
+    total_steps: Optional[int] = None,
+    actual_training_steps: Optional[int] = None,
     stats_period: Optional[int] = None,
     random_seed: Optional[int],
     use_hardware_rng: bool = False,
@@ -127,12 +128,15 @@ def train(
     partitioner: Partitioner for model parameters and data across devices.
     trainer_cls: An implementation of BaseTrainer.
     model_dir: Path of directory to store checkpoints and metric summaries.
-    total_steps: The step number to stop training after. The number of actual
-      steps trained in this run will be this number minus the starting step from
-      the checkpoint.
     eval_steps: The number of batches to process for each train-eval loop.
     eval_period: The number of train steps between each evaluation (both
       train-eval and infer-eval).
+    total_steps: The step number to stop training after. The number of actual
+      steps trained in this run will be this number minus the starting step from
+      the checkpoint. Among `total_steps` and `actual_training_steps`, exactly
+      one argument must be not None.
+    actual_training_steps: The number of steps to train for. Among `total_steps`
+      and `actual_training_steps`, exactly one argument must be not None.
     stats_period: The number of train steps between writing scalar stats. If
       None, defaults to eval_period.
     random_seed: A random seed to use for dropout and initialization. If None, a
@@ -163,6 +167,10 @@ def train(
   Returns:
     The tuple of (last_step, last_train_state).
   """
+  if actual_training_steps is None == total_steps is None:
+    raise ValueError('Among `total_steps` and `actual_training_steps`, exactly '
+                     'one argument must be not None.')
+
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
@@ -173,16 +181,6 @@ def train(
   eval_enabled = (train_eval_dataset_cfg or infer_eval_dataset_cfg)
   eval_period = eval_period if eval_enabled else 0
   checkpoint_period = checkpoint_cfg.save.period if checkpoint_cfg.save else 0
-  if eval_period or checkpoint_period:
-    steps_per_epoch = min(eval_period or np.inf, checkpoint_period or np.inf)
-  else:
-    steps_per_epoch = total_steps
-  stats_period = stats_period or steps_per_epoch
-  if (eval_period and eval_period % steps_per_epoch or
-      checkpoint_period and checkpoint_period % steps_per_epoch):
-    raise ValueError(
-        f'Checkpoint period ({checkpoint_period}) must evenly divide eval '
-        f'period ({eval_period}), or vice-versa.')
 
   if use_hardware_rng or random_seed is None:
     logging.info(
@@ -421,11 +419,26 @@ def train(
 
   first_step = host_step
 
+  if actual_training_steps is not None:
+    total_steps = first_step + actual_training_steps
+  del actual_training_steps
+
   if total_steps < first_step:
     raise ValueError(
         f'Unexpected total_steps ({total_steps}) < checkpoint step '
         f' ({first_step}).')
   logging.info('Starting main loop over steps %d-%d', first_step, total_steps)
+
+  if eval_period or checkpoint_period:
+    steps_per_epoch = min(eval_period or np.inf, checkpoint_period or np.inf)
+  else:
+    steps_per_epoch = total_steps
+  stats_period = stats_period or steps_per_epoch
+  if (eval_period and eval_period % steps_per_epoch or
+      checkpoint_period and checkpoint_period % steps_per_epoch):
+    raise ValueError(
+        f'Checkpoint period ({checkpoint_period}) must evenly divide eval '
+        f'period ({eval_period}), or vice-versa.')
 
   steps_per_epoch = min(steps_per_epoch, total_steps)
   first_epoch = first_step // steps_per_epoch
