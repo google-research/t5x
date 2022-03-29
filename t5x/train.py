@@ -32,6 +32,7 @@ from clu import metric_writers
 import clu.data
 import jax
 from jax import random
+from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
@@ -86,6 +87,26 @@ def run_actions(
   return bool(multihost_utils.broadcast_one_to_all(jnp.array(stop_training)))
 
 
+def create_gda(global_mesh, pspec, model_parallel_submesh, global_shapes,
+               host_arrays) -> gda_lib.GlobalDeviceArray:
+  local_devices = global_mesh.local_devices
+
+  def _put_to_devices(x):
+    per_device_arrays = np.split(x, global_mesh.shape['data'], axis=0)
+    device_buffers = [
+        jax.device_put(arr, d)
+        for arr, d in zip(per_device_arrays, local_devices)
+    ]
+    return device_buffers
+
+  device_buffers = jax.tree_map(_put_to_devices, host_arrays)
+
+  def _gda(shape, dbs):
+    return gda_lib.GlobalDeviceArray(shape, global_mesh, pspec, dbs)
+
+  return jax.tree_map(_gda, global_shapes, device_buffers)
+
+
 def train(
     *,
     model: models.BaseTransformerModel,
@@ -110,7 +131,7 @@ def train(
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None,
     run_eval_before_training: bool = False,
-    use_gda: bool = False) -> Tuple[int, train_state_lib.TrainState]:
+    use_gda: bool = True) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
   Args:
@@ -247,6 +268,22 @@ def train(
     raise ValueError(
         f'get_dataset_fn returned unsupported type {type(train_ds)}.')
 
+  # Need to use the global batch size.
+  input_shapes = {
+      k: (data_layout.batch_size, *v.shape[1:])
+      for k, v in train_ds.element_spec.items()
+  }
+  input_types = {
+      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
+  }
+
+  if use_gda:
+    train_iter = map(
+        functools.partial(create_gda, partitioner.mesh, P('data'),
+                          partitioner._model_parallel_submesh,
+                          jax.tree_flatten(input_shapes)[0]),
+        train_iter.iterator)
+
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
     train_eval_datasets = utils.get_training_eval_datasets(
@@ -306,14 +343,6 @@ def train(
       raise ValueError(
           'Restore checkpoint config may only have a single path in training.')
 
-  # Need to use full batch size.
-  input_shapes = {
-      k: (data_layout.batch_size, *v.shape[1:])
-      for k, v in train_ds.element_spec.items()
-  }
-  input_types = {
-      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
-  }
   init_or_restore_tick = time.time()
   train_state_initializer = utils.TrainStateInitializer(
       optimizer_def=model.optimizer_def,
