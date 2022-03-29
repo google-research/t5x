@@ -915,30 +915,11 @@ def beam_search(inputs: jnp.ndarray,
         inputs, axis=1).astype(jnp.int32)[:, :, state.cur_index + 1]
     out_of_prompt = (next_input_token == 0)
 
-    # Obtain the next token probability from `log_probs` using indexing.
-    # We expect only one beam to have non-zero probabilities. In the first step,
-    # it is the first beam, afterwards the last because the top_k beams are
-    # gathered and flipped.
-    # Note that True * n = n and False * n = 0. Effectively 0 in the first step
-    # and beam_size - 1 in any other step.
-    # {[batch, beam, ...].indexing([batch, 1], 1, [batch, 1])} --> [batch, 1]
-    non_zero_beam_index = (state.cur_index > 0) * (beam_size - 1)
-    next_input_token_probs = log_probs[
-        jnp.expand_dims(jnp.arange(batch_size), axis=-1), non_zero_beam_index,
-        next_input_token]
-
-    # The forced beam probability could become NEG_INF, making all beams
-    # equal to NEG_INF). We need to avoid this to have distinct beams when
-    # force decoding is over. Capping the forced beam probability to a small
-    # value larger than NEG_INF.
-    next_input_token_probs = lax.max(next_input_token_probs, -1.0e6)
-
-    # When forcing prompts, update log probabilities to `next_input_token_probs`
-    # for the top of the beam and -INF for the rest, effectively keeping only
-    # one beam alive.
+    # When forcing prompts, update log probabilities to `0` for the top of the
+    # beam and -INF for the rest, effectively keeping only one beam alive.
     # --> [batch, 2*beams]
     inside_prompt_log_probs = jnp.concatenate([
-        next_input_token_probs,
+        jnp.zeros((batch_size, 1), dtype=topk_log_probs.dtype),
         jnp.full_like(topk_log_probs[:, :beams_to_keep - 1], NEG_INF)
     ],
                                               axis=1)
