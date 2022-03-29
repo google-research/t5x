@@ -1013,6 +1013,40 @@ class CheckpointsTest(parameterized.TestCase):
     checkpointer.save(update_train_state_step(train_state, 101))
     self.assertSequenceEqual(checkpointer.all_steps(), [42, 53, 101])
 
+  def test_save_best_checkpointer_force_keep_period(self):
+    no_partitions_partitioner = self.get_partitioner(0, 1, 1)
+    train_state = self.train_state
+
+    checkpointer = checkpoints.SaveBestCheckpointer(
+        train_state,
+        no_partitions_partitioner,
+        self.tmp_dir,
+        keep=2,
+        metric_name_to_monitor='train/accuracy',
+        metric_mode='max',
+        keep_checkpoints_without_metrics=False,
+        force_keep_period=3)
+
+    summary_writer = tensorboard.SummaryWriter(
+        os.path.join(self.tmp_dir, 'train'))
+
+    # save checkpoints 0..9 with increasing accuracy
+    dict_actual_steps = {}
+    for c in range(10):
+      checkpointer.save(update_train_state_step(train_state, c))
+      summary_writer.scalar('accuracy', c / 100, c)
+      dict_actual_steps[c] = checkpointer.all_steps()
+
+    # Check when the last step=8 is not divisible by the keep_period=3
+    actual_steps_8 = dict_actual_steps[8]
+    expected_steps_8 = [0, 3, 5, 6, 7, 8]
+    self.assertSequenceEqual(actual_steps_8, expected_steps_8)
+
+    # Check when the last step=9 is divisible by the keep_period=3
+    actual_steps_9 = dict_actual_steps[9]
+    expected_steps_9 = [0, 3, 6, 7, 8, 9]
+    self.assertSequenceEqual(actual_steps_9, expected_steps_9)
+
   @mock.patch('time.time', return_value=0)
   def test_save_best_checkpointer_missing_metrics(self, unused_mock_time):
     """Test for `keep_checkpoints_without_metrics` behavior."""

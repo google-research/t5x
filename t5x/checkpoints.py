@@ -1022,6 +1022,8 @@ class SaveBestCheckpointer(Checkpointer):
     metric_mode: Mode to use to compare metric values. One of 'max' or 'min'.
     keep_checkpoints_without_metrics: Whether to always keep (or delete)
       checkpoints for which a metric value has not been found.
+    force_keep_period: When removing checkpoints, skip those who step is
+      divisible by force_keep_period (step % force_keep_period == 0).
   """
 
   def __init__(self,
@@ -1035,7 +1037,8 @@ class SaveBestCheckpointer(Checkpointer):
                restore_dtype: Optional[jnp.dtype] = None,
                metric_name_to_monitor: str = 'train/accuracy',
                metric_mode: str = 'max',
-               keep_checkpoints_without_metrics: bool = True):
+               keep_checkpoints_without_metrics: bool = True,
+               force_keep_period: Optional[int] = None):
     super().__init__(
         train_state,
         partitioner,
@@ -1054,7 +1057,7 @@ class SaveBestCheckpointer(Checkpointer):
     self._metric_name_to_monitor = metric_name_to_monitor
     self._metric_mode = metric_mode
     self._keep_checkpoints_without_metrics = keep_checkpoints_without_metrics
-
+    self._force_keep_period = force_keep_period
     logging.info('Using SaveBestCheckpointer to keep %s best (%s) metric %s',
                  keep, metric_mode, metric_name_to_monitor)
 
@@ -1118,12 +1121,27 @@ class SaveBestCheckpointer(Checkpointer):
       return True
     return False
 
+  def _filter_out_force_keep_period_steps(self, existing_steps):
+    """Filter out steps that are divisible by keep_period excluding the last."""
+    if not existing_steps:
+      return existing_steps
+
+    # Don't filter out the last step.
+    last_step = existing_steps.pop()
+    existing_steps = [
+        s for s in existing_steps if s % self._force_keep_period != 0
+    ]
+    return existing_steps + [last_step]
+
   def _remove_old_checkpoints(self):
     """Deletes checkpoints if there are more than keep_checkpoints."""
     if not self.keep:
       return
 
     existing_steps = self.all_steps()
+    if self._force_keep_period:
+      # Ignore checkpoints whose step is divisible by the keep period.
+      existing_steps = self._filter_out_force_keep_period_steps(existing_steps)
 
     # Artificially add 1 to `keep` since we always keep the latest checkpoint.
     if len(existing_steps) <= self.keep + 1:
