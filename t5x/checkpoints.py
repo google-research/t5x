@@ -472,6 +472,9 @@ class Checkpointer(object):
       # info for it because it shouldn't be saved or restored.
       if arr is None:
         return None
+      # Pass-through empty dict leaves, which occur with optax EmptyState().
+      if isinstance(arr, dict) and not arr:
+        return {}
 
       if axes is None:
         return _ParameterInfo(

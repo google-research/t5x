@@ -844,6 +844,8 @@ class PjitPartitioner(BasePjitPartitioner):
     def _logical_to_mesh_axes(param_name, logical_axes):
       if logical_axes is None:
         return None
+      elif logical_axes is traverse_util.empty_node:
+        return traverse_util.empty_node
       try:
         return flax_partitioning.logical_to_mesh_axes(logical_axes,
                                                       self._logical_axis_rules)
@@ -851,7 +853,7 @@ class PjitPartitioner(BasePjitPartitioner):
         raise ValueError(f'Failed to map logical axes for {param_name}') from e
 
     flat_logical_axes = traverse_util.flatten_dict(
-        logical_axes.state_dict(), sep='/')
+        logical_axes.state_dict(), keep_empty_nodes=True, sep='/')
     flat_mesh_axes = {
         k: _logical_to_mesh_axes(k, v) for k, v in flat_logical_axes.items()
     }

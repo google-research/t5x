@@ -559,6 +559,9 @@ def log_model_info(log_file: Optional[str],
     def _log_variable(name: str, arr: Optional[np.ndarray],
                       logical_axes: Optional[partitioning.AxisNames],
                       mesh_axes: Optional[partitioning.PartitionSpec]):
+      # Log nothing on empty dict leaves, which occur with optax EmptyState().
+      if isinstance(arr, dict) and not arr:
+        return
       if arr is None:
         _log_info_and_write_to_file(writer, 'Variable    %-80s None', name)
         return
@@ -572,9 +575,10 @@ def log_model_info(log_file: Optional[str],
           writer, 'Variable %-80s size %-12s shape %-40s partition spec %s',
           name, arr.size, shape_str, mesh_axes)
 
-    jax.tree_map(_log_variable, state_utils.get_name_tree(state_dict['target']),
-                 state_dict['target'], logical_axes['target'],
-                 mesh_axes['target'])
+    jax.tree_map(
+        _log_variable,
+        state_utils.get_name_tree(state_dict['target'], keep_empty_nodes=True),
+        state_dict['target'], logical_axes['target'], mesh_axes['target'])
 
     _log_info_and_write_to_file(writer, 'Total number of parameters: %d',
                                 total_num_params)
@@ -582,8 +586,10 @@ def log_model_info(log_file: Optional[str],
     # Add a blank line between params and states.
     _log_info_and_write_to_file(writer, '')
 
-    jax.tree_map(_log_variable, state_utils.get_name_tree(state_dict['state']),
-                 state_dict['state'], logical_axes['state'], mesh_axes['state'])
+    jax.tree_map(
+        _log_variable,
+        state_utils.get_name_tree(state_dict['state'], keep_empty_nodes=True),
+        state_dict['state'], logical_axes['state'], mesh_axes['state'])
 
 
 # -----------------------------------------------------------------------------
