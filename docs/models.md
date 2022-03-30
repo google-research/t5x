@@ -92,3 +92,36 @@ MT5 Large | [mt5/large.gin](https://github.com/google-research/t5x/tree/main/t5x
 MT5 XL    | [mt5/xl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/xl.gin)       | [gs://t5-data/pretrained_models/t5x/mt5_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_xl)
 MT5 XXL   | [mt5/xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/xxl.gin)     | [gs://t5-data/pretrained_models/t5x/mt5_xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_xxl)
 
+#### LongT5 Checkpoints
+
+These are the checkpoints used in the paper
+[LongT5: Efficient Text-to-Text Transformer for Long Sequences](https://arxiv.org/abs/2112.07916).
+They are encoder-decoder models trained on
+[C4](https://www.tensorflow.org/datasets/catalog/c4) using the PEGASUS Principle
+Sentences Generation objective. These are the recommended checkpoints to
+fine-tune for long input sequence tasks.
+
+##### LongT5 Local Attention Checkpoints
+
+The checkpoints below use local attention, which uses a sliding window to reduce
+training time from quadratic (with regards to input length) to linear. These are
+the recommended checkpoints to use for faster training/inference time.
+
+Model                        | Gin File Location                                                                                                                     | Checkpoint Location
+---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------
+LongT5 Local Attention Base  | [longt5/models/longt5_1_1_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_base.gin)   | [gs://t5-data/pretrained_models/t5x/longt5/local_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/local_base)
+LongT5 Local Attention Large | [longt5/models/longt5_1_1_large.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_large.gin) | [gs://t5-data/pretrained_models/t5x/longt5/local_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/local_large)
+
+##### LongT5 Transient Global Attention Checkpoints
+
+The checkpoints below use transient global attention, which introduces global
+tokens at each encoder layer to allow tokens to interact with each other at
+longer distances. These are the recommended checkpoints to use for increased
+performance on long input sequence tasks.
+
+Model        | Gin File Location                                                                                                                                                | Checkpoint Location
+------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------
+LongT5 Base  | [longt5/models/longt5_1_1_transient_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_transient_global_base.gin)   | [gs://t5-data/pretrained_models/t5x/longt5/tglobal_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/tglobal_base)
+LongT5 Large | [longt5/models/longt5_1_1_transient_large.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_transient_global_large.gin) | [gs://t5-data/pretrained_models/t5x/longt5/tglobal_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/tglobal_large)
+LongT5 XL    | [longt5/models/longt5_1_1_transient_xl.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_transient_global_xl.gin)       | [gs://t5-data/pretrained_models/t5x/longt5/tglobal_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/tglobal_xl)
+
