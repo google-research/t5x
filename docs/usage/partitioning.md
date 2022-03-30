@@ -299,7 +299,7 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 ```
 
 *   Data and model parallel with sharded activations, perhaps the same as
-    pOptimus](https://arxiv.org/abs/2104.05343), aka "1D parameter partitioning
+    [Optimus](https://arxiv.org/abs/2104.05343), aka "1D parameter partitioning
     with 2D activation partitioning":
 
 ```py
