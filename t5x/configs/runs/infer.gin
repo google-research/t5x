@@ -29,6 +29,7 @@ from __gin__ import dynamic_registration
 import __main__ as infer_script
 from t5x import partitioning
 from t5x import utils
+from pmmx.utils import partitioning_utils
 
 # Must be overridden
 MIXTURE_OR_TASK_NAME = %gin.REQUIRED
@@ -53,6 +54,9 @@ infer_script.infer:
 partitioning.PjitPartitioner:
   num_partitions = 1
   logical_axis_rules = @partitioning.standard_logical_axis_rules()
+
+partitioning.standard_logical_axis_rules:
+  additional_rules = @partitioning_utils.additional_axis_rules()
 
 utils.DatasetConfig:
   mixture_or_task_name = %MIXTURE_OR_TASK_NAME
