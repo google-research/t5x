@@ -575,6 +575,7 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     self._num_partitions = num_partitions
     self._model_parallel_submesh = model_parallel_submesh
     self._params_on_devices = params_on_devices
+    self._data_axis = 'data'
 
   @property
   def _mesh(self) -> Mesh:
@@ -599,22 +600,28 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     """
     if host_index is not None:
       raise NotImplementedError('Explicit host_index is not yet implemented.')
-    mesh_size = self._local_chunker.global_mesh.shape['data']
+    if self._data_axis is None:
+      return DataLayout(
+          batch_size=batch_size,
+          shard_id=0,
+          num_shards=1,
+          is_first_host_in_replica_set=(jax.process_index() == 0))
+    mesh_size = self._local_chunker.global_mesh.shape[self._data_axis]
     batch_size = batch_size or mesh_size
     if batch_size % mesh_size:
       raise ValueError(
-          f'Batch size ({batch_size}) must be divisible by corresponding mesh '
-          f'size ({mesh_size}).')
-    num_shards = self._local_chunker.num_chunks['data']
+          f'Batch size ({batch_size}) must be divisible by corresponding '
+          f'mesh size ({mesh_size}).')
+    num_shards = self._local_chunker.num_chunks[self._data_axis]
     if batch_size % num_shards:
       raise ValueError(
           f'Batch size ({batch_size}) must be divisible by number of '
           f'replicas ({num_shards}).')
-    replica_id = self._local_chunker.get_local_chunk_info((batch_size,),
-                                                          ['data']).replica_id
+    replica_id = self._local_chunker.get_local_chunk_info(
+        (batch_size,), [self._data_axis]).replica_id
     return DataLayout(
         batch_size=batch_size,
-        shard_id=self._local_chunker.chunk_ids['data'],
+        shard_id=self._local_chunker.chunk_ids[self._data_axis],
         num_shards=num_shards,
         is_first_host_in_replica_set=(replica_id == 0))
 
@@ -814,6 +821,8 @@ class PjitPartitioner(BasePjitPartitioner):
     if logical_axis_rules is None:
       logical_axis_rules = standard_logical_axis_rules()
     self._logical_axis_rules = tuple(logical_axis_rules)
+    self._data_axis, = flax_partitioning.logical_to_mesh_axes(
+        ['batch'], logical_axis_rules)
 
   def partition(
       self,
