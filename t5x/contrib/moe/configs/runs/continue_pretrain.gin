@@ -1,0 +1,25 @@
+# Continue a Mixture of Experts pre-training run.
+#
+# See t5x/contrib/moe/configs/runs/pretrain.gin for instructions.
+#
+# You must also include a binding for MODEL.
+#
+# Required to be set:
+#
+# - NUM_EXPERTS
+# - NUM_MODEL_PARTITIONS  (1 if no model parallelism)
+# - MIXTURE_OR_TASK_NAME
+# - TASK_FEATURE_LENGTHS
+# - TRAIN_STEPS
+# - INITIAL_CHECKPOINT_PATH
+# - MODEL_DIR
+
+from __gin__ import dynamic_registration
+
+include 't5x/contrib/moe/configs/runs/pretrain.gin'
+
+utils.RestoreCheckpointConfig:
+  mode = 'specific'
+  path = %INITIAL_CHECKPOINT_PATH
+  fallback_to_scratch = True
+  dtype = 'float32'
