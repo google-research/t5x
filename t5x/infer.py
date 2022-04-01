@@ -152,6 +152,35 @@ def create_task_from_tfexample_file(
   return task.name
 
 
+def merge_chunks_to_file(
+    output_dir: str,
+    output_fname: str,
+    tmp_dir: str,
+    step: Optional[int],
+) -> None:
+  """Merge the predictions from different chunks into a unified file."""
+  logging.info('Merging chunk results.')
+  # Merge chunks into single file.
+  chunk_paths = sorted(
+      gfile.glob(os.path.join(tmp_dir, f'{output_fname}-chunk?????')))
+
+  if not chunk_paths:
+    raise FileNotFoundError(
+        'No chunk results found! One possible explanation is that your '
+        'input did not contain any examples')
+
+  assert int(chunk_paths[-1][-5:]) + 1 == len(chunk_paths), (
+      f'Expecting {int(chunk_paths[-1][-5:])} chunk paths, found '
+      f'{len(chunk_paths)}')
+  output_path = os.path.join(output_dir, output_fname)
+  del step
+  with gfile.GFile(output_path, 'wb') as merged:
+    for chunk_path in chunk_paths:
+      with gfile.GFile(chunk_path, 'rb') as ef:
+        shutil.copyfileobj(ef, merged)
+  logging.info('Results written to %s.', output_path)
+
+
 def write_inferences_to_file(
     path: str,
     inferences: Sequence[Any],
@@ -252,6 +281,8 @@ WriteFn = Callable[
     [str, Sequence[Any], tf.data.Dataset, str, Optional[seqio.Vocabulary]],
     None]
 
+MergeFn = Callable[[str, str, str, Optional[int]], None]
+
 
 def infer(
     *,
@@ -267,7 +298,9 @@ def infer(
     merge_chunked_results: bool = True,
     write_fn: WriteFn = write_inferences_to_file,
     checkpoint_ds_iter: bool = True,
-    fallback_init_rng: Optional[int] = None):
+    fallback_init_rng: Optional[int] = None,
+    merge_fn: MergeFn = merge_chunks_to_file,
+):
   """Infer function.
 
   Args:
@@ -297,6 +330,7 @@ def infer(
       model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
       set to True. If None, parameter initialization is not allowed during model
       loading and having fallback_to_scratch enabled will result in an error.
+    merge_fn: Callable function used to merge inferences from multiple files.
   """
   logging.info('Process ID: %d', jax.process_index())
   if mode not in ('predict', 'score', 'predict_with_aux'):
@@ -519,25 +553,8 @@ def infer(
     write_thread_pool.shutdown(wait=True)
 
     if jax.process_index() == 0 and merge_chunked_results:
-      logging.info('Merging chunk results.')
-      # Merge chunks into single file.
-      chunk_paths = sorted(
-          gfile.glob(os.path.join(tmp_dir, f'{output_fname}-chunk?????')))
-
-      if not chunk_paths:
-        raise FileNotFoundError(
-            'No chunk results found! One possible explanation is that your '
-            'input did not contain any examples')
-
-      assert int(chunk_paths[-1][-5:]) + 1 == len(chunk_paths), (
-          f'Expecting {int(chunk_paths[-1][-5:])} chunk paths, found '
-          f'{len(chunk_paths)}')
-      output_path = os.path.join(output_dir, output_fname)
-      with gfile.GFile(output_path, 'wb') as merged:
-        for chunk_path in chunk_paths:
-          with gfile.GFile(chunk_path, 'rb') as ef:
-            shutil.copyfileobj(ef, merged)
-      logging.info('Results written to %s.', output_path)
+      step = None if train_state is None else int(train_state.step)
+      merge_fn(output_dir, output_fname, tmp_dir, step)
       logging.info('Deleting temporary files.')
       gfile.rmtree(tmp_dir)
 
