@@ -16,10 +16,11 @@
 
 from __gin__ import dynamic_registration
 
+from t5x import utils
+
 include 't5x/contrib/moe/configs/runs/pretrain.gin'
 
 utils.RestoreCheckpointConfig:
   mode = 'specific'
   path = %INITIAL_CHECKPOINT_PATH
-  fallback_to_scratch = True
   dtype = 'float32'
