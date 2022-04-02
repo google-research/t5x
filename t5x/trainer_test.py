@@ -248,8 +248,9 @@ class MetricsManagerTest(absltest.TestCase):
       mm.flush()
 
 
-def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
-  del model, num_microbatches, rng
+def fake_accum_grads(model, optimizer, batch, rng, num_microbatches,
+                     data_partition_spec):
+  del model, num_microbatches, rng, data_partition_spec
   # Add `i` to each optimzer value.
   i = batch['i'].sum()
   grad_accum = jax.tree_map(lambda x: i, optimizer)
@@ -1026,8 +1027,9 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
   @mock.patch('t5x.trainer.apply_grads', fake_apply_grads)
   def test_rng_determinism(self, mock_accum_grads):
 
-    def fake_accum_grads_rng(model, optimizer, batch, rng, num_microbatches):
-      del model, batch, num_microbatches
+    def fake_accum_grads_rng(model, optimizer, batch, rng, num_microbatches,
+                             data_partition_spec):
+      del model, batch, num_microbatches, data_partition_spec
       # Add 1, which will increment the step as a side effect.
       grad_accum = jax.tree_map(lambda x: 1, optimizer)
       m = {'rng': metrics_lib.Sum(jnp.sum(rng))}
@@ -1053,8 +1055,9 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
                                   expected_rng_sum)
 
 
-def fake_mut_accum_grads(model, optimizer, batch, rng, num_microbatches):
-  del model, num_microbatches, rng
+def fake_mut_accum_grads(model, optimizer, batch, rng, num_microbatches,
+                         data_partition_spec):
+  del model, num_microbatches, rng, data_partition_spec
   # Add `i` to each optimzer value.
   i = batch['i'].sum()
   grad_accum = jax.tree_map(lambda x: i, optimizer)

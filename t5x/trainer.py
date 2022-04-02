@@ -57,6 +57,7 @@ MetricValueMapType = Mapping[str, clu.values.Value]
 ModelWeights = Any
 MutableMetricMapType = Dict[str, clu.metrics.Metric]
 PyTreeDef = type(jax.tree_structure(None))
+PartitionSpec = partitioning.PartitionSpec
 
 if TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
@@ -632,8 +633,12 @@ class BaseTrainer(abc.ABC):
 
 
 def accumulate_grads_microbatched(
-    model: models.BaseModel, train_state: train_state_lib.TrainState,
-    batch: BatchType, dropout_rng: Rng, num_microbatches: Optional[int]
+    model: models.BaseModel,
+    train_state: train_state_lib.TrainState,
+    batch: BatchType,
+    dropout_rng: Rng,
+    num_microbatches: Optional[int],
+    data_partition_spec: PartitionSpec = PartitionSpec("data"),
 ) -> Tuple[train_state_lib.TrainState, MutableMetricMapType,
            Optional[FlaxMutables]]:
   """Implements optional microbatched gradient accumulation.
@@ -648,6 +653,8 @@ def accumulate_grads_microbatched(
     dropout_rng: jax PRNGKey for dropout.
     num_microbatches: the number of microbatches to use, or None for direct
       training.
+    data_partition_spec: the PartitionSpec to use for partitioning annotations
+      on the batch.
 
   Returns:
    Accumulated gradients and incremental metrics.
@@ -742,7 +749,7 @@ def accumulate_grads_microbatched(
       # We need to annotate the microbatch sharding as we would a batch.
       mbatch = jax.tree_map(
           lambda x: partitioning.with_sharding_constraint(  # pylint: disable=g-long-lambda
-              x, partitioning.PartitionSpec("data")),
+              x, data_partition_spec),
           mbatch)
       if flax_mutables is None:
         (_, aux), grad = grad_fn(train_state.params, mbatch, sub_dropout_rng)
@@ -851,11 +858,12 @@ def train_with_lr(
     dropout_rng: Rng,
     model: models.BaseModel,
     num_microbatches: Optional[int],
-    weight_metrics_computer: Optional[WeightMetricsComputer] = None):
+    weight_metrics_computer: Optional[WeightMetricsComputer] = None,
+    data_partition_spec: PartitionSpec = PartitionSpec("data")):
   """Main training function with LR schedule."""
   grad_accum, metrics, flax_mutables = (
       accumulate_grads_microbatched(model, train_state, batch, dropout_rng,
-                                    num_microbatches))
+                                    num_microbatches, data_partition_spec))
   new_train_state, metrics = apply_grads(
       train_state,
       grad_accum,
@@ -925,12 +933,13 @@ class Trainer(BaseTrainer):
           dropout_rng=self._get_step_rng(train_state.step),
           model=self._model,
           num_microbatches=self._num_microbatches,
-          weight_metrics_computer=self._weight_metrics_computer)
+          weight_metrics_computer=self._weight_metrics_computer,
+          data_partition_spec=self._partitioner.data_partition_spec)
 
     return self._partitioner.partition(
         train_step,
         in_axis_resources=(self._train_state_axes,
-                           partitioning.PartitionSpec("data",)),
+                           self._partitioner.data_partition_spec),
         out_axis_resources=(self._train_state_axes, None),
         donate_argnums=(0,))
 
@@ -939,7 +948,7 @@ class Trainer(BaseTrainer):
     return self._partitioner.partition(
         lambda *args, **kwargs: eval_step(self._model, *args, **kwargs),
         in_axis_resources=(self._train_state_axes,
-                           partitioning.PartitionSpec("data",)),
+                           self._partitioner.data_partition_spec),
         out_axis_resources=None)
 
 

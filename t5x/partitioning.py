@@ -581,6 +581,10 @@ class BasePartitioner(metaclass=abc.ABCMeta):
   def _mesh(self) -> Mesh:
     raise NotImplementedError
 
+  @property
+  def data_partition_spec(self) -> PartitionSpec:
+    return PartitionSpec(self._data_axis)
+
   def get_data_layout(self,
                       batch_size: Optional[int] = None,
                       host_index: Optional[int] = None) -> DataLayout:
