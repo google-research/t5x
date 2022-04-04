@@ -84,6 +84,28 @@ class DecodeTest(parameterized.TestCase):
     expected = [[5, 6, 7, 2, 2], [8, 9, 3, 3, 3]]
     np.testing.assert_array_equal(expected, sampled_sequences)
 
+  def test_temperature_sample_with_zero_temperature(self):
+    batch, max_decode_len = 2, 3
+
+    def token_to_logits(ids, cache):  # pylint: disable=unused-argument
+      # Use very large logits that are close to one another.
+      logits = np.array(
+          [[1700.47, 1700.48, 1700.51, 1700.45], [3.2, 4.8, -5.3, 5.6]],
+          dtype=np.float32)
+      return logits, {}
+
+    inputs = np.zeros((batch, max_decode_len), dtype=np.int32)
+    sampled_sequences, _ = decoding._temperature_sample_single_trial(
+        inputs, {},
+        token_to_logits,
+        EOS_ID,
+        jax.random.PRNGKey(0),
+        topk=4,
+        temperature=0.0)
+
+    expected = [[2, 2, 2], [3, 3, 3]]
+    np.testing.assert_array_equal(expected, sampled_sequences)
+
   def test_temperature_sample_prefix_ending_with_eos(self):
 
     def token_to_logits(ids, cache):  # pylint: disable=unused-argument
