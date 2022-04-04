@@ -189,7 +189,7 @@ class CheckpointsTest(parameterized.TestCase):
     mesh_axes = mesh_axes or self.default_mesh_axes
     local_chunker = partitioning.LocalChunker(mesh)
 
-    class TestPartitoiner(partitioning.BasePartitioner):
+    class TestPartitioner(partitioning.BasePartitioner):
 
       def __init__(self):
         self.move_params_to_devices_calls = 0
@@ -199,6 +199,10 @@ class CheckpointsTest(parameterized.TestCase):
       @property
       def _local_chunker(self):
         return local_chunker
+
+      @property
+      def _mesh(self):
+        return mesh
 
       def partition(self,
                     fn,
@@ -218,7 +222,7 @@ class CheckpointsTest(parameterized.TestCase):
       def get_mesh_axes(self, train_state):
         return mesh_axes
 
-    return TestPartitoiner()
+    return TestPartitioner()
 
   # pylint:disable=no-value-for-parameter
   @mock.patch(
@@ -293,20 +297,20 @@ class CheckpointsTest(parameterized.TestCase):
         'state': {
             'step':
                 checkpoints._ParameterInfo(
-                    name='state/step', shape=(), ts_spec=None, local_chunk_info=None),
+                    name='state/step', shape=(), ts_spec=None, local_chunk_info=None, axes=None),
             'param_states': {
                 'bias':
                     checkpoints._ParameterInfo(
                         name='state/param_states/bias',
                         shape=(),
                         ts_spec=None,
-                        local_chunk_info=None),
+                        local_chunk_info=None, axes=None),
                 'kernel':
                     checkpoints._ParameterInfo(
                         name='state/param_states/kernel',
                         shape=(2,),
                         ts_spec=None,
-                        local_chunk_info=None)
+                        local_chunk_info=None, axes=None)
             }
         },
         'target': {
@@ -332,7 +336,7 @@ class CheckpointsTest(parameterized.TestCase):
                     local_chunk_info=partitioning.LocalChunkInfo(
                         slice=(slice(4096, 8192, None), slice(None, None,
                                                               None)),
-                        replica_id=1)),
+                        replica_id=1), axes=PartitionSpec('model', None)),
             'kernel':
                 checkpoints._ParameterInfo(
                     name='target/kernel',
@@ -354,7 +358,7 @@ class CheckpointsTest(parameterized.TestCase):
                     }),
                     local_chunk_info=partitioning.LocalChunkInfo(
                         slice=(slice(None, None, None), slice(8, 16, None)),
-                        replica_id=1))
+                        replica_id=1), axes=PartitionSpec(None, 'model'))
         }
     }  # pyformat: disable
     jax.tree_multimap(self.assertEqual, checkpointer._get_parameter_infos(),
