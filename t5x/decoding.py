@@ -62,6 +62,7 @@ def temperature_sample(
     cache_offset: int = 0,
     initial_index: Optional[jnp.ndarray] = None,
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
+    max_decode_steps_hard_limit: Optional[int] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Temperature sampling for language model generation.
 
@@ -219,6 +220,11 @@ def temperature_sample(
       None, it will decode until the full input shape `inputs.shape[1]` is
       filled. max_decode_steps begins counting after the prompt, so it will
       decode at most len(prompt) + max_decode_steps tokens.
+    max_decode_steps_hard_limit: int: an optional fixed hard limit on
+      max_decode_steps. If this is set (not None and > 0), and max_decode_steps
+      is also set, then max_decode_steps will be clipped to this limit. The
+      value max_decode_steps can be an ndarray, but max_decode_steps_hard_limit
+      must be a Python integer or None.
 
   Returns:
     A tuple (decodes, log_prob) where `decodes` is sampled sequences with shape
@@ -227,6 +233,11 @@ def temperature_sample(
   """
   if decode_rng is None:
     decode_rng = jax.random.PRNGKey(0)
+
+  if (max_decode_steps_hard_limit is not None and
+      max_decode_steps_hard_limit > 0 and max_decode_steps is not None):
+    max_decode_steps = jnp.minimum(max_decode_steps,
+                                   max_decode_steps_hard_limit)
 
   # [batch, len] -> [batch * num_decodes, len]
   expanded_inputs = flat_batch_beam_expand(inputs, num_decodes)
