@@ -429,6 +429,20 @@ checkpoints to T5X native format using the
 [convert_tf_checkpoint script](t5x/scripts/convert_tf_checkpoint.py).
 
 
+## Citing T5X
+Please use the following bibtex entry to cite T5X.
+
+```
+@article{roberts2022t5x,
+  url = {https://arxiv.org/abs/2203.17189},
+  author = {Roberts, Adam and Chung, Hyung Won and Levskaya, Anselm and Mishra, Gaurav and Bradbury, James and Andor, Daniel and Narang, Sharan and Lester, Brian and Gaffney, Colin and Mohiuddin, Afroz and Hawthorne, Curtis and Lewkowycz, Aitor and Salcianu, Alex and van Zee, Marc and Austin, Jacob and Goodman, Sebastian and Soares, Livio Baldini and Hu, Haitang and Tsvyashchenko, Sasha and Chowdhery, Aakanksha and Bastings, Jasmijn and Bulian, Jannis and Garcia, Xavier and Ni, Jianmo and Chen, Andrew and Kenealy, Kathleen and Clark, Jonathan H. and Lee, Stephan and Garrette, Dan and Lee-Thorp, James and Raffel, Colin and Shazeer, Noam and Ritter, Marvin and Bosma, Maarten and Passos, Alexandre and Maitin-Shepard, Jeremy and Fiedel, Noah and Omernick, Mark and Saeta, Brennan and Sepassi, Ryan and Spiridonov, Alexander and Newlan, Joshua and Gesmundo, Andrea},
+  title = {Scaling Up Models and Data with $\texttt{t5x}$ and $\texttt{seqio}$},
+  journal={arXiv preprint arXiv:2203.17189},
+  year = {2022},
+}
+```
+
+
 ## Note
 This is not an officially supported Google product
 
