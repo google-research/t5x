@@ -631,7 +631,7 @@ def _remove_padding(all_inferences, all_indices):
     all_inferences in shape PyTree[total_examples, ...].
     all_indices in shape [total_exmamples].
   """
-  non_pad_idxs = jnp.where(all_indices >= 0)
+  non_pad_idxs = np.where(all_indices >= 0)
   all_indices = all_indices[non_pad_idxs]
   all_inferences = jax.tree_map(lambda x: x[non_pad_idxs], all_inferences)
   return all_inferences, all_indices
@@ -769,9 +769,9 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     all_inferences = batched_results
 
     # List[B * shard_count, ...] -> [B * shard_count * batch_count, ...]
-    all_inferences = jax.tree_multimap(lambda *args: jnp.concatenate(args),
+    all_inferences = jax.tree_multimap(lambda *args: np.concatenate(args),
                                        *all_inferences)
-    all_indices = jnp.concatenate(all_indices)
+    all_indices = np.concatenate(all_indices)
 
     all_inferences, all_indices = _remove_padding(all_inferences, all_indices)
 
@@ -789,7 +789,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     all_inferences = map(
         functools.partial(jax.tree_unflatten, struct), zip(*all_inferences))
     indices_and_outputs = list(zip(all_indices, all_inferences))
-    indices_and_outputs = jax.tree_map(lambda x: jnp.array(x).tolist(),
+    indices_and_outputs = jax.tree_map(lambda x: np.array(x).tolist(),
                                        indices_and_outputs)
     assert len(indices_and_outputs) == original_ds_length
     return indices_and_outputs
