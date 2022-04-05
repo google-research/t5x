@@ -14,7 +14,7 @@
 
 """Train state for passing around objects during training."""
 
-from typing import Any, Mapping, MutableMapping, Optional
+from typing import Any, Mapping, MutableMapping, Optional, Tuple
 
 from flax import optim
 from flax import traverse_util
@@ -93,6 +93,22 @@ def _validate_params_axes(params_axes, params):
         f'Missing axis names for parameters: {missing_params_axes}')
 
 
+def _split_variables_and_axes(
+    variables_and_axes: FrozenVariableDict
+) -> Tuple[FrozenVariableDict, FrozenVariableDict]:
+  """Splits `variables_and_axes` into two separate dicts with the same keys."""
+  # For each `key`, `key_axes` (if any) are its axes in `variables_and_axes`.
+  variables = {}
+  axes = {}
+  for k, v in variables_and_axes.items():
+    if k.endswith('_axes'):
+      axes[k[:-5]] = v  # k without "_axes".
+      _validate_params_axes(v, variables_and_axes[k[:-5]])  # k without "_axes".
+    else:
+      variables[k] = v
+  return flax.core.freeze(variables), flax.core.freeze(axes)
+
+
 class FlaxOptimTrainState(flax.struct.PyTreeNode):
   """Simple train state for holding parameters, step, optimizer state."""
   _optimizer: optim.Optimizer
@@ -100,17 +116,22 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
   params_axes: Optional[FrozenVariableDict] = None
   # Flax mutable fields.
   flax_mutables: FrozenDict = EMPTY_DICT
+  # Contains axis metadata (e.g., names) matching flax_mutables tree.
+  flax_mutables_axes: Optional[FrozenVariableDict] = EMPTY_DICT
 
   @classmethod
   def create(cls, optimizer_def: optim.OptimizerDef,
              model_variables: FrozenVariableDict) -> 'FlaxOptimTrainState':
     other_variables, params = model_variables.pop('params')
     if 'params_axes' in other_variables:
-      flax_mutables, params_axes = other_variables.pop('params_axes')
+      other_variables, params_axes = other_variables.pop('params_axes')
       _validate_params_axes(params_axes, params)
     else:
       params_axes = None
-      flax_mutables = other_variables
+
+    # Split other_variables into mutables and their corresponding axes.
+    flax_mutables, flax_mutables_axes = _split_variables_and_axes(
+        other_variables)
 
     # If the optimizer supports `set_param_axes`, then assume that the model
     # code is emitting these axes and use it.
@@ -125,7 +146,10 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
 
     optimizer = optimizer_def.create(params)
     return FlaxOptimTrainState(
-        optimizer, params_axes=params_axes, flax_mutables=flax_mutables)
+        optimizer,
+        params_axes=params_axes,
+        flax_mutables=flax_mutables,
+        flax_mutables_axes=flax_mutables_axes)
 
   @property
   def step(self) -> jnp.ndarray:
@@ -176,8 +200,9 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
           'partitioning.')
     return FlaxOptimTrainState(
         _optimizer=self._optimizer.optimizer_def.derive_logical_axes(
-            self._optimizer, flax_partitioning.get_axis_names(
-                self.params_axes)))
+            self._optimizer,
+            flax_partitioning.get_axis_names(self.params_axes)),
+        flax_mutables=flax_partitioning.get_axis_names(self.flax_mutables_axes))
 
 
 class InferenceState(flax.struct.PyTreeNode):
@@ -187,22 +212,27 @@ class InferenceState(flax.struct.PyTreeNode):
   params: flax_scope.FrozenVariableDict
   params_axes: Optional[flax_scope.FrozenVariableDict] = None
   flax_mutables: flax_scope.FrozenDict = EMPTY_DICT
+  flax_mutables_axes: Optional[flax_scope.FrozenVariableDict] = None
 
   @classmethod
   def create(cls, model_variables: FrozenVariableDict) -> 'InferenceState':
     other_variables, params = model_variables.pop('params')
     if 'params_axes' in other_variables:
-      flax_mutables, params_axes = other_variables.pop('params_axes')
+      other_variables, params_axes = other_variables.pop('params_axes')
       _validate_params_axes(params_axes, params)
     else:
       params_axes = None
-      flax_mutables = other_variables
+
+    # Split other_variables into mutables and their corresponding axes.
+    flax_mutables, flax_mutables_axes = _split_variables_and_axes(
+        other_variables)
 
     return InferenceState(
         step=jnp.array(0),
         params=params,
         params_axes=params_axes,
-        flax_mutables=flax_mutables)
+        flax_mutables=flax_mutables,
+        flax_mutables_axes=flax_mutables_axes)
 
   @property
   def param_states(self) -> FrozenVariableDict:
@@ -243,4 +273,6 @@ class InferenceState(flax.struct.PyTreeNode):
     # because jax.tree_map will short circut and never call the function on the
     # step.
     return InferenceState(
-        step=None, params=flax_partitioning.get_axis_names(self.params_axes))
+        step=None,
+        params=flax_partitioning.get_axis_names(self.params_axes),
+        flax_mutables=flax_partitioning.get_axis_names(self.flax_mutables_axes))
