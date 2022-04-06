@@ -143,7 +143,7 @@ class _ParameterInfo:
   # The TensoreStore Spec containing the minimal information for read/write.
   ts_spec: Optional[ts.Spec]
   # The LocalChunkInfo for the part of the parameter local to this host.
-  local_chunk_info: partitioning.LocalChunkInfo
+  local_chunk_info: Optional[partitioning.LocalChunkInfo]
   # PartitionSpec mesh axes
   axes: Optional[partitioning.PartitionSpec] = None
 
