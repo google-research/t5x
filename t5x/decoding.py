@@ -64,6 +64,7 @@ def temperature_sample(
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
     max_decode_steps_hard_limit: Optional[int] = None,
     rescale_log_probs: bool = True,
+    eos_seqs: Optional[jnp.ndarray] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Temperature sampling for language model generation.
 
@@ -271,7 +272,8 @@ def temperature_sample(
       topp,
       initial_index=initial_index,
       max_decode_steps=max_decode_steps,
-      rescale_log_probs=rescale_log_probs)
+      rescale_log_probs=rescale_log_probs,
+      eos_seqs=eos_seqs)
 
   batch_size = inputs.shape[0]
   # [batch * num_decodes, len] -> [batch, num_decodes, len]
@@ -302,7 +304,8 @@ def _temperature_sample_single_trial(
     topp: Union[float, jnp.ndarray] = 0.0,
     initial_index: Optional[jnp.ndarray] = None,
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
-    rescale_log_probs: bool = True) -> jnp.ndarray:
+    rescale_log_probs: bool = True,
+    eos_seqs: Optional[jnp.ndarray] = None) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
   # We can check the values of topp and topk only if they are not dynamic.
@@ -335,6 +338,7 @@ def _temperature_sample_single_trial(
   expanded_prompt_inputs = jnp.append(
       inputs, jnp.zeros((batch_size, 2), dtype=inputs.dtype), axis=1)
   end_marker = jnp.array(eos_id)
+  eos_seqs_marker = jnp.array(eos_seqs) if eos_seqs is not None else None
 
   temperature = jnp.asarray(temperature)
 
@@ -369,6 +373,33 @@ def _temperature_sample_single_trial(
   # just finding the one that probably ends the inputs.
   # [batch, 1]
   initial_eos_count = jnp.sum(sequences0 == end_marker, axis=-1, keepdims=True)
+
+  # Count the number of times each eos_seqs contained in each row of sequences.
+  # Return as a (batch, num_eos_sequences) matrix.
+  def count_eos_seqs_matching(sequences: jnp.ndarray,
+                              eos_seqs: jnp.ndarray) -> jnp.ndarray:
+    """Check if the end of the sequence matches one of the eos_seqs."""
+    assert sequences.ndim == 2  # (batch, sequence)
+    assert eos_seqs.ndim == 2  # (num_eos_sequences, eos_sequence)
+
+    # For each sequence in the sequences and each eos_seq in eos_seqs, count the
+    # number of times sequence contains eos_seqs as a subarray.
+    @functools.partial(jax.vmap, in_axes=(0, None, None, None))
+    @functools.partial(jax.vmap, in_axes=(None, 0, None, None))
+    @functools.partial(jax.vmap, in_axes=(None, None, None, 0))
+    def find_slices(batch_idx, seq_idx, sequences, eos_seqs):
+      return jnp.all(
+          eos_seqs == lax.dynamic_slice(sequences, (batch_idx,
+                                                    seq_idx), (1,
+                                                               len(eos_seqs))))
+
+    batch_idx = jnp.arange(sequences.shape[0])
+    seq_idx = jnp.arange(sequences.shape[1])
+    return find_slices(batch_idx, seq_idx, sequences, eos_seqs).sum(axis=1)
+
+  if eos_seqs_marker is not None:
+    initial_eos_seqs_count = count_eos_seqs_matching(sequences0,
+                                                     eos_seqs_marker)
 
   def sampling_loop_cond_fn(state: SamplingLoopState) -> bool:
     """Sampling loop termination condition."""
@@ -508,9 +539,21 @@ def _temperature_sample_single_trial(
     # write to sequences[-1] which is our garbage collection token. Thus `i`
     # should be strictly less than max_decode_len.
     has_additional_eos = cur_eos_count > initial_eos_count
+
     ended |= has_additional_eos | jnp.expand_dims(
         i >= max_decode_len - 1, axis=1)
 
+    # If the end_seqs is defined, count the number of times each eos_seq
+    # contained in each sequence and compare with the initial count.
+    if eos_seqs_marker is not None:
+      # (batch, num_eos_seqs)
+      curr_eos_seq_counts = count_eos_seqs_matching(
+          sequences=new_sequences, eos_seqs=eos_seqs_marker)
+      # (batch, 1)
+      has_additional_eos_seq = (curr_eos_seq_counts >
+                                initial_eos_seqs_count).sum(
+                                    axis=-1, keepdims=True).astype(jnp.bool_)
+      ended |= jnp.reshape(has_additional_eos_seq, ended.shape)
     return (i + 1, new_sequences, new_cache, next_token_or_endpad, ended, rng2,
             next_log_prob)
 

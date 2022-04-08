@@ -199,6 +199,47 @@ class DecodeTest(parameterized.TestCase):
     np.testing.assert_array_equal(expected_sequence, sampled_sequences)
     np.testing.assert_array_almost_equal(expected_log_probs, sampled_log_probs)
 
+  def test_temperature_sample_prefix_ending_with_eos_seqs_early_stop(self):
+    batch, max_decode_len = 2, 7
+    eos_seqs = np.array([[2, 2, 3], [3, 3, 4]])
+    rng0 = jax.random.PRNGKey(0)
+
+    ret = [np.array([2, 3]) for _ in range(max_decode_len)]
+    # Sequence 1 outputs eos_seq [3, 3, 4] when i = 4 where `i` is the while
+    # loop counter of `decoding._temperature_sample_single_trial`.
+    # Sequence 0 outputs eos_seq [2, 2, 3] when i = 5.
+    ret[5] = np.array([3, 3])
+    ret[4] = np.array([2, 4])
+    ret = jax.numpy.array(ret)
+
+    def mocked_categorical(rng_input, logits):  # pylint: disable=unused-argument
+      """Ignores logit and returns only based on the rng_input."""
+      rng = rng0
+      k = 0
+      # Mimic the rng split done in `decoding.sample_loop_body_fn`.
+      for j in range(max_decode_len):
+        rng1, rng = jax.random.split(rng)
+        # We want to sift out `j` for which rng1 == rng_input
+        # rngs are a pair of ints. So sum the bool and divide by 2.
+        k += j * (rng1 == rng_input).sum() // 2
+      # `k` at this point is equal to the while loop variable `i` of the caller.
+      return ret[k]
+
+    def token_to_logits(ids, cache):  # pylint: disable=unused-argument
+      # These values are not used in this test because random.categorical is
+      # directly mocked.
+      dummy_logits = np.zeros((batch, 4), dtype=np.float32)
+      return dummy_logits, {}
+
+    inputs = np.array([[0, 5, 1, 0, 0, 0, 0], [0, 8, 0, 0, 0, 0, 0]],
+                      dtype=np.int32)
+    with mock.patch.object(jax.random, 'categorical', new=mocked_categorical):
+      sampled_sequences, _ = decoding._temperature_sample_single_trial(
+          inputs, {}, token_to_logits, EOS_ID, rng0, topk=0, eos_seqs=eos_seqs)
+
+    expected = [[5, 1, 2, 2, 2, 3, 0], [8, 3, 3, 3, 4, 0, 0]]
+    np.testing.assert_array_equal(expected, sampled_sequences)
+
   def test_temperature_sample_log_prob(self):
     batch, max_decode_len = 2, 7
     rng0 = jax.random.PRNGKey(0)
