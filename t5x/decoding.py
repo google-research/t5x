@@ -63,6 +63,7 @@ def temperature_sample(
     initial_index: Optional[jnp.ndarray] = None,
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
     max_decode_steps_hard_limit: Optional[int] = None,
+    rescale_log_probs: bool = True,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Temperature sampling for language model generation.
 
@@ -225,6 +226,11 @@ def temperature_sample(
       is also set, then max_decode_steps will be clipped to this limit. The
       value max_decode_steps can be an ndarray, but max_decode_steps_hard_limit
       must be a Python integer or None.
+    rescale_log_probs: bool: whether to apply temperature, topp, and topk
+      rescaling to the log probs which are returned. If True, the log_probs will
+      include these transformations (for example, with topk=1, all log_probs
+      will be identically 0.0). If False, the log_probs will not be affected,
+      and topk/topp/temperature will not affect sequence probabilities.
 
   Returns:
     A tuple (decodes, log_prob) where `decodes` is sampled sequences with shape
@@ -264,7 +270,8 @@ def temperature_sample(
       topk,
       topp,
       initial_index=initial_index,
-      max_decode_steps=max_decode_steps)
+      max_decode_steps=max_decode_steps,
+      rescale_log_probs=rescale_log_probs)
 
   batch_size = inputs.shape[0]
   # [batch * num_decodes, len] -> [batch, num_decodes, len]
@@ -294,7 +301,8 @@ def _temperature_sample_single_trial(
     topk: int = 20,
     topp: Union[float, jnp.ndarray] = 0.0,
     initial_index: Optional[jnp.ndarray] = None,
-    max_decode_steps: Optional[Union[int, jnp.ndarray]] = None) -> jnp.ndarray:
+    max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
+    rescale_log_probs: bool = True) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
   # We can check the values of topp and topk only if they are not dynamic.
@@ -381,33 +389,39 @@ def _temperature_sample_single_trial(
     logits, new_cache = tokens_to_logits(cur_token, cache)
     # Sample next token from logits.
 
-    def sample_logits_with_nonzero_temperature(my_logits):
-      my_logits = my_logits / jnp.maximum(temperature, MIN_TEMPERATURE)
+    def sample_logits_with_nonzero_temperature(logits):
+      scaled_logits = logits / jnp.maximum(temperature, MIN_TEMPERATURE)
       if topk:
         # Get top-k logits and their indices, sample within these top-k tokens.
-        topk_logits, _ = lax.top_k(my_logits, topk)
+        topk_logits, _ = lax.top_k(scaled_logits, topk)
         cutoff_logit = topk_logits[:, -1, None]
-        my_logits = jnp.where(my_logits < cutoff_logit,
-                              jnp.full_like(my_logits, NEG_INF), my_logits)
+        scaled_logits = jnp.where(scaled_logits < cutoff_logit,
+                                  jnp.full_like(scaled_logits, NEG_INF),
+                                  scaled_logits)
 
       # When topp is dynamic, we always use it since we cannot check
       # non-zeroness (but it will have no effect if topp is 0.0).
       if _is_tracer(topp) or topp:
-        logits_sorted = jnp.sort(my_logits, axis=-1)[:, ::-1]  # sort descending
+        logits_sorted = jnp.sort(
+            scaled_logits, axis=-1)[:, ::-1]  # sort descending
         sorted_cum_probs = jnp.cumsum(
             jax.nn.softmax(logits_sorted, axis=-1), axis=-1)
         cutoff_index = jnp.sum(sorted_cum_probs < topp, axis=-1, keepdims=True)
         cutoff_logit = jnp.take_along_axis(logits_sorted, cutoff_index, axis=-1)
-        my_logits = jnp.where(my_logits < cutoff_logit,
-                              jnp.full_like(my_logits, NEG_INF), my_logits)
+        scaled_logits = jnp.where(scaled_logits < cutoff_logit,
+                                  jnp.full_like(scaled_logits, NEG_INF),
+                                  scaled_logits)
 
       # [batch]
-      next_token = random.categorical(rng1, my_logits).astype(jnp.int32)
+      next_token = random.categorical(rng1, scaled_logits).astype(jnp.int32)
 
       # log probability of the current token conditioned on the previously
       # sampled and prefix tokens.
       # [batch, vocab] -> [batch, vocab]
-      log_probs = jax.nn.log_softmax(my_logits)
+      if rescale_log_probs:
+        log_probs = jax.nn.log_softmax(scaled_logits)
+      else:
+        log_probs = jax.nn.log_softmax(logits)
       # [batch, vocab] -> [batch]
       next_log_prob = jnp.squeeze(
           jnp.take_along_axis(
@@ -416,13 +430,21 @@ def _temperature_sample_single_trial(
 
       return (next_token, next_log_prob)
 
-    def sample_logits_with_zero_temperature(my_logits):
+    def sample_logits_with_zero_temperature(logits):
       # For zero temperature, we always want the greedy output, regardless
       # of the values of topk and topp.
 
-      next_token = jnp.argmax(my_logits, -1).astype(jnp.int32)
+      next_token = jnp.argmax(logits, -1).astype(jnp.int32)
 
-      next_log_prob = jnp.zeros_like(next_token, dtype=jnp.float32)
+      if rescale_log_probs:
+        next_log_prob = jnp.zeros_like(next_token, dtype=jnp.float32)
+      else:
+        log_probs = jax.nn.log_softmax(logits)
+        next_log_prob = jnp.squeeze(
+            jnp.take_along_axis(
+                log_probs, jnp.expand_dims(next_token, axis=1), axis=-1),
+            axis=-1)
+
       return (next_token, next_log_prob)
 
     # Perform sampling with temperature

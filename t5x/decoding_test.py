@@ -163,6 +163,42 @@ class DecodeTest(parameterized.TestCase):
     expected = [[5, 1, 2, 2, 1, 0, 0], [8, 3, 3, 1, 0, 0, 0]]
     np.testing.assert_array_equal(expected, sampled_sequences)
 
+  def test_greedy_decoding_topk_sample_log_probs(self):
+
+    def token_to_logits(ids, cache):  # pylint: disable=unused-argument
+      # Sample [2, 3] with probability [0.6, 0.4].
+      logits = np.array([[-1e7, -1e7, -0.510825624, -0.916290732]],
+                        dtype=np.float32)
+      return logits, {}
+
+    inputs = np.array([[0, 2, 2, 2, 0]], dtype=np.int32)
+    sampled_sequences, sampled_log_probs = decoding._temperature_sample_single_trial(
+        inputs, {},
+        token_to_logits,
+        EOS_ID,
+        jax.random.PRNGKey(0),
+        topk=1,
+        rescale_log_probs=True)
+
+    expected_sequence = [[2, 2, 2, 2, 2]]
+    expected_log_probs = [0.0]
+    np.testing.assert_array_equal(expected_sequence, sampled_sequences)
+    np.testing.assert_array_almost_equal(expected_log_probs, sampled_log_probs)
+
+    inputs = np.array([[0, 2, 2, 3, 0]], dtype=np.int32)
+    sampled_sequences, sampled_log_probs = decoding._temperature_sample_single_trial(
+        inputs, {},
+        token_to_logits,
+        EOS_ID,
+        jax.random.PRNGKey(0),
+        topk=1,
+        rescale_log_probs=False)
+
+    expected_sequence = [[2, 2, 3, 2, 2]]
+    expected_log_probs = [-1.02165125]
+    np.testing.assert_array_equal(expected_sequence, sampled_sequences)
+    np.testing.assert_array_almost_equal(expected_log_probs, sampled_log_probs)
+
   def test_temperature_sample_log_prob(self):
     batch, max_decode_len = 2, 7
     rng0 = jax.random.PRNGKey(0)
