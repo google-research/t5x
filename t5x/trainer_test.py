@@ -281,6 +281,8 @@ def fake_eval_step(model, optimizer, batch):
   return {'loss': metrics_lib.Sum(i), 'accuracy': metrics_lib.Sum(i)}
 
 
+# TODO(b/219086328): Remove temporary backwards compatibility when
+# `weight_sum` deprecation is complete.
 def fake_eval_fn_with_weight_sum(params, batch):
   del params
   # Add `i` to each metric.
@@ -300,6 +302,8 @@ def fake_eval_fn_without_weight_sum(params, batch):
   return loss, {'loss': loss, 'accuracy': metrics_lib.Sum(i)}
 
 
+# TODO(b/219086328): Remove temporary backwards compatibility when
+# `weight_sum` deprecation is complete.
 def fake_value_and_grad_fn_with_weight_sum(callable_fn, has_aux=False):
   del callable_fn, has_aux
 
@@ -860,6 +864,8 @@ class TrainerTest(parameterized.TestCase):
             'eval4': 'compiled3'
         })
 
+  # TODO(b/219086328): Remove temporary backwards compatibility when
+  # `weight_sum` deprecation is complete.
   @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_with_weight_sum)
   def test_accumulate_grads_microbatched_with_weight_sum_single_batch(self):
     with warnings.catch_warnings(record=True) as warnings_list:
@@ -910,6 +916,8 @@ class TrainerTest(parameterized.TestCase):
     self.assertEqual(metrics['accuracy'].compute(), 2)
     self.assertIsNone(flax_mutables)
 
+  # TODO(b/219086328): Remove temporary backwards compatibility when
+  # `weight_sum` deprecation is complete.
   @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_with_weight_sum)
   def test_accumulate_grads_microbatched_with_weight_sum_multiple_batches(self):
     with warnings.catch_warnings(record=True) as warnings_list:
@@ -957,6 +965,8 @@ class TrainerTest(parameterized.TestCase):
     self.assertEqual(metrics['accuracy'].compute(), 2)
     self.assertIsNone(flax_mutables)
 
+  # TODO(b/219086328): Remove temporary backwards compatibility when
+  # `weight_sum` deprecation is complete.
   def test_eval_step_with_weight_sum(self):
     with warnings.catch_warnings(record=True) as warnings_list:
       # Ensure all warnings are captured.
