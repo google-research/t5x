@@ -14,7 +14,7 @@
 
 r"""The main entrance for running any of the T5X supported binaries.
 
-Currently this includes train/infer/eval.
+Currently this includes train/infer/eval/precompile.
 
 Example Local (CPU) Pretrain Gin usage
 
@@ -44,6 +44,7 @@ import seqio
 from t5x import eval as eval_lib
 from t5x import gin_utils
 from t5x import infer as infer_lib
+from t5x import precompile as precompile_lib
 from t5x import train as train_lib
 from t5x import utils
 
@@ -55,6 +56,7 @@ class RunMode(enum.Enum):
   TRAIN = 'train'
   EVAL = 'eval'
   INFER = 'infer'
+  PRECOMPILE = 'precompile'
 
 
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -99,11 +101,13 @@ _DEFAULT_GIN_SEARCH_PATHS = [
 train = train_lib.train
 evaluate = eval_lib.evaluate
 infer = infer_lib.infer
+precompile = precompile_lib.precompile
 
 _FUNC_MAP = {
     RunMode.TRAIN: train,
     RunMode.EVAL: evaluate,
     RunMode.INFER: infer,
+    RunMode.PRECOMPILE: precompile,
 }
 
 

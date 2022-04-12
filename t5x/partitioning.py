@@ -70,9 +70,10 @@ def pjit(
     in_axis_resources,
     out_axis_resources,
     static_argnums: Union[int, Sequence[int]] = (),
-    donate_argnums: Union[int, Sequence[int]] = ()):
+    donate_argnums: Union[int, Sequence[int]] = (),
+    backend: Optional[str] = None):
   """Wrapper for pjit that calls normal jit on cpu."""
-  if jax.devices()[0].platform == 'cpu':
+  if jax.devices(backend)[0].platform == 'cpu':
     return jax.jit(
         fun, static_argnums=static_argnums, donate_argnums=donate_argnums)
   else:
@@ -125,7 +126,8 @@ def global_mesh_defined():
 def get_mesh(model_parallel_submesh: HardwareMesh,
              input_devices: Sequence[JaxDevice] = (),
              input_local_devices: Sequence[JaxDevice] = (),
-             tile_by_host_if_needed: bool = True) -> Mesh:
+             tile_by_host_if_needed: bool = True,
+             backend: Optional[str] = None) -> Mesh:
   """Construct an xmap/pjit Mesh for the given model-parallel submesh.
 
   The resulting mesh has two resource axes: 'model', with the provided submesh
@@ -155,12 +157,15 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
       performance). If this flag is True, then the device assignment will be
       tiled over hosts if necessary to satisfy this constraint and create a
       buildable mesh; if false, mesh construction will fail instead.
+    backend: get devices from the pinned backend, if specified. This is
+      useful for explicitly specifying the devices other than relying on
+      jax_platform_name.
 
   Returns:
     A xmap / pjit Mesh containing the virtual device mesh with data, model axes.
   """
-  input_devices = input_devices or jax.devices()
-  input_local_devices = input_local_devices or jax.local_devices(0)
+  input_devices = input_devices or jax.devices(backend)
+  input_local_devices = input_local_devices or jax.local_devices(0, backend)
   last_device = input_devices[-1]
   global_hardware_mesh = bounds_from_last_device(last_device)
   mesh_ndim = len(global_hardware_mesh)
@@ -288,7 +293,8 @@ def get_gpu_mesh() -> Mesh:
 
 
 def default_mesh(num_partitions: int,
-                 model_parallel_submesh: Optional[HardwareMesh] = None) -> Mesh:
+                 model_parallel_submesh: Optional[HardwareMesh] = None,
+                 backend: Optional[str] = None) -> Mesh:
   """Attempt to return a default mesh for simple cases.
 
   Args:
@@ -296,17 +302,20 @@ def default_mesh(num_partitions: int,
       model_parallel_submesh is provided.
     model_parallel_submesh: 4-tuple that specifies the x,y,z,c submesh to use as
       the model-parallel device tile.
+    backend: get devices from the pinned backend, if specified. This is useful
+      for explicitly specifying the devices other than relying on
+      jax_platform_name.
 
   Returns:
     xmap/pjit 2D Mesh with 'data', 'model' mesh axes.
   """
-  last_device = jax.devices()[-1]
+  last_device = jax.devices(backend)[-1]
   platform = last_device.platform
   device_kind = last_device.device_kind
   bounds = bounds_from_last_device(last_device)
 
   if model_parallel_submesh:
-    return get_mesh(model_parallel_submesh)
+    return get_mesh(model_parallel_submesh, backend=backend)
 
   if platform == 'cpu':
     return get_cpu_mesh()
@@ -352,7 +361,7 @@ def default_mesh(num_partitions: int,
   if mps is None:
     raise ValueError('No default mesh for this configuration: specify '
                      'config.model_parallel_submesh explicitly.')
-  return get_mesh(mps)
+  return get_mesh(mps, backend=backend)
 
 
 # Data chunking helper.
@@ -537,7 +546,8 @@ class BasePartitioner(metaclass=abc.ABCMeta):
   def __init__(self,
                num_partitions: Optional[int] = None,
                model_parallel_submesh: Optional[HardwareMesh] = None,
-               params_on_devices: bool = True):
+               params_on_devices: bool = True,
+               backend: Optional[str] = None):
     """Configures the partitioner.
 
     Args:
@@ -553,6 +563,9 @@ class BasePartitioner(metaclass=abc.ABCMeta):
         params stay in the host memory. Note that some partitioners might ignore
         this setting, for example if they don't support storing all params on
         device memory.
+      backend: get devices from the pinned backend, if specified. This is useful
+        for explicitly specifying the devices other than relying on
+        jax_platform_name.
     """
 
     if not num_partitions and not model_parallel_submesh:
@@ -576,6 +589,7 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     self._model_parallel_submesh = model_parallel_submesh
     self._params_on_devices = params_on_devices
     self._data_axis = 'data'
+    self._backend = backend
 
   @property
   def _mesh(self) -> Mesh:
@@ -755,7 +769,8 @@ class BasePjitPartitioner(BasePartitioner):
 
   @cached_property
   def _mesh(self) -> Mesh:
-    return default_mesh(self._num_partitions, self._model_parallel_submesh)
+    return default_mesh(self._num_partitions, self._model_parallel_submesh,
+                        self._backend)
 
   def partition(
       self,
@@ -770,7 +785,8 @@ class BasePjitPartitioner(BasePartitioner):
         in_axis_resources=in_axis_resources,
         out_axis_resources=out_axis_resources,
         static_argnums=static_argnums,
-        donate_argnums=donate_argnums)
+        donate_argnums=donate_argnums,
+        backend=self._backend)
 
     return PjittedFnWithContext(pjitted, self._mesh)
 
@@ -786,6 +802,7 @@ class PjitPartitioner(BasePjitPartitioner):
                num_partitions: Optional[int] = None,
                model_parallel_submesh: Optional[HardwareMesh] = None,
                params_on_devices: bool = True,
+               backend: Optional[str] = None,
                logical_axis_rules: Optional[LogicalAxisRules] = None):
     """PjitPartitioner constructor.
 
@@ -813,6 +830,9 @@ class PjitPartitioner(BasePjitPartitioner):
         params stay in the host memory. Note that some partitioners might ignore
         this setting, for example if they don't support storing all params on
         device memory.
+      backend: get devices from the pinned backend, if specified. This is
+        useful for explicitly specifying the devices other than relying on
+        jax_platform_name.
       logical_axis_rules: a priority-ordered sequence of KV tuples that maps
         logical axis names to either `None` (not sharded), 'model' (to shard
         across the model-parallel submesh), or 'data' (to shard across the
@@ -821,7 +841,8 @@ class PjitPartitioner(BasePjitPartitioner):
     super().__init__(
         num_partitions=num_partitions,
         model_parallel_submesh=model_parallel_submesh,
-        params_on_devices=params_on_devices)
+        params_on_devices=params_on_devices,
+        backend=backend)
     if logical_axis_rules is None:
       logical_axis_rules = standard_logical_axis_rules()
     self._logical_axis_rules = tuple(logical_axis_rules)
@@ -842,7 +863,8 @@ class PjitPartitioner(BasePjitPartitioner):
         in_axis_resources=in_axis_resources,
         out_axis_resources=out_axis_resources,
         static_argnums=static_argnums,
-        donate_argnums=donate_argnums)
+        donate_argnums=donate_argnums,
+        backend=self._backend)
 
     return PjittedFnWithContext(pjitted, self._mesh, self._logical_axis_rules)
 
