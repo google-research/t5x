@@ -15,6 +15,7 @@
 """Tests for t5x.checkpoint_utils."""
 
 import os
+import traceback
 
 from absl.testing import absltest
 from t5x import checkpoint_utils
@@ -52,6 +53,11 @@ class CheckpointsUtilsTest(absltest.TestCase):
     # Test and validate.
     self.assertTrue(checkpoint_utils.is_pinned_checkpoint(pinned_ckpt_testdata))
 
+  def test_is_pinned_missing_ckpt(self):
+    self.assertFalse(
+        checkpoint_utils.is_pinned_checkpoint(
+            os.path.join(self.ckpt_dir_path, "ckpt_does_not_exist")))
+
   def test_pin_checkpoint(self):
     # Ensure directory isn't already pinned.
     self.assertFalse(gfile.exists(self.pinned_ckpt_file))
@@ -80,6 +86,17 @@ class CheckpointsUtilsTest(absltest.TestCase):
 
     # Validate the "PINNED" checkpoint file got removed.
     self.assertFalse(gfile.exists(os.path.join(self.ckpt_dir_path, "PINNED")))
+
+  def test_unpin_checkpoint_does_not_exist(self):
+    missing_ckpt_path = os.path.join(self.ckpt_dir_path, "ckpt_does_not_exist")
+    self.assertFalse(gfile.exists(missing_ckpt_path))
+
+    # Test. Assert does not raise error.
+    try:
+      checkpoint_utils.unpin_checkpoint(missing_ckpt_path)
+    except IOError:
+      # TODO(b/172262005): Remove traceback.format_exc() from the error message.
+      self.fail("Unpin checkpoint failed with: %s" % traceback.format_exc())
 
   def test_remove_checkpoint_dir(self):
     # Ensure the checkpoint directory is setup.

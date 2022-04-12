@@ -60,9 +60,15 @@ def pin_checkpoint(ckpt_dir: str, txt: str = '1') -> None:
 
 def unpin_checkpoint(ckpt_dir: str) -> None:
   """Removes the pinned status of the checkpoint so it is open for deletion."""
-  pinned_ckpt_file = pinned_checkpoint_filepath(ckpt_dir)
-  logging.debug('Remove %s file.', pinned_ckpt_file)
-  gfile.rmtree(pinned_ckpt_file)
+  if not is_pinned_checkpoint(ckpt_dir):
+    logging.debug('%s is not PINNED. Nothing to do here.', ckpt_dir)
+    return
+  try:
+    pinned_ckpt_file = pinned_checkpoint_filepath(ckpt_dir)
+    logging.debug('Remove %s file.', pinned_ckpt_file)
+    gfile.rmtree(pinned_ckpt_file)
+  except IOError:
+    logging.exception('Failed to unpin %s', ckpt_dir)
 
 
 def remove_checkpoint_dir(ckpt_dir: str) -> None:
