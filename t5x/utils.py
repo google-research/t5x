@@ -155,6 +155,8 @@ class DatasetConfig:
   # Whether to use a precomputed version of the dataset from a cache dir.
   use_cached: bool = False
   pack: bool = False
+  # Whether the dataset is already packed.
+  pre_packed: bool = False
   # Whether to use tensor2tensor custom ops for more efficient packing.
   use_custom_packing_ops: bool = False
   # An optional module to import for registering the referenced Mixture or Task.
@@ -922,7 +924,9 @@ def get_dataset_inner(cfg: DatasetConfig,
       shuffle=cfg.shuffle,
       num_epochs=num_epochs,
       feature_converter=feature_converter_cls(
-          pack=cfg.pack, use_custom_packing_ops=cfg.use_custom_packing_ops),  # pytype: disable=not-instantiable
+          pack=cfg.pack,
+          pre_packed=cfg.pre_packed,
+          use_custom_packing_ops=cfg.use_custom_packing_ops),  # pytype: disable=not-instantiable
       shard_info=shard_info,
       use_cached=cfg.use_cached,
       seed=seed)
