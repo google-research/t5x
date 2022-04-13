@@ -40,8 +40,7 @@ from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 import seqio
-from t5x import models
-from t5x import partitioning
+from t5x import model_inference as minfer
 from t5x import utils
 import tensorflow as tf
 from tensorflow.io import gfile
@@ -294,10 +293,7 @@ MergeFn = Callable[[str, str, str, Optional[int]], None]
 def infer(
     *,
     mode: str,
-    model: models.BaseTransformerModel,
     dataset_cfg: utils.DatasetConfig,
-    restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
-    partitioner: partitioning.BasePartitioner,
     output_dir: str,
     checkpoint_period: int,
     shard_id: int = 0,
@@ -305,19 +301,16 @@ def infer(
     merge_chunked_results: bool = True,
     write_fn: WriteFn = write_inferences_to_file,
     checkpoint_ds_iter: bool = True,
-    fallback_init_rng: Optional[int] = None,
+    model_inference_cls: Type[
+        seqio.BaseModelInference] = minfer.LocalModelInference,
     merge_fn: MergeFn = merge_chunks_to_file,
-):
+    **kwargs):
   """Infer function.
 
   Args:
     mode: Either 'predict' to decode targets, 'score' to compute the log
       likelihood of given targets, or 'predict_with_aux' for both.
-    model: The model object to use for inference.
     dataset_cfg: Specification for the dataset to infer based on.
-    restore_checkpoint_cfg: Specification for the model parameter checkpoint to
-      load.
-    partitioner: Partitioner for model parameters and data across devices.
     output_dir: Path to directory to write temporary files and final results.
     checkpoint_period: The intermediate results and dataset iterator will be
       checkpointed on each multiple of this number of batches to enable
@@ -333,11 +326,9 @@ def infer(
       `checkpoint_period` to enable faster restore. This must be disabled for
       certain datasets, for example since stateful iterators (e.g. from
       seqio.FunctionTask) cannot be checkpointed.
-    fallback_init_rng: A random seed used for parameter initialization during
-      model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
-      set to True. If None, parameter initialization is not allowed during model
-      loading and having fallback_to_scratch enabled will result in an error.
+    model_inference_cls: BaseModelInference class to use for model inferences.
     merge_fn: Callable function used to merge inferences from multiple files.
+    **kwargs: All other parameters to be passed to model_inference_cls.
   """
   logging.info('Process ID: %d', jax.process_index())
   if mode not in ('predict', 'score', 'predict_with_aux'):
@@ -347,14 +338,6 @@ def infer(
 
   # Remove double-slashes in directory path to avoid inconsistencies.
   output_dir = re.sub(r'(?<!gs:)([\/]{2,})', '/', output_dir)
-  ds_vocabs = utils.get_vocabulary(dataset_cfg)
-  if (ds_vocabs[0] != model.input_vocabulary or
-      ds_vocabs[1] != model.output_vocabulary):
-    raise ValueError(
-        'Model and Task vocabularies do not match.\n'
-        f'Task Input: {ds_vocabs[0]}, Model Input: {model.input_vocabulary}\n'
-        f'Task Output: {ds_vocabs[1]}, Model Output: {model.output_vocabulary}')
-
   batch_size = dataset_cfg.batch_size
 
   # Set up dataset.
@@ -363,7 +346,12 @@ def infer(
   host_shard_info = seqio.ShardInfo(index=shard_id, num_shards=num_shards)
   task_or_mixture = seqio.get_mixture_or_task(dataset_cfg.mixture_or_task_name)
 
-  feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)
+  kwargs['load_optimizer_def'] = False
+  model_infer = model_inference_cls(
+      ds_vocabs=utils.get_vocabulary(dataset_cfg),
+      output_dir=output_dir,
+      **kwargs)
+  feature_converter = model_infer.feature_converter
 
   def _get_dataset(dataset_provider):
     # TODO(adarob): assert pack is false, shuffle is false, seed?
@@ -385,49 +373,20 @@ def infer(
   element_spec = feature_converter(
       _get_dataset(task_or_mixture),
       dataset_cfg.task_feature_lengths).element_spec
-  input_shapes = {
-      k: (batch_size,) + spec.shape for k, spec in element_spec.items()
-  }
-  input_types = {
-      k: jnp.dtype(spec.dtype.as_numpy_dtype)
-      for k, spec in element_spec.items()
-  }
+  model_infer.initialize_with_element_spec(
+      element_spec, batch_size, log_info=shard_id == 0)
   # Initialize optimizer from the existing checkpoint.
   # TODO(adarob): Support inference over multiple checkpoints.
-  train_state_initializer = utils.TrainStateInitializer(
-      optimizer_def=None,  # Do not load optimizer state.
-      init_fn=model.get_initial_variables,
-      input_shapes=input_shapes,
-      input_types=input_types,
-      partitioner=partitioner)
-  # Log the variable shapes information and write to a file.
-  model_info_log_file = os.path.join(output_dir, 'model-info.txt')
-  if shard_id == 0:
-    utils.log_model_info(model_info_log_file,
-                         train_state_initializer.global_train_state_shape,
-                         partitioner)
-
   # Disable strictness since we are dropping the optimizer state.
-  restore_checkpoint_cfg.strict = False
-
-  if fallback_init_rng is not None:
-    fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
-  train_state = train_state_initializer.from_checkpoint(
-      [restore_checkpoint_cfg], init_rng=fallback_init_rng)
+  train_state = next(model_infer.state_iterations())
   if mode == 'predict':
-    infer_step = model.predict_batch
+    infer_fn = model_infer.predict_fn
   elif mode == 'predict_with_aux':
-    infer_step = model.predict_batch_with_aux
+    infer_fn = model_infer.predict_fn_with_aux
   else:  # mode == 'score'
-    infer_step = model.score_batch
+    infer_fn = model_infer.score_fn
 
-  infer_fn = functools.partial(
-      utils.get_infer_fn(
-          infer_step=infer_step,
-          batch_size=batch_size,
-          train_state_axes=train_state_initializer.train_state_axes,
-          partitioner=partitioner),
-      train_state=train_state)
+  infer_fn = functools.partial(infer_fn, state=train_state)
 
   def infer_task(task: seqio.Task):
     tmp_dir = os.path.join(output_dir,
