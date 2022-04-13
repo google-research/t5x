@@ -25,12 +25,12 @@ from clu import metric_writers
 import clu.metrics
 import clu.values
 import flax
-from flax import optim
 import jax
 import jax.numpy as jnp
 import numpy as np
 from t5x import metrics as metrics_lib
 from t5x import models as models_lib
+from t5x import optimizers
 from t5x import partitioning
 from t5x import test_utils
 from t5x import train_state as train_state_lib
@@ -314,9 +314,9 @@ def fake_value_and_grad_fn_with_weight_sum(callable_fn, has_aux=False):
     del dropout_rng, train_state_params, flax_mutables
     # Add `i` to each optimzer value.
     i = batch['i'].sum()
-    optimizer = optim.Optimizer(
-        optim.GradientDescent(),
-        state=optim.OptimizerState(
+    optimizer = optimizers.Optimizer(
+        optimizers.sgd(0.1),
+        state=optimizers.OptimizerState(
             step=0, param_states={
                 'bias': 0,
                 'kernel': 0
@@ -346,9 +346,9 @@ def fake_value_and_grad_fn_without_weight_sum(callable_fn, has_aux=False):
     del dropout_rng, train_state_params, flax_mutables
     # Add `i` to each optimzer value.
     i = batch['i'].sum()
-    optimizer = optim.Optimizer(
-        optim.GradientDescent(),
-        state=optim.OptimizerState(
+    optimizer = optimizers.Optimizer(
+        optimizers.sgd(0.1),
+        state=optimizers.OptimizerState(
             step=0, param_states={
                 'bias': 0,
                 'kernel': 0
@@ -371,9 +371,9 @@ class TrainerTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.init_optimizer = optim.Optimizer(
-        optim.GradientDescent(),
-        state=optim.OptimizerState(
+    self.init_optimizer = optimizers.Optimizer(
+        optimizers.sgd(0.1),
+        state=optimizers.OptimizerState(
             step=0, param_states={
                 'bias': 0,
                 'kernel': 0
@@ -1007,9 +1007,9 @@ class TrainerTest(parameterized.TestCase):
 class TrainerRngDeterminismTest(parameterized.TestCase):
 
   def create_trainer(self, step, random_seed):
-    init_optimizer = optim.Optimizer(
-        optim.GradientDescent(),
-        state=optim.OptimizerState(
+    init_optimizer = optimizers.Optimizer(
+        optimizers.sgd(0.1),
+        state=optimizers.OptimizerState(
             step=step, param_states={
                 'bias': 0,
                 'kernel': 0
@@ -1093,9 +1093,9 @@ class MutableTrainerTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.init_optimizer = optim.Optimizer(
-        optim.GradientDescent(),
-        state=optim.OptimizerState(
+    self.init_optimizer = optimizers.Optimizer(
+        optimizers.sgd(0.1),
+        state=optimizers.OptimizerState(
             step=0, param_states={
                 'bias': 0,
                 'kernel': 0

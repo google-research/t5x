@@ -18,7 +18,6 @@ import dataclasses
 import itertools
 import operator
 from typing import Sequence, Tuple
-from flax import optim
 import jax
 import numpy as np
 import seqio
@@ -211,7 +210,7 @@ def assert_same(tree_a, tree_b):
 
 
 def get_train_state_from_variables(variables,
-                                   optimizer_def=optim.Adafactor(0.0)):
+                                   optimizer_def=adafactor.Adafactor(0.0)):
   """Returns a default Train State with Adafactor optimizer."""
   optimizer = optimizer_def.create(variables['params'])
   return train_state_lib.FlaxOptimTrainState(optimizer)

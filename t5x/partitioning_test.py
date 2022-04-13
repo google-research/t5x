@@ -18,12 +18,12 @@ import collections
 
 from absl.testing import absltest
 from absl.testing import parameterized
-from flax import optim
 import flax.core
 from flax.linen import partitioning as nn_partitioning
 import jax
 import numpy as np
 from t5x import adafactor
+from t5x import optimizers
 from t5x import partitioning
 from t5x import test_utils as ptu
 from t5x import train_state
@@ -194,10 +194,10 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
                              spec_1,
                              kernel_spec=PartitionSpec(None, 'model')):
     return train_state.FlaxOptimTrainState(
-        optim.Optimizer(
+        optimizers.Optimizer(
             # opt_def,
             adafactor.Adafactor(0.1),  # opt_def not compared.
-            state=optim.OptimizerState(
+            state=optimizers.OptimizerState(
                 step=None,
                 param_states={
                     'logits_dense': spec_0,

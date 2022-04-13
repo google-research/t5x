@@ -46,15 +46,13 @@ parameters.
 """
 import enum
 import re
-from typing import Any, Optional, Sequence, Tuple, Union, Mapping
+from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 from absl import logging
 from flax import struct
 from flax.core import freeze
 from flax.core import FrozenDict
 from flax.core import unfreeze
-from flax.optim.base import OptimizerDef
-from flax.optim.base import OptimizerState
 from flax.serialization import from_state_dict
 from flax.serialization import to_state_dict
 from flax.traverse_util import flatten_dict
@@ -63,6 +61,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from t5x import utils
+from t5x.optimizers import OptimizerDef
+from t5x.optimizers import OptimizerState
 
 Dtype = Any
 

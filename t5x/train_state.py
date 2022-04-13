@@ -16,7 +16,6 @@
 
 from typing import Any, Mapping, MutableMapping, Optional, Tuple
 
-from flax import optim
 from flax import traverse_util
 import flax.core
 from flax.core import scope as flax_scope
@@ -24,6 +23,7 @@ from flax.linen import partitioning as flax_partitioning
 import flax.serialization
 import flax.struct
 import jax.numpy as jnp
+from t5x import optimizers
 
 import typing_extensions
 
@@ -111,7 +111,7 @@ def _split_variables_and_axes(
 
 class FlaxOptimTrainState(flax.struct.PyTreeNode):
   """Simple train state for holding parameters, step, optimizer state."""
-  _optimizer: optim.Optimizer
+  _optimizer: optimizers.OptimizerType
   # Contains axis metadata (e.g., names) matching parameter tree.
   params_axes: Optional[FrozenVariableDict] = None
   # Flax mutable fields.
@@ -120,7 +120,7 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
   flax_mutables_axes: Optional[FrozenVariableDict] = EMPTY_DICT
 
   @classmethod
-  def create(cls, optimizer_def: optim.OptimizerDef,
+  def create(cls, optimizer_def: optimizers.OptimizerDefType,
              model_variables: FrozenVariableDict) -> 'FlaxOptimTrainState':
     other_variables, params = model_variables.pop('params')
     if 'params_axes' in other_variables:

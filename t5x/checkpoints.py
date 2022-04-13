@@ -37,7 +37,6 @@ import time
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 from absl import logging
-from flax import optim
 from flax import serialization
 from flax import traverse_util
 import jax
@@ -49,6 +48,7 @@ import jax.numpy as jnp
 import numpy as np
 from t5x import checkpoint_importer
 from t5x import checkpoint_utils
+from t5x import optimizers
 from t5x import partitioning
 from t5x import state_utils
 from t5x import train_state as train_state_lib
@@ -965,7 +965,8 @@ class Checkpointer(object):
     return self._restore_train_state(state_dict)
 
   def _restore_train_state(
-      self, state_dict: optim.OptimizerState) -> train_state_lib.TrainState:
+      self,
+      state_dict: optimizers.OptimizerStateType) -> train_state_lib.TrainState:
     """Restores a TrainState from an Optimizer state_dict."""
     train_state = self._train_state.restore_state(state_dict)
 

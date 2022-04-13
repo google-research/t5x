@@ -22,13 +22,17 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import flax
-from flax import optim
+from flax import optim  # used for equivalence testing only
+from flax import traverse_util
 import jax
 from jax import numpy as jnp
 from jax import random
 import numpy as np
 
 from t5x import adafactor
+from t5x import optimizers
+
+OptimizerState = optimizers.OptimizerState
 
 _AdafactorHyperParams = adafactor._AdafactorHyperParams
 _AdafactorParamState = adafactor._AdafactorParamState
@@ -86,9 +90,9 @@ def _get_multi_adafactor(
   def _should_not_scale(path):
     return any([s in path for s in adafactor_exclude_from_parameter_scale])
 
-  scaled_vars = optim.ModelParamTraversal(
+  scaled_vars = traverse_util.ModelParamTraversal(
       lambda path, _: not _should_not_scale(path))
-  unscaled_vars = optim.ModelParamTraversal(
+  unscaled_vars = traverse_util.ModelParamTraversal(
       lambda path, _: _should_not_scale(path))
   scaled_opt = optim.Adafactor(
       learning_rate, decay_rate=0.8, step_offset=step_offset)
@@ -216,7 +220,7 @@ class AdafactorTest(parameterized.TestCase):
     expected_hyper_params = _AdafactorHyperParams(0.1, True, True, None, 0.8, 0,
                                                   1.0, None, 0, 1e-30, 1e-3)
     self.assertEqual(optimizer_def.hyper_params, expected_hyper_params)
-    expected_state = optim.OptimizerState(
+    expected_state = OptimizerState(
         0, {
             'x':
                 _AdafactorParamState(
@@ -233,7 +237,7 @@ class AdafactorTest(parameterized.TestCase):
     expected_hyper_params = _AdafactorHyperParams(0.1, True, True, 0.0, 0.8, 0,
                                                   1.0, None, 32, 1e-30, 1e-3)
     self.assertEqual(optimizer_def.hyper_params, expected_hyper_params)
-    expected_state = optim.OptimizerState(
+    expected_state = OptimizerState(
         0, {
             'x':
                 _AdafactorParamState(
@@ -246,7 +250,7 @@ class AdafactorTest(parameterized.TestCase):
     optimizer_def = adafactor.Adafactor(
         learning_rate=0.1, decay_rate=0.8, min_dim_size_to_factor=0)
     params = {'x': np.ones((3, 2), np.float32)}
-    state = optim.OptimizerState(
+    state = OptimizerState(
         1, {
             'x':
                 _AdafactorParamState(
@@ -256,7 +260,7 @@ class AdafactorTest(parameterized.TestCase):
     grads = {'x': np.ones((3, 2), np.float32)}
     new_params, new_state = optimizer_def.apply_gradient(
         optimizer_def.hyper_params, params, state, grads)
-    expected_new_state = optim.OptimizerState(
+    expected_new_state = OptimizerState(
         2, {
             'x':
                 _AdafactorParamState(
@@ -272,7 +276,7 @@ class AdafactorTest(parameterized.TestCase):
     optimizer_def = adafactor.Adafactor(
         learning_rate=0.1, beta1=0.0, decay_rate=0.8, min_dim_size_to_factor=32)
     params = {'x': np.ones((3, 2), np.float32)}
-    state = optim.OptimizerState(
+    state = OptimizerState(
         1, {
             'x':
                 _AdafactorParamState(
@@ -284,7 +288,7 @@ class AdafactorTest(parameterized.TestCase):
         optimizer_def.hyper_params, params, state, grads)
     expected_new_params = {'x': 0.9 * np.ones((3, 2))}
     check_eq(new_params, expected_new_params)
-    expected_new_state = optim.OptimizerState(
+    expected_new_state = OptimizerState(
         2, {
             'x':
                 _AdafactorParamState(
@@ -300,7 +304,7 @@ class AdafactorTest(parameterized.TestCase):
         min_dim_size_to_factor=0,
         global_norm_clip_threshold=1.0)
     params = {'x': np.ones((3, 2), np.float32)}
-    state = optim.OptimizerState(
+    state = OptimizerState(
         1, {
             'x':
                 _AdafactorParamState(
@@ -310,7 +314,7 @@ class AdafactorTest(parameterized.TestCase):
     grads = {'x': np.ones((3, 2), np.float32)}
     new_params, new_state = optimizer_def.apply_gradient(
         optimizer_def.hyper_params, params, state, grads)
-    expected_new_state = optim.OptimizerState(
+    expected_new_state = OptimizerState(
         2, {
             'x':
                 _AdafactorParamState(

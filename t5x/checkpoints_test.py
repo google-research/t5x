@@ -22,13 +22,14 @@ from typing import Any, Mapping
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
-from flax import optim
 from flax import serialization
+from flax import traverse_util
 from flax.metrics import tensorboard
 import jax
 import jax.numpy as jnp
 import numpy as np
 from t5x import checkpoints
+from t5x import optimizers
 from t5x import partitioning
 from t5x import state_utils
 from t5x import test_utils
@@ -56,12 +57,12 @@ def make_train_state(
     step: int,
     params: Mapping[str, Any],
     param_states: Mapping[str, Any],
-    flax_optimizer_def: optim.OptimizerDef = optim.GradientDescent()
+    flax_optimizer_def: optimizers.OptimizerDefType = optimizers.sgd(0.1)
 ) -> FlaxOptimTrainState:
   """Helper to construct a train state for testing."""
-  optimizer = optim.Optimizer(
+  optimizer = optimizers.Optimizer(
       flax_optimizer_def,
-      state=optim.OptimizerState(step=step, param_states=param_states),
+      state=optimizers.OptimizerState(step=step, param_states=param_states),
       target=params)
   return FlaxOptimTrainState(optimizer)
 
@@ -70,11 +71,10 @@ def make_train_state_multi_optimizer(params: Mapping[str, Any],
                                      param_states: Mapping[str, Any],
                                      step: int) -> FlaxOptimTrainState:
   """Helper to construct a train state with multi optimizer for testing."""
-  optimizer = optim.Optimizer(
-      optim.MultiOptimizer(
-          (optim.ModelParamTraversal(lambda path, _: 'kernel' not in path),
-           optim.GradientDescent())),
-      state=optim.OptimizerState(step=step, param_states=param_states),
+  optimizer = optimizers.Optimizer(
+      optimizers.MultiOptimizer((traverse_util.ModelParamTraversal(
+          lambda path, _: 'kernel' not in path), optimizers.sgd(0.1))),
+      state=optimizers.OptimizerState(step=step, param_states=param_states),
       target=params)
   return FlaxOptimTrainState(optimizer)
 
@@ -1120,9 +1120,9 @@ class CheckpointsTest(parameterized.TestCase):
   def test_assignment_map(self):
     self.validate_save(1, 1)
     # Change optimizer
-    optimizer = optim.Optimizer(
-        optim.GradientDescent(),
-        state=optim.OptimizerState(
+    optimizer = optimizers.Optimizer(
+        optimizers.sgd(0.1),
+        state=optimizers.OptimizerState(
             step=np.int32(42),
             param_states={
                 'bias': np.int32(1),
@@ -1209,9 +1209,9 @@ class CheckpointsTest(parameterized.TestCase):
   def test_assignment_map_partial_restore(self):
     self.validate_save(1, 1)
     # Change optimizer
-    optimizer = optim.Optimizer(
-        optim.GradientDescent(),
-        state=optim.OptimizerState(
+    optimizer = optimizers.Optimizer(
+        optimizers.sgd(0.1),
+        state=optimizers.OptimizerState(
             step=np.int32(42),
             param_states={
                 'bias': np.int32(1),

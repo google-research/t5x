@@ -28,7 +28,6 @@ from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, 
 import warnings
 
 from absl import logging
-from flax import optim
 from flax import traverse_util
 import flax.core
 from flax.core import scope as flax_scope
@@ -40,6 +39,7 @@ import jax.numpy as jnp
 import numpy as np
 import seqio
 from t5x import checkpoints
+from t5x import optimizers
 from t5x import partitioning
 from t5x import state_utils
 from t5x import train_state as train_state_lib
@@ -332,7 +332,7 @@ class TrainStateInitializer:
 
   # TODO(adarob): Replace input_shapes and input_types with sample batch.
   def __init__(self,
-               optimizer_def: Optional[optim.OptimizerDef],
+               optimizer_def: Optional[optimizers.OptimizerDefType],
                init_fn: InitFnCallable,
                input_shapes: Mapping[str, Array],
                partitioner: partitioning.BasePartitioner,
