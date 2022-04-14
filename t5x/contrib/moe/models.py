@@ -93,8 +93,7 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
 
   def loss_fn(
       self, params: models.PyTreeDef, batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jnp.ndarray]
-  ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
+      dropout_rng: Optional[jnp.ndarray]) -> Tuple[jnp.ndarray, MetricsMap]:
     """Cross-entropy loss function with auxiliary MoE load balancing loss.
 
     Args:
@@ -104,7 +103,7 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
 
     Returns:
       - Model loss.
-      - Normalization factor and metrics.
+      - Metrics.
     """
     logits, state = self._compute_logits(
         params, batch, dropout_rng, mutable=['intermediates'])
@@ -115,7 +114,7 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
          self._loss_normalizing_factor, batch)
 
     targets = batch['decoder_target_tokens']
-    total_loss, z_loss, weight_sum = losses.compute_weighted_cross_entropy(
+    total_loss, z_loss, _ = losses.compute_weighted_cross_entropy(
         logits,
         targets=targets,
         weights=weights,
@@ -145,7 +144,7 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
             router_z_loss,
             num_tokens=targets.size))
 
-    return total_loss, (weight_sum, metrics)
+    return total_loss, metrics
 
 
 def _extract_diversity_metrics(
