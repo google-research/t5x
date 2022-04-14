@@ -826,6 +826,8 @@ def apply_grads(
       grad_accum, learning_rate=learning_rate, **other_state_variables)
   metrics["learning_rate"] = clu.metrics.Average.from_model_output(
       jnp.asarray([learning_rate]))
+  metrics["learning_rate/current"] = clu.metrics.LastValue.from_model_output(
+      jnp.asarray([learning_rate]))
   if weight_metrics_computer is not None:
     metrics.update(
         weight_metrics_computer.compute_metrics(grad_accum, train_state,
