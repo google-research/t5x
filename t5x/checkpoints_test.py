@@ -72,8 +72,10 @@ def make_train_state_multi_optimizer(params: Mapping[str, Any],
                                      step: int) -> FlaxOptimTrainState:
   """Helper to construct a train state with multi optimizer for testing."""
   optimizer = optimizers.Optimizer(
-      optimizers.MultiOptimizer((traverse_util.ModelParamTraversal(
-          lambda path, _: 'kernel' not in path), optimizers.sgd(0.1))),
+      optimizers.MultiOptimizer([
+          (traverse_util.ModelParamTraversal(
+              lambda path, _: 'kernel' not in path), optimizers.sgd(0.1)),
+      ]),
       state=optimizers.OptimizerState(step=step, param_states=param_states),
       target=params)
   return FlaxOptimTrainState(optimizer)

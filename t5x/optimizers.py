@@ -21,7 +21,7 @@ Additional support for the legacy Adafactor implementation.
 """
 
 import functools
-from typing import Any, Optional, Union, Tuple
+from typing import Any, Optional, Union, Sequence, Tuple
 
 import flax
 from flax import optim  # just used for transitional type definitions
@@ -523,14 +523,15 @@ class MultiOptimizer(OptimizerDef):
         ])
   """
 
-  def __init__(self, *traversals_and_optimizers: Tuple[traverse_util.Traversal,
-                                                       OptimizerDef]):
+  def __init__(
+      self, traversals_and_optimizers: Sequence[Tuple[traverse_util.Traversal,
+                                                      OptimizerDef]]):
     """Create a new MultiOptimizer.
 
     See docstring of :class:`MultiOptimizer` for more details.
 
     Args:
-      *traversals_and_optimizers: pairs of flax.traverse_util.Traversal and
+      traversals_and_optimizers: pairs of flax.traverse_util.Traversal and
         `optimizers.OptimizerDef` instances.
     """
     traversals, sub_optimizers = zip(*traversals_and_optimizers)
