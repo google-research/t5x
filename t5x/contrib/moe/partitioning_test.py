@@ -17,6 +17,7 @@
 from typing import Any
 
 from absl.testing import absltest
+from flax import core as flax_core
 from flax import optim
 from flax.linen import partitioning as flax_partitioning
 import jax
@@ -27,9 +28,10 @@ from t5x.contrib.moe import partitioning
 from t5x.contrib.moe import training_utils
 
 AxisMetadata = flax_partitioning.AxisMetadata
+FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
+InferenceState = train_state_lib.InferenceState
 PartitionSpec = partitioning.PartitionSpec
 PRNGKey = Any
-FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
 
 
 class LogicalAdam(optim.Adam):
@@ -153,6 +155,39 @@ class PartitioningTest(absltest.TestCase):
                 }
             }
         })
+
+  def test_inference_state_logical_axes(self):
+    partitioner = partitioning.MoePjitPartitioner(num_partitions=1)
+
+    model_variables = flax_core.freeze({
+        'params': {
+            'dense': {
+                'bias': np.zeros(4),
+                'kernel': np.zeros((2, 4))
+            }
+        },
+        'params_axes': {
+            'dense': {
+                'bias_axes': AxisMetadata(names=('embed',)),
+                'kernel_axes': AxisMetadata(names=('vocab', 'embed')),
+            }
+        },
+    })
+    train_state = InferenceState.create(model_variables)
+    logical_axes = partitioner.get_logical_axes(train_state)
+
+    # No "expert axis" overrides to InferenceState. Partition specs should match
+    # input axis metadata.
+    self.assertEqual(
+        logical_axes,
+        InferenceState(
+            step=None,
+            params=flax_core.FrozenDict({
+                'dense': {
+                    'bias': PartitionSpec('embed',),
+                    'kernel': PartitionSpec('vocab', 'embed'),
+                },
+            })))
 
   def test_logical_axis_rules(self):
     self.assertEqual(partitioning.standard_logical_axis_rules(), (

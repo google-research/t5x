@@ -14,7 +14,7 @@
 
 """Pjit partitioner with Mixture of Experts overrides."""
 
-from typing import Callable, Optional
+from typing import Callable, Optional, Union
 
 from flax import core as flax_core
 from t5x import partitioning
@@ -23,9 +23,11 @@ from t5x import train_state as train_state_lib
 from t5x.contrib.moe import training_utils
 
 FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
+InferenceState = train_state_lib.InferenceState
 HardwareMesh = partitioning.HardwareMesh
 LogicalAxisRules = partitioning.LogicalAxisRules
 PartitionSpec = partitioning.PartitionSpec
+TrainState = train_state_lib.TrainState
 
 
 class MoePjitPartitioner(partitioning.PjitPartitioner):
@@ -65,10 +67,16 @@ class MoePjitPartitioner(partitioning.PjitPartitioner):
         logical_axis_rules=logical_axis_rules)
     self._state_filter_fn = state_filter_fn
 
-  def get_logical_axes(self,
-                       train_state: FlaxOptimTrainState) -> FlaxOptimTrainState:
+  def get_logical_axes(
+      self, train_state: Union[FlaxOptimTrainState, InferenceState]
+  ) -> Union[FlaxOptimTrainState, InferenceState]:
     """Returns a copy of TrainState with Optional[AxisNames] as leaves."""
-    optimizer_axes = train_state.as_logical_axes()._optimizer  # pylint: disable=protected-access
+    logical_axes = train_state.as_logical_axes()
+
+    if isinstance(logical_axes, InferenceState):
+      # InferenceState does not contain any optimizer state, so we skip all
+      # expert partitioning overrides.
+      return logical_axes
 
     if self._state_filter_fn:
       state_filter_fn = self._state_filter_fn
@@ -89,6 +97,7 @@ class MoePjitPartitioner(partitioning.PjitPartitioner):
     # so they are sharded along the 'expert' axis.
     prepend_expert = lambda x: PartitionSpec(  # pylint: disable=g-long-lambda
         'expert',) + x if x else PartitionSpec('expert',)
+    optimizer_axes = logical_axes._optimizer  # pylint: disable=protected-access
     state_dict = flax_core.unfreeze(optimizer_axes.state_dict())
     state_dict['state']['param_states'] = training_utils.tree_map_with_names(
         prepend_expert, state_dict['state']['param_states'], state_filter_fn)
