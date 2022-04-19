@@ -296,6 +296,7 @@ def infer(
     shard_id: int = 0,
     num_shards: int = 1,
     merge_chunked_results: bool = True,
+    overwrite_chunks: bool = True,
     write_fn: WriteFn = write_inferences_to_file,
     checkpoint_ds_iter: bool = True,
     fallback_init_rng: Optional[int] = None,
@@ -320,6 +321,8 @@ def infer(
     num_shards: Total number of dataset shards to split dataset across.
     merge_chunked_results: Whether to merge results of all chunks into a single
       json file.
+    overwrite_chunks: Whether to overwrite files which are already present. Not
+      overwriting only makes sense if the setup is exactly the same.
     write_fn: Callable function used to serialized and write inferences out to
       files.
     checkpoint_ds_iter: if True, will checkpoint the dataset iterator every
@@ -458,6 +461,10 @@ def infer(
         input_ckpt.read(ckpt_path).assert_consumed()
 
     output_fname = f'{task.name}-{mode}.jsonl-{shard_id:05}-of-{num_shards:05}'
+    if gfile.exists(os.path.join(output_dir,
+                                 output_fname)) and not overwrite_chunks:
+      logging.info('File %s already exists', output_fname)
+      return
     logging.info("Starting inference loop for shard %d of %d of task '%s'.",
                  shard_id, num_shards, task.name)
 
@@ -502,6 +509,11 @@ def infer(
 
       # Get a chunk-specific RNG key.
       chunk_rng = jax.random.fold_in(jax.random.PRNGKey(0), chunk)
+      chunk_path = os.path.join(tmp_dir, f'{output_fname}-chunk{chunk:05}')
+      if gfile.exists(
+          chunk_path) and not checkpoint_ds_iter and not overwrite_chunks:
+        logging.info('Skipping chunk %s. Chunk file already exists.', chunk)
+        continue
 
       logging.info('Running inference on %d batches.', checkpoint_period)
       # Sort by and strip index.
@@ -518,8 +530,6 @@ def infer(
         update_measurement_series('inference_total_sec', chunk, chunk_time)
         update_measurement_series('inference_examples_per_sec', chunk,
                                   len(inferences) / chunk_time)
-
-        chunk_path = os.path.join(tmp_dir, f'{output_fname}-chunk{chunk:05}')
 
         chunk_ckpt_path = None
         if checkpoint_ds_iter:
