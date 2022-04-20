@@ -14,11 +14,15 @@
 
 """Testing helpers for fake device meshes and data chunking."""
 
+import contextlib
 import dataclasses
 import itertools
 import operator
-from typing import Sequence, Tuple
+from typing import Generator, List, Sequence, Tuple
+import unittest
+
 import jax
+from jax.experimental.maps import Mesh
 import numpy as np
 import seqio
 from t5x import adafactor
@@ -127,6 +131,33 @@ def get_t5_test_model(**config_overrides) -> models.EncoderDecoderModel:
           decay_rate=0.8,
           step_offset=0,
           logical_factor_rules=adafactor.standard_logical_factor_rules()))
+
+# -------------------- Mesh parametrization helpers --------------------
+# Adapted from jax.test_util
+MeshSpec = List[Tuple[str, int]]
+
+
+@contextlib.contextmanager
+def with_mesh(named_shape: MeshSpec) -> Generator[None, None, None]:
+  """Test utility for setting up meshes given mesh data from `schedules`."""
+  axis_names, shape = zip(*named_shape)
+  size = np.prod(shape)
+  local_devices = list(jax.local_devices())
+  if len(local_devices) < size:
+    raise unittest.SkipTest(f'Test requires {size} local devices')
+  mesh_devices = np.array(local_devices[:size]).reshape(shape)
+  with Mesh(mesh_devices, axis_names):
+    yield
+
+
+def create_global_mesh(mesh_shape, axis_names):
+  size = np.prod(mesh_shape)
+  if len(jax.devices()) < size:
+    raise unittest.SkipTest(f'Test requires {size} global devices.')
+  devices = sorted(jax.devices(), key=lambda d: d.id)
+  mesh_devices = np.array(devices[:size]).reshape(mesh_shape)
+  global_mesh = Mesh(mesh_devices, axis_names)
+  return global_mesh
 
 
 def get_fake_vocab():
