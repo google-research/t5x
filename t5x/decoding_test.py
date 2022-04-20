@@ -684,7 +684,7 @@ class DecodeTest(parameterized.TestCase):
       cur_edge_potentials = jnp.take_along_axis(
           edge_potentials,
           jnp.reshape(
-              jnp.maximum(0, cur_iter[:, 0] - 1),
+              jnp.maximum(0, cur_iter[:, 0].astype(jnp.int32) - 1),
               (batch_size * beam_size, 1, 1, 1)),
           axis=1)
       cur_edge_potentials = jnp.squeeze(cur_edge_potentials, axis=1)
