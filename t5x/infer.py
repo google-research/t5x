@@ -89,9 +89,10 @@ class FailFastThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
     super().shutdown(*args, **kwargs)
 
 
-def create_task_from_tfexample_file(
-    paths: Sequence[str], file_type: str, inputs_key: str,
-    targets_key: Optional[str], features: Mapping[str, seqio.Feature]) -> str:
+def create_task_from_tfexample_file(paths: Sequence[str], file_type: str,
+                                    inputs_key: str, targets_key: Optional[str],
+                                    features: Mapping[str, seqio.Feature],
+                                    task_id: Optional[str]) -> str:
   """Registers ad-hoc Task for file-based dataset of TFExamples.
 
   Args:
@@ -108,6 +109,8 @@ def create_task_from_tfexample_file(
       None) 'targets', mapping to `seqio.Feature` objects that specify
       attributes like vocabulary, add_eos, etc. These attributes are used for
       preprocessing and featurizing the input text.
+    task_id: Task name identifier. By default, it is set to a unique and
+      deterministic hash id. Overrideable via this argument.
 
   Returns:
     Name of the newly-registered Task. This Task has a split named 'infer' that
@@ -130,9 +133,10 @@ def create_task_from_tfexample_file(
     feature_description[targets_key] = tf.io.FixedLenFeature([], tf.string)
 
   # Create a unique, deterministic task name.
-  task_id = hashlib.md5(
-      ':'.join(list(paths) +
-               [inputs_key, targets_key or '']).encode()).hexdigest()[:10]
+  if not task_id:
+    task_id = hashlib.md5(
+        ':'.join(list(paths) +
+                 [inputs_key, targets_key or '']).encode()).hexdigest()[:10]
 
   task = seqio.TaskRegistry.add(
       name=f'infer_{task_id}',
