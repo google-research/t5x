@@ -109,7 +109,8 @@ def train(
     concurrent_metrics: bool = True,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None,
-    run_eval_before_training: bool = False
+    run_eval_before_training: bool = False,
+    tf_data_service_address: Optional[str] = None,
 ) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
@@ -161,11 +162,14 @@ def train(
       defaults to `get_dataset_fn`.
     run_eval_before_training: If True, calculate training eval and inference
       eval metrics before training begins.
+    tf_data_service_address: Address to a TF data service. If provided, it
+      will be used to process the training dataset.
 
   Returns:
     The tuple of (last_step, last_train_state).
   """
   logging.info('Process ID: %d', jax.process_index())
+  logging.info('train() called with %s', locals())
   tf.io.gfile.makedirs(model_dir)
 
   # Each "epoch" of the training loop should be the min of the eval period,
@@ -237,6 +241,15 @@ def train(
 
   train_ds = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
                             model.FEATURE_CONVERTER_CLS)
+  if tf_data_service_address:
+    logging.info('Using tf data service with address %s',
+                 tf_data_service_address)
+    train_ds = train_ds.apply(
+        tf.data.experimental.service.distribute(
+            processing_mode=tf.data.experimental.service.ShardingPolicy.OFF,
+            service=tf_data_service_address,
+            job_name='shared_job'))
+    train_ds = train_ds.prefetch(tf.data.AUTOTUNE)
 
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
@@ -654,6 +667,6 @@ if __name__ == '__main__':
         FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
         FLAGS.gin_file,
         FLAGS.gin_bindings)
-    train_using_gin()
+    train_using_gin(tf_data_service_address=FLAGS.tf_data_service_address)
 
   gin_utils.run(main)
