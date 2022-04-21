@@ -38,8 +38,8 @@ def parse_gin_flags(gin_search_paths: Sequence[str],
       order with conflicting settings being overriden by later files. Paths may
       be relative to paths in `gin_search_paths`.
     gin_bindings: individual gin bindings to be applied after the gin files are
-      parsed. Will be applied in order with conflicting settings being overriden
-      by later oens.
+      parsed. Will be applied in order with conflicting settings being
+      overridden by later ones.
     skip_unknown: whether to ignore unknown bindings or raise an error (default
       behavior).
     finalize_config: whether to finalize the config so that it cannot be
