@@ -76,8 +76,9 @@ def _is_tracer(value: Any):
 def temperature_sample(
     inputs: jnp.ndarray,
     cache: Mapping[str, jnp.ndarray],
-    tokens_to_logits: Callable[[jnp.ndarray, Mapping[str, jnp.ndarray]],
-                               Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]],
+    tokens_to_logits: Callable[
+        [jnp.ndarray, jnp.ndarray, jnp.ndarray, Mapping[str, jnp.ndarray]],
+        Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     eos_id: int,
     decode_rng: Optional[jnp.ndarray] = None,
     num_decodes: int = 1,
@@ -310,18 +311,22 @@ def temperature_sample(
     max_decode_steps = jnp.minimum(max_decode_steps,
                                    max_decode_steps_hard_limit)
 
-  # [batch, len] -> [batch * num_decodes, len]
-  expanded_inputs = flat_batch_beam_expand(inputs, num_decodes)
-  expanded_cache = cache_map(
-      functools.partial(
-          flat_batch_beam_expand, beam_size=num_decodes, offset=cache_offset),
-      cache,
-      # When we start with a prefilled cache, the cache index is no longer a
-      # scalar that will broadcast across multiple decodes, it is a vector and
-      # needs to be updated to handle the multiple decodes.
-      apply_to_index=initial_index is not None)
-  if initial_index is not None:
-    initial_index = flat_batch_beam_expand(initial_index, num_decodes)
+  if num_decodes > 1:
+    # [batch, len] -> [batch * num_decodes, len]
+    expanded_inputs = flat_batch_beam_expand(inputs, num_decodes)
+    expanded_cache = cache_map(
+        functools.partial(
+            flat_batch_beam_expand, beam_size=num_decodes, offset=cache_offset),
+        cache,
+        # When we start with a prefilled cache, the cache index is no longer a
+        # scalar that will broadcast across multiple decodes, it is a vector and
+        # needs to be updated to handle the multiple decodes.
+        apply_to_index=initial_index is not None)
+    if initial_index is not None:
+      initial_index = flat_batch_beam_expand(initial_index, num_decodes)
+  else:
+    expanded_inputs = inputs
+    expanded_cache = cache
 
   # expanded_decodes: [batch * num_decodes, len]
   # expanded_log_prob: [batch * num_decodes]
@@ -360,8 +365,9 @@ def temperature_sample(
 def _temperature_sample_single_trial(
     inputs: jnp.ndarray,
     cache: Mapping[str, jnp.ndarray],
-    tokens_to_logits: Callable[[jnp.ndarray, Mapping[str, jnp.ndarray]],
-                               Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]],
+    tokens_to_logits: Callable[
+        [jnp.ndarray, jnp.ndarray, jnp.ndarray, Mapping[str, jnp.ndarray]],
+        Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]],
     eos_id: int,
     prng_key: jnp.ndarray,
     temperature: Union[float, jnp.ndarray] = 1.0,
@@ -410,8 +416,11 @@ def _temperature_sample_single_trial(
   # of the elements will continually overwrite this token until all elements
   # finish.
   # [batch, length+1] -> [batch, length+2]
+  extra_input_tokens = 2
   expanded_prompt_inputs = jnp.append(
-      inputs, jnp.zeros((batch_size, 2), dtype=inputs.dtype), axis=1)
+      inputs,
+      jnp.zeros((batch_size, extra_input_tokens), dtype=inputs.dtype),
+      axis=1)
   end_marker = jnp.array(eos_id)
 
   temperature = jnp.asarray(temperature)
@@ -464,7 +473,9 @@ def _temperature_sample_single_trial(
     # Split RNG for sampling.
     rng1, rng2 = random.split(state.rng)
     # Call fast-decoder model on current tokens to get next-position logits.
-    logits, new_cache = tokens_to_logits(state.cur_token, state.cache)
+    logits, new_cache = tokens_to_logits(
+        state.cur_token, state.sequences[:, :-extra_input_tokens],
+        state.cur_index, state.cache)
     # Sample next token from logits.
 
     if logit_callback_fn is not None:
