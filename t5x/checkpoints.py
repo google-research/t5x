@@ -1154,6 +1154,7 @@ class SaveBestCheckpointer(Checkpointer):
       checkpoints for which a metric value has not been found.
     force_keep_period: When removing checkpoints, skip those who step is
       divisible by force_keep_period (step % force_keep_period == 0).
+    use_gda: Enables GDA (see Checkpointer).
   """
 
   def __init__(self,
@@ -1168,7 +1169,8 @@ class SaveBestCheckpointer(Checkpointer):
                metric_name_to_monitor: str = 'train/accuracy',
                metric_mode: str = 'max',
                keep_checkpoints_without_metrics: bool = True,
-               force_keep_period: Optional[int] = None):
+               force_keep_period: Optional[int] = None,
+               use_gda: bool = False):
     super().__init__(
         train_state,
         partitioner,
@@ -1176,7 +1178,8 @@ class SaveBestCheckpointer(Checkpointer):
         dataset_iterator,
         keep=keep,
         save_dtype=save_dtype,
-        restore_dtype=restore_dtype)
+        restore_dtype=restore_dtype,
+        use_gda=use_gda)
     if metric_mode not in ('max', 'min'):
       raise ValueError('Unsupported `metric_mode`: %s' % metric_mode)
 

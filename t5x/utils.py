@@ -34,7 +34,9 @@ from flax.core import scope as flax_scope
 from flax.linen import partitioning as flax_partitioning
 import jax
 from jax import prng
+from jax import pxla
 from jax.experimental import multihost_utils
+from jax.experimental.global_device_array import GlobalDeviceArray
 import jax.numpy as jnp
 import numpy as np
 import seqio
@@ -629,7 +631,7 @@ def _remove_padding(all_inferences, all_indices):
     all_inferences in shape PyTree[total_examples, ...].
     all_indices in shape [total_exmamples].
   """
-  non_pad_idxs = np.where(all_indices >= 0)
+  non_pad_idxs = jnp.where(all_indices >= 0)
   all_indices = all_indices[non_pad_idxs]
   all_inferences = jax.tree_map(lambda x: x[non_pad_idxs], all_inferences)
   return all_inferences, all_indices
@@ -745,16 +747,21 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
           train_state.params, infer_batch, step_rng, index)
       logging.info('Inference of batch %s done.', index)
       # Issue asynchronous copy request which serves as prefetching to the host.
+      def _copy_to_host_async(x):
+        if isinstance(x, GlobalDeviceArray):
+          x.local_data(0).copy_to_host_async()  # GDA is fully replicated
+          return x.local_data(0)
+        else:
+          x.copy_to_host_async()
+          return x
+
       try:
-        jax.tree_map(lambda x: x.copy_to_host_async(), batch_result)
+        batch_result = jax.tree_map(_copy_to_host_async, batch_result)
+        batch_indices = jax.tree_map(_copy_to_host_async, batch_indices)
       except AttributeError:
         # Similar to jax.device_get, we skip transfers for non DeviceArrays.
         pass
 
-      def _assert_equal_lengths(batch_arr, batch_idx=batch_indices):
-        assert len(batch_arr) == len(batch_idx)
-
-      jax.tree_map(_assert_equal_lengths, batch_result)
       batched_results.append(batch_result)
       all_indices.append(batch_indices)
 
@@ -762,9 +769,9 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     all_inferences = batched_results
 
     # List[B * shard_count, ...] -> [B * shard_count * batch_count, ...]
-    all_inferences = jax.tree_multimap(lambda *args: np.concatenate(args),
+    all_inferences = jax.tree_multimap(lambda *args: jnp.concatenate(args),
                                        *all_inferences)
-    all_indices = np.concatenate(all_indices)
+    all_indices = jnp.concatenate(all_indices)
 
     all_inferences, all_indices = _remove_padding(all_inferences, all_indices)
 
@@ -782,7 +789,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     all_inferences = map(
         functools.partial(jax.tree_unflatten, struct), zip(*all_inferences))
     indices_and_outputs = list(zip(all_indices, all_inferences))
-    indices_and_outputs = jax.tree_map(lambda x: np.array(x).tolist(),
+    indices_and_outputs = jax.tree_map(lambda x: jnp.array(x).tolist(),
                                        indices_and_outputs)
     assert len(indices_and_outputs) == original_ds_length
     return indices_and_outputs
@@ -1085,3 +1092,15 @@ def override_params_axes_names(
   return flax.core.freeze(model_variables)
 
 
+
+
+def get_local_data(x):
+  if isinstance(x, GlobalDeviceArray):
+    return x.local_data(0)
+  elif isinstance(x, pxla.ShardedDeviceArray):
+    val = x.device_buffers[0]
+    if val.aval is None:
+      val.aval = jax.ShapedArray(val.shape, val.dtype)
+    return val
+  else:
+    return x

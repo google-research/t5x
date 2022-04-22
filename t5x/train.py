@@ -109,8 +109,8 @@ def train(
     concurrent_metrics: bool = True,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None,
-    run_eval_before_training: bool = False
-) -> Tuple[int, train_state_lib.TrainState]:
+    run_eval_before_training: bool = False,
+    use_gda: bool = False) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
   Args:
@@ -161,12 +161,15 @@ def train(
       defaults to `get_dataset_fn`.
     run_eval_before_training: If True, calculate training eval and inference
       eval metrics before training begins.
+    use_gda: if True, uses GlobalDeviceArray. Experimental feature.
 
   Returns:
     The tuple of (last_step, last_train_state).
   """
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
+
+  jax.config.update('jax_parallel_functions_output_gda', use_gda)
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.
@@ -339,10 +342,11 @@ def train(
         dataset_iterator=(checkpointable_train_iter
                           if checkpoint_cfg.save.save_dataset else None),
         save_dtype=checkpoint_cfg.save.dtype,
-        keep=checkpoint_cfg.save.keep)
+        keep=checkpoint_cfg.save.keep,
+        use_gda=use_gda)
 
   # Restore step from last checkpoint or set to 0 if training from scratch.
-  host_step = int(train_state.step)
+  host_step = int(utils.get_local_data(train_state.step))
 
   # ---------------------------------------------------------------------------
   # Trainer

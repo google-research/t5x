@@ -71,17 +71,9 @@ def _merge_metrics(a, b):
       lambda a, b: a.merge(b), a, b, is_leaf=metrics_lib.is_metric_obj)
 
 
-def _sda_to_da(x):
-  if not hasattr(x, "device_buffers"):
-    return x
-  return jax.interpreters.xla.make_device_array(x.aval,
-                                                x.device_buffers[0].device(),
-                                                x.device_buffers[0])
-
-
 # Merges two metrics pytrees (mapping of metric_name (str) to clu.Metric object)
 def merge_metrics(a, b):
-  a, b = jax.tree_map(_sda_to_da, (a, b))
+  a, b = jax.tree_map(utils.get_local_data, (a, b))
   return _merge_metrics(a, b)
 
 
@@ -331,11 +323,13 @@ class MetricsManager(object):
   def write_scalar(self, key: str, val: metric_writers.interface.Scalar,
                    step: int):
     """Writes scalar value to metric writers in a threadsafe manner."""
-    self.write_scalars(int(step), {key: val})
+    step = int(utils.get_local_data(step))
+    self.write_scalars(step, {key: val})
 
   def write_scalars(self, step: int,
                     scalars: Mapping[str, metric_writers.interface.Scalar]):
     """Writes scalar value to metric writers in a threadsafe manner."""
+    step = utils.get_local_data(step)
     with self._writer_lock:
       self._writer.write_scalars(step, scalars)
 
@@ -362,6 +356,7 @@ class MetricsManager(object):
       A mapping of name -> scalar value of the written summary. Only return the
         real scalar value on host 0. For other hosts, return None.
     """
+    step = utils.get_local_data(step)
 
     # Must be called in the main thread to avoid race condition.
     duration_future = self._duration_timer.stop(block_on=metrics)
@@ -372,7 +367,7 @@ class MetricsManager(object):
       fetched_metrics = jax.tree_map(jax.device_get, metrics)
 
       duration = duration_future.result()
-      # We set the duration on TimeRate metrics.
+      # We set the duration on time-related metrics.
       final_metrics = metrics_lib.set_time_metrics_duration(
           fetched_metrics, duration)
       # Set num_steps for Step metrics (AveragePerStep, StepsPerTime, ...)
@@ -384,6 +379,7 @@ class MetricsManager(object):
         assert not isinstance(x, jax.numpy.DeviceArray)
 
       jax.tree_map(_ensure_not_on_device, final_metrics)
+      final_metrics = jax.tree_map(utils.get_local_data, final_metrics)
 
       if self._summarize_fn is None:
         summary = {k: v.compute_value() for k, v in final_metrics.items()}
