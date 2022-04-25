@@ -62,7 +62,7 @@ class FailFastThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
 
   def __init__(self, *args, **kwargs):
     super().__init__(*args, **kwargs)
-    self._incomplete_futures: List[concurrent.futures.Future] = []
+    self._incomplete_futures: List[concurrent.futures.Future[Any]] = []
 
   def check_for_exceptions(self, wait: bool = False):
     """Raises any exceptions from complete futures on the main thread."""
@@ -77,7 +77,7 @@ class FailFastThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
 
     self._incomplete_futures = still_incomplete_futures
 
-  def submit(self, *args, **kwargs) -> concurrent.futures.Future:
+  def submit(self, *args, **kwargs) -> concurrent.futures.Future[Any]:
     """Submit function to threadpool, capturing the returned future."""
     future = super().submit(*args, **kwargs)
     self._incomplete_futures.append(future)
