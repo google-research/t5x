@@ -207,12 +207,13 @@ def write_inferences_to_file(
       JSONL file (including raw tokens) in addition to the pretokenized inputs.
     input_fields_to_include: List of input fields to include in the output JSONL
       file. This list should be None if `include_all_inputs` is set to True.
-    output_ids: if True, will output the token ID sequence for the output,
-      in addition to the decoded text.
+    output_ids: if True, will output the token ID sequence for the output, in
+      addition to the decoded text.
   """
   if mode in ('predict', 'predict_with_aux') and vocabulary is None:
     raise ValueError('The `vocabulary` parameter is required in `predict` and '
                      '`predict_with_aux` modes')
+
   def _json_compat(value):
     if isinstance(value, bytes):
       return value.decode('utf-8')
@@ -296,7 +297,6 @@ def infer(
     shard_id: int = 0,
     num_shards: int = 1,
     merge_chunked_results: bool = True,
-    overwrite_chunks: bool = True,
     write_fn: WriteFn = write_inferences_to_file,
     checkpoint_ds_iter: bool = True,
     fallback_init_rng: Optional[int] = None,
@@ -321,14 +321,12 @@ def infer(
     num_shards: Total number of dataset shards to split dataset across.
     merge_chunked_results: Whether to merge results of all chunks into a single
       json file.
-    overwrite_chunks: Whether to overwrite files which are already present. Not
-      overwriting only makes sense if the setup is exactly the same.
     write_fn: Callable function used to serialized and write inferences out to
       files.
     checkpoint_ds_iter: if True, will checkpoint the dataset iterator every
-      checkpoint_period as well as the intermediate predictions. This must be
-      disabled for certain datasets, for example since stateful iterators (e.g.
-      from seqio.FunctionTask) cannot be checkpointed.
+      `checkpoint_period` to enable faster restore. This must be disabled for
+      certain datasets, for example since stateful iterators (e.g. from
+      seqio.FunctionTask) cannot be checkpointed.
     fallback_init_rng: A random seed used for parameter initialization during
       model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
       set to True. If None, parameter initialization is not allowed during model
@@ -461,9 +459,10 @@ def infer(
         input_ckpt.read(ckpt_path).assert_consumed()
 
     output_fname = f'{task.name}-{mode}.jsonl-{shard_id:05}-of-{num_shards:05}'
-    if gfile.exists(os.path.join(output_dir,
-                                 output_fname)) and not overwrite_chunks:
-      logging.info('File %s already exists', output_fname)
+    if gfile.exists(os.path.join(output_dir, output_fname)):
+      logging.info(
+          "File %s exists. Skipping inference for shard %d/%d of task '%s'",
+          output_fname, shard_id, num_shards, task.name)
       return
     logging.info("Starting inference loop for shard %d of %d of task '%s'.",
                  shard_id, num_shards, task.name)
@@ -510,8 +509,7 @@ def infer(
       # Get a chunk-specific RNG key.
       chunk_rng = jax.random.fold_in(jax.random.PRNGKey(0), chunk)
       chunk_path = os.path.join(tmp_dir, f'{output_fname}-chunk{chunk:05}')
-      if gfile.exists(
-          chunk_path) and not checkpoint_ds_iter and not overwrite_chunks:
+      if gfile.exists(chunk_path) and not checkpoint_ds_iter:
         logging.info('Skipping chunk %s. Chunk file already exists.', chunk)
         continue
 
