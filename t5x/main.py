@@ -90,6 +90,10 @@ _TFDS_DATA_DIR = flags.DEFINE_string(
     'bucket. Note that this flag overrides the `tfds_data_dir` attribute of '
     'all `Task`s.')
 
+_DRY_RUN = flags.DEFINE_bool(
+    'dry_run', False,
+    'If set, does not start the function but stil loads and logs the config.')
+
 
 FLAGS = flags.FLAGS
 
@@ -128,6 +132,9 @@ def main(argv: Sequence[str]):
       _GIN_SEARCH_PATHS.value + _DEFAULT_GIN_SEARCH_PATHS,
       _GIN_FILE.value,
       _GIN_BINDINGS.value)
+
+  if _DRY_RUN.value:
+    return
 
   run_with_gin = gin.get_configurable(_FUNC_MAP[_RUN_MODE.value])
   run_with_gin()
