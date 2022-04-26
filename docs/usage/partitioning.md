@@ -1,86 +1,173 @@
 # Data, Model, and Activation Partitioning
 
 
-## What is partitioning?
+TL;DR: The recommended way of specifying partitions in T5X.
 
-Partitioning (sometimes referred to sharding) is a core feature of T5X, provided
-primarily via the
-[`jax.pjit`](https://github.com/google/jax/tree/main/jax/experimental/pjit.py) backend.
-With partitioning, you can shard data, model parameters, and intermediate
-activations across the hardware mesh to reduce per-device memory requirements
-and increase parallelism.
+**Partitioning** is the process dividing and replicating machine learning *model
+parameters*, *activations*, and *data* across the accelerator devices (TPU/GPU)
+in order to:
 
-This allows you to take advantage of additional TPU (or GPU) devices to train or
-infer from models too big to fit in the memory of a single device, use larger
-batch sizes, and/or train faster.
+*   Train and infer from models too large to fit in the memory of a single
+    device
+*   Use extremely large batch sizes
+*   Train faster
 
-## Partitioning with named axes
+## How to Partition
 
-With T5X, the recommended way of configuring partitioning is to use the
-`PjitPartitioner`, which relies on the use of logical axis name
-annotations (for parameters and activations).
+Partitioning in T5X is configured in two steps:
 
-*Logical axis names* are a user-configured shorthand for grouping
-axes/dimensions of various arrays (parameters or activations) in a model
-implementation. For example, one might refer to the axes of the inputs to a
-model as `('batch', 'length', 'vocab')`. If the parameters of the embedding
-matrix are labelled `('vocab', 'embed')` then the activations following
-embedding should be named `('batch', 'length', 'embed')`. A list of canonical
-logical axis names can be found [below](#canonical-logical-axis-names).
+1.  Specify logical axes names for parameter and activation array dimensions
+2.  Map the logical names to the physical axes of the accelerator mesh
+
+Let's take a closer look at each of these steps.
+
+**Note:** In T5X, partitioning is primarily provided through the
+[jax.pjit][pjit] backend via `PjitPartitioner` using the Gin configuration
+framework.
+
+### Specify logical axis names
+
+**Logical axis names** are a user-configured shorthand for grouping *axes* (aka
+*dimensions*) of either parameter or activation arrays in a model
+implementation.
+
+For example, you could refer to the axes of the inputs to a model as `('batch',
+'length', 'vocab')`. If the parameters of the embedding matrix are labelled
+`('vocab', 'embed')` then the activations following embedding should be named
+`('batch', 'length', 'embed')`.
+
+**Description**      | **Logical Axis Names**
+-------------------- | ------------------------------
+Inputs to model      | `('batch', 'length', 'vocab')`
+Embedding parameters | `('vocab', 'embed')`
+Activations          | `('batch', 'length', 'embed')`
+
+**How to configure logical axis names**
+
+Logical axis annotations can be provided through the utilities in
+[`flax.linen.partitioning`][lan].
+
+Instead of calling `self.param` to create parameters within your model
+implementation, use the `flax.linen.partitioning.param_with_axes` API to
+communicate axis names for each parameter.
+
+```py
+from flax.linen import partitioning
+
+scale = partitioning.param_with_axes(
+    'scale', self.scale_init, (features,), jnp.float32, axes=('embed',))
+```
+
+For an example in context, see [`layers.py`][param_with_axes].
+
+Tip: We recommend you use the *canonical* logical axis names listed
+[below](#canonical-logical-axis-names).
+
+### Map logical names to device
 
 For `jax.pjit` to know how to partition these arrays across the hardware, the
-logical axis names must be mapped to physical axes of the accelerator (TPU/GPU)
-mesh. In T5X, the two primary hardware axes are named `'data'` and `'model'`,
-referring to the default mappings for data- and model-parallelism, respectively.
-Names notwithstanding, you are free to map model parameters/activations across
-the "data" axis. In fact, this is what is done in "2D" parameter/activation
-sharding. See [`t5x.partitioning.standard_logical_axis_rules`][standard-rules]
-and the [example mappings below](#example-configurations) to see how this works
-in practice.
+logical axis names must be mapped to the physical axes of the accelerator mesh.
 
-The following subsections explain how to configure partitioning in T5X using
-named axes.
+**Note:** A *mesh* is an n-dimensional array of TPU (or GPU) processors,
+connected by a network. The TPUv3 processor is limited to 2D meshes. The TPUv4
+processor can handle 3D meshes.
 
-### Configuring `PjitPartitioner`
+In T5X, the two primary *hardware* axes are named `'data'` and `'model'`,
+referring to the default mappings for data- and model-parallelism.
 
-[`PjitPartitioner`][pjit-partitioner] has three primary
-constructor arguments, typically set via gin: `num_partitions`,
-`model_parallel_submesh`, and `logical_axis_rules`.
+> **Note:** You are actually free to map model parameters or activations across
+> the `'data'` axis. In fact, this is what is done in 2D parameter/activation
+> sharding.  To see how this works in practice, see:
+>
+> *   [The example mappings](#example-configurations) below
+> *   [`t5x.partitioning.standard_logical_axis_rules`][standard-rules]
+>     implementation
 
-`num_partitions` and `model_parallel_submesh` provide two mutually-exclusive
-methods of specifying the submesh of devices to use for model (parameter and
-activation) partitioning.
+To specify hardware axes for *activation partitioning*, provide the logical axes
+names to `flax.linen.partitioning.with_sharding_constraint` (instead of using
+`jax.pjit.with_sharding_constraint` or
+`t5x.partitioning.with_sharding_constraint`).
 
-`model_parallel_submesh (Tuple[int, int, int, int])` is a 4-tuple that specifies
-the `(x, y, z, c)` submesh model-parallel device tile, an axis of accelerator
-parallelism orthogonal to data parallelism. Array axes in a model's parameters
-or activations can be sharded over this submesh using axis rules (see
-`logical_axis_rules`) that map them to `'model'`. The effective number of model
-sub-partitions is equal to `np.prod(model_parallel_submesh)` and must evenly
-divide the total number of devices (i.e., `jax.device_count() %
-np.prod(model_parallel_submesh) == 0`). The rest of the TPU mesh is the data
-parallel submesh, providing `jax.device_count() //
-np.prod(model_parallel_submesh)` partitions. It is used for data (batch)
-parallelism and to shard other array axes that are mapped to `'data'`.
+```py
+from flax.linen import partitioning
 
-Alternatively, `num_partitions (int)` accepts an integer that specifies the size
-of the model parallel submesh to be automatically selected for the current
-topology.
+...
+output = jnp.dot(x, embedding)
+output = with_sharding_constraint(output, ('batch', 'length', 'embed'))
+return output
+```
 
-The third key argument is `logical_axis_rules (Sequence[Tuple[str,
-Optional[str]]])`. This argument accepts an priority-ordered sequence of KV
-tuples that maps logical axis names to hardware resources, using `'model'` and
-`'data'`as a convention for the two primary hardware axes. Therefore, each
-logical axis can be mapped to one of:
 
-*   `None` to disable sharding, and thus be fully-replicated,
-*   `'model'` to shard across the model-parallel submesh, or
-*   `'data'` to shard across the data-parallel submesh.
+#### Configuring `PjitPartitioner`
 
-Note that the same key can be mapped to multiple values. For each array,
-mappings are applied in priority order. If a hardware resource has already been
-assigned in to a different axis and multiple keys exist, a latter mapping may be
-used.
+`PjitPartitioner` has three primary constructor arguments:
+
+*   `model_parallel_submesh`
+*   `num_partitions`
+*   `logical_axis_rules`
+
+The `model_parallel_submesh` and `num_partitions` arguments provide two
+mutually-exclusive methods of specifying the submesh of devices to use for model
+partitioning. As a rule of thumb:
+
+*   Use `model_parallel_submesh` when you want to specify how the logical names
+    are mapped to the device
+*   Use`num_partitions` for an automatic mapping
+
+**Using `model_parallel_submesh`**
+
+The `PjitPartitioner` constructor argument that provides the most control is:
+
+```
+model_parallel_submesh(Tuple[int, int, int, int])
+```
+
+It is a 4-tuple that specifies the `(x, y, z, c)` *model-parallel* submesh–an
+axis of accelerator parallelism orthogonal to data parallelism. Axes in a
+model's parameter or activation arrays can be sharded over this submesh using
+axis rules that map them to `'model'`.
+
+**Note:** The effective number of model subpartitions is equal to
+`np.prod(model_parallel_submesh)` and must evenly divide the total number of
+devices. Specifically: \
+`jax.device_count() % np.prod(model_parallel_submesh) == 0`.
+
+The rest of the TPU mesh is the *data parallel* submesh, providing
+`jax.device_count() // np.prod(model_parallel_submesh)` partitions. It is used
+for data (aka *batch*) parallelism and to shard other array axes that are mapped
+to `'data'`.
+
+**Using `num_partitions`**
+
+Alternatively,
+
+```
+num_partitions(int)
+```
+
+accepts an integer that specifies the size of the model parallel submesh to be
+*automatically* selected for the current topology.
+
+**Using `logical_axis_rules`**
+
+The third key argument is
+
+```
+logical_axis_rules(Sequence[Tuple[str, Optional[str]]])
+```
+
+This argument accepts a priority-ordered sequence of key-value (KV) tuples.
+These tuples map the logical axis names to hardware resources, using `'model'`
+and `'data'` as the two primary hardware axes. Specifically, each logical axis
+can be mapped to one of:
+
+*   `None` to disable sharding, and thus be fully-replicated
+*   `'model'` to shard across the model-parallel submesh
+*   `'data'` to shard across the data-parallel submesh
+
+The same key can be mapped to multiple values. For each array, mappings are
+applied in priority order. If a hardware resource has already been assigned in
+to a different axis and multiple keys exist, a latter mapping may be used.
 
 For example, consider the following set of logical axis rules:
 
@@ -99,53 +186,17 @@ will be mapped to `'data'`, since `'model'` has already been used. However, an
 array with logical axes `('vocab', 'embed')` will receive the mapping `(None,
 'model')` since `'embed'` has a higher priority than `'vocab'`.
 
-T5X provides the default
-[`t5x.partitioning.standard_logical_axis_rules`][standard-rules] function to
+T5X provides the `t5x.partitioning.standard_logical_axis_rules()` function to
 generate canonical logical axis rule sets depending on how many mesh dimensions
-you wish to shard activations and parameters (defaults to 1), with the
-assumption that you are using
-[canonical logical axis names](#canonical-logical-axis-names).
+you wish to shard. This assumes that you are using [canonical logical axis
+names](#canonical-logical-axis-names).
 
-### Configuring logical axis annotations within the model
+For details, see
+[`t5x.partitioning.standard_logical_axis_rules()`][standard-rules].
 
-In order for your model to be partitionable by the `PjitPartitioner`,
-you must apply logical axis name annotations to your model parameters and
-activations.
+## Other Stuff
 
-These annotations can be provided through the utilities in
-[`flax.linen.partitioning`](https://github.com/google/flax/tree/main/flax/linen/partitioning.py).
-
-Instead of calling `self.param` to create parameters within your model
-implementation, you should use the `flax.linen.partitioning.param_with_axes()`
-api from Flax to communicate axis names for each parameter.
-
-```py
-from flax.linen import partitioning
-
-scale = partitioning.param_with_axes(
-    'scale', self.scale_init, (features,), jnp.float32, axes=('embed',))
-```
-
-Similarly, instead of calling `jax.pjit.with_sharding_constraint` or
-`t5x.partitioning.with_sharding_constraint` to specify hardware axes for
-activation partitioning, you should use
-`flax.linen.partitioning.with_sharding_constraint` providing logical axis names.
-
-```py
-from flax.linen import partitioning
-
-...
-output = jnp.dot(x, embedding)
-output = with_sharding_constraint(output, ('batch', 'length', 'embed'))
-return output
-```
-
-See the [Minimal](https://github.com/google-research/t5x/tree/main/t5x/examples/) and
-[Flaxformer](https://github.com/google/flaxformer/tree/main/flaxformer/architectures/t5/)
-T5 implementations for examples of how these annotations are applied in
-practice.
-
-### Overriding Axis Names from External Codebase
+### Overriding axis names from an external codebase
 
 You may wish to incorporate Flax modules from an external codebase into your
 model implementation that uses `self.param` instead of
@@ -159,8 +210,8 @@ patterns (fully matching parameter names) to tuples containing string logical
 axis names to replace model-derived names.
 
 For example, the following configuration provides logical axis names for an
-external module called 'external_mlp' used in every layer of model's encoder,
-without modifying any other modules:
+external module called 'external_mlp' used in every layer of the model's
+encoder, without modifying any other modules:
 
 ```py
 class MyCustomEncoderDecoderModel(models.EncoderDecoderModel):
@@ -181,39 +232,46 @@ class MyCustomEncoderDecoderModel(models.EncoderDecoderModel):
         ])
 ```
 
-Note: It is not possible to add or modify activation partitioning in an external
-module.
+**Note:** It is not possible to add or modify activation partitioning in an
+external module.
 
-### Canonical Logical Axis Names
+### Canonical logical axis names
 
-We recommend you use logical axis names from the following list for
-compatibility with
-[`t5x.partitioning.standard_logical_axis_rules`][standard-rules]. If you wish to
-use a non-canonical axis name, you will need to pass a custom set of axis rules
-to the `PjitPartitioner`.
+Use the following logical axis names to be compatible with
+[`t5x.partitioning.standard_logical_axis_rules`][standard-rules]:
 
-*   `"embed"`: This is the common "activation_dim" in the network, first emitted
-    by the embeding layer.
-*   `"heads"`: Number of heads for attention / relative position biases.
-*   `"kv"`: For query/key/value hidden dimensions of each head.
-*   `"joined_kv"`: For "heads * kv" fused dimension of attention matrices, when
-    the kernel is reshaped such that "heads" and "kv" are packed in the same
-    dimension.
-*   `"mlp"`: Intermediate dimension of the feed-forward layer.
-*   `"vocab"`: For embeddings, the input/output vocabulary size.
-*   `"mlp_activations"`: For fused MLP matrices that have a dimension for the
-    activation function index.
-*   `"stack"`: For KV and QKV fused attention implementations, the manual
-    parameter-fusion stacked dimension.
-*   `"abspos_buckets"` / `"relpos_buckets"`: The dimension for positional bias
-    buckets.
+| Logical Axis Name    | Description                                          |
+| -------------------- | ---------------------------------------------------- |
+| `"embed"`            | The common "activation_dim" in the network, first    |
+:                      : emitted by the embedding layer.                      :
+| `"heads"`            | Number of heads for attention/relative position      |
+:                      : biases.                                              :
+| `"kv"`               | For query/key/value hidden dimensions of each head.  |
+| `"joined_kv"`        | For "heads * kv" fused dimension of attention        |
+:                      : matrices, when the kernel is reshaped such that      :
+:                      : "heads" and "kv" are packed in the same dimension.   :
+| `"mlp"`              | Intermediate dimension of the feed-forward layer.    |
+| `"vocab"`            | For embeddings, the input/output vocabulary size.    |
+| `"mlp_activations"`  | For fused MLP matrices that have a dimension for the |
+:                      : activation function index.                           :
+| `"stack"`            | For KV and QKV fused attention implementations, the  |
+:                      : manual parameter-fusion stacked dimension.           :
+| `"abspos_buckets"` / | The dimension for positional bias buckets.           |
+: `"relpos_buckets"`   :                                                      :
+
+If you wish to use a non-canonical axis name, you will need to pass a custom set
+of axis rules to the `PjitPartitioner`.
+
+--------------------------------------------------------------------------------
 
 ## Example configurations
 
-You can override the default 1D sharding configuration (e.g., in gin) by
-modifying the arguments to
+### Automatic - Full 2D partitioning
+
+You can override the default 1D sharding configuration by modifying the
+arguments to
 [`t5x.partitioning.standard_logical_axis_rules`][standard-rules]. For example,
-for full (parameter and activation) 2D partitioning, you can set:
+for full parameter and activation 2D partitioning you can set:
 
 ```py
 from t5x import partitioning
@@ -230,10 +288,20 @@ partitioning.standard_logical_axis_rules:
   parameter_partitioning_dims = 2
 ```
 
-Alternatively, you can set the rules manually, experimenting with some of the
+### Manual configurations
+
+Alternatively, you can manually set the rules, experimenting with some of the
 following options:
 
-*   Only data parallelism:
+*   [Data-only parallelism](#data-only-parallelism)
+*   [Data parallel with parameter gather](#data-parallel-with-parameter-gather)
+*   [Data and model parallel with replicated
+    activations](#data-and-model-parallel-with-replicated-activations)
+*   [Data and model parallel with sharded
+    activations](#data-and-model-parallel-with-sharded-activations)
+*   [Full 2D sharding](#full-2d-sharding)
+
+#### Data-only parallelism
 
 ```py
 partitioning.PjitPartitioner.logical_axis_rules = [
@@ -253,9 +321,10 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 ]
 ```
 
-*   Data parallel with parameter gather, aka
-    [ZeRO-3](https://arxiv.org/abs/1910.02054), aka "2D parameter partitioning
-    with trivial MP submesh":
+#### Data parallel with parameter gather
+
+An example of 2D parameter partitioning with trival MP submesh, such as
+[ZeRO-3][ZeRO-3].
 
 ```py
 partitioning.PjitPartitioner.logical_axis_rules = [
@@ -276,9 +345,9 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 ]
 ```
 
-*   Data and model parallel with replicated activations, aka
-    [Megatron](https://arxiv.org/abs/1909.08053), aka "1D parameter
-    partitioning":
+#### Data and model parallel with replicated activations
+
+An example of 1D parameter partitioning, such as [Megatron][megatron].
 
 ```py
 partitioning.PjitPartitioner.logical_axis_rules = [
@@ -298,9 +367,10 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 ]
 ```
 
-*   Data and model parallel with sharded activations, perhaps the same as
-    [Optimus](https://arxiv.org/abs/2104.05343), aka "1D parameter partitioning
-    with 2D activation partitioning":
+#### Data and model parallel with sharded activations
+
+An example of 1D parameter partitioning with 2D activation partitioning, such as
+[Optimus][optimus].
 
 ```py
 partitioning.PjitPartitioner.logical_axis_rules = [
@@ -321,8 +391,10 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 ]
 ```
 
-*   Full 2D sharding, aka [GShard](https://arxiv.org/abs/2105.04663); aka "2D
-    parameter + activation partitioning":
+#### Full 2D sharding
+
+An example of 2D parameter and activation partitioning, such as
+[GShard][gshard].
 
 ```py
 partitioning.PjitPartitioner.logical_axis_rules = [
@@ -344,7 +416,18 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 ]
 ```
 
+
+<!-- Reference links -->
+
 <!---TODO(b/214235006): Use symbol reference instead of line number+rcl.-->
 
+[ZeRO-3]: https://arxiv.org/abs/1910.02054
+[gshard]: https://arxiv.org/abs/2105.04663
+[flaxformer]: https://github.com/google/flaxformer/tree/main/flaxformer/architectures/t5/
+[lan]: https://github.com/google/flax/tree/main/flax/linen/partitioning.py
+[megatron]: https://arxiv.org/abs/1909.08053
+[minimal]: https://github.com/google-research/t5x/tree/main/t5x/examples/
+[optimus]: https://arxiv.org/abs/2104.05343
+[param_with_axes]: https://github.com/google-research/t5x/tree/main/t5x/examples/t5/layers.py;rcl=427300354;l=462
+[pjit]: https://github.com/google/jax/tree/main/jax/experimental/pjit.py
 [standard-rules]: https://github.com/google-research/t5x/tree/main/t5x/partitioning.py?l=438&rcl=421294093
-[pjit-partitioner]: https://github.com/google-research/t5x/tree/main/t5x/partitioning.py?l=674&rcl=421291812
