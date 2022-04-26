@@ -7,7 +7,7 @@ align your metrics with the redesigned T5X metric library.
 ## Introduction
 
 T5X provides a flexible and customizable library for managing metrics. Metrics
-in T5X rely on [CLU](go/clu), which broadly provides utilities for writing
+in T5X rely on [CLU](https://github.com/google/CommonLoopUtils/blob/main/README.md), which broadly provides utilities for writing
 training loops but specifically provides metric libraries that are extended by
 T5X.
 
@@ -19,7 +19,7 @@ these three in the future.
 ## Metrics and Writers
 
 CLU provides `Metric` and `MetricWriter` classes. Full details are provided in
-[go/clu-metrics](go/clu-metrics), but a simplified summary will suffice for our
+[go/clu-metrics](https://github.com/google/CommonLoopUtils/blob/main/README.md-metrics), but a simplified summary will suffice for our
 purposes.
 
 [`clu.metrics.Metric`](https://github.com/google/CommonLoopUtils/tree/main/clu/metrics.py?q=symbol:%5CbMetric%5Cb)

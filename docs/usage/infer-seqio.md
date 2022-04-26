@@ -233,7 +233,7 @@ decoding.temperature_sample:
 ```
 
 More detailed documentation on defining a decoding stategy can be found
-[here](https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/decoding).
+[here](https://github.com/google-research/t5x/blob/main/docs/usage.md/decoding).
 
 
 ### Defining a custom SeqIO Task/Mixture to run inference on {.no-toc}
