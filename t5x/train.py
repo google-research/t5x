@@ -153,9 +153,8 @@ def train(
     actions: A mapping of actions that runs after train, eval or infer_eval, to
       inspect the model and perform useful operations, e.g., early stopping. The
       key must have a 1:1 mapping to ActionMode enum. For EVAL actions to
-        actually work, this requires `concurrent_metrics` to be turned off,
-        since chaining futures and mutating states concurrently might be
-        error-prone.
+      actually work, this requires `concurrent_metrics` to be turned off, since
+      chaining futures and mutating states concurrently might be error-prone.
     train_eval_get_dataset_fn: Optional callable use to get the train-eval
       datasets based on the DatasetConfig and shard information. If missing, it
       defaults to `get_dataset_fn`.
