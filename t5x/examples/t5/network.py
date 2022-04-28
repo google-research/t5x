@@ -422,4 +422,3 @@ class Transformer(nn.Module):
         decoder_positions=decoder_positions,
         enable_dropout=enable_dropout,
         decode=decode)
-
