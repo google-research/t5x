@@ -184,8 +184,8 @@ class Encoder(nn.Module):
     cfg = self.config
     assert encoder_input_tokens.ndim == 2  # [batch, length]
     rel_emb = layers.RelativePositionBiases(
-        num_buckets=32,
-        max_distance=128,
+        num_buckets=cfg.num_buckets,
+        max_distance=cfg.max_distance,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
         embedding_init=nn.initializers.variance_scaling(1.0, 'fan_avg',
@@ -227,8 +227,8 @@ class Decoder(nn.Module):
     cfg = self.config
     assert decoder_input_tokens.ndim == 2  # [batch, len]
     rel_emb = layers.RelativePositionBiases(
-        num_buckets=32,
-        max_distance=128,
+        num_buckets=cfg.num_buckets,
+        max_distance=cfg.max_distance,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
         embedding_init=nn.initializers.variance_scaling(1.0, 'fan_avg',
