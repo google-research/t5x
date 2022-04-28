@@ -339,7 +339,10 @@ def infer(
       loading and having fallback_to_scratch enabled will result in an error.
     merge_fn: Callable function used to merge inferences from multiple files.
   """
+
   logging.info('Process ID: %d', jax.process_index())
+  tf.io.gfile.makedirs(output_dir)
+
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
         "`mode` must be one of 'predict', 'score' or 'predict_with_aux'. "
