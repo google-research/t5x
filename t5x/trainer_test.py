@@ -16,7 +16,6 @@
 import collections
 import contextlib
 import os
-import warnings
 
 from absl.testing import absltest
 from absl.testing import parameterized
@@ -281,18 +280,6 @@ def fake_eval_step(model, optimizer, batch):
   return {'loss': metrics_lib.Sum(i), 'accuracy': metrics_lib.Sum(i)}
 
 
-# TODO(b/219086328): Remove temporary backwards compatibility when
-# `weight_sum` deprecation is complete.
-def fake_eval_fn_with_weight_sum(params, batch):
-  del params
-  # Add `i` to each metric.
-  i = batch['i'].sum()
-
-  loss = metrics_lib.Sum(i)
-  weight_sum = None
-  return loss, (weight_sum, {'loss': loss, 'accuracy': metrics_lib.Sum(i)})
-
-
 def fake_eval_fn_without_weight_sum(params, batch):
   del params
   # Add `i` to each metric.
@@ -300,40 +287,6 @@ def fake_eval_fn_without_weight_sum(params, batch):
 
   loss = metrics_lib.Sum(i)
   return loss, {'loss': loss, 'accuracy': metrics_lib.Sum(i)}
-
-
-# TODO(b/219086328): Remove temporary backwards compatibility when
-# `weight_sum` deprecation is complete.
-def fake_value_and_grad_fn_with_weight_sum(callable_fn, has_aux=False):
-  del callable_fn, has_aux
-
-  def fake_grad_fn_with_weight_sum(train_state_params,
-                                   batch,
-                                   dropout_rng,
-                                   flax_mutables=None):
-    del dropout_rng, train_state_params, flax_mutables
-    # Add `i` to each optimzer value.
-    i = batch['i'].sum()
-    optimizer = optimizers.Optimizer(
-        optimizers.sgd(0.1),
-        state=optimizers.OptimizerState(
-            step=0, param_states={
-                'bias': 0,
-                'kernel': 0
-            }),
-        target={
-            'bias': np.zeros(4),
-            'kernel': np.zeros((2, 4))
-        })
-    train_state = train_state_lib.FlaxOptimTrainState(optimizer)
-    grad_accum = jax.tree_map(lambda x: i, train_state)
-    # Add j to each metric.
-    j = batch['j'].sum()
-    metrics = {'loss': metrics_lib.Sum(j), 'accuracy': metrics_lib.Sum(j)}
-    weight_sum = None
-    return (None, (weight_sum, metrics)), grad_accum.params
-
-  return fake_grad_fn_with_weight_sum
 
 
 def fake_value_and_grad_fn_without_weight_sum(callable_fn, has_aux=False):
@@ -864,41 +817,6 @@ class TrainerTest(parameterized.TestCase):
             'eval4': 'compiled3'
         })
 
-  # TODO(b/219086328): Remove temporary backwards compatibility when
-  # `weight_sum` deprecation is complete.
-  @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_with_weight_sum)
-  def test_accumulate_grads_microbatched_with_weight_sum_single_batch(self):
-    with warnings.catch_warnings(record=True) as warnings_list:
-      # Ensure all warnings are captured.
-      warnings.simplefilter('always')
-
-      batch_iter = self.dataset.as_numpy_iterator()
-      batch = next(batch_iter)
-      num_microbatches = 1
-      grad_accum, metrics, flax_mutables = trainer_lib.accumulate_grads_microbatched(
-          self.test_trainer._model, self.init_train_state, batch,
-          self.test_trainer._base_rng, num_microbatches)
-
-      i = batch['i'].sum()
-      expected_grad_accum = jax.tree_map(lambda x: i,
-                                         self.init_train_state).params
-      self.assertEqual(expected_grad_accum, grad_accum)
-      self.assertEqual(metrics['loss'].compute(), 2)
-      self.assertEqual(metrics['accuracy'].compute(), 2)
-      self.assertIsNone(flax_mutables)
-      # Check that the logs contain warning message.
-      expected_warning_message = (
-          'The `loss_fn` returns a `weight_sum` value; this behavior will be '
-          'unsupported in the future. Please update your loss_fn to eliminate '
-          'the `weight_sum` return value. '
-      )
-      warning_message_seen = False
-      for warning in warnings_list:
-        print(warning.message)
-        if expected_warning_message in str(warning.message):
-          warning_message_seen = True
-      self.assertTrue(warning_message_seen)
-
   @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_without_weight_sum)
   def test_accumulate_grads_microbatched_without_weight_sum_single_batch(self):
     batch_iter = self.dataset.as_numpy_iterator()
@@ -916,39 +834,6 @@ class TrainerTest(parameterized.TestCase):
     self.assertEqual(metrics['accuracy'].compute(), 2)
     self.assertIsNone(flax_mutables)
 
-  # TODO(b/219086328): Remove temporary backwards compatibility when
-  # `weight_sum` deprecation is complete.
-  @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_with_weight_sum)
-  def test_accumulate_grads_microbatched_with_weight_sum_multiple_batches(self):
-    with warnings.catch_warnings(record=True) as warnings_list:
-      # Ensure all warnings are captured.
-      warnings.simplefilter('always')
-
-      batch_iter = self.dataset.as_numpy_iterator()
-      batch = next(batch_iter)
-      num_micro_batches = 2
-      grad_accum, metrics, flax_mutables = trainer_lib.accumulate_grads_microbatched(
-          self.test_trainer._model, self.init_train_state, batch,
-          self.test_trainer._base_rng, num_micro_batches)
-
-      expected_grad_accum = {'bias': jnp.ones(4), 'kernel': jnp.ones((2, 4))}
-      chex.assert_trees_all_equal(expected_grad_accum, grad_accum)
-      self.assertEqual(metrics['loss'].compute(), 2)
-      self.assertEqual(metrics['accuracy'].compute(), 2)
-      self.assertIsNone(flax_mutables)
-      # Check that the logs contain warning message.
-      expected_warning_message = (
-          'The `loss_fn` returns a `weight_sum` value; this behavior will be '
-          'unsupported in the future. Please update your loss_fn to eliminate '
-          'the `weight_sum` return value. '
-      )
-      warning_message_seen = False
-      for warning in warnings_list:
-        print(warning.message)
-        if expected_warning_message in str(warning.message):
-          warning_message_seen = True
-      self.assertTrue(warning_message_seen)
-
   @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_without_weight_sum)
   def test_accumulate_grads_microbatched_without_weight_sum_multiple_batches(
       self):
@@ -964,34 +849,6 @@ class TrainerTest(parameterized.TestCase):
     self.assertEqual(metrics['loss'].compute(), 2)
     self.assertEqual(metrics['accuracy'].compute(), 2)
     self.assertIsNone(flax_mutables)
-
-  # TODO(b/219086328): Remove temporary backwards compatibility when
-  # `weight_sum` deprecation is complete.
-  def test_eval_step_with_weight_sum(self):
-    with warnings.catch_warnings(record=True) as warnings_list:
-      # Ensure all warnings are captured.
-      warnings.simplefilter('always')
-
-      batch_iter = self.dataset.as_numpy_iterator()
-      batch = next(batch_iter)
-      self.test_trainer._model.eval_fn = fake_eval_fn_with_weight_sum
-      metrics = trainer_lib.eval_step(self.test_trainer._model,
-                                      self.init_train_state, batch)
-
-      self.assertEqual(metrics['loss'].compute(), 1)
-      self.assertEqual(metrics['accuracy'].compute(), 1)
-      # Check that the logs contain warning message.
-      expected_warning_message = (
-          'The `loss_fn` returns a `weight_sum` value; this behavior will be '
-          'unsupported in the future. Please update your loss_fn to eliminate '
-          'the `weight_sum` return value. '
-      )
-      warning_message_seen = False
-      for warning in warnings_list:
-        print(warning.message)
-        if expected_warning_message in str(warning.message):
-          warning_message_seen = True
-      self.assertTrue(warning_message_seen)
 
   def test_eval_step_without_weight_sum(self):
     batch_iter = self.dataset.as_numpy_iterator()

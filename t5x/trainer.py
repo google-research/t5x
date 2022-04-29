@@ -666,61 +666,15 @@ def accumulate_grads_microbatched(
 
   initial_flax_mutables = train_state.flax_mutables if train_state.flax_mutables else None
 
-  def parse_auxiliary_vars(aux, initial_flax_mutables):
-    """Parse the auxiliary variables returned by the grad_fn.
-
-    The auxiliary variables will contain some combination of
-    `weight_sum`, `metrics`, and `flax_mutables`. If `initial_flax_mutables` is
-    not None, then `flax_mutables` must be one of the values in aux.
-
-    Args:
-      aux: the auxiliary values returned from the grad_fn.
-      initial_flax_mutables: the initial flax mutable values, used to determine
-        whether we should expect flax mutables in the auxiliary values.
-
-    Returns:
-      Metrics and flax_mutables parsed from the auxiliary values.
-    """
-    parse_flax_mutables = initial_flax_mutables is not None
-    flax_mutables = None
-
-    warning_message = (
-        "The `loss_fn` returns a `weight_sum` value; this "
-        "behavior will be unsupported in the future. "
-        "Please update your loss_fn to eliminate the "
-        "`weight_sum` return value. "
-    )
-    if not isinstance(aux, Tuple):
-      # If only one value is returned, it must be `metrics`. `flax_mutables`
-      # is None.
-      metrics = aux
-    elif len(aux) == 2 and parse_flax_mutables:
-      # If two values are returned and we should parse `flax_mutables`, then the
-      # two values must be `metrics` and `flax_mutables`.
-      metrics, flax_mutables = aux
-    elif len(aux) == 2:
-      # If two values are returned and one is not `flax_mutables`, then the two
-      # values must be `weight_sum` and `metrics. Ignore the value of
-      # `weight_sum`, and log a warning about `weight_sum` deprecation.
-      warnings.warn(warning_message, DeprecationWarning)
-      _, metrics = aux
-    else:
-      # If all three values (`weight_sum`, `metrics`, and `flax_mutables`) are
-      # returned, ignore the value of `weight_sum`, and log a warning about
-      # `weight_sum` deprecation.
-      warnings.warn(warning_message, DeprecationWarning)
-      _, metrics, flax_mutables = aux
-
-    return metrics, flax_mutables
-
   if num_microbatches is None or num_microbatches <= 1:
 
     if initial_flax_mutables is None:
-      (_, aux), grad_accum = grad_fn(train_state.params, batch, dropout_rng)
+      (_, metrics), grad_accum = grad_fn(train_state.params, batch, dropout_rng)
+      flax_mutables = None
     else:
-      (_, aux), grad_accum = grad_fn(train_state.params, batch, dropout_rng,
-                                     initial_flax_mutables)
-    metrics, flax_mutables = parse_auxiliary_vars(aux, initial_flax_mutables)
+      (_, metrics, flax_mutables), grad_accum = grad_fn(train_state.params,
+                                                        batch, dropout_rng,
+                                                        initial_flax_mutables)
   else:
     assert batch_size % num_microbatches == 0, (
         "Batch size isn't divided evenly by num_microbatches.")
@@ -748,11 +702,12 @@ def accumulate_grads_microbatched(
               x, data_partition_spec),
           mbatch)
       if flax_mutables is None:
-        (_, aux), grad = grad_fn(train_state.params, mbatch, sub_dropout_rng)
+        (_, metrics), grad = grad_fn(train_state.params, mbatch,
+                                     sub_dropout_rng)
       else:
-        (_, aux), grad = grad_fn(train_state.params, mbatch, sub_dropout_rng,
-                                 flax_mutables)
-      metrics, flax_mutables = parse_auxiliary_vars(aux, flax_mutables)
+        (_, metrics, flax_mutables), grad = grad_fn(train_state.params, mbatch,
+                                                    sub_dropout_rng,
+                                                    flax_mutables)
       return metrics, grad, flax_mutables
 
     def per_microbatch_train_step(
@@ -834,18 +789,7 @@ def apply_grads(
 def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
               batch: jnp.ndarray) -> MetricMapType:
   """Default evaluation step."""
-  _, (aux) = model.eval_fn(train_state.params, batch)
-  if isinstance(aux, Tuple):
-    warning_message = (
-        "The `loss_fn` returns a `weight_sum` value; this "
-        "behavior will be unsupported in the future. "
-        "Please update your loss_fn to eliminate the "
-        "`weight_sum` return value. "
-    )
-    warnings.warn(warning_message, DeprecationWarning)
-    _, metrics = aux
-  else:
-    metrics = aux
+  _, metrics = model.eval_fn(train_state.params, batch)
   return metrics
 
 
