@@ -121,7 +121,7 @@ class BaseModel(abc.ABC):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray],
-  ) -> Tuple[jnp.ndarray, Union[Tuple[jnp.ndarray, MetricsMap], MetricsMap]]:
+  ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Computes loss and metrics.
 
     Args:
@@ -141,7 +141,7 @@ class BaseModel(abc.ABC):
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
-  ) -> Tuple[jnp.ndarray, Union[Tuple[jnp.ndarray, MetricsMap], MetricsMap]]:
+  ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Computes loss and metrics during the evaluation.
 
     Args:
@@ -270,7 +270,7 @@ class BaseTransformerModel(BaseModel):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray],
-  ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, MetricsMap]]:
+  ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Loss function used for training with a cross-entropy loss."""
     logits = self._compute_logits(params, batch, dropout_rng)
 
@@ -280,7 +280,7 @@ class BaseTransformerModel(BaseModel):
      weights) = losses.get_loss_normalizing_factor_and_weights(
          self._loss_normalizing_factor, batch)
 
-    loss, z_loss, weight_sum = losses.compute_weighted_cross_entropy(
+    loss, z_loss, _ = losses.compute_weighted_cross_entropy(
         logits,
         targets=batch['decoder_target_tokens'],
         weights=weights,
@@ -293,7 +293,7 @@ class BaseTransformerModel(BaseModel):
         mask=weights,
         loss=loss,
         z_loss=z_loss)
-    return loss, (weight_sum, metrics)
+    return loss, metrics
 
   def _compute_metrics(
       self,
