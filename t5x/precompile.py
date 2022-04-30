@@ -123,8 +123,10 @@ def precompile(*,
   tf.io.gfile.makedirs(model_dir)
   with tf.io.gfile.GFile(
       os.path.join(model_dir, 'lowered_hlo_pre_optimization'), 'w') as f:
-    f.write(lowered.compiler_ir(dialect='hlo').as_hlo_text())
+    f.write(lowered.compiler_ir(dialect='hlo').as_serialized_hlo_module_proto())
   compiled = lowered.compile()
   output_path = os.path.join(model_dir, 'lowered_hlo_post_optimization')
   with tf.io.gfile.GFile(output_path, 'w') as f:
-    f.write(compiled.compiler_ir()[0].to_string())
+    f.write(compiled.compiler_ir()[0].as_serialized_hlo_module_proto())
+  with tf.io.gfile.GFile(os.path.join(model_dir, 'assignment'), 'wb') as f:
+    np.save(f, partitioner._mesh.device_ids)  # pylint: disable=protected-access
