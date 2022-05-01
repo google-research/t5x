@@ -153,6 +153,12 @@ def evaluate(
           train_state_axes=train_state_axes,
           partitioner=partitioner)
 
+      predict_with_aux_fn = utils.get_infer_fn(
+          infer_step=model.predict_batch_with_aux,
+          batch_size=batch_size,
+          train_state_axes=train_state_axes,
+          partitioner=partitioner)
+
       score_fn = utils.get_infer_fn(
           infer_step=model.score_batch,
           batch_size=batch_size,
@@ -169,7 +175,11 @@ def evaluate(
         step=int(train_state.step),
         predict_fn=functools.partial(
             predict_fn, train_state=train_state, rng=jax.random.PRNGKey(0)),
-        score_fn=functools.partial(score_fn, train_state=train_state))
+        score_fn=functools.partial(score_fn, train_state=train_state),
+        predict_with_aux_fn=functools.partial(
+            predict_with_aux_fn,
+            train_state=train_state,
+            rng=jax.random.PRNGKey(0)))
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
     multihost_utils.sync_global_devices(f'step_{train_state.step}:complete')

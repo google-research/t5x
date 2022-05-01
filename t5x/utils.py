@@ -619,6 +619,23 @@ class InferStepWithoutRngCallable(typing_extensions.Protocol):
 
 InferStepCallable = Union[InferStepWithRngCallable, InferStepWithoutRngCallable]
 
+# NOTE: We're not more prescriptive than PyTreeDef because that's what
+# InferStepCallable expects.
+_InferFnResult = Sequence[Tuple[int, PyTreeDef]]
+_InferFnWithAuxResult = Tuple[_InferFnResult, Mapping[str, Sequence[Any]]]
+
+
+class InferFnCallable(typing_extensions.Protocol):
+
+  def __call__(
+      self,
+      ds: tf.data.Dataset,
+      train_state: train_state_lib.TrainState,
+      rng: Optional[jnp.ndarray] = None
+  ) -> Union[_InferFnResult, _InferFnWithAuxResult]:
+    """Runs inference on the dataset."""
+    ...
+
 
 def _remove_padding(all_inferences, all_indices):
   """Remove padded examples.
@@ -639,7 +656,7 @@ def _remove_padding(all_inferences, all_indices):
 
 def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
                  train_state_axes: train_state_lib.TrainState,
-                 partitioner: partitioning.BasePartitioner):
+                 partitioner: partitioning.BasePartitioner) -> InferFnCallable:
   """Get prediction function for the SeqIO evaluator.
 
   The returned prediction function should take in an enumerated dataset, make
@@ -777,9 +794,25 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
 
     # Results are returned from infer_step out of order due to shard operation.
     # Note: remove padding first, as -1 indices would mess up this operation.
-    # Note: all_inferences may be a PyTree, not just an array.
+    # Note: all_inferences may be a PyTree, not just an array, e.g. if
+    # `infer_step` is `model.predict_batch_with_aux`.
     all_inferences = jax.tree_map(lambda x: x[all_indices], all_inferences)
     all_indices = all_indices[all_indices]
+
+    # aux_values is supposed to be a dictionary that maps strings to a set of
+    # auxiliary values.
+    #
+    # We don't want to flatten/unflatten the aux values. We want to preserve the
+    # unflattened values with the type List[Mapping[str, Sequence[Any]]]. We do
+    # this as a memory optimization to avoid lots of redundant keys if we'd
+    # instead had List[Mapping[str, Any]].
+    #
+    # It has shape Mapping[str, [B * shard_count * batch_count, ...]]. That is,
+    # the first dimension of each of the values in aux_values is equal to
+    # len(all_inferences).
+    aux_values = None
+    if isinstance(all_inferences, tuple):
+      all_inferences, aux_values = all_inferences
 
     # Translate to List[...] by flattening inferences making sure to
     # preserve structure of individual elements (inferences are not assumed to
@@ -791,8 +824,17 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     indices_and_outputs = list(zip(all_indices, all_inferences))
     indices_and_outputs = jax.tree_map(lambda x: np.array(x).tolist(),
                                        indices_and_outputs)
-    assert len(indices_and_outputs) == original_ds_length
-    return indices_and_outputs
+    if len(indices_and_outputs) != original_ds_length:
+      raise ValueError(
+          'Size of indices_and_outputs does not match length of original '
+          'dataset: %d versus %d' %
+          (len(indices_and_outputs), original_ds_length))
+
+    if aux_values is None:
+      return indices_and_outputs
+    else:
+      aux_values = jax.tree_map(lambda x: np.array(x).tolist(), aux_values)
+      return indices_and_outputs, aux_values
 
   return infer_fn
 

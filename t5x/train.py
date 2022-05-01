@@ -394,6 +394,12 @@ def train(
         train_state_axes=train_state_axes,
         partitioner=partitioner)
 
+    predict_with_aux_fn = utils.get_infer_fn(
+        infer_step=model.predict_batch_with_aux,
+        batch_size=infer_eval_dataset_cfg.batch_size,
+        train_state_axes=train_state_axes,
+        partitioner=partitioner)
+
     score_fn = utils.get_infer_fn(
         infer_step=model.score_batch,
         batch_size=infer_eval_dataset_cfg.batch_size,
@@ -452,7 +458,12 @@ def train(
             predict_fn,
             train_state=trainer.train_state,
             rng=jax.random.PRNGKey(0)),
-        score_fn=functools.partial(score_fn, train_state=trainer.train_state))
+        score_fn=functools.partial(score_fn, train_state=trainer.train_state),
+        predict_with_aux_fn=functools.partial(
+            predict_with_aux_fn,
+            train_state=trainer.train_state,
+            rng=jax.random.PRNGKey(0)),
+    )
     if not concurrent_metrics:
       # Ensure metrics are finished being computed.
       all_metrics_done = all_metrics.result() or {}
