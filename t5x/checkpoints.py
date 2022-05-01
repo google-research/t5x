@@ -760,7 +760,8 @@ class Checkpointer(object):
           }
 
         if self._use_gda:
-          await gda_serialization.async_serialize(arr, tmp_ts_spec_dict)
+          await gda_serialization.AsyncCheckpointManager().async_serialize(
+              arr, tmp_ts_spec_dict)
         else:
           t = await ts.open(
               tmp_ts_spec_dict,
@@ -1426,8 +1427,8 @@ async def _read_ts(param_info: _ParameterInfo,
     arr = await t.read()
   else:
     # if provided, read as GDA
-    arr = await gda_serialization.async_deserialize(mesh, axes,
-                                                    tmp_ts_spec_dict)
+    arr = await gda_serialization.AsyncCheckpointManager().async_deserialize(
+        mesh, axes, tmp_ts_spec_dict)
   return arr
 
 
