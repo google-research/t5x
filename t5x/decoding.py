@@ -197,6 +197,33 @@ def temperature_sample(
     first sequence hits the max decode length before the second. In order to
     avoid prematurely ending decoding for the second sequence, the first
     sequence continually overwrites the final token.
+
+  Example 4 (prefilled cache and max decode steps):
+                    inputs = [[0, 2, 0, 0, 0, 0, 0, 0],
+                              [0, 3, 4, 0, 0, 0, 0, 0]]
+    expanded_prompt_inputs = [[0, 2, 0, 0, 0, 0, 0, 0, 0, 0]
+                              [0, 3, 4, 0, 0, 0, 0, 0, 0, 0]]
+           initial_indices = [1, 2]
+           max_decode_step = 2
+
+   Then `max_decode_len = [3, 4]`.
+   i = [1, 2]
+              input_tokens = [[2],
+                              [4]]
+             output_tokens = [[a],
+                              [b]]
+    expanded_prompt_inputs = [[0, 2, a, 0, 0, 0, 0, 0, 0, 0]
+                              [0, 3, 4, b, 0, 0, 0, 0, 0, 0]]
+   i = [2, 3]]
+              input_tokens = [[a],
+                              [b]]
+             output_tokens = [[c],
+                              [d]]
+    expanded_prompt_inputs = [[0, 2, a, c, 0, 0, 0, 0, 0, 0]
+                              [0, 3, 4, b, d, 0, 0, 0, 0, 0]]
+    This is the last while loop iteration with i == max_decode_len - 1.
+                   outputs = [[2, a, c, 0, 0, 0, 0, 0]
+                              [3, 4, b, d, 0, 0, 0, 0]]
   ```
 
   Args:
@@ -317,13 +344,19 @@ def _temperature_sample_single_trial(
       raise ValueError('Cannot decode more steps than the sequence length.')
 
     # The number of decode steps required to process the prefix is the number
-    # of non-zero tokens, since inputs[0] == 0 is the BOS token.
+    #   of non-zero tokens, since inputs[0] == 0 is the BOS token.
+    # `max_decode_len[j]` is the number of non-padding tokens in the jth element
+    #   of the returned sequences capped at `len(inputs)`, assuming that the
+    #   early stop doesn't occur. This is true with or without
+    #   `max_decode_steps`.
+    # When the while loop index `i` for the `j`th element `i[j] =
+    #   max_decode_len[j] - 1`, the generated token populate sequences[i[j]+1]].
+    #   Since sequences[:, 0] is BOS token, the generated token is
+    #   `max_decode_len[j]`th non-padding tokens and hence `j`th element is
+    #   ended.
     max_decode_len = jnp.sum(inputs != 0, axis=1) + max_decode_steps
     max_decode_len = jnp.minimum(inputs.shape[1], max_decode_len)
 
-  # We start with a dummy token in the beginning so extend the maximum length.
-  # [batch, length] -> [batch, length+1]
-  #
   # In the case of starting generation from a non-zero index, it is possible for
   # one batch element to reach `max_decode_len` number of decoding steps before
   # another. In order to let the last element decoder all the way to

@@ -358,6 +358,73 @@ class DecodeTest(parameterized.TestCase):
     np.testing.assert_array_equal(decodes, expected_output)
     np.testing.assert_array_equal(scores, [[0.], [0.]])
 
+  def test_temperature_sample_max_decode_steps_endpad(self):
+    max_decode_steps = 4
+    rng0 = jax.random.PRNGKey(0)
+    inputs = np.array([[0, 2, 0, 0, 0, 0, 0, 0], [0, 2, 2, 2, 2, 2, 2, 0],
+                       [0, 2, 2, 2, 0, 0, 0, 0]],
+                      dtype=np.int32)
+    initial_index = np.array([1, 6, 0])
+
+    token_to_logits = mock.Mock()
+    token_to_logits.return_value = (np.array(
+        [[-1e7, -1e7, -1e7, 0], [-1e7, -1e7, -1e7, 0], [-1e7, -1e7, -1e7, 0]],
+        dtype=np.float32), {})
+
+    # to unroll while loop
+    with jax.disable_jit():
+      decodes, scores = decoding.temperature_sample(
+          inputs, {},
+          token_to_logits,
+          EOS_ID,
+          rng0,
+          initial_index=initial_index,
+          topk=4,
+          max_decode_steps=max_decode_steps)
+
+    # `inputs[2]` starts from index 0. So it requires 3 calls to
+    # `token_to_logits` to exit the prompt (these generated tokens are
+    # overridden) and 4 more calls to fill the rest. `inputs[0]` only need 4
+    # calls. In the last 3 calls, it generates but MUST NOT populate the
+    # sequences because it is already ended.
+    self.assertLen(token_to_logits.call_args_list, 7)
+    expected_output = np.array(
+        [[2, 3, 3, 3, 3, 0, 0, 0], [2, 2, 2, 2, 2, 2, 3, 3],
+         [2, 2, 2, 3, 3, 3, 3, 0]],
+        dtype=np.int32)
+    expected_output = jnp.expand_dims(expected_output, 1)
+
+    np.testing.assert_array_equal(decodes, expected_output)
+    np.testing.assert_allclose(scores, [[0.], [0.], [0.]])
+
+  def test_temperature_sample_max_decode_steps_docstring_ex4(self):
+    max_decode_steps = 2
+    rng0 = jax.random.PRNGKey(0)
+    inputs = np.array([[0, 2, 0, 0, 0, 0, 0, 0], [0, 3, 4, 0, 0, 0, 0, 0]],
+                      dtype=np.int32)
+    initial_index = np.array([1, 2])
+
+    token_to_logits = mock.Mock()
+    token_to_logits.return_value = (np.array(
+        [[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]], dtype=np.float32), {})
+
+    # to unroll while loop
+    with jax.disable_jit():
+      decodes, _ = decoding.temperature_sample(
+          inputs, {},
+          token_to_logits,
+          EOS_ID,
+          rng0,
+          initial_index=initial_index,
+          topk=4,
+          max_decode_steps=max_decode_steps)
+    self.assertLen(token_to_logits.call_args_list, 2)
+    expected_output = np.array(
+        [[2, 2, 2, 0, 0, 0, 0, 0], [3, 4, 3, 3, 0, 0, 0, 0]], dtype=np.int32)
+    expected_output = jnp.expand_dims(expected_output, 1)
+
+    np.testing.assert_array_equal(decodes, expected_output)
+
   def test_temperature_sample_max_decode_steps_hard_limit(self):
     max_decode_steps = 10
     max_decode_steps_hard_limit = 4
