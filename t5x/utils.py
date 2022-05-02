@@ -713,12 +713,12 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
                train_state: train_state_lib.TrainState,
                rng: Optional[jnp.ndarray] = None):
     ds_shapes = jax.tree_map(lambda x: jnp.array(x.shape), ds.element_spec)
-    original_ds_length = len(ds)
     multihost_utils.assert_equal(
         ds_shapes, 'Dataset element shapes do not agree across hosts. '
         'This could be an indication that the dataset is nondeterministic.')
     try:
-      dataset_remainder = len(ds) % batch_size  # pytype:disable=wrong-arg-types
+      original_ds_length = len(ds)
+      dataset_remainder = original_ds_length % batch_size  # pytype:disable=wrong-arg-types
       logging.info('length of dataset = %s', len(ds))
     except TypeError as e:
       if str(e) == 'dataset length is unknown.':
