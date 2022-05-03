@@ -592,7 +592,7 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     self._backend = backend
 
   @property
-  def _mesh(self) -> Mesh:
+  def mesh(self) -> Mesh:
     raise NotImplementedError
 
   @property
@@ -765,10 +765,10 @@ class BasePjitPartitioner(BasePartitioner):
 
   @cached_property
   def _local_chunker(self) -> LocalChunker:
-    return LocalChunker(self._mesh)
+    return LocalChunker(self.mesh)
 
   @cached_property
-  def _mesh(self) -> Mesh:
+  def mesh(self) -> Mesh:
     return default_mesh(self._num_partitions, self._model_parallel_submesh,
                         self._backend)
 
@@ -788,7 +788,7 @@ class BasePjitPartitioner(BasePartitioner):
         donate_argnums=donate_argnums,
         backend=self._backend)
 
-    return PjittedFnWithContext(pjitted, self._mesh)
+    return PjittedFnWithContext(pjitted, self.mesh)
 
   def compile(self, partitioned_fn: PjittedFnWithContext,
               *args) -> CompiledPartitionedCallable:
@@ -866,7 +866,7 @@ class PjitPartitioner(BasePjitPartitioner):
         donate_argnums=donate_argnums,
         backend=self._backend)
 
-    return PjittedFnWithContext(pjitted, self._mesh, self._logical_axis_rules)
+    return PjittedFnWithContext(pjitted, self.mesh, self._logical_axis_rules)
 
   def get_logical_axes(self, train_state: TrainState) -> TrainState:
     """Returns a copy of TrainState with Optional[AxisNames] as leaves."""

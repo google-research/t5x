@@ -129,4 +129,4 @@ def precompile(*,
   with tf.io.gfile.GFile(output_path, 'w') as f:
     f.write(compiled.compiler_ir()[0].as_serialized_hlo_module_proto())
   with tf.io.gfile.GFile(os.path.join(model_dir, 'assignment'), 'wb') as f:
-    np.save(f, partitioner._mesh.device_ids)  # pylint: disable=protected-access
+    np.save(f, partitioner.mesh.device_ids)

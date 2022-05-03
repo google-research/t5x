@@ -1002,7 +1002,7 @@ class Checkpointer(object):
     mesh = None
     axes = None
     if self._use_gda:
-      mesh = self._partitioner._mesh  # pylint: disable=protected-access
+      mesh = self._partitioner.mesh
       axes = param_info.axes
     get_fn = functools.partial(
         _read_ts,
