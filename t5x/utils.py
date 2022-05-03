@@ -811,8 +811,9 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     # the first dimension of each of the values in aux_values is equal to
     # len(all_inferences).
     aux_values = None
-    if isinstance(all_inferences, tuple):
-      all_inferences, aux_values = all_inferences
+    if isinstance(all_inferences, tuple) and len(all_inferences) == 2:
+      if isinstance(all_inferences[1], Mapping):
+        all_inferences, aux_values = all_inferences
 
     # Translate to List[...] by flattening inferences making sure to
     # preserve structure of individual elements (inferences are not assumed to
