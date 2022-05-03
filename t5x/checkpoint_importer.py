@@ -293,11 +293,12 @@ def rel_embeddings(opts, key, val, encdec, blocknum, slot):
 
 
 @t5_importer.add(
-    r'(encoder|decoder|transformer)/block_(\d+)/layer_\d+/(SelfAttention|EncDecAttention)/(q|k|v|o)(\w*)'
+    r'(encoder|decoder|transformer)/block_(\d+)/layer_(\d+)/(SelfAttention|EncDecAttention)/(q|k|v|o)(\w*)'
 )
-def attention_layers(opts, key, val, encdec, blocknum, attntype, qkvo, slot):
+def attention_layers(opts, key, val, encdec, blocknum, lyrnum, attntype, qkvo,
+                     slot):
   """Process attention layers."""
-  del opts, key
+  del key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   blocknum = int(blocknum)
@@ -311,22 +312,60 @@ def attention_layers(opts, key, val, encdec, blocknum, attntype, qkvo, slot):
         'SelfAttention': 'self_attention',
         'EncDecAttention': 'encoder_decoder_attention'
     }[attntype]
-  newkey = f'{prefix}/{encdec}/layers_{blocknum}/{attntype}/{matrix}/kernel{suffix}'
+  moe_block_size = opts['moe_block_size'] if 'moe_block_size' in opts else False
+  layer = _layer_num(encdec, int(blocknum), int(lyrnum), moe_block_size)
+  newkey = f'{prefix}/{encdec}/layers_{layer}/{attntype}/{matrix}/kernel{suffix}'
   return newkey, val
 
 
 @t5_importer.add(
-    r'(encoder|decoder|transformer)/block_(\d+)/layer_\d+/DenseReluDense/(wi|wo)(?:_(\d+))?/kernel(\w*)'
+    r'(encoder|decoder|transformer)/block_(\d+)/layer_(\d+)/DenseReluDense/(wi|wo)(?:_(\d+))?/kernel(\w*)'
 )
-def mlpblock(opts, key, val, encdec, blocknum, io_name, io_num, slot):
+def mlpblock(opts, key, val, encdec, blocknum, lyrnum, io_name, io_num, slot):
   """Process MLP blocks."""
-  del opts, key
+  del key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   blocknum = int(blocknum)
   encdec = TOWER_MAP.get(encdec, encdec)
   io_num = f'_{io_num}' if io_num else ''
-  newkey = f'{prefix}/{encdec}/layers_{blocknum}/mlp/{io_name}{io_num}/kernel{suffix}'
+  moe_block_size = opts['moe_block_size'] if 'moe_block_size' in opts else False
+  layer = _layer_num(encdec, int(blocknum), int(lyrnum), moe_block_size)
+  newkey = f'{prefix}/{encdec}/layers_{layer}/mlp/{io_name}{io_num}/kernel{suffix}'
+  return newkey, val
+
+
+@t5_importer.add(
+    r'(encoder|decoder|transformer)/block_(\d+)/layer_(\d+)/MoE1D/(wi|wo)(?:_(\d+))?/kernel(\w*)'
+)
+def moe_mlpblock(opts, key, val, encdec, blocknum, lyrnum, io_name, io_num,
+                 slot):
+  """Process Mixture-of-Expert MLP expert blocks."""
+  del key
+  prefix = 'state/param_states' if slot else 'target'
+  suffix = '/' + SLOT_MAP[slot] if slot else ''
+  blocknum = int(blocknum)
+  encdec = TOWER_MAP.get(encdec, encdec)
+  io_num = f'_{io_num}' if io_num else ''
+  moe_block_size = opts['moe_block_size'] if 'moe_block_size' in opts else False
+  layer = _layer_num(encdec, int(blocknum), int(lyrnum), moe_block_size)
+  newkey = f'{prefix}/{encdec}/layers_{layer}/mlp/expert/{io_name}{io_num}/kernel{suffix}'
+  return newkey, val
+
+
+@t5_importer.add(
+    r'(encoder|decoder|transformer)/block_(\d+)/layer_(\d+)/MoE1D/(\w*_gating)/kernel(\w*)'
+)
+def moe_router(opts, key, val, encdec, blocknum, lyrnum, router_type, slot):
+  """Process Mixture-of-Expert router weights."""
+  del key, router_type
+  prefix = 'state/param_states' if slot else 'target'
+  suffix = '/' + SLOT_MAP[slot] if slot else ''
+  blocknum = int(blocknum)
+  encdec = TOWER_MAP.get(encdec, encdec)
+  moe_block_size = opts['moe_block_size'] if 'moe_block_size' in opts else False
+  layer = _layer_num(encdec, int(blocknum), int(lyrnum), moe_block_size)
+  newkey = f'{prefix}/{encdec}/layers_{layer}/mlp/router/router_weights/w/kernel{suffix}'
   return newkey, val
 
 
@@ -335,25 +374,27 @@ def mlpblock(opts, key, val, encdec, blocknum, io_name, io_num, slot):
 )
 def layernorms(opts, key, val, encdec, blocknum, lyrnum, slot):
   """Process layer norms assuming that they are pre-layernorms."""
-  del opts, key
+  del key
   prefix = 'state/param_states' if slot else 'target'
   suffix = '/' + SLOT_MAP[slot] if slot else ''
   lyrnum = int(lyrnum)
 
   if encdec == 'transformer':
     layernorm_type = ['pre_self_attention_layer_norm',
-                      'pre_mlp_layer_norm'][lyrnum]
+                      'pre_mlp_layer_norm'][lyrnum % 2]  # Handle MoE blocks
 
   elif encdec == 'encoder':
-    layernorm_type = ['pre_attention_layer_norm', 'pre_mlp_layer_norm'][lyrnum]
+    layernorm_type = ['pre_attention_layer_norm',
+                      'pre_mlp_layer_norm'][lyrnum % 2]  # Handle MoE blocks
   else:  # decoder
     layernorm_type = [
         'pre_self_attention_layer_norm', 'pre_cross_attention_layer_norm',
         'pre_mlp_layer_norm'
-    ][lyrnum]
-
+    ][lyrnum % 3]  # Handle MoE blocks
   encdec = TOWER_MAP.get(encdec, encdec)
-  newkey = f'{prefix}/{encdec}/layers_{int(blocknum)}/{layernorm_type}/scale{suffix}'
+  moe_block_size = opts['moe_block_size'] if 'moe_block_size' in opts else False
+  layer = _layer_num(encdec, int(blocknum), lyrnum, moe_block_size)
+  newkey = f'{prefix}/{encdec}/layers_{layer}/{layernorm_type}/scale{suffix}'
   return newkey, val
 
 
@@ -422,6 +463,20 @@ def _maybe_correct_relpos_bias(t5_data):
   return modified_dict
 
 
+def _layer_num(encdec: str, blocknum: int, lyrnum: int,
+               moe_block_size: Optional[int]) -> int:
+  """Determines T5X layer number from MTF block and layer numbers."""
+  if moe_block_size:
+    # For MoE models, each MTF block contains multiple T5X layers.
+    # Encoder contains (self-attention, MLP) sublayers, while decoder contains
+    # (self-attention, enc-dec attention, MLP) sublayers.
+    num_sublayers = 2 if encdec == 'encoder' else 3
+    return moe_block_size * blocknum + lyrnum // num_sublayers
+  else:
+    # MTF blocks are equivalent to T5X layers.
+    return blocknum
+
+
 # Load checkpoint, translate, and update flax optimizer and model.
 # -----------------------------------------------------------------------------
 def load_tf_ckpt(path):
@@ -481,7 +536,8 @@ def restore_from_t5_checkpoint(
     path: str,
     lazy_parameters: bool = False,
     strict: bool = True,
-    translator: Optional[CheckpointTranslator] = None) -> Mapping[str, Any]:
+    translator: Optional[CheckpointTranslator] = None,
+    moe_block_size: Optional[int] = None) -> Mapping[str, Any]:
   """Load T5 checkpoint and update Adafactor optimizer and T5 model from it.
 
   We require that the final translated checkpoint structure exactly matches
@@ -499,6 +555,10 @@ def restore_from_t5_checkpoint(
       variables not in t5_data, this function will still fail.
     translator: The mapping rules for conversion. If None, then default T5
       conversion rules will be used.
+    moe_block_size: If specified, treat this checkpoint as an MoE model
+      checkpoint, with every MTF block containing moe_block_size layers (1 of
+      which will be an MoE layer). Note that MoE checkpoints use a slightly
+      different numbering system for blocks and layers.
 
   Returns:
     Adafactor optimizer updated with parameters and optimizer state from
@@ -507,7 +567,7 @@ def restore_from_t5_checkpoint(
   if translator is None:
     translator = t5_importer
   ckpt_data = load_tf_ckpt(path)
-  t5_data = translator.apply(ckpt_data)
+  t5_data = translator.apply(ckpt_data, moe_block_size=moe_block_size)
   t5_data = _add_missing_param_states(t5_data)
   t5_data = _maybe_correct_relpos_bias(t5_data)
   state_dict = _update_state_dict(state_dict, t5_data, strict=strict)
