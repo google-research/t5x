@@ -481,6 +481,8 @@ def infer(
       logging.info('Writing chunk %d results to %s', chunk, chunk_path)
       write_fn(chunk_path, inferences, task_ds, mode,
                task.output_features['targets'].vocabulary)
+      with gfile.GFile(chunk_ckpt_path + '.COMPLETED', 'w') as f:
+        f.write()
       write_time = time.time() - write_tick
       logging.info('Writing completed in %02f seconds (%02f examples/sec).',
                    write_time,
@@ -515,7 +517,7 @@ def infer(
       # Get a chunk-specific RNG key.
       chunk_rng = jax.random.fold_in(jax.random.PRNGKey(0), chunk)
       chunk_path = os.path.join(tmp_dir, f'{output_fname}-chunk{chunk:05}')
-      if gfile.exists(chunk_path) and not checkpoint_ds_iter:
+      if gfile.exists(chunk_path + '.COMPLETED') and not checkpoint_ds_iter:
         logging.info('Skipping chunk %s. Chunk file already exists.', chunk)
         continue
 
