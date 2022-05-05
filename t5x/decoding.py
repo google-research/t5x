@@ -64,6 +64,10 @@ def temperature_sample(
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
     max_decode_steps_hard_limit: Optional[int] = None,
     rescale_log_probs: bool = True,
+    state_callback_fn: Optional[Callable[[SamplingLoopState],
+                                         SamplingLoopState]] = None,
+    logit_callback_fn: Optional[Callable[[jnp.ndarray, SamplingLoopState],
+                                         jnp.ndarray]] = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Temperature sampling for language model generation.
 
@@ -258,6 +262,15 @@ def temperature_sample(
       include these transformations (for example, with topk=1, all log_probs
       will be identically 0.0). If False, the log_probs will not be affected,
       and topk/topp/temperature will not affect sequence probabilities.
+    state_callback_fn: Function that modifies the sampling loop state before
+      each step. This can be used to manipulate any part of the state either
+      on the accelerator or on the host using host callback. The function
+      should take a tuple of type SamplingLoopState as argument, and it
+      returns the updated state. See `decoding_test.py` for an example usage.
+    logit_callback_fn: Function that modifies the logits before each temperature
+      sampling step. The function should take arguments (logits, state) and it
+      should return the modified logits. See `decoding_test.py` for an example
+      usage.
 
   Returns:
     A tuple (decodes, log_prob) where `decodes` is sampled sequences with shape
@@ -298,7 +311,9 @@ def temperature_sample(
       topp,
       initial_index=initial_index,
       max_decode_steps=max_decode_steps,
-      rescale_log_probs=rescale_log_probs)
+      rescale_log_probs=rescale_log_probs,
+      state_callback_fn=state_callback_fn,
+      logit_callback_fn=logit_callback_fn)
 
   batch_size = inputs.shape[0]
   # [batch * num_decodes, len] -> [batch, num_decodes, len]
@@ -329,7 +344,12 @@ def _temperature_sample_single_trial(
     topp: Union[float, jnp.ndarray] = 0.0,
     initial_index: Optional[jnp.ndarray] = None,
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
-    rescale_log_probs: bool = True) -> jnp.ndarray:
+    rescale_log_probs: bool = True,
+    state_callback_fn: Optional[Callable[[SamplingLoopState],
+                                         SamplingLoopState]] = None,
+    logit_callback_fn: Optional[Callable[[jnp.ndarray, SamplingLoopState],
+                                         jnp.ndarray]] = None
+) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
   # We can check the values of topp and topk only if they are not dynamic.
@@ -415,12 +435,19 @@ def _temperature_sample_single_trial(
 
   def sampling_loop_body_fn(state: SamplingLoopState) -> SamplingLoopState:
     """Sampling loop state update."""
+
+    if state_callback_fn is not None:
+      state = state_callback_fn(state)
+
     i, sequences, cache, cur_token, ended, rng, log_prob = state
     # Split RNG for sampling.
     rng1, rng2 = random.split(rng)
     # Call fast-decoder model on current tokens to get next-position logits.
     logits, new_cache = tokens_to_logits(cur_token, cache)
     # Sample next token from logits.
+
+    if logit_callback_fn is not None:
+      logits = logit_callback_fn(logits, state)
 
     def sample_logits_with_nonzero_temperature(logits):
       scaled_logits = logits / jnp.maximum(temperature, MIN_TEMPERATURE)

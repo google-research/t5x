@@ -21,6 +21,8 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
+from jax._src import api
+from jax.experimental import host_callback as hcb
 import jax.numpy as jnp
 import numpy as np
 from t5x import decoding
@@ -121,6 +123,74 @@ class DecodeTest(parameterized.TestCase):
         inputs, {}, token_to_logits, EOS_ID, jax.random.PRNGKey(0), topk=1)
 
     expected = [[5, 6, 1, 2, 2], [8, 1, 3, 3, 3]]
+    np.testing.assert_array_equal(expected, sampled_sequences)
+
+  def test_temperature_sample_with_state_callback(self):
+
+    def token_to_logits(ids, cache):  # pylint: disable=unused-argument
+      # A distribution with roughly all probability mass in sample id 3
+      logits = np.array([[-1e7, -1e7, -1e7, 0], [-1e7, -1e7, -1e7, 0]],
+                        dtype=np.float32)
+      return logits, {}
+
+    def state_callback_fn(state):
+      i, sequences, cache, cur_token, ended, rng, log_prob = state
+
+      def callback_fn(current_index_and_sequences):
+        """Add EOS token after first time token id 3 has been sampled."""
+        current_index, sequences = current_index_and_sequences
+        sequences = np.array(sequences)
+        for i in range(len(current_index)):
+          if sequences[i, current_index[i]] == 3:
+            sequences[i, current_index[i] + 1] = EOS_ID
+        return sequences
+
+      sequences = hcb.call(
+          callback_fn, (i, sequences),
+          result_shape=api.ShapeDtypeStruct(sequences.shape, sequences.dtype))
+      return i, sequences, cache, cur_token, ended, rng, log_prob
+
+    inputs = np.array([[0, 5, 6, 7, 0], [0, 8, 9, 0, 0]], dtype=np.int32)
+    sampled_sequences, _ = decoding._temperature_sample_single_trial(
+        inputs, {},
+        token_to_logits,
+        EOS_ID,
+        jax.random.PRNGKey(0),
+        topk=0,
+        temperature=0.0,
+        state_callback_fn=state_callback_fn)
+
+    expected = [[5, 6, 7, 3, EOS_ID], [8, 9, 3, EOS_ID, 0]]
+    np.testing.assert_array_equal(expected, sampled_sequences)
+
+  def test_temperature_sample_with_logit_callback(self):
+
+    def token_to_logits(ids, cache):  # pylint: disable=unused-argument
+      # uniform distribution over targets from model
+      logits = np.array([[-1e7, -1e7, -1e7, -1e7], [-1e7, -1e7, -1e7, -1e7]],
+                        dtype=np.float32)
+      return logits, {}
+
+    def logit_callback_fn(logits, state):
+      del state  # unused
+      # Rewrite logits to always sample id 2 for batch element 0 and
+      # id 3 for element 1.
+      logits[0, 2] = 0
+      logits[1, 3] = 0
+      return logits
+
+    # batch element 0 has length 3 prefix and element 1 has length 2.
+    inputs = np.array([[0, 5, 6, 7, 0], [0, 8, 9, 0, 0]], dtype=np.int32)
+    sampled_sequences, _ = decoding._temperature_sample_single_trial(
+        inputs, {},
+        token_to_logits,
+        EOS_ID,
+        jax.random.PRNGKey(0),
+        topk=0,
+        temperature=0.0,
+        logit_callback_fn=logit_callback_fn)
+
+    expected = [[5, 6, 7, 2, 2], [8, 9, 3, 3, 3]]
     np.testing.assert_array_equal(expected, sampled_sequences)
 
   def test_temperature_sample_prefix_ending_with_eos_early_stop(self):
