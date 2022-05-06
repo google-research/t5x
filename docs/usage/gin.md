@@ -195,9 +195,9 @@ file are read and override any conflicting ones defined so far in this file.
 It's equivalent to copy and pasting the contents of the included file at this
 location in the config. If you want to see how the model itself is instantiated,
 you can refer to
-[t5_1_1/large.gin](t5x/examples/t5/t5_1_1/large.gin)
+[t5_1_1/large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/large.gin)
 (which simply overrides a few values from
-[t5_1_1/base.gin](t5x/examples/t5/t5_1_1/base.gin).
+[t5_1_1/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/base.gin)).
 
 The final line of this block shows an example of how you can modify the default
 arguments of the `EncoderDecoderModel` instance referenced by `%MODEL`, in this
@@ -324,7 +324,7 @@ An example where you may need multiple files is with the `train` script.
 
 You can first specify which model you want to train by supplying a gin file
 containing its definition, for example:
-[t5_1_1/small.gin](t5x/examples/t5/t5_1_1/small.gin).
+[t5_1_1/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin).
 
 You may then specify a run config that supplies some of the common defaults. For
 example, if you are doing pretraining you can use
@@ -374,13 +374,13 @@ inference evaluation you may add `--gin.train.infer_eval_dataset_cfg=None`.
 At the beginning of the primer, we saw a fully-specified run config. We can do
 something similar with the previous example to create a self-contained run
 configuration.
-[t5_1_1/examples/base_wmt_finetune.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5_1_1/examples/small_wmt_finetune.gin)
+[t5_1_1/examples/base_wmt_finetune.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin)
 is just such an example that allows you to exactly duplicate the previous launch
 command simply by calling:
 
 ```sh
 python -m t5x.train \
-  --gin_file=t5x/google/examples/t5x/examples/t5_1_1/examples/small_wmt_finetune.gin \
+  --gin_file=t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin \
   --logtostderr
 ```
 
