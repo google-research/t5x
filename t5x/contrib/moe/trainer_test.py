@@ -22,8 +22,8 @@ import jax
 import numpy as np
 from t5x import metrics as metrics_lib
 from t5x import models as models_lib
-from t5x import partitioning
 from t5x import train_state as train_state_lib
+from t5x.contrib.moe import partitioning
 from t5x.contrib.moe import trainer as trainer_lib
 import tensorflow as tf
 
@@ -40,8 +40,9 @@ def fake_log_elapsed_time(_):
 jax._src.dispatch.log_elapsed_time = fake_log_elapsed_time
 
 
-def fake_accum_grads(model, optimizer, batch, rng, num_microbatches):
-  del model, num_microbatches, rng
+def fake_accum_grads(model, optimizer, batch, rng, num_microbatches,
+                     data_partition_spec):
+  del model, num_microbatches, rng, data_partition_spec
   # Add `i` to each optimzer value.
   i = batch['i'].sum()
   grad_accum = jax.tree_map(lambda x: i, optimizer)
@@ -91,17 +92,19 @@ class MoeTrainerTest(absltest.TestCase):
     self.dataset = tf.data.Dataset.range(6).map(mapfn).batch(
         2, drop_remainder=True)
 
+    num_experts = 10
     self.test_trainer = trainer_lib.MoeTrainer(
         model=mock.create_autospec(models_lib.BaseModel, instance=True),
         train_state=self.init_train_state,
-        partitioner=partitioning.PjitPartitioner(num_partitions=1),
+        partitioner=partitioning.MoePjitPartitioner(
+            num_experts=num_experts, num_partitions=1),
         eval_names=['task1', 'task2'],
         summary_dir=model_dir,
         train_state_axes=train_state_axes,
         rng=np.ones(2, np.uint32),
         learning_rate_fn=lambda step: 2 * step,
         num_microbatches=None,
-        num_experts=10)
+        num_experts=num_experts)
 
   @mock.patch('time.time')
   @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_accum_grads)

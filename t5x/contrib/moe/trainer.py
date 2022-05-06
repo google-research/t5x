@@ -18,16 +18,15 @@ import functools
 from typing import Any, Callable, Optional, Sequence, TYPE_CHECKING
 
 from t5x import models
-from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x import trainer
-
+from t5x.contrib.moe import partitioning
 from t5x.contrib.moe import training_utils
 
 BatchType = trainer.BatchType
 LearningRateCallable = trainer.LearningRateCallable
 MetricMapType = trainer.MetricMapType
-P = partitioning.PartitionSpec
+PartitionSpec = partitioning.PartitionSpec
 PartitionedTrainCallable = trainer.PartitionedTrainCallable
 Rng = trainer.Rng
 
@@ -44,7 +43,7 @@ class MoeTrainer(trainer.Trainer):
       self,
       model: models.BaseModel,
       train_state: train_state_lib.TrainState,
-      partitioner: partitioning.BasePartitioner,
+      partitioner: partitioning.MoePjitPartitioner,
       eval_names: Sequence[str],
       summary_dir: Optional[str],
       train_state_axes: Any,
@@ -93,6 +92,8 @@ class MoeTrainer(trainer.Trainer):
 
     self._num_experts = num_experts
     self._sharded_match_fn = sharded_match_fn
+    self.data_partition_spec = partitioning.data_partition_spec(
+        partitioner.two_data_axes)
 
   @cached_property
   def _partitioned_train_step(self) -> PartitionedTrainCallable:
@@ -109,8 +110,12 @@ class MoeTrainer(trainer.Trainer):
                       batch: BatchType):
       grad_accum, metrics, flax_mutables = (
           trainer.accumulate_grads_microbatched(
-              self._model, train_state, batch,
-              self._get_step_rng(train_state.step), self._num_microbatches))
+              self._model,
+              train_state,
+              batch,
+              self._get_step_rng(train_state.step),
+              self._num_microbatches,
+              data_partition_spec=self.data_partition_spec))
 
       # Only difference between this train step and regular T5X train step:
       scaled_grads = training_utils.scale_sharded_grads(
@@ -128,6 +133,6 @@ class MoeTrainer(trainer.Trainer):
 
     return self._partitioner.partition(
         train_with_lr,
-        in_axis_resources=(self._train_state_axes, P('data',)),
+        in_axis_resources=(self._train_state_axes, self.data_partition_spec),
         out_axis_resources=(self._train_state_axes, None),
         donate_argnums=(0,))

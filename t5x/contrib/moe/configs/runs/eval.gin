@@ -5,6 +5,7 @@
 #
 # Required to be set:
 #
+# - NUM_EXPERTS
 # - NUM_MODEL_PARTITIONS  (1 if no model parallelism)
 # - MIXTURE_OR_TASK_NAME
 # - CHECKPOINT_PATH
@@ -20,20 +21,21 @@ from __gin__ import dynamic_registration
 import __main__ as eval_script
 
 from t5x.contrib.moe import partitioning as moe_partitioning
-from t5x import partitioning
 from t5x import utils
 
 include 't5x/configs/runs/eval.gin'
 
+NUM_EXPERTS = %gin.REQUIRED
 NUM_MODEL_PARTITIONS = %gin.REQUIRED
 
 # We use the MoE partitioner.
 eval_script.evaluate.partitioner = @moe_partitioning.MoePjitPartitioner()
 moe_partitioning.MoePjitPartitioner:
-  # Number of model partitions / length of model parallel axis.
+  num_experts = %NUM_EXPERTS
   num_partitions = %NUM_MODEL_PARTITIONS
-  logical_axis_rules = @partitioning.standard_logical_axis_rules()
-partitioning.standard_logical_axis_rules:
-  additional_rules = @moe_partitioning.standard_logical_axis_rules()
+  logical_axis_rules = @moe_partitioning.standard_logical_axis_rules()
+moe_partitioning.standard_logical_axis_rules:
+  num_experts = %NUM_EXPERTS
+  num_partitions = %NUM_MODEL_PARTITIONS
 
 utils.DatasetConfig.batch_size = %BATCH_SIZE
