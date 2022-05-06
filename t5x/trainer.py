@@ -20,7 +20,6 @@ possibly by re-using the utility functions provided in this module.
 """
 import abc
 import enum
-import functools
 import os
 import threading
 import time
@@ -28,6 +27,7 @@ from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Seque
 import warnings
 
 from absl import logging
+import cached_property
 from clu import asynclib
 from clu import metric_writers
 import clu.metrics
@@ -62,7 +62,7 @@ PartitionSpec = partitioning.PartitionSpec
 if TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
 else:
-  cached_property = functools.cached_property  # pylint: disable=invalid-name
+  cached_property = cached_property.cached_property
 
 
 @jax.jit

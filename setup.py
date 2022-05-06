@@ -47,6 +47,7 @@ setuptools.setup(
     scripts=[],
     install_requires=[
         'absl-py',
+        'cached_property',
         # TODO(adarob): Replace with 'clu' once >0.0.6 is released.
         'clu @ git+https://github.com/google/CommonLoopUtils#egg=clu',
         'flax @ git+https://github.com/google/flax#egg=flax',
