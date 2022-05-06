@@ -476,12 +476,12 @@ def infer(
     def _write_chunk_and_canonicalize_ckpt(chunk: int, chunk_path: str,
                                            inferences: Sequence[Any],
                                            task_ds: tf.data.Dataset,
-                                           chunk_ckpt_path: str):
+                                           chunk_ckpt_path: Optional[str]):
       write_tick = time.time()
       logging.info('Writing chunk %d results to %s', chunk, chunk_path)
       write_fn(chunk_path, inferences, task_ds, mode,
                task.output_features['targets'].vocabulary)
-      with gfile.GFile(chunk_ckpt_path + '.COMPLETED', 'w') as f:
+      with gfile.GFile(chunk_path + '.COMPLETED', 'w') as f:
         f.write()
       write_time = time.time() - write_tick
       logging.info('Writing completed in %02f seconds (%02f examples/sec).',
@@ -491,7 +491,7 @@ def infer(
       update_measurement_series('writing_examples_per_sec', chunk,
                                 len(inferences) / write_time)
 
-      if checkpoint_ds_iter:
+      if chunk_ckpt_path:
         # Canonicalize checkpoint.
         for fname in gfile.glob(chunk_ckpt_path + '*'):
           gfile.rename(
