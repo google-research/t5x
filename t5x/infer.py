@@ -187,9 +187,12 @@ def merge_chunks_to_file(
   logging.info('Results written to %s.', output_path)
 
 
+_Inferences = Tuple[Sequence[Any], Mapping[str, Any]]
+
+
 def write_inferences_to_file(
     path: str,
-    inferences: Sequence[Any],
+    inferences: _Inferences,
     task_ds: tf.data.Dataset,
     mode: str,
     vocabulary: Optional[seqio.Vocabulary] = None,
@@ -201,7 +204,11 @@ def write_inferences_to_file(
 
   Args:
     path: File path to write to.
-    inferences: Model inferences, output of either score_batch or predict_batch.
+    inferences: A tuple containing (predictions, aux_values). If mode is
+      'predict' then the `predictions` will be token IDs. If it's
+      'scores' then it'll be a collection of scores. `aux_values` will be an
+      empty dictionary unless mode is 'predict_with_aux', in which case it'll
+      contain the model's auxiliary outputs.
     task_ds: Original task dataset. Features from task with suffix
       `_pretokenized` are added to the outputs.
     mode: Prediction mode, either 'predict', 'score' or 'predict_with_aux'.
@@ -216,6 +223,8 @@ def write_inferences_to_file(
     output_ids: if True, will output the token ID sequence for the output, in
       addition to the decoded text.
   """
+  all_predictions, all_aux_values = inferences
+
   if mode in ('predict', 'predict_with_aux') and vocabulary is None:
     raise ValueError('The `vocabulary` parameter is required in `predict` and '
                      '`predict_with_aux` modes')
@@ -238,7 +247,10 @@ def write_inferences_to_file(
         'include_all_inputs and input_fields_to_include should not be set'
         ' simultaneously.')
   with gfile.GFile(path, 'w') as f:
-    for inp, output in zip(task_ds, inferences):
+    for i, inp in task_ds.enumerate().as_numpy_iterator():
+      predictions = all_predictions[i]
+      aux_values = {aux_field: v[i] for aux_field, v in all_aux_values.items()}
+
       if include_all_inputs:
         inputs = inp
       elif input_fields_to_include is not None:
@@ -251,44 +263,67 @@ def write_inferences_to_file(
         inputs = {k: v for k, v in inp.items() if k.endswith('_pretokenized')}
 
       json_dict = {}
-      json_dict['inputs'] = {
-          k: _json_compat(v.numpy()) for k, v in inputs.items()
-      }
+      json_dict['inputs'] = {k: _json_compat(v) for k, v in inputs.items()}
 
       if mode == 'predict':
         assert vocabulary is not None
         json_dict['prediction'] = _json_compat(
-            vocabulary.decode_tf(tf.constant(output)).numpy())
+            vocabulary.decode_tf(tf.constant(predictions)).numpy())
         if output_ids:
-          pred = _json_compat(tf.constant(output).numpy())
+          pred = _json_compat(tf.constant(predictions).numpy())
           # Truncate padding tokens.
           assert isinstance(pred, list)
           pred = pred[:pred.index(0)] if 0 in pred else pred
           json_dict['prediction_tokens'] = pred
       elif mode == 'score':
-        json_dict['score'] = _json_compat(output)
+        json_dict['score'] = _json_compat(predictions)
       elif mode == 'predict_with_aux':
         assert vocabulary is not None
-        pred_ids, pred_aux = output
         json_dict['prediction'] = _json_compat(
-            vocabulary.decode_tf(tf.constant(pred_ids)).numpy())
+            vocabulary.decode_tf(tf.constant(predictions)).numpy())
         if output_ids:
-          pred = _json_compat(tf.constant(pred_ids).numpy())
+          pred = _json_compat(tf.constant(predictions).numpy())
           # Truncate padding tokens.
           pred = pred[:pred.index(0)] if 0 in pred else pred
           json_dict['prediction_tokens'] = pred
-        json_dict['aux'] = jax.tree_map(_json_compat, pred_aux)
+        json_dict['aux'] = jax.tree_map(_json_compat, aux_values)
       else:
         raise ValueError(f'Invalid mode: {mode}')
       json_str = json.dumps(json_dict, cls=json_encoder_cls)
       f.write(json_str + '\n')
 
 
-WriteFn = Callable[
-    [str, Sequence[Any], tf.data.Dataset, str, Optional[seqio.Vocabulary]],
-    None]
+WriteFn = Callable[[
+    str,
+    _Inferences,
+    tf.data.Dataset,
+    str,
+    Optional[seqio.Vocabulary],
+], None]
 
 MergeFn = Callable[[str, str, str, Optional[int]], None]
+
+
+def _extract_tokens_and_aux_values(inference_fn_outputs) -> _Inferences:
+  """Extracts tokens and aux scores from a cached dataset."""
+  all_aux_values = {}
+  if isinstance(inference_fn_outputs, tuple):
+    indices_and_tokens, all_aux_values = inference_fn_outputs
+    indices, tokens = zip(*indices_and_tokens)
+
+    permutation = np.argsort(indices)
+
+    tokens = [tokens[permutation[i]] for i in range(len(permutation))]
+    for aux_keys, aux_values in all_aux_values.items():
+      all_aux_values[aux_keys] = [
+          aux_values[permutation[i]] for i in range(len(permutation))
+      ]
+
+  else:
+    indices_and_tokens = inference_fn_outputs
+    _, tokens = zip(*sorted(indices_and_tokens, key=lambda x: x[0]))
+
+  return tokens, all_aux_values
 
 
 def infer(
@@ -474,7 +509,7 @@ def infer(
                  shard_id, num_shards, task.name)
 
     def _write_chunk_and_canonicalize_ckpt(chunk: int, chunk_path: str,
-                                           inferences: Sequence[Any],
+                                           inferences: _Inferences,
                                            task_ds: tf.data.Dataset,
                                            chunk_ckpt_path: Optional[str]):
       write_tick = time.time()
@@ -522,11 +557,8 @@ def infer(
         continue
 
       logging.info('Running inference on %d batches.', checkpoint_period)
-      # Sort by and strip index.
-      inferences = [
-          x[1] for x in sorted(
-              infer_fn(model_ds.enumerate(), rng=chunk_rng), key=lambda x: x[0])
-      ]
+      inferences = _extract_tokens_and_aux_values(
+          infer_fn(model_ds.enumerate(), rng=chunk_rng))
 
       if jax.process_index() == 0:
         chunk_time = time.time() - chunk_tick
