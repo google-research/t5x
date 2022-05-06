@@ -17,11 +17,11 @@
 import abc
 import collections
 import dataclasses
+import functools
 import typing
 from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 from absl import logging
-import cached_property
 from flax import traverse_util
 from flax.linen import partitioning as flax_partitioning
 import jax
@@ -44,7 +44,7 @@ LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
 if typing.TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
 else:
-  cached_property = cached_property.cached_property
+  cached_property = functools.cached_property  # pylint: disable=invalid-name
 
 
 class AxisNames(tuple):

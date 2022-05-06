@@ -14,9 +14,9 @@
 
 """Trainer with Mixture of Experts support."""
 
+import functools
 from typing import Any, Callable, Optional, Sequence, TYPE_CHECKING
 
-import cached_property
 from t5x import models
 from t5x import partitioning
 from t5x import train_state as train_state_lib
@@ -34,7 +34,7 @@ Rng = trainer.Rng
 if TYPE_CHECKING:  # See b/163639353
   cached_property = property  # pylint: disable=invalid-name
 else:
-  cached_property = cached_property.cached_property
+  cached_property = functools.cached_property  # pylint: disable=invalid-name
 
 
 class MoeTrainer(trainer.Trainer):
