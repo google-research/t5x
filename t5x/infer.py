@@ -517,7 +517,7 @@ def infer(
       write_fn(chunk_path, inferences, task_ds, mode,
                task.output_features['targets'].vocabulary)
       with gfile.GFile(chunk_path + '.COMPLETED', 'w') as f:
-        f.write()
+        f.write('')
       write_time = time.time() - write_tick
       logging.info('Writing completed in %02f seconds (%02f examples/sec).',
                    write_time,
