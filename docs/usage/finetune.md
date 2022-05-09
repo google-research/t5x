@@ -99,8 +99,8 @@ Gin file, or via commandline flags. Following are the required params:
 +   `TRAIN_STEPS`: Number of fine-tuning steps. This includes the number of
     steps that the model was pre-trained for, so make sure to add the step
     number from the `INITIAL_CHECKPOINT_PATH`. For the example run, to fine-tune
-    for `20_000` steps, set this to `1_020_000`, since the initial checkpoint
-    is the `1_000_000`th step.
+    for `20_000` steps, set this to `1_020_000`, since the initial checkpoint is
+    the `1_000_000`th step.
 +   `MIXTURE_OR_TASK_NAME`: This is the SeqIO Task or Mixture name to run (from
     Step 2). For the example run, set this to `'wmt_t2t_ende_v003'`.
 +   `TASK_FEATURE_LENGTHS`: This is a dict mapping feature key to maximum int
@@ -116,8 +116,6 @@ Gin file, or via commandline flags. Following are the required params:
     using Mesh Tensorflow (e.g. the public T5 / mT5 / ByT5 models), this should
     be set to `pretraining batch_size` * `pretrained target_token_length`. For
     T5 and T5.1.1: `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
-    For MUM Base/Large/XL: `1024 * 256`. For MUM XXL: `1024 * 229`. For MUM Ace:
-    `4096 * 229`.
 
 In addition to the above params, you will need to include
 [`finetune.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin)
