@@ -27,6 +27,8 @@ from t5x import train_state as train_state_lib
 from t5x.contrib.moe import partitioning as moe_partitioning
 from t5x.contrib.moe import training_utils
 
+mock = absltest.mock
+
 AxisMetadata = flax_partitioning.AxisMetadata
 DataLayout = moe_partitioning.DataLayout
 FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
@@ -221,11 +223,13 @@ class PartitioningTest(absltest.TestCase):
                 },
             })))
 
-  def test_overridden_logical_axis_rules(self):
+  @mock.patch('jax.device_count')
+  def test_overridden_logical_axis_rules(self, device_count: int):
+    device_count.return_value = 4
     # Fewer experts than devices --> modified axis rules with two 'batch' axes.
     self.assertEqual(
         moe_partitioning.standard_logical_axis_rules(
-            num_experts=0,
+            num_experts=1,
             num_partitions=1,
             model_parallel_submesh=None,
             additional_rules=[('additional', 'model'),
@@ -294,7 +298,10 @@ class PartitioningTest(absltest.TestCase):
         moe_partitioning.data_partition_spec(two_data_axes=True),
         PartitionSpec(('data', 'model'),))
 
-  def test_when_to_override_model_axis(self):
+  @mock.patch('jax.device_count')
+  def test_when_to_override_model_axis(self, device_count: int):
+    device_count.return_value = 4
+
     # More experts than devices.
     self.assertFalse(
         moe_partitioning._override_model_axis(
@@ -303,7 +310,7 @@ class PartitioningTest(absltest.TestCase):
     # Fewer experts than devices.
     self.assertTrue(
         moe_partitioning._override_model_axis(
-            num_experts=0, num_partitions=1, model_parallel_submesh=None))
+            num_experts=1, num_partitions=1, model_parallel_submesh=None))
 
     # Model parallelism used.
     self.assertFalse(

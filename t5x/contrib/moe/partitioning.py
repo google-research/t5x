@@ -16,6 +16,7 @@
 
 from typing import Any, Callable, Optional, Sequence, Union
 
+from absl import logging
 from flax import core as flax_core
 import jax
 import numpy as np
@@ -83,6 +84,14 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
       # data axis, along which only the batch is sharded. Experts will be
       # replicated along this secondary data axis.
       num_partitions = jax.device_count() // num_experts
+
+      # Override user specified model parallel submesh. Rely on T5X partitioning
+      # to determine new submesh from updated `num_partitions`.
+      logging.info(
+          'Overriding user specified `model_parallel_submesh`=%s to support '
+          'expert parallelism for updated `num_partitions`=%d',
+          model_parallel_submesh, num_partitions)
+      model_parallel_submesh = None
 
     super().__init__(
         num_partitions=num_partitions,
@@ -342,7 +351,7 @@ def _override_model_axis(
         'be specified. Received: %s and %s' %
         (num_partitions, model_parallel_submesh))
 
-  if jax.device_count() <= num_experts:
+  if num_experts == 0 or jax.device_count() <= num_experts:
     # No expert replication required. No need to override model mesh axis.
     return False
 
