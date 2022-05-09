@@ -206,18 +206,13 @@ brief description of these configs:
 A training run may consist of various randomized operations, e.g. dataset
 shuffling, dropout, etc. However, it is often useful to have deterministic
 training, meaning that the random operations are reproducible and robust to
-preemption/restarts. To make your pretraining deterministic, use
-[`t5x/configs/runs/pretrain_deterministic.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/pretrain_deterministic.gin)
-instead of `pretrain.gin` in Steps 3 and 4 above.
-
-In addition to the params configured in `pretrain.gin`,
-`pretrain_deterministic.gin` does the following:
+preemption/restarts. To make your pretraining deterministic, in addition to
+the params configured in `pretrain.gin`, you need to add the following configs:
 
 +   sets the dataset seed to a fixed value: `train/utils.DatasetConfig.seed =
     42`.
 +   sets the dropout seed to a fixed value: `train_script.train.random_seed =
-    42`. However, the dropout state is currently not maintained after restart
-    (b/190056363).
+    42`.
 +   enables dataset checkpointing: `utils.SaveCheckpointConfig.save_dataset =
     True`. This means that the dataset iterator is checkpointed periodically
     during training, and in case of preemptions, training resumes from the
