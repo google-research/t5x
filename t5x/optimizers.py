@@ -411,6 +411,11 @@ def wrap_optax_optimizer(optax_optimizer):
   return wrapped_optimizer
 
 
+def chain(transformations: Sequence[optax.GradientTransformation]):
+  return optax.chain(*transformations)
+
+
+chain = wrap_optax_optimizer(chain)
 adabelief = wrap_optax_optimizer(optax.adabelief)
 adagrad = wrap_optax_optimizer(optax.adagrad)
 adam = wrap_optax_optimizer(optax.adam)

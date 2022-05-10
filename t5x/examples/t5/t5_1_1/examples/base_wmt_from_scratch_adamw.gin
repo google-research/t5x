@@ -1,0 +1,51 @@
+# This gin file is to show how to switch to an optimizer other than
+# Adafactor. Gin configuration makes it easy by simply importing any available
+# optimizer in t5x/optimizers module. Note the optimizers in t5x/optimizers are
+# wrapped version of optimizers implemented in optax.
+
+from __gin__ import dynamic_registration
+
+from t5x import optimizers
+from t5x import utils
+import optax
+
+include "t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin"
+
+# In this case, we choose to switch to the AdamW optimizer with gradient clip.
+OPTIMIZER = @optimizers.chain()
+
+optimizers.chain:
+  transformations = [@optax.clip(), @optax.adamw()]
+
+optax.clip:
+  max_delta = 1.0
+
+optax.adamw:
+  # Unlike Adafactor, most optimizers require to specify
+  # `learning_rate`. `learning_rate` accepts a float number (e.g., 1e-4) or
+  # a schedule function, which should take an argument `step` and output
+  # a learning rate for that step.
+  # As for choices of schedule functions, we can either use T5x
+  # learning rate scheduler, i.e., utils.create_learning_rate_scheduler, or
+  # optax's native schedule functions, e.g., warmup_cosine_decay_schedule.
+  learning_rate = @optax.warmup_cosine_decay_schedule()
+
+optax.warmup_cosine_decay_schedule:
+  init_value = 0.0
+  peak_value = 1e-4
+  warmup_steps = 1000
+  decay_steps = %TRAIN_STEPS
+  end_value = 0.0
+
+
+# Below is an example of using the T5X's schedule functions.
+# Feel free to uncomment to try.
+# optax.adamw:
+#   learning_rate = @utils.create_learning_rate_scheduler()
+
+# utils.create_learning_rate_scheduler:
+#   factors = 'constant * linear_warmup * rsqrt_decay'
+#   base_learning_rate = 0.01
+#   warmup_steps = 10000
+
+
