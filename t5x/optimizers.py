@@ -411,7 +411,9 @@ def wrap_optax_optimizer(optax_optimizer):
   return wrapped_optimizer
 
 
-def chain(transformations: Sequence[optax.GradientTransformation]):
+def chain(
+    transformations: Sequence[optax.GradientTransformation]
+) -> optax.GradientTransformation:
   return optax.chain(*transformations)
 
 
