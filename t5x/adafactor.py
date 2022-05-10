@@ -108,6 +108,7 @@ def standard_logical_factor_rules():
       'kv': FactorDim.COLUMN,
       'joined_kv': FactorDim.COLUMN,
       'relpos_buckets': FactorDim.NONE,
+      'relpos_heads': FactorDim.NONE,
       'layers': FactorDim.BATCH,  # used in scanned layers
       'stack': FactorDim.BATCH,  # used in stacked params
       # 'batch', 'length' should not occur in parameters

@@ -506,6 +506,7 @@ def standard_logical_axis_rules(
   replicated_rules = [
       ('relpos_buckets', None),
       ('abspos_buckets', None),
+      ('relpos_heads', None),
       ('length', None),
       ('layers', None),
       ('stack', None),
