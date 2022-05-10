@@ -126,3 +126,49 @@ LongT5 Large | [longt5/models/longt5_1_1_transient_large.gin](https://github.com
 LongT5 XL    | [longt5/models/longt5_1_1_transient_xl.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_transient_global_xl.gin)       | [gs://t5-data/pretrained_models/t5x/longt5/tglobal_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/tglobal_xl)
 
 
+##### Converted Mesh Tensorflow checkpoints
+
+These are the checkpoints from the original
+[Switch Transformer model](https://arxiv.org/abs/2101.03961).
+
+Model                                | Gin File Location                                                                                                            | Checkpoint Location
+------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- | -------------------
+Switch Transformer Base 8 Experts    | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e8/checkpoint_500100](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e8)
+Switch Transformer Base 16 Experts   | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e16/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e16)
+Switch Transformer Base 32 Experts   | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e32/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e32)
+Switch Transformer Base 64 Experts   | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e64/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e64)
+Switch Transformer Base 128 Experts  | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e128/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e128)
+Switch Transformer Base 256 Experts  | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e256/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e256)
+Switch Transformer Large 128 Experts | [switch_classic_large.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_large.gin) | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/large/e128/checkpoint_483100](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/large/e128)
+
+##### Pure T5X checkpoints
+
+These are models, adapted from popular MoE papers, that are trained in T5X. All
+models are trained on [C4](https://www.tensorflow.org/datasets/catalog/c4) with
+a denoising objective.
+
+*   Switch: "T5 v1.1 variant" of original
+    [Switch Transformer](https://arxiv.org/abs/2101.03961) using fewer sparse
+    layers for efficiency.
+*   Top-2 Tokens Choose: Model with routing of the form popularized in
+    [Sparsely-Gated Mixture-of-Experts](https://arxiv.org/abs/1701.06538),
+    [Vision MoE](https://arxiv.org/abs/2106.05974),
+    [Designing Effective Sparse Expert Models](https://arxiv.org/abs/2202.08906)
+    and many other MoE works.
+*   Experts Choose: Model with routing introduced in
+    [Mixture-of-Experts with Expert Choice Routing](https://arxiv.org/abs/2202.09368).
+    Note that, unlike the original work, this model does uses top-2 "tokens
+    choose" routing for the decoder (instead of "experts choose") to preserve
+    autoregressive behavior.
+
+
+Model                         | Gin File Location                                                                                                          | Checkpoint Location
+----------------------------- | -------------------------------------------------------------------------------------------------------------------------- | -------------------
+Switch Base 64 Experts        | [switch_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_base.gin)                 | [gs://t5-data/pretrained_models/t5x/moe/switch/base/e64/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch/base/e64)
+Tokens Choose Base 64 Experts | [tokens_choose_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/tokens_choose_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/tokens_choose/base/e64/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/tokens_choose/base/e64)
+Experts Choose 64 Experts     | [experts_choose_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/experts_choose_base.gin) | [gs://t5-data/pretrained_models/t5x/moe/experts_choose/base/e64/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/experts_choose/base/e64)
+
+More variants (sizes, number of experts, etc) to appear soon.
+
+<!-- END GOOGLE-INTERNAL -->
+
