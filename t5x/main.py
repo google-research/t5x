@@ -69,14 +69,6 @@ _GIN_FILE = flags.DEFINE_multi_string(
 _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', default=[], help='Individual gin bindings.')
 
-_GIN_SEARCH_PATHS = flags.DEFINE_list(
-    'gin_search_paths',
-    default=['.'],
-    help='Comma-separated list of gin config path prefixes to be prepended '
-    'to suffixes given via `--gin_file`. If a file appears in. Only the '
-    'first prefix that produces a valid path for each suffix will be '
-    'used.')
-
 _RUN_MODE = flags.DEFINE_enum_class(
     'run_mode',
     default=None,
@@ -127,11 +119,8 @@ def main(argv: Sequence[str]):
   # compatability of existing '__main__' module references.
   gin.register(_FUNC_MAP[_RUN_MODE.value], '__main__')
 
-  gin_utils.parse_gin_flags(
-      # User-provided gin paths take precedence if relative paths conflict.
-      _GIN_SEARCH_PATHS.value + _DEFAULT_GIN_SEARCH_PATHS,
-      _GIN_FILE.value,
-      _GIN_BINDINGS.value)
+  gin_utils.parse_gin_flags(_DEFAULT_GIN_SEARCH_PATHS, _GIN_FILE.value,
+                            _GIN_BINDINGS.value)
 
   if _DRY_RUN.value:
     return
