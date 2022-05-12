@@ -26,6 +26,7 @@ xmanager xm_launch.py -- \
 
 import collections
 import os
+import shutil
 import sys
 import tempfile
 from typing import Any, Dict
@@ -36,6 +37,11 @@ from xmanager import xm
 from xmanager import xm_local
 from xmanager.contrib import copybara
 
+_NAME = flags.DEFINE_string(
+    'name',
+    't5x',
+    'Name of the experiment.',
+)
 _CLONE_GITHUB = flags.DEFINE_bool(
     'clone_github',
     False,
@@ -79,6 +85,16 @@ _SEQIO_CACHE_DIRS = flags.DEFINE_list(
     [],
     'Comma separated directories in "gs://cache_dir" format to search for cached Tasks in addition to defaults.',
 )
+_PROJECT_DIRS = flags.DEFINE_list(
+    'project_dirs',
+    None,
+    'Project dir with custom components.',
+)
+_PIP_INSTALL = flags.DEFINE_list(
+    'pip_install',
+    None,
+    'Extra pip packages to install.',
+)
 
 
 @xm.run_in_asyncio_loop
@@ -98,30 +114,50 @@ async def main(_, gin_args: Dict[str, Any]):
         tensorboard=tensorboard,
     )
 
+    staging = os.path.join(tempfile.mkdtemp(), _NAME.value)
     # The t5x/ root directory.
-    path = os.path.abspath(os.path.join(__file__, '..', '..', '..'))
+    t5x_path = os.path.abspath(os.path.join(__file__, '..', '..', '..'))
+    t5x_destination = os.path.join(staging, 't5x')
     if _COPYBARA_CONFIG.value:
-      copybara_destination = os.path.join(tempfile.mkdtemp(), 't5x')
-      path = copybara.run_workflow(_COPYBARA_CONFIG.value,
-                                   _COPYBARA_WORKFLOW.value,
-                                   _COPYBARA_ORIGIN.value, copybara_destination)
+      t5x_path = copybara.run_workflow(_COPYBARA_CONFIG.value,
+                                       _COPYBARA_WORKFLOW.value,
+                                       _COPYBARA_ORIGIN.value, t5x_destination)
 
     if _CLONE_GITHUB.value:
       copy_t5x = [
           'RUN git clone --branch=main https://github.com/google-research/t5x',
       ]
     else:
-      copy_t5x = [f'COPY {os.path.basename(path)}/ t5x']
+      shutil.copytree(t5x_path, t5x_destination)
+      staging_t5x_path = os.path.join(os.path.basename(staging), 't5x')
+      copy_t5x = [f'COPY {staging_t5x_path}/ t5x']
+
+    copy_projects = []
+    if _PROJECT_DIRS.value:
+      for project_dir in _PROJECT_DIRS.value:
+        project_name = os.path.basename(project_dir)
+        shutil.copytree(project_dir, os.path.join(staging, project_name))
+        staging_project_dir = os.path.join(
+            os.path.basename(staging), project_name)
+        copy_projects.append(f'COPY {staging_project_dir}/ {project_name}')
+
+    pip_install = []
+    if _PIP_INSTALL.value:
+      pip_install = [
+          'RUN python3 -m pip install ' + ' '.join(_PIP_INSTALL.value)
+      ]
 
     [executable] = experiment.package([
         xm.python_container(
             executor.Spec(),
-            path=path,
+            path=staging,
             base_image='gcr.io/deeplearning-platform-release/base-cpu',
             docker_instructions=[
                 *copy_t5x,
                 'WORKDIR t5x',
                 'RUN python3 -m pip install -e ".[tpu]" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html',
+                *pip_install,
+                *copy_projects,
             ],
             entrypoint=xm.CommandList([
                 f'export MODEL_DIR=\'"{_MODEL_DIR.value}/logs"\'',
@@ -132,14 +168,18 @@ async def main(_, gin_args: Dict[str, Any]):
                 ('python3 ${T5X_DIR}/t5x/train.py '
                  '--gin.MODEL_DIR=${MODEL_DIR} '
                  '--tfds_data_dir=${TFDS_DATA_DIR} '
-                 '--seqio_additional_cache_dirs=${SEQIO_CACHE_DIRS}'),
+                 '--seqio_additional_cache_dirs=${SEQIO_CACHE_DIRS} '),
             ]),
         ),
     ])
     args = []
     for k, l in gin_args.items():
       for v in l:
-        args.append(f'--{k}={v}')
+        if '\'' or '"' in v:
+          args.append(xm.ShellSafeArg(f'--{k}={v}'))
+        else:
+          args.append(f'--{k}={v}')
+
     experiment.add(xm.Job(executable=executable, executor=executor, args=args))
 
 
