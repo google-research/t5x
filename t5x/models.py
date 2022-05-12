@@ -663,10 +663,12 @@ class DecoderOnlyModel(BaseTransformerModel):
       label_smoothing: float = 0.0,
       z_loss: float = 0.0,
       loss_normalizing_factor: Optional[float] = None,
+      microbatch_size: Optional[int] = None,
   ):
     if feature_converter_cls is not None:
       self.FEATURE_CONVERTER_CLS = feature_converter_cls  # pylint: disable=invalid-name
     self._inputs_bidirectional_attention = inputs_bidirectional_attention
+    self._microbatch_size = microbatch_size
     super().__init__(
         module,
         input_vocabulary=vocabulary,
@@ -803,6 +805,120 @@ class DecoderOnlyModel(BaseTransformerModel):
 
     return sequence_scores
 
+  def _compute_kv_cache_one_microbatch(
+      self,
+      params: PyTreeDef,
+      inputs: jnp.ndarray,
+      inputs_lengths: jnp.ndarray,
+      decoder_causal_attention: jnp.ndarray,
+  ) -> PyTreeDef:
+    """Compute the key/value cache on the input prefix, for one microbatch."""
+    _, variables_with_cache = self.module.apply({'params': params},
+                                                jnp.ones_like(inputs),
+                                                jnp.ones_like(inputs),
+                                                enable_dropout=False,
+                                                decode=True,
+                                                mutable=['cache'])
+    cache = variables_with_cache['cache']
+
+    # Prefill our cache with all the inputs. `inputs_lengths` is the index of
+    # the last input token. The cache will be filled for all the input
+    # positions, save the last input token. The cache index will point to the
+    # index of this last input token which is considered during prefilling but
+    # not cached. This re-computation is required as the logits for this
+    # position are required for selecting the first output token.
+    #
+    # The cache is still `[B, ..., max_decode_len]` but any position less than
+    # the `inputs_length` will be non-zero, that is
+    # `cached_key[b, ..., i < inputs_lengths[b]] != 0`.
+    #
+    # The cache index is now a vector of size [B] = input_lengths
+
+    # If `self._inputs_bidirectional_attention = False`, we should not pass
+    # batch['decoder_causal_attention'] to `module.apply` during cache prefill
+    # and pass None instead.
+    maybe_decoder_causal_attention = self._get_decoder_causal_attention(
+        {'decoder_causal_attention': decoder_causal_attention})
+
+    _, variables_with_cache = self.module.apply(
+        {
+            'params': params,
+            'cache': cache
+        },
+        decoder_input_tokens=inputs,
+        # Use the `decoder_causal_attention`, which has 1 for all input
+        # positions, including the BOS token, as the targets so when the
+        # decoder attention mask is built, it will correctly cover the whole
+        # input, Using something like the inputs will cause the first input
+        # token (the 0 for BOS) will not be included in the mask. This also
+        # restricts the mask to not include any target positions like it would
+        # if you used `decoder_target_tokens`.
+        decoder_target_tokens=decoder_causal_attention,
+        decoder_causal_attention=maybe_decoder_causal_attention,
+        mutable=['cache'],
+        enable_dropout=False,
+        prefill=True,
+        prefill_lengths=inputs_lengths)
+    return variables_with_cache['cache']
+
+  def _compute_kv_cache(
+      self,
+      params: PyTreeDef,
+      inputs: jnp.ndarray,
+      inputs_lengths: jnp.ndarray,
+      decoder_causal_attention: jnp.ndarray,
+      scan_over_layers: bool,
+  ) -> PyTreeDef:
+    """Compute the key/value cache on the input prefix, in a microbatch loop."""
+    assert inputs.ndim == 2  # [batch, seqlen]
+    batch_size, seqlen = inputs.shape
+    assert decoder_causal_attention.shape == inputs.shape
+    microbatch_size = self._microbatch_size
+
+    if microbatch_size is None:
+      return self._compute_kv_cache_one_microbatch(params, inputs,
+                                                   inputs_lengths,
+                                                   decoder_causal_attention)
+
+    assert (
+        (microbatch_size != 0) and (batch_size % microbatch_size) == 0
+    ), f'batch size and microbatch size are incompatible: {batch_size}, {microbatch_size}'
+    num_microbatches = batch_size // microbatch_size
+
+    inputs = inputs.reshape((num_microbatches, microbatch_size, seqlen))
+    assert inputs_lengths.shape == (batch_size,)
+    inputs_lengths = inputs_lengths.reshape((num_microbatches, microbatch_size))
+    decoder_causal_attention = decoder_causal_attention.reshape(
+        (num_microbatches, microbatch_size, seqlen))
+
+    def loop_iter(carry, mb):
+      mb_inputs, mb_inputs_lengths, mb_decoder_causal_attention = mb
+      del carry
+      mb_result = self._compute_kv_cache_one_microbatch(
+          params, mb_inputs, mb_inputs_lengths, mb_decoder_causal_attention)
+      return ((), mb_result)
+
+    carry, cache = jax.lax.scan(
+        loop_iter, (), (inputs, inputs_lengths, decoder_causal_attention))
+    del carry
+
+    def flatten_microbatches(x):
+      if scan_over_layers:
+        # x layout: [num_microbatches, num_layers, microbatch_size, ...]
+        transposition = list(range(x.ndim))
+        transposition[0] = 1
+        transposition[1] = 0
+        x = jax.lax.transpose(x, transposition)
+        # x layout: [num_layers, num_microbatches, microbatch_size, ...]
+        sh = list(x.shape)
+        return x.reshape(tuple(sh[:1] + [batch_size] + sh[3:]))
+      else:
+        # x layout: [num_microbatches, microbatch_size, ...]
+        sh = list(x.shape)
+        return x.reshape(tuple([batch_size] + sh[2:]))
+
+    return jax.tree_util.tree_map(flatten_microbatches, cache)
+
   def predict_batch_with_aux(
       self,
       params: PyTreeDef,
@@ -901,21 +1017,6 @@ class DecoderOnlyModel(BaseTransformerModel):
           'Batch does not have the right format for text generation: probably '
           'because `task_feature_lengths` passed to the feature converter does '
           'not have both `inputs` and `targets`.')
-    # Prepare zeroed-out autoregressive cache. The shape will be
-    # [batch, ..., max_decode_length]
-    target_shape = batch['decoder_input_tokens'].shape
-    target_type = batch['decoder_input_tokens'].dtype
-    max_decode_length = target_shape[1]
-
-    _, variables_with_cache = self.module.apply(
-        {'params': params},
-        jnp.ones(target_shape, target_type),
-        jnp.ones(target_shape, target_type),
-        enable_dropout=False,
-        decode=True,
-        mutable=['cache'])
-    cache = variables_with_cache['cache']
-
     # We can use the decoder causal attention mask to tell how long the inputs
     # are. The causal mask has a 1 for all the input tokens (and one more to
     # cover the original BOS token, created by shifting the inputs one to the
@@ -927,44 +1028,15 @@ class DecoderOnlyModel(BaseTransformerModel):
     # tokens, this masks out targets portion of the decoder_input_tokens.
     inputs = batch['decoder_input_tokens'] * batch['decoder_causal_attention']
 
-    # Prefill our cache with all the inputs. `inputs_lengths` is the index of
-    # the last input token. The cache will be filled for all the input
-    # positions, save the last input token. The cache index will point to the
-    # index of this last input token which is considered during prefilling but
-    # not cached. This re-computation is required as the logits for this
-    # position are required for selecting the first output token.
-    #
-    # The cache is still `[B, ..., max_decode_len]` but any position less than
-    # the `inputs_length` will be non-zero, that is
-    # `cached_key[b, ..., i < inputs_lengths[b]] != 0`.
-    #
-    # The cache index is now a vector of size [B] = input_lengths
+    scanned = hasattr(self.module, 'scan_layers') and self.module.scan_layers
+    cache_offset = 1 if scanned else 0
 
-    # If `self._inputs_bidirectional_attention = False`, we should not pass
-    # batch['decoder_causal_attention'] to `module.apply` during cache prefill
-    # and pass None instead.
-    maybe_decoder_causal_attention = self._get_decoder_causal_attention(batch)
+    prefilled_cache = self._compute_kv_cache(params, inputs, inputs_lengths,
+                                             batch['decoder_causal_attention'],
+                                             scanned)
 
-    _, variables_with_cache = self.module.apply(
-        {
-            'params': params,
-            'cache': cache
-        },
-        decoder_input_tokens=inputs,
-        # Use the `decoder_causal_attention`, which has 1 for all input
-        # positions, including the BOS token, as the targets so when the
-        # decoder attention mask is built, it will correctly cover the whole
-        # input, Using something like the inputs will cause the first input
-        # token (the 0 for BOS) will not be included in the mask. This also
-        # restricts the mask to not include any target positions like it would
-        # if you used `decoder_target_tokens`.
-        decoder_target_tokens=batch['decoder_causal_attention'],
-        decoder_causal_attention=maybe_decoder_causal_attention,
-        mutable=['cache'],
-        enable_dropout=False,
-        prefill=True,
-        prefill_lengths=inputs_lengths)
-    prefilled_cache = variables_with_cache['cache']
+    target_shape = batch['decoder_input_tokens'].shape
+    max_decode_length = target_shape[1]
 
     tokens_ids_to_logits = functools.partial(
         self._compute_logits_from_slice,
@@ -984,7 +1056,6 @@ class DecoderOnlyModel(BaseTransformerModel):
     # Using the above-defined single-step decoder function, run temperature
     # sampling with the prefix.
     # [batch, max_decode_length]
-    scanned = hasattr(self.module, 'scan_layers') and self.module.scan_layers
     decoded_sequences, scores = self._decode_fn(
         inputs=inputs,
         cache=prefilled_cache,
@@ -992,7 +1063,7 @@ class DecoderOnlyModel(BaseTransformerModel):
         eos_id=self.output_vocabulary.eos_id,
         num_decodes=num_decodes,
         initial_index=inputs_lengths,
-        cache_offset=1 if scanned else 0,
+        cache_offset=cache_offset,
         **decoder_params)
 
     if not return_all_decodes:
