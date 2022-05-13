@@ -20,6 +20,8 @@ from absl import logging
 from flax import core as flax_core
 import jax
 import numpy as np
+
+from t5x import adafactor
 from t5x import partitioning as t5x_partitioning
 from t5x import train_state as train_state_lib
 
@@ -167,21 +169,14 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
       # InferenceState does not contain any optimizer state, so we skip all
       # expert partitioning overrides.
       return logical_axes
-
-    if self._state_filter_fn:
-      state_filter_fn = self._state_filter_fn
     else:
-      # Use default T5X Adafactor expert sharding overrides for factored
-      # kernels.
-      #
-      # The kernel terms  (`m` and `v`) that are not captured below are trivial
-      # placeholders and should not be sharded. The only nontrivial bias term
-      # (`v`) automatically inherits the correct expert partition specs through
-      # the T5X Adafactor factor rules (see derive_logical_axes()):
-      # https://github.com/google-research/t5x/blob/main/t5x/adafactor.py#L591).
-      #
-      # TODO(jamesleethorp): Revisit once other T5X optimizers are available.
-      state_filter_fn = training_utils.match_fn(r'.*expert.*/kernel/v_.*')
+      train_state: FlaxOptimTrainState
+
+    state_filter_fn = (
+        self._state_filter_fn or _infer_state_filter_fn(train_state))
+    if state_filter_fn is None:
+      # No state updates required.
+      return logical_axes
 
     prepend_expert = lambda x: PartitionSpec(  # pylint: disable=g-long-lambda
         'expert',) + x if x else PartitionSpec('expert',)
@@ -399,3 +394,43 @@ def _override_partition_specs(resources: Pytree):
     for resource in resources:
       overridden_resources.append(_maybe_overridde_spec(resource))
   return tuple(overridden_resources)
+
+
+def _infer_state_filter_fn(
+    train_state: FlaxOptimTrainState) -> Optional[Callable[[str], bool]]:
+  """Infers relevant regex matching sharded expert model state for optimizer.
+
+  Only the Adafactor optimizer is currently supported.
+
+  The model state generally inherits the correct partitioning specs from the
+  model parameters, except in cases where the kernel is factored (`v_col` and
+  `v_row` terms); see derive_logical_axes():
+  https://github.com/google-research/t5x/blob/main/t5x/adafactor.py#L591. For
+  those cases, we use the state_filter_fn to identify the factored kernel terms
+  that need to be partitioned along the expert axis.
+
+  Args:
+    train_state: Object holding optimizer and optimizer state (parameters).
+
+  Returns:
+    Function to identify which model state is sharded along 'expert' axis.
+
+  Raises:
+    ValueError if optimizer (on train state) is not an Adafactor optimizer.
+  """
+  optimizer = train_state._optimizer  # pylint: disable=protected-access
+  optimizer_def = optimizer.optimizer_def
+
+  # TODO(jamesleethorp): Revisit once other T5X optimizers are available.
+  if not isinstance(optimizer_def, adafactor.Adafactor):
+    raise ValueError('Inferred MoE overrides are currently only available for '
+                     f'the Adafactor optimizer. Received: {optimizer_def}')
+
+  if optimizer_def.hyper_params.factored:
+    # Factored kernel terms (`v_col` and `v_row`) need to be identified for
+    # expert sharding.
+    return training_utils.match_fn(r'.*expert.*/kernel/v_.*')
+  else:
+    # Non-factored kernel terms (`v`) inherit the correct specs, so no state
+    # updates will be required.
+    return None

@@ -115,9 +115,11 @@ class PartitioningTest(absltest.TestCase):
             num_shards=1,
             is_first_host_in_replica_set=True))
 
-  def test_logical_axes_for_moe_partitioner(self):
+  def test_logical_axes_for_moe_partitioner_no_overrides(self):
     partitioner = moe_partitioning.MoePjitPartitioner(
-        num_experts=8, num_partitions=1)
+        num_experts=8,
+        num_partitions=1,
+        state_filter_fn=training_utils.match_fn(r'no_state_matching'))
 
     optimizer = create_optimizer()
     train_state = FlaxOptimTrainState(
