@@ -222,8 +222,11 @@ class BasicTest(chex.TestCase):
                         'mu': self.get_params_shapes(),
                         'nu': self.get_params_shapes(),
                     },
-                    '1': {},
-                    '2': {},
+                    # NB: We eliminate empty tuple leaves from EmptyState() in
+                    # OptaxWrapper to avoid having the rest of T5X have to
+                    # correctly handle this detail. e.g. we omit these:
+                    # '1': {},
+                    # '2': {},
                 },
             }
         }))
@@ -285,11 +288,17 @@ class OptaxWrapperTest(chex.TestCase):
       trainer_instance.train(ds_iter, 1)
       chex.assert_tree_all_finite(train_state.params)
 
+    # check save/restore structural equality
+    restored_instance = trainer_instance.train_state.restore_state(
+        trainer_instance.train_state.state_dict())
+    chex.assert_tree_all_equal_structs(trainer_instance.train_state,
+                                       restored_instance)
+
   # NOTE(levskaya): these are surprisingly slow tests on CPU.
   @parameterized.parameters(
       ('sgd', lambda: optax.sgd(1e-2, 0.0)),
       ('adam', lambda: optax.adam(1e-1)),
-      # ('adamw', lambda: optax.adamw(1e-1)),
+      ('adamw', lambda: optax.adamw(1e-1)),
       ('lamb', lambda: optax.adamw(1e-1)),
       # ('rmsprop', lambda: optax.rmsprop(1e-1)),
       # ('rmsprop_momentum', lambda: optax.rmsprop(5e-2, momentum=0.9)),

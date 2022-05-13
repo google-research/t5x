@@ -387,6 +387,75 @@ class OptaxWrapper(OptimizerDef):
 
     return optimizer.restore_state(frozen_dict.unfreeze(optimizer_logical_axes))
 
+  def state_dict(self, target, state):
+    """Override state dict function.
+
+    We need to override this function because many optax transformations use
+    `optax.EmptyState`, which produces empty dict in the state dict. This causes
+    the T5 training loop to fail in multiple places. As a remedy, we will
+    filter out the generated state dict so that there are no empty dict in the
+    output.
+
+    The restore_state function is also overridden to reconstruct those empty
+    dict.
+
+    Args:
+      target: Pytree of target variables.
+      state: Pytree of optimizer state.
+
+    Returns:
+      A nested state.
+    """
+    state_dict = to_state_dict(state)
+
+    # This step removes any empty dict (recursively) in the state dict.
+    state_dict = traverse_util.unflatten_dict(
+        traverse_util.flatten_dict(state_dict, sep='/'), sep='/')
+
+    return to_state_dict({
+        'target': to_state_dict(target),
+        'state': state_dict,
+    })
+
+  def restore_state(self, opt_target, opt_state, state_dict):
+    """Override to restore empty dicts corresponding to `optax.EmptyState`.
+
+    Args:
+      opt_target: the optimizer target.
+      opt_state: the optimizer state.
+      state_dict: the state dict containing the desired new state of the
+        optimizer.
+
+    Returns:
+      a tuple of the optimizer target and state with the restored values from
+      the state dict.
+    """
+    opt_target = from_state_dict(opt_target, state_dict['target'])
+
+    # Get all the possible keys in the reference optimizer state.
+    flat_ref_opt_state_dict = traverse_util.flatten_dict(
+        to_state_dict(opt_state), keep_empty_nodes=True, sep='/')
+
+    flat_src_opt_state_dict = dict(
+        traverse_util.flatten_dict(state_dict['state'], sep='/'))
+    # Adding the empty paths back to flat_src_opt_state_dict.
+    for k, v in flat_ref_opt_state_dict.items():
+      if k in flat_src_opt_state_dict:
+        continue
+      # The key is not in the input state dict, presumably because it
+      # corresponds to an empty dict.
+      if v != traverse_util.empty_node:
+        raise ValueError(
+            f'Failed to restore optimizer state, path {k} is not present '
+            'in the input optimizer state dict.')
+      flat_src_opt_state_dict[k] = v
+
+    # Restore state from the enhanced state dict.
+    opt_state = from_state_dict(
+        opt_state,
+        traverse_util.unflatten_dict(flat_src_opt_state_dict, sep='/'))
+    return opt_target, opt_state
+
 
 # Optax wrapper and elementary wrapped optax optimizers.
 
@@ -632,3 +701,6 @@ class MultiOptimizer(OptimizerDef):
         lambda x: (None if isinstance(x, _Marker) else x), param_states)
     return Optimizer(optimizer.optimizer_def,
                      OptimizerState(None, param_states), param_logical_axes)
+
+  # TODO(levskaya): add traversal handling for state_dict / restore_state
+  # this is required to make this work w. optax optimizers...
