@@ -260,7 +260,7 @@ def train(
   # Initialize optimizer, maybe from an existing checkpoint.
   checkpointable_train_iter: tf.data.Iterator = iter(train_ds)  # pytype:disable=annotation-type-mismatch
   train_iter: Iterator[trainer_lib.BatchType] = map(
-      lambda x: jax.tree_map(np.array, x), checkpointable_train_iter)
+      lambda x: jax.tree_map(np.asarray, x), checkpointable_train_iter)
 
   # The manner in which parameters are initialized follows this order of
   # preference:
