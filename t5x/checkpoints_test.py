@@ -1441,7 +1441,8 @@ class CheckpointsTest(parameterized.TestCase):
                     'dtype': 'float32',
                     'kvstore': {
                         'bucket': 't5x-dummy-bucket',
-                        'driver': 'gcs'
+                        'driver': 'gcs',
+                        'path': 'target.sharded_param'
                     },
                     'metadata': {
                         'chunks': [768, 768],
@@ -1450,8 +1451,7 @@ class CheckpointsTest(parameterized.TestCase):
                             'level': 1
                         },
                         'shape': [768, 768]
-                    },
-                    'path': 'target.sharded_param',
+                    }
                 }
             }
         }
@@ -1471,7 +1471,8 @@ class CheckpointsTest(parameterized.TestCase):
                     'dtype': 'float32',
                     'kvstore': {
                         'bucket': 't5x-dummy-bucket',
-                        'driver': 'gcs'
+                        'driver': 'gcs',
+                        'path': 'target.sharded_param'
                     },
                     'metadata': {
                         'chunks': [768, 768],
@@ -1481,7 +1482,6 @@ class CheckpointsTest(parameterized.TestCase):
                         },
                         'shape': [768, 768]
                     },
-                    'path': 'target.sharded_param',
                 }
             }
         }

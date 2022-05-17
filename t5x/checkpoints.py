@@ -257,9 +257,12 @@ def _maybe_update_ts_from_file_to_gcs(ckpt_contents):
     if arr_or_ts_spec_dict['kvstore']['driver'] in ('file', 'gfile'):
       ts_spec_dict = arr_or_ts_spec_dict
       path = ts_spec_dict['kvstore'].pop('path')
-      ts_spec_dict['path'] = path
       # This will be updated to the actual bucket in `_read_ts`.
-      ts_spec_dict['kvstore'] = {'bucket': 't5x-dummy-bucket', 'driver': 'gcs'}
+      ts_spec_dict['kvstore'] = {
+          'bucket': 't5x-dummy-bucket',
+          'driver': 'gcs',
+          'path': path
+      }
     else:
       if arr_or_ts_spec_dict['kvstore']['driver'] != 'gcs':
         raise ValueError('Unsupported TensoreStore driver. Got '
@@ -285,7 +288,7 @@ def _maybe_update_ts_from_gcs_to_file(ckpt_contents):
 
     if arr_or_ts_spec_dict['kvstore']['driver'] == 'gcs':
       ts_spec_dict = arr_or_ts_spec_dict
-      path = ts_spec_dict.pop('path')
+      path = ts_spec_dict['kvstore'].pop('path')
       driver = 'file'
       ts_spec_dict['kvstore'] = {'path': path, 'driver': driver}
     elif arr_or_ts_spec_dict['kvstore']['driver'] == 'gfile':
