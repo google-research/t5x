@@ -803,6 +803,62 @@ class DecoderOnlyModel(BaseTransformerModel):
 
     return sequence_scores
 
+  def _compute_kv_cache(
+      self,
+      params: PyTreeDef,
+      inputs: jnp.ndarray,
+      inputs_lengths: jnp.ndarray,
+      decoder_causal_attention: jnp.ndarray,
+  ) -> PyTreeDef:
+    """Compute the key/value cache on the input prefix."""
+    _, variables_with_cache = self.module.apply({'params': params},
+                                                jnp.ones_like(inputs),
+                                                jnp.ones_like(inputs),
+                                                enable_dropout=False,
+                                                decode=True,
+                                                mutable=['cache'])
+    cache = variables_with_cache['cache']
+
+    # Prefill our cache with all the inputs. `inputs_lengths` is the index of
+    # the last input token. The cache will be filled for all the input
+    # positions, save the last input token. The cache index will point to the
+    # index of this last input token which is considered during prefilling but
+    # not cached. This re-computation is required as the logits for this
+    # position are required for selecting the first output token.
+    #
+    # The cache is still `[B, ..., max_decode_len]` but any position less than
+    # the `inputs_length` will be non-zero, that is
+    # `cached_key[b, ..., i < inputs_lengths[b]] != 0`.
+    #
+    # The cache index is now a vector of size [B] = input_lengths
+
+    # If `self._inputs_bidirectional_attention = False`, we should not pass
+    # batch['decoder_causal_attention'] to `module.apply` during cache prefill
+    # and pass None instead.
+    maybe_decoder_causal_attention = self._get_decoder_causal_attention(
+        {'decoder_causal_attention': decoder_causal_attention})
+
+    _, variables_with_cache = self.module.apply(
+        {
+            'params': params,
+            'cache': cache
+        },
+        decoder_input_tokens=inputs,
+        # Use the `decoder_causal_attention`, which has 1 for all input
+        # positions, including the BOS token, as the targets so when the
+        # decoder attention mask is built, it will correctly cover the whole
+        # input, Using something like the inputs will cause the first input
+        # token (the 0 for BOS) will not be included in the mask. This also
+        # restricts the mask to not include any target positions like it would
+        # if you used `decoder_target_tokens`.
+        decoder_target_tokens=decoder_causal_attention,
+        decoder_causal_attention=maybe_decoder_causal_attention,
+        mutable=['cache'],
+        enable_dropout=False,
+        prefill=True,
+        prefill_lengths=inputs_lengths)
+    return variables_with_cache['cache']
+
   def predict_batch_with_aux(
       self,
       params: PyTreeDef,
@@ -901,21 +957,6 @@ class DecoderOnlyModel(BaseTransformerModel):
           'Batch does not have the right format for text generation: probably '
           'because `task_feature_lengths` passed to the feature converter does '
           'not have both `inputs` and `targets`.')
-    # Prepare zeroed-out autoregressive cache. The shape will be
-    # [batch, ..., max_decode_length]
-    target_shape = batch['decoder_input_tokens'].shape
-    target_type = batch['decoder_input_tokens'].dtype
-    max_decode_length = target_shape[1]
-
-    _, variables_with_cache = self.module.apply(
-        {'params': params},
-        jnp.ones(target_shape, target_type),
-        jnp.ones(target_shape, target_type),
-        enable_dropout=False,
-        decode=True,
-        mutable=['cache'])
-    cache = variables_with_cache['cache']
-
     # We can use the decoder causal attention mask to tell how long the inputs
     # are. The causal mask has a 1 for all the input tokens (and one more to
     # cover the original BOS token, created by shifting the inputs one to the
@@ -927,44 +968,11 @@ class DecoderOnlyModel(BaseTransformerModel):
     # tokens, this masks out targets portion of the decoder_input_tokens.
     inputs = batch['decoder_input_tokens'] * batch['decoder_causal_attention']
 
-    # Prefill our cache with all the inputs. `inputs_lengths` is the index of
-    # the last input token. The cache will be filled for all the input
-    # positions, save the last input token. The cache index will point to the
-    # index of this last input token which is considered during prefilling but
-    # not cached. This re-computation is required as the logits for this
-    # position are required for selecting the first output token.
-    #
-    # The cache is still `[B, ..., max_decode_len]` but any position less than
-    # the `inputs_length` will be non-zero, that is
-    # `cached_key[b, ..., i < inputs_lengths[b]] != 0`.
-    #
-    # The cache index is now a vector of size [B] = input_lengths
+    prefilled_cache = self._compute_kv_cache(params, inputs, inputs_lengths,
+                                             batch['decoder_causal_attention'])
 
-    # If `self._inputs_bidirectional_attention = False`, we should not pass
-    # batch['decoder_causal_attention'] to `module.apply` during cache prefill
-    # and pass None instead.
-    maybe_decoder_causal_attention = self._get_decoder_causal_attention(batch)
-
-    _, variables_with_cache = self.module.apply(
-        {
-            'params': params,
-            'cache': cache
-        },
-        decoder_input_tokens=inputs,
-        # Use the `decoder_causal_attention`, which has 1 for all input
-        # positions, including the BOS token, as the targets so when the
-        # decoder attention mask is built, it will correctly cover the whole
-        # input, Using something like the inputs will cause the first input
-        # token (the 0 for BOS) will not be included in the mask. This also
-        # restricts the mask to not include any target positions like it would
-        # if you used `decoder_target_tokens`.
-        decoder_target_tokens=batch['decoder_causal_attention'],
-        decoder_causal_attention=maybe_decoder_causal_attention,
-        mutable=['cache'],
-        enable_dropout=False,
-        prefill=True,
-        prefill_lengths=inputs_lengths)
-    prefilled_cache = variables_with_cache['cache']
+    target_shape = batch['decoder_input_tokens'].shape
+    max_decode_length = target_shape[1]
 
     tokens_ids_to_logits = functools.partial(
         self._compute_logits_from_slice,
