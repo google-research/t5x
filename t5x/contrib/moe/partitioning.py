@@ -246,6 +246,10 @@ def standard_logical_axis_rules(
   be decoupled; see also MoePjitPartitioner for details of when expert and data
   axes need to be decouple.
 
+  2D parameter sharding (`parameter_partitioning_dims=2`) is not supported.
+  Sharding parameters along the 'data' axis will interfere with expert
+  parallelism, because experts are also partitioned along the 'data' axis.
+
   Args:
     num_experts: Total number of experts across all devices.
     num_partitions: Size of the model parallel submesh. Model parallelism is
@@ -263,7 +267,13 @@ def standard_logical_axis_rules(
 
   Returns:
     Sequence of logical axis rules.
+
+  Raises:
+    ValueError if parameter_partitioning_dims=2.
   """
+  if parameter_partitioning_dims == 2:
+    raise ValueError('2D parameter sharding (`parameter_partitioning_dims=2`) '
+                     'is not supported for MoE.')
 
   default_rules = t5x_partitioning.standard_logical_axis_rules(
       activation_partitioning_dims, parameter_partitioning_dims)

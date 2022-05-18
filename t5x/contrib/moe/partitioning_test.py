@@ -292,6 +292,11 @@ class PartitioningTest(absltest.TestCase):
             ('additional', 'model'),
         ])
 
+  def test_2d_parameter_sharding_unsupported(self):
+    with self.assertRaisesRegex(ValueError, 'is not supported for MoE.'):
+      moe_partitioning.standard_logical_axis_rules(
+          num_experts=4, num_partitions=1, parameter_partitioning_dims=2)
+
   def test_data_partition_spec(self):
     self.assertEqual(
         moe_partitioning.data_partition_spec(two_data_axes=False),
