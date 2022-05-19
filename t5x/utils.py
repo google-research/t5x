@@ -56,6 +56,7 @@ PartitionSpec = partitioning.PartitionSpec
 DType = Union[np.dtype, type(jnp.bfloat16)]
 Shape = Tuple[int, ...]
 
+
 # TODO(adarob): Remove namespace mapping after client gin files are updated.
 TensorBoardLogger = seqio.TensorBoardLogger
 
@@ -76,7 +77,7 @@ class SaveCheckpointConfig:
   # Whether to save dataset checkpoints.
   save_dataset: bool = False
   # The checkpointer class to use.
-  checkpointer_cls: Type[checkpoints.Checkpointer] = checkpoints.Checkpointer
+  checkpointer_cls: checkpoints.CheckpointerConstructor = checkpoints.Checkpointer
   # Transformations to apply, in order, to the state before writing.
   state_transformation_fns: Sequence[checkpoints.SaveStateTransformationFn] = (
       dataclasses.field(default_factory=list))
@@ -114,7 +115,7 @@ class RestoreCheckpointConfig:
   # Whether to restore the dataset checkpoint. Fails if checkpoint not present.
   restore_dataset: bool = False
   # The checkpointer class to use.
-  checkpointer_cls: Type[checkpoints.Checkpointer] = checkpoints.Checkpointer
+  checkpointer_cls: checkpoints.CheckpointerConstructor = checkpoints.Checkpointer
   # Transformations to apply, in order, to the state after reading. These will
   # be applied after the `assignment_map` transformations.
   state_transformation_fns: Sequence[
@@ -763,6 +764,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       batch_indices, batch_result = partitioned_infer_step(
           train_state.params, infer_batch, step_rng, index)
       logging.info('Inference of batch %s done.', index)
+
       # Issue asynchronous copy request which serves as prefetching to the host.
       def _copy_to_host_async(x):
         if isinstance(x, GlobalDeviceArray):

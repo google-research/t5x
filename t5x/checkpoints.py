@@ -34,7 +34,7 @@ import os
 import re
 import subprocess
 import time
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Protocol
 
 from absl import logging
 from flax import serialization
@@ -1108,6 +1108,46 @@ class Checkpointer(object):
     return _get_optimizer_state_dict(ckpt_contents,
                                      self._train_state.state_dict(),
                                      state_transformation_fns)
+
+
+class CheckpointerConstructor(Protocol):
+  """A function that returns a checkpoints.Checkpointer.
+
+  This type annotation allows users to partially bind args to the constructors
+  of Checkpointer subclasses without triggering type errors.
+  """
+
+  def __call__(self,
+               train_state: train_state_lib.TrainState,
+               partitioner: partitioning.BasePartitioner,
+               checkpoints_dir: str,
+               dataset_iterator: Optional[tf.data.Iterator] = None,
+               *,
+               keep: Optional[int] = None,
+               save_dtype: jnp.dtype = np.float32,
+               restore_dtype: Optional[jnp.dtype] = None,
+               use_gda: Optional[bool] = False) -> Checkpointer:
+    """Checkpointer constructor.
+
+    Args:
+      train_state: A train state to be used to determine the structure of the
+        parameter tree, and the *full* (non-partitioned) parameter shapes and
+        dtypes. Saved and restored train states must match this structure.
+      partitioner: the partitioner to use for determining the local chunks
+        mapping or to perform params partitioning on restore.
+      checkpoints_dir: a path to a directory to save checkpoints in and restore
+        them from.
+      dataset_iterator: an optional iterator to save/restore.
+      keep: an optional maximum number of checkpoints to keep. If more than this
+        number of checkpoints exist after a save, the oldest ones will be
+        automatically deleted to save space.
+      save_dtype: dtype to cast targets to before saving.
+      restore_dtype: optional dtype to cast targets to after restoring. If None,
+        no parameter casting is performed.
+      use_gda: if True, enabled gda_lib.GlobalDeviceArray. Note: this is
+        currently an experimental feature under development.
+    """
+    pass
 
 
 class SaveBestCheckpointer(Checkpointer):
