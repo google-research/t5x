@@ -46,6 +46,7 @@ from jax.experimental import multihost_utils
 from jax.experimental.gda_serialization import serialization as gda_serialization
 import jax.numpy as jnp
 import numpy as np
+import orbax.checkpoint
 from t5x import checkpoint_importer
 from t5x import checkpoint_utils
 from t5x import optimizers
@@ -148,14 +149,7 @@ class _ParameterInfo:
   axes: Optional[partitioning.PartitionSpec] = None
 
 
-# Register functions with flax.serialization to handle `ts.Spec`.
-serialization.register_serialization_state(
-    ts.Spec,
-    ty_to_state_dict=lambda t: t.to_json(),
-    # The parameter may have been written to tensorstore or msgpack.
-    # If the former, a dict of the spec will be stored. If the latter it will be
-    # the value itself.
-    ty_from_state_dict=lambda t, s: ts.Spec(s) if isinstance(s, dict) else s)
+orbax.checkpoint.utils.register_ts_spec_for_serialization()
 
 
 def _run_future_tree(future_tree):
