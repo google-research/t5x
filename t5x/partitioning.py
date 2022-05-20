@@ -339,7 +339,7 @@ def default_mesh(num_partitions: int,
     if num_partitions == 1:
       mps = (1, 1, 1, 1)
     elif num_partitions == 2:
-      mps = (2, 1, 1, 1)
+      mps = (1, 2, 1, 1)
     elif num_partitions == 4:
       if bounds[0] >= 4:
         mps = (4, 1, 1, 1)
