@@ -28,6 +28,7 @@ from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, 
 import warnings
 
 from absl import logging
+import clu.data
 from flax import traverse_util
 import flax.core
 from flax.core import scope as flax_scope
@@ -1201,14 +1202,17 @@ def get_dataset_inner(cfg: DatasetConfig,
 
 
 class GetDatasetCallable(typing_extensions.Protocol):
+  """Interface for a function returning a dataset (iterator)."""
 
-  def __call__(self,
-               cfg: DatasetConfig,
-               shard_id: int,
-               num_shards: int,
-               feature_converter_cls: Callable[..., seqio.FeatureConverter],
-               num_epochs: Optional[int] = None,
-               continue_from_last_checkpoint: bool = True) -> tf.data.Dataset:
+  def __call__(
+      self,
+      cfg: DatasetConfig,
+      shard_id: int,
+      num_shards: int,
+      feature_converter_cls: Callable[..., seqio.FeatureConverter],
+      num_epochs: Optional[int] = None,
+      continue_from_last_checkpoint: bool = True
+  ) -> Union[clu.data.DatasetIterator, tf.data.Dataset]:
     ...
 
 
@@ -1229,9 +1233,11 @@ def get_training_eval_datasets(
         f'Batch size ({cfg.batch_size}) must be divisible by number of '
         f'shards ({num_shards}).')
 
-  def _repeat_shard_batch_take_cache(ds):
+  def _repeat_shard_batch_take_cache(ds: tf.data.Dataset):
     # We shard and batch the full, repeated dataset to avoid issues with uneven
     # file shards.
+    if not isinstance(ds, tf.data.Dataset):
+      raise ValueError('Only tf.data.Dataset objects supported.')
     return ds.unbatch().repeat().shard(num_shards, shard_id).batch(
         cfg.batch_size // num_shards,
         drop_remainder=True).take(eval_steps).cache()

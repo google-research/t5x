@@ -30,6 +30,7 @@ from absl import logging
 import cached_property
 from clu import asynclib
 from clu import metric_writers
+import clu.data
 import clu.metrics
 import clu.values
 from flax.core import FrozenDict
@@ -497,7 +498,7 @@ class BaseTrainer(abc.ABC):
       self._train_state = train_state
 
   def train(self,
-            batch_iter: Iterator[BatchType],
+            batch_iter: Union[Iterator[BatchType], clu.data.DatasetIterator],
             num_steps: int,
             start_step: Optional[int] = None) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""

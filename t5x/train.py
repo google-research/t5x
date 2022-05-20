@@ -16,11 +16,10 @@ r"""Script to pretrain or finetune in JAX using a SeqIO pipeline.
 
 """
 import functools
-import itertools
 import math
 import os
 import time
-from typing import Callable, Iterator, Sequence, Mapping, Tuple, Type, Optional
+from typing import Callable, Sequence, Mapping, Tuple, Type, Optional
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
@@ -30,6 +29,7 @@ os.environ['FLAX_PROFILE'] = 'true'
 os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
+import clu.data
 import jax
 from jax import random
 from jax.experimental import multihost_utils
@@ -239,6 +239,13 @@ def train(
 
   train_ds = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
                             model.FEATURE_CONVERTER_CLS)
+  if isinstance(train_ds, tf.data.Dataset):
+    train_iter = clu.data.TfDatasetIterator(train_ds)
+  elif isinstance(train_ds, clu.data.DatasetIterator):
+    train_iter = train_ds
+  else:
+    raise ValueError(
+        f'get_dataset_fn returned unsupported type {type(train_ds)}.')
 
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
@@ -256,11 +263,6 @@ def train(
           '%s', train_eval_dataset_cfg)
   else:
     train_eval_datasets = {}
-
-  # Initialize optimizer, maybe from an existing checkpoint.
-  checkpointable_train_iter: tf.data.Iterator = iter(train_ds)  # pytype:disable=annotation-type-mismatch
-  train_iter: Iterator[trainer_lib.BatchType] = map(
-      lambda x: jax.tree_map(np.asarray, x), checkpointable_train_iter)
 
   # The manner in which parameters are initialized follows this order of
   # preference:
@@ -325,6 +327,9 @@ def train(
       restore_cfgs)
   if len(restore_paths) > 1:
     raise ValueError('Multiple restore paths not permitted in training.')
+  checkpointable_train_iter = (
+      train_iter
+      if isinstance(train_iter, clu.data.TfDatasetIterator) else None)
   checkpoint_manager = utils.LegacyCheckpointManager(
       checkpoint_cfg.save,
       valid_restore_cfg,
@@ -517,20 +522,12 @@ def train(
   logging.info('Training with artificial "epochs" of %d steps.',
                steps_per_epoch)
 
-  # Kickstart training dataset and compile train loop.
-  logging.info('Kickstarting train dataset prefetch.')
-  logging.flush()
-
-  ds_tick = time.time()
-  # Get first batch to warm up the dataset pipeline.
-  first_batch = next(train_iter)
-  # Prepend first batch back to iterator to be used by trainer.
-  train_iter = itertools.chain([first_batch], train_iter)
-  train_metrics.write_scalar('timing/dataset_warmup_seconds',
-                             time.time() - ds_tick, host_step)
   logging.info('Compiling train loop.')
   logging.flush()
-  trainer.compile_train(first_batch)
+  dummy_batch = {
+      k: np.ones(v.shape, v.dtype) for k, v in train_iter.element_spec.items()
+  }
+  trainer.compile_train(dummy_batch)
 
   # Main Loop over "epochs".
   for epoch in range(first_epoch, num_epochs):
