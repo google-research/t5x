@@ -76,6 +76,9 @@ class SaveCheckpointConfig:
   period: Optional[int] = None
   # Number of most recent checkpoints to keep, or None to keep them all.
   keep: Optional[int] = None
+  # Number of dataset checkpoints to keep, or None to keep them all.
+  # Note: Dataset checkpoints are also affected by `keep`.
+  keep_dataset_checkpoints: Optional[int] = None
   # Whether to save dataset checkpoints.
   save_dataset: bool = False
   # The checkpointer class to use.
@@ -261,7 +264,8 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
         dataset_iterator=ds_iter if save_cfg.save_dataset else None,
         save_dtype=save_cfg.dtype,
         keep=save_cfg.keep,
-        use_gda=use_gda)
+        use_gda=use_gda,
+        keep_dataset_checkpoints=save_cfg.keep_dataset_checkpoints)
 
     if restore_cfg:
       restore_checkpointer = restore_cfg.checkpointer_cls(

@@ -78,3 +78,14 @@ def remove_checkpoint_dir(ckpt_dir: str) -> None:
     gfile.rmtree(ckpt_dir)
   else:
     logging.info('Keeping pinned checkpoint: %s', ckpt_dir)
+
+
+def remove_dataset_checkpoint(ckpt_dir: str, train_ds_prefix: str) -> None:
+  """Removes dataset checkpoints if the checkpoint is not pinned."""
+  if not is_pinned_checkpoint(ckpt_dir):
+    train_ds_pattern = os.path.join(ckpt_dir, train_ds_prefix + '*')
+    logging.info('Deleting dataset checkpoint: %s', train_ds_pattern)
+    for file in gfile.glob(train_ds_pattern):
+      gfile.remove(file)
+  else:
+    logging.info('Keeping pinned checkpoint: %s', ckpt_dir)

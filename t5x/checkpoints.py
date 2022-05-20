@@ -76,6 +76,7 @@ VERSION = 3
 # range of partitionings.
 _DESIRED_CHUNK_SIZE_BYTES = 64 * 1024 * 1024
 # TODO(levskaya, adarob): how should we handle stacked/fused variables??
+_TRAIN_DS_PREFIX = 'train_ds'
 
 
 def _choose_chunk_shape(write_shape: Sequence[int],
@@ -169,6 +170,16 @@ def all_steps(checkpoints_dir: str) -> Sequence[int]:
   re_pattern = re.compile(r'.*/checkpoint_(\d+)/checkpoint$')
   matches = [re_pattern.match(ckpt) for ckpt in checkpoint_paths]
   return sorted(int(match.group(1)) for match in matches if match)
+
+
+def all_dataset_checkpoint_steps(checkpoints_dir: str) -> Sequence[int]:
+  """Returns available dataset checkpoint step numbers in ascending order."""
+  glob_pattern = os.path.join(checkpoints_dir, 'checkpoint_*',
+                              f'{_TRAIN_DS_PREFIX}-*')
+  train_ds_paths = gfile.glob(glob_pattern)
+  re_pattern = re.compile(r'.*/checkpoint_(\d+)/.*$')
+  matches = [re_pattern.match(path) for path in train_ds_paths]
+  return sorted(set(int(match.group(1)) for match in matches if match))
 
 
 def latest_step(checkpoints_dir: str) -> Optional[int]:
@@ -400,6 +411,9 @@ class Checkpointer(object):
       automatically deleted to save space.
     restore_dtype: optional dtype to cast targets to after restoring.
     save_dtype: dtype to cast targets to before saving.
+    keep_dataset_checkpoints: an optional maximum number of data iterators to
+      keep. If more than this number of data iterators exist after a save, the
+      oldest ones will be automatically deleted to save space.
   """
 
   def __init__(self,
@@ -411,7 +425,8 @@ class Checkpointer(object):
                keep: Optional[int] = None,
                save_dtype: jnp.dtype = np.float32,
                restore_dtype: Optional[jnp.dtype] = None,
-               use_gda: Optional[bool] = False):
+               use_gda: Optional[bool] = False,
+               keep_dataset_checkpoints: Optional[int] = None):
     """Checkpointer constructor.
 
     Args:
@@ -431,11 +446,15 @@ class Checkpointer(object):
         no parameter casting is performed.
       use_gda: if True, enabled gda_lib.GlobalDeviceArray. Note: this is
         currently an experimental feature under development.
+      keep_dataset_checkpoints: an optional maximum number of data iterators to
+        keep. If more than this number of data iterators exist after a save, the
+        oldest ones will be automatically deleted to save space.
     """
     self._train_state = train_state
     self._partitioner = partitioner
     self.checkpoints_dir = checkpoints_dir
     self.keep = keep
+    self.keep_dataset_checkpoints = keep_dataset_checkpoints
     # Immutable due to use in `_get_parameter_infos`
     self._save_dtype = save_dtype
     self.restore_dtype = restore_dtype
@@ -447,7 +466,7 @@ class Checkpointer(object):
 
     data_layout = partitioner.get_data_layout()
     self._dataset_ckpt_name = (
-        f'train_ds-'
+        f'{_TRAIN_DS_PREFIX}-'
         f'{data_layout.shard_id:03}-of-{data_layout.num_shards:03}')
     self._should_write_dataset_ckpt = (
         dataset_iterator and data_layout.is_first_host_in_replica_set)
@@ -576,9 +595,23 @@ class Checkpointer(object):
     """Returns list of available step numbers in ascending order."""
     return all_steps(self.checkpoints_dir)
 
+  def all_dataset_checkpoint_steps(self) -> Sequence[int]:
+    """Returns list of available step numbers in ascending order."""
+    return all_dataset_checkpoint_steps(self.checkpoints_dir)
+
   def latest_step(self) -> Optional[int]:
     """Returns latest step number or None if no checkpoints exist."""
     return latest_step(self.checkpoints_dir)
+
+  def _remove_old_dataset_checkpoints(self):
+    """Deletes old dataset checkpoints if there are more than allowed."""
+    if self.keep_dataset_checkpoints:
+      existing_steps = self.all_dataset_checkpoint_steps()
+      to_remove = len(existing_steps) - self.keep_dataset_checkpoints
+      if to_remove > 0:
+        for step in existing_steps[:to_remove]:
+          checkpoint_utils.remove_dataset_checkpoint(
+              self._get_checkpoint_dir(step), _TRAIN_DS_PREFIX)
 
   def _remove_old_checkpoints(self):
     """Deletes oldest checkpoints if there are more than keep_checkpoints."""
@@ -672,6 +705,7 @@ class Checkpointer(object):
 
       # Remove old checkpoints, if necessary.
       self._remove_old_checkpoints()
+      self._remove_old_dataset_checkpoints()
 
     # Block until complete on all hosts.
     multihost_utils.sync_global_devices(
@@ -1120,7 +1154,8 @@ class CheckpointerConstructor(Protocol):
                keep: Optional[int] = None,
                save_dtype: jnp.dtype = np.float32,
                restore_dtype: Optional[jnp.dtype] = None,
-               use_gda: Optional[bool] = False) -> Checkpointer:
+               use_gda: Optional[bool] = False,
+               keep_dataset_checkpoints: Optional[int] = None) -> Checkpointer:
     """Checkpointer constructor.
 
     Args:
@@ -1140,6 +1175,9 @@ class CheckpointerConstructor(Protocol):
         no parameter casting is performed.
       use_gda: if True, enabled gda_lib.GlobalDeviceArray. Note: this is
         currently an experimental feature under development.
+      keep_dataset_checkpoints: an optional maximum number of data iterators to
+        keep. If more than this number of data iterators exist after a save, the
+        oldest ones will be automatically deleted to save space.
     """
     pass
 
@@ -1192,6 +1230,9 @@ class SaveBestCheckpointer(Checkpointer):
     force_keep_period: When removing checkpoints, skip those who step is
       divisible by force_keep_period (step % force_keep_period == 0).
     use_gda: Enables GDA (see Checkpointer).
+    keep_dataset_checkpoints: an optional maximum number of data iterators to
+      keep. If more than this number of data iterators exist after a save, the
+      oldest ones will be automatically deleted to save space.
   """
 
   def __init__(self,
@@ -1207,7 +1248,8 @@ class SaveBestCheckpointer(Checkpointer):
                metric_mode: str = 'max',
                keep_checkpoints_without_metrics: bool = True,
                force_keep_period: Optional[int] = None,
-               use_gda: bool = False):
+               use_gda: bool = False,
+               keep_dataset_checkpoints: Optional[int] = None):
     super().__init__(
         train_state,
         partitioner,
@@ -1216,7 +1258,8 @@ class SaveBestCheckpointer(Checkpointer):
         keep=keep,
         save_dtype=save_dtype,
         restore_dtype=restore_dtype,
-        use_gda=use_gda)
+        use_gda=use_gda,
+        keep_dataset_checkpoints=keep_dataset_checkpoints)
     if metric_mode not in ('max', 'min'):
       raise ValueError('Unsupported `metric_mode`: %s' % metric_mode)
 

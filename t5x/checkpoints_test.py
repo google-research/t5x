@@ -868,6 +868,76 @@ class CheckpointsTest(parameterized.TestCase):
     self.assertSequenceEqual(checkpointer.all_steps(), [42, 44])
 
   @mock.patch('time.time', return_value=0)
+  def test_keep_dataset_checkpoints(self, unused_mock_time):
+    no_partitions_partitioner = self.get_partitioner(0, 1, 1)
+    train_state = self.train_state
+    dataset_iterator = iter(tf.data.Dataset.range(10))
+    checkpointer = checkpoints.Checkpointer(
+        train_state,
+        no_partitions_partitioner,
+        self.tmp_dir,
+        dataset_iterator=dataset_iterator,
+        keep=2,
+        keep_dataset_checkpoints=1)
+
+    checkpointer.save(update_train_state_step(train_state, 42))
+    self.assertSequenceEqual(checkpointer.all_steps(), [42])
+    self.assertSequenceEqual(checkpointer.all_dataset_checkpoint_steps(), [42])
+
+    checkpointer.save(update_train_state_step(train_state, 43))
+    self.assertSequenceEqual(checkpointer.all_steps(), [42, 43])
+    self.assertSequenceEqual(checkpointer.all_dataset_checkpoint_steps(), [43])
+
+    checkpointer.save(update_train_state_step(train_state, 44))
+    self.assertSequenceEqual(checkpointer.all_steps(), [43, 44])
+    self.assertSequenceEqual(checkpointer.all_dataset_checkpoint_steps(), [44])
+
+    checkpointer.keep = 1
+    checkpointer.save(update_train_state_step(train_state, 45))
+    self.assertSequenceEqual(checkpointer.all_steps(), [45])
+    self.assertSequenceEqual(checkpointer.all_dataset_checkpoint_steps(), [45])
+
+    checkpointer.keep = 3
+    checkpointer.save(update_train_state_step(train_state, 46))
+    self.assertSequenceEqual(checkpointer.all_steps(), [45, 46])
+    self.assertSequenceEqual(checkpointer.all_dataset_checkpoint_steps(), [46])
+
+  @mock.patch('time.time', return_value=0)
+  def test_keep_dataset_checkpoints_pinned(self, unused_mock_time):
+    no_partitions_partitioner = self.get_partitioner(0, 1, 1)
+    train_state = self.train_state
+    dataset_iterator = iter(tf.data.Dataset.range(10))
+    checkpointer = checkpoints.Checkpointer(
+        train_state,
+        no_partitions_partitioner,
+        self.tmp_dir,
+        dataset_iterator=dataset_iterator,
+        keep=1,
+        keep_dataset_checkpoints=1)
+
+    checkpointer.save(update_train_state_step(train_state, 42))
+    self.assertSequenceEqual(checkpointer.all_steps(), [42])
+
+    # Mark the checkpoint as pinned by creating the ALWAYS KEEP file.
+    ckpt_dir = self.checkpoints_dir.mkdir(f'checkpoint_{42}')
+    ckpt_dir.create_file('PINNED')
+
+    checkpointer.save(update_train_state_step(train_state, 43))
+
+    # Assert both the pinned and the most recent checkpoints are saved.
+    self.assertSequenceEqual(checkpointer.all_steps(), [42, 43])
+    self.assertSequenceEqual(checkpointer.all_dataset_checkpoint_steps(),
+                             [42, 43])
+
+    checkpointer.save(update_train_state_step(train_state, 44))
+
+    # Assert the non-pinned checkpoint gets deleted, but the pinned and the most
+    # recent one are still saved.
+    self.assertSequenceEqual(checkpointer.all_steps(), [42, 44])
+    self.assertSequenceEqual(checkpointer.all_dataset_checkpoint_steps(),
+                             [42, 44])
+
+  @mock.patch('time.time', return_value=0)
   def test_keep_with_save_best_checkpointer(self, unused_mock_time):
     no_partitions_partitioner = self.get_partitioner(0, 1, 1)
     train_state = self.train_state

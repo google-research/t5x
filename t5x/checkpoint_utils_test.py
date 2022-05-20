@@ -31,6 +31,11 @@ class CheckpointsUtilsTest(absltest.TestCase):
     self.checkpoints_dir = self.create_tempdir()
     self.ckpt_dir_path = self.checkpoints_dir.full_path
     self.pinned_ckpt_file = os.path.join(self.ckpt_dir_path, "PINNED")
+    self.checkpoints_dir.create_file("checkpoint")
+    # Create a `train_ds` file representing the dataset checkpoint.
+    train_ds_basename = "train_ds-00000-of-00001"
+    self.train_ds_file = os.path.join(self.ckpt_dir_path, train_ds_basename)
+    self.checkpoints_dir.create_file(train_ds_basename)
 
   def test_always_keep_checkpoint_file(self):
     self.assertEqual(
@@ -118,6 +123,27 @@ class CheckpointsUtilsTest(absltest.TestCase):
     # Validate the checkpoint directory still exists.
     self.assertTrue(gfile.exists(self.ckpt_dir_path))
 
+  def test_remove_dataset_checkpoint(self):
+    # Ensure the checkpoint directory is setup.
+    assert gfile.exists(self.ckpt_dir_path)
+
+    # Test.
+    checkpoint_utils.remove_dataset_checkpoint(self.ckpt_dir_path, "train_ds")
+
+    # Validate the checkpoint directory got removed.
+    self.assertFalse(gfile.exists(self.train_ds_file))
+    self.assertTrue(gfile.exists(self.ckpt_dir_path))
+
+  def test_remove_dataset_checkpoint_pinned(self):
+    # Mark the checkpoint directory as pinned so it does not get removed.
+    self.checkpoints_dir.create_file("PINNED")
+
+    # Test.
+    checkpoint_utils.remove_dataset_checkpoint(self.ckpt_dir_path, "train_ds")
+
+    # Validate the checkpoint directory still exists.
+    self.assertTrue(gfile.exists(self.train_ds_file))
+    self.assertTrue(gfile.exists(self.ckpt_dir_path))
 
 if __name__ == "__main__":
   absltest.main()
