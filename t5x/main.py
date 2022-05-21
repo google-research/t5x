@@ -36,6 +36,7 @@ from typing import Sequence
 
 from absl import app
 from absl import flags
+from absl import logging
 
 import gin
 import jax
@@ -68,6 +69,14 @@ _GIN_FILE = flags.DEFINE_multi_string(
 
 _GIN_BINDINGS = flags.DEFINE_multi_string(
     'gin_bindings', default=[], help='Individual gin bindings.')
+
+_GIN_SEARCH_PATHS = flags.DEFINE_list(
+    'gin_search_paths',
+    default=['.'],
+    help='Comma-separated list of gin config path prefixes to be prepended '
+    'to suffixes given via `--gin_file`. If a file appears in. Only the '
+    'first prefix that produces a valid path for each suffix will be '
+    'used.')
 
 _RUN_MODE = flags.DEFINE_enum_class(
     'run_mode',
@@ -118,9 +127,13 @@ def main(argv: Sequence[str]):
   # Register function explicitly under __main__ module, to maintain backward
   # compatability of existing '__main__' module references.
   gin.register(_FUNC_MAP[_RUN_MODE.value], '__main__')
+  if _GIN_SEARCH_PATHS.value != ['.']:
+    logging.warning(
+        'Using absolute paths for the gin files is strongly recommended.')
 
-  gin_utils.parse_gin_flags(_DEFAULT_GIN_SEARCH_PATHS, _GIN_FILE.value,
-                            _GIN_BINDINGS.value)
+  # User-provided gin paths take precedence if relative paths conflict.
+  gin_utils.parse_gin_flags(_GIN_SEARCH_PATHS.value + _DEFAULT_GIN_SEARCH_PATHS,
+                            _GIN_FILE.value, _GIN_BINDINGS.value)
 
   if _DRY_RUN.value:
     return
