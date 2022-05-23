@@ -345,9 +345,6 @@ def train(
           valid_restore_cfg,
           lambda rng: train_state_initializer.from_scratch(rng).state_dict(),
           init_rng))
-  assert train_state is None or isinstance(
-      train_state,
-      (train_state_lib.TrainState, train_state_lib.FlaxOptimTrainState))
 
   # 3. If no checkpoint to restore, init from scratch.
   train_state = train_state or train_state_initializer.from_scratch(init_rng)
@@ -363,7 +360,7 @@ def train(
                        partitioner)
 
   # Restore step from last checkpoint or set to 0 if training from scratch.
-  host_step = int(utils.get_local_data(train_state.step))
+  host_step = int(utils.get_local_data(train_state.step))  # pytype: disable=attribute-error
 
   # ---------------------------------------------------------------------------
   # Trainer
