@@ -34,7 +34,7 @@ import os
 import re
 import subprocess
 import time
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Protocol
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
 
 from absl import logging
 from flax import serialization
@@ -1138,7 +1138,7 @@ class Checkpointer(object):
                                      state_transformation_fns)
 
 
-class CheckpointerConstructor(Protocol):
+class CheckpointerConstructor(typing_extensions.Protocol):
   """A function that returns a checkpoints.Checkpointer.
 
   This type annotation allows users to partially bind args to the constructors

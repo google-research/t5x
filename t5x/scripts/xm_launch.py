@@ -42,6 +42,12 @@ _NAME = flags.DEFINE_string(
     't5x',
     'Name of the experiment.',
 )
+_RUN_MODE = flags.DEFINE_enum(
+    'run_mode',
+    'train',
+    ['train', 'eval', 'infer'],
+    'The mode to run T5X under',
+)
 _CLONE_GITHUB = flags.DEFINE_bool(
     'clone_github',
     False,
@@ -128,7 +134,8 @@ async def main(_, gin_args: Dict[str, Any]):
           'RUN git clone --branch=main https://github.com/google-research/t5x',
       ]
     else:
-      shutil.copytree(t5x_path, t5x_destination)
+      if t5x_path != t5x_destination:
+        shutil.copytree(t5x_path, t5x_destination)
       staging_t5x_path = os.path.join(os.path.basename(staging), 't5x')
       copy_t5x = [f'COPY {staging_t5x_path}/ t5x']
 
@@ -156,6 +163,9 @@ async def main(_, gin_args: Dict[str, Any]):
                 *copy_t5x,
                 'WORKDIR t5x',
                 'RUN python3 -m pip install -e ".[tpu]" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html',
+                # TODO(chenandrew): Remove the below command.
+                # TFDS 4.5.2 is missing SplitInfo fields.
+                'RUN python3 -m pip install --force-reinstall tfds-nightly',
                 *pip_install,
                 *copy_projects,
             ],
@@ -165,9 +175,11 @@ async def main(_, gin_args: Dict[str, Any]):
                 'export SEQIO_CACHE_DIRS={}'.format(','.join(
                     _SEQIO_CACHE_DIRS.value)),
                 'export T5X_DIR=.',
-                ('python3 ${T5X_DIR}/t5x/train.py '
+                ('python3 ${T5X_DIR}/t5x/main.py '
+                 f'--run_mode={_RUN_MODE.value} '
                  '--gin.MODEL_DIR=${MODEL_DIR} '
                  '--tfds_data_dir=${TFDS_DATA_DIR} '
+                 '--undefok=seqio_additional_cache_dirs '
                  '--seqio_additional_cache_dirs=${SEQIO_CACHE_DIRS} '),
             ]),
         ),
