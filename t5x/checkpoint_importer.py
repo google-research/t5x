@@ -14,54 +14,22 @@
 
 """T5 Checkpoint Importer."""
 
-import abc
 import asyncio
 from concurrent.futures import thread
 import re
-from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Union
 
 from flax import traverse_util
 import jax
 from jax import numpy as jnp
 import numpy as np
+import orbax.checkpoint
 import tensorflow as tf
 import tensorstore as ts
 
-
-class LazyArray(abc.ABC):
-  """Lazily and asynchronously loads an array."""
-
-  def __init__(self, shape: Sequence[int], dtype: jnp.dtype,
-               get_fn: Callable[[], np.ndarray]):
-    self._shape = tuple(shape)
-    self._dtype = jnp.dtype(dtype)
-    self._get_fn = get_fn
-
-  @property
-  def shape(self) -> Tuple[int, ...]:
-    return self._shape
-
-  @property
-  def dtype(self) -> jnp.dtype:
-    return self._dtype
-
-  @property
-  def nbytes(self) -> int:
-    return np.prod(self._shape) * self._dtype.itemsize
-
-  def astype(self, dtype: np.dtype) -> 'LazyArray':
-    return type(self)(self._shape, dtype, self._get_fn)  # pytype: disable=not-instantiable
-
-  @abc.abstractmethod
-  def get_async(self) -> asyncio.Future:
-    pass
-
-  @abc.abstractmethod
-  def get(self) -> np.ndarray:
-    pass
-
-  def __repr__(self):
-    return f'{type(self).__name__}(shape={self.shape}, dtype={self.dtype})'
+# TODO(b/233659813): Cleanup clients depending on t5x.checkpoint_importer for
+# LazyArray. Reconcile divergence in subclass implementation when possible.
+LazyArray = orbax.checkpoint.lazy_array.LazyArray
 
 
 # TODO(brianlester): The choice between using a `LazyTreadPoolArray` or a
