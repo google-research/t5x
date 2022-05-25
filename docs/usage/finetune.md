@@ -89,7 +89,7 @@ reading the [T5X Gin Primer](gin.md) is recommended.
 
 T5X provides a Gin file that configures the T5X trainer for fine-tuning (located
 at
-[`p5x/configs/runs/finetune.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin)),
+[`t5x/configs/runs/finetune.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin)),
 and expects a few params from you. These params can be specified in a separate
 Gin file, or via commandline flags. Following are the required params:
 
