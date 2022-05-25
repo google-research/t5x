@@ -24,7 +24,6 @@ import os
 import threading
 import time
 from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple, Union
-import warnings
 
 from absl import logging
 import cached_property
@@ -266,25 +265,17 @@ class MetricsManager(object):
   You should call close() to wait for threads started by this class to finish.
   """
 
-  # TODO(cpgaffney) Remove summarize_fn argument when summarize_metrics_fn is
-  # fully deprecated
-  def __init__(self,
-               name: str,
-               summarize_fn: Optional[SummarizeMetricsCallable] = None,
-               summary_dir: Optional[str] = None):
+  def __init__(self, name: str, summary_dir: Optional[str] = None):
     """MetricsManager constructor.
 
     Constructs an empty MetricWriter on all but host 0.
 
     Args:
       name: an identifier of the metrics to use when logging (e.g., 'train').
-      summarize_fn: a callable to convert the mapping of accumulated metrics
-        into a mapping of scalars to be logged.
       summary_dir: the summary directory. If provided, TensorBoard summaries
         will be written to a `name` subdirectory.
     """
     self._name = name
-    self._summarize_fn = summarize_fn
     if jax.process_index() == 0:
       self._writer = metric_writers.create_default_writer(
           summary_dir,
@@ -363,8 +354,7 @@ class MetricsManager(object):
     duration_future = self._duration_timer.stop(block_on=metrics)
 
     def _summarize_and_write():
-      # For thread safety, since `_summarize_fn` may do additional computations,
-      # we first copy the metrics to host.
+      # For thread safety we first copy the metrics to host.
       fetched_metrics = jax.tree_map(jax.device_get, metrics)
 
       duration = duration_future.result()
@@ -382,11 +372,7 @@ class MetricsManager(object):
       jax.tree_map(_ensure_not_on_device, final_metrics)
       final_metrics = jax.tree_map(utils.get_local_data, final_metrics)
 
-      if self._summarize_fn is None:
-        summary = {k: v.compute_value() for k, v in final_metrics.items()}
-      else:
-        summary = self._summarize_fn(
-            metrics=final_metrics, duration=duration, num_steps=num_steps)
+      summary = {k: v.compute_value() for k, v in final_metrics.items()}
       with self._writer_lock:
         metric_writers.write_values(self._writer, int(step), summary)
 
@@ -445,31 +431,15 @@ class BaseTrainer(abc.ABC):
 
     self.stop_training = False
 
-    if hasattr(model, "get_initial_metrics") and callable(
-        getattr(model, "get_initial_metrics")):
-      warnings.warn(
-          "get_initial_metrics is deprecated and will be removed on Mar-01-22."
-          " Please see https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/metrics for migration instructions.",
-          DeprecationWarning)
-    summarize_fn = None
-    if hasattr(model, "summarize_metrics_fn") and callable(
-        getattr(model, "summarize_metrics_fn")):
-      warnings.warn(
-          "summarize_metrics_fn is deprecated and will be removed on Mar-01-22."
-          " Please see https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/metrics for migration instructions.",
-          DeprecationWarning)
-      summarize_fn = model.summarize_metrics_fn
     # The training metrics combine metrics added by the Model (e.g., loss and
     # accuracy) and Trainer (e.g., learning rate).
     self.train_metrics_manager = MetricsManager(
-        "train", summarize_fn=summarize_fn, summary_dir=summary_dir)
+        "train", summary_dir=summary_dir)
 
     # The eval metrics only include metrics added by the Model.
     self.eval_metrics_managers = {  # pylint:disable=g-complex-comprehension
-        n: MetricsManager(
-            f"training_eval/{n}",
-            summarize_fn=summarize_fn,
-            summary_dir=summary_dir) for n in eval_names
+        n: MetricsManager(f"training_eval/{n}", summary_dir=summary_dir)
+        for n in eval_names
     }
 
   def __enter__(self):
@@ -955,9 +925,8 @@ class EarlyStoppingAction(BaseAction):
         not improve for a number of times (specified in patience), stop the
         training. The tuple takes 2 strings, whereas the first string defines
         the task to track, and the second defines the metric of the task to
-        track.
-        e.g.,: ('mt5_xnli_dev_test.all_langs', 'accuracy') would monitor the
-          'accuracy' for `mt5_xnli_dev_test.all_langs`.
+        track. e.g.,: ('mt5_xnli_dev_test.all_langs', 'accuracy') would monitor
+        the 'accuracy' for `mt5_xnli_dev_test.all_langs`.
       mode: One of `{"min", "max"}`. In `min` mode, training will stop when the
         quantity monitored has stopped decreasing; in `"max"` mode it will stop
         when the quantity monitored has stopped increasing;
@@ -968,9 +937,9 @@ class EarlyStoppingAction(BaseAction):
         improvement.
       rtol: Relative tolerance in the monitoried quantity to qualify as an
         improvement. This combined with `atol` defines whether a change is
-        considered improvement.
-        The total change is calculated as following: `delta = (atol + rtol *
-          previous)` See `numpy.allclose` for detailed information.
+        considered improvement. The total change is calculated as following:
+        `delta = (atol + rtol * previous)` See `numpy.allclose` for detailed
+        information.
     """
     self._task, self._metric = metric
     if mode not in ["min", "max"]:

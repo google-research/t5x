@@ -1,9 +1,6 @@
 # Metrics Overview
 
 
-TIP: See [below](#migration-instructions) for concrete instructions on how to
-align your metrics with the redesigned T5X metric library.
-
 ## Introduction
 
 T5X provides a flexible and customizable library for managing metrics. Metrics
@@ -150,11 +147,8 @@ The metrics created on one particular training step (one call of the loss
 function) are accumulated over subsequent steps (using the `merge` method).
 
 NOTE: Unlike in previous versions of T5X, "initial metrics" should not be
-defined, since the metrics returned from the first training step are simply used
-as the initial metrics. Specifically, the `get_initial_metrics` functions
-provided by BaseTrainer and BaseModel will be deprecated in the future. Now, the
-first metrics returned from `loss_fn` are treated as the initial metrics for
-later accumulation.
+defined, since the first metrics returned from `loss_fn` are treated as the
+initial metrics for later accumulation.
 
 Finally, in order to summarize the metrics into writable forms, we can simply
 use the following:
@@ -164,8 +158,7 @@ summary = {k: m.compute() for k, m in metrics.items()}
 ```
 
 Typically, the above call will not be necessary, since the T5X `BaseModel`
-already includes it automatically. Any model inheriting from this class can rely
-on its implementation of `summarize_metrics_fn`.
+already includes it automatically.
 
 ### A Metric Example
 
@@ -271,29 +264,3 @@ NOTE: Unless you are also overriding
 [Trainer](https://github.com/google-research/t5x/tree/main/t5x/trainer.py;l=314), you likely only
 need to worry about initializing metrics correctly, and not about making later
 adjustments for duration and number of microbatches.
-
-## Migration Instructions
-
-If your T5X models override functions such as `get_initial_metrics` or
-`summarize_metrics_fn`, please align with the current version of the T5X metrics
-library by using the following instructions.
-
-1.  Remove `get_initial_metrics` from models inheriting from T5X
-    [`BaseModel`](https://github.com/google-research/t5x/tree/main/t5x/models.py?q=symbol:%5CbBaseModel%5Cb).
-    Accumulation now happens automatically and initial metrics do not need to be
-    explicitly specified.
-
-2.  Ensure all metrics dicts are mappings of string name to `clu.metrics.Metric`
-    object, rather than mappings of string name to scalar values. See
-    [above](#metrics-and-writers) for more details.
-
-3.  Wherever metrics are computed (typically in a model's `loss_fn`), use a
-    `Metric` subclass that fully describes the behavior of the metric. If the
-    metric is an average, use `clu.metrics.Average`. If it is an accuracy
-    metric, consider using `clu.metrics.Accuracy`. At any point, you must be
-    able to call `metric.compute()` and receive the correct value of the metric.
-    See [examples](#a-metric-example) for more details.
-
-4.  Remove `summarize_metrics_fn` from models once the previous step is
-    complete, as summarization now happens automatically.
-

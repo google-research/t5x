@@ -81,24 +81,24 @@ class MetricsManagerTest(absltest.TestCase):
   def test_summary_dir(self):
     # All hosts have the summary dir.
     with mock.patch('jax.process_index', return_value=0):
-      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+      mm = trainer_lib.MetricsManager('eval', self.model_dir)
     self.assertEqual(mm.summary_dir, os.path.join(self.model_dir, 'eval'))
     mm.close()
 
     with mock.patch('jax.process_index', return_value=1):
-      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+      mm = trainer_lib.MetricsManager('eval', self.model_dir)
     self.assertEqual(mm.summary_dir, os.path.join(self.model_dir, 'eval'))
     mm.close()
 
   def test_summary_writer(self):
     # Only host 0 creates a non-empty summary writer.
     with mock.patch('jax.process_index', return_value=1):
-      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+      mm = trainer_lib.MetricsManager('eval', self.model_dir)
     self.assertFalse(gfile.exists(mm.summary_dir))
     mm.close()
 
     with mock.patch('jax.process_index', return_value=0):
-      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+      mm = trainer_lib.MetricsManager('eval', self.model_dir)
     self.assertIsInstance(mm.summary_writer, metric_writers.MetricWriter)
     self.assertTrue(gfile.exists(mm.summary_dir))
     mm.close()
@@ -111,14 +111,14 @@ class MetricsManagerTest(absltest.TestCase):
 
     # Only host 0 has actually writes summaries.
     with mock.patch('jax.process_index', return_value=1):
-      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+      mm = trainer_lib.MetricsManager('eval', self.model_dir)
       for s in scalars:
         mm.write_scalar(*s)
     self.assertEmpty(gfile.listdir(mm.summary_dir))
     mm.close()
 
     with mock.patch('jax.process_index', return_value=0):
-      mm = trainer_lib.MetricsManager('eval', lambda x, y: x, self.model_dir)
+      mm = trainer_lib.MetricsManager('eval', self.model_dir)
       for s in scalars:
         mm.write_scalar(*s)
     mm.flush()
@@ -138,48 +138,6 @@ class MetricsManagerTest(absltest.TestCase):
     mm.close()
 
   def test_write_metrics_summary(self):
-    gfile.makedirs(os.path.join(self.model_dir, 'eval'))
-
-    def summarize_fn(metrics, duration, num_steps):
-      return {
-          'loss': metrics['loss'].compute() / num_steps,
-          'accuracy': metrics['accuracy'].compute() / num_steps,
-          'batches_per_second': num_steps / duration
-      }
-
-    accumulated_metrics = {
-        'loss': metrics_lib.Sum(40.0),
-        'accuracy': metrics_lib.Sum(198.0)
-    }
-    expected_events = {
-        'loss': 20.0,
-        'accuracy': 99.0,
-        'batches_per_second': 0.05
-    }
-
-    # Only host 0 has a summary writer.
-    with mock.patch('jax.process_index', return_value=1):
-      mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
-      mm.start_duration_timer()
-      mm.write_metrics_summary(accumulated_metrics, step=4, num_steps=2)
-      mm.flush()
-    self.assertEmpty(gfile.listdir(mm.summary_dir))
-    mm.close()
-
-    with mock.patch(
-        'jax.process_index', return_value=0), mock.patch(
-            'time.time',
-            side_effect=[0, 40]  # start_time, end_time
-        ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
-      mm = trainer_lib.MetricsManager('eval', summarize_fn, self.model_dir)
-      mm.start_duration_timer()
-      mm.write_metrics_summary(accumulated_metrics, step=4, num_steps=2)
-      mm.flush()
-
-    _validate_events(self, mm.summary_dir, expected_events, steps=[4, 4, 4])
-    mm.close()
-
-  def test_write_metrics_summary_no_summarize_fn(self):
     gfile.makedirs(os.path.join(self.model_dir, 'eval'))
 
     @flax.struct.dataclass
@@ -220,7 +178,7 @@ class MetricsManagerTest(absltest.TestCase):
     mm.close()
 
   def test_timer_blocking_on_donated_buffer(self):
-    mm = trainer_lib.MetricsManager('train', lambda x, y: x, summary_dir=None)
+    mm = trainer_lib.MetricsManager('train', summary_dir=None)
     x = jnp.zeros(1)
 
     # Not deleted.
