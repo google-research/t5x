@@ -2,7 +2,7 @@
 
 
 [Gin](https://github.com/google/gin-config/blob/main/README.md) is a lightweight configuration framework for Python,
-based on dependency injection. While P5X does not employ gin in its core
+based on dependency injection. While T5X does not employ gin in its core
 libraries, it is used to configure runs of the `train`, `eval`, and `infer`
 scripts. This usage is a bit different (and more limited) than how gin is
 typically applied, so this primer should be useful even for those who may be
