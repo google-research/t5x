@@ -30,9 +30,10 @@ python -m t5x.main \
   --run_mode=train \
   --logtostderr
 """
+import concurrent.futures  # pylint:disable=unused-import
 import enum
 import os
-from typing import Sequence
+from typing import Optional, Sequence
 
 from absl import app
 from absl import flags
@@ -48,7 +49,6 @@ from t5x import infer as infer_lib
 from t5x import precompile as precompile_lib
 from t5x import train as train_lib
 from t5x import utils
-
 
 
 @enum.unique
@@ -124,6 +124,7 @@ def main(argv: Sequence[str]):
   if _TFDS_DATA_DIR.value is not None:
     seqio.set_tfds_data_dir_override(_TFDS_DATA_DIR.value)
 
+
   # Register function explicitly under __main__ module, to maintain backward
   # compatability of existing '__main__' module references.
   gin.register(_FUNC_MAP[_RUN_MODE.value], '__main__')
@@ -139,7 +140,9 @@ def main(argv: Sequence[str]):
     return
 
   run_with_gin = gin.get_configurable(_FUNC_MAP[_RUN_MODE.value])
+
   run_with_gin()
+
 
 
 def _flags_parser(args: Sequence[str]) -> Sequence[str]:

@@ -35,16 +35,19 @@ from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, T
 # pylint:disable=g-import-not-at-top
 os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
+from clu import metric_writers
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 import seqio
+from t5x import gin_utils
 from t5x import models
 from t5x import partitioning
 from t5x import utils
 import tensorflow as tf
 from tensorflow.io import gfile
+from typing_extensions import Protocol
 
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
@@ -52,6 +55,14 @@ _DEFAULT_GIN_SEARCH_PATHS = [
 ]
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
+
+
+class SummarizeConfigFn(Protocol):
+
+  def __call__(self, model_dir: str,
+               summary_writer: Optional[metric_writers.SummaryWriter],
+               step: int) -> None:
+    ...
 
 
 class FailFastThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
@@ -342,6 +353,7 @@ def infer(
     checkpoint_ds_iter: bool = True,
     fallback_init_rng: Optional[int] = None,
     merge_fn: MergeFn = merge_chunks_to_file,
+    summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
 ):
   """Infer function.
 
@@ -373,8 +385,14 @@ def infer(
       set to True. If None, parameter initialization is not allowed during model
       loading and having fallback_to_scratch enabled will result in an error.
     merge_fn: Callable function used to merge inferences from multiple files.
+    summarize_config_fn: A function that takes in the model directory, an
+      optional SummaryWriter, and the step number, and writes a summary of the
+      configuration. SummaryWriter will be None in most cases.
   """
   logging.info('Process ID: %d', jax.process_index())
+
+  summarize_config_fn(model_dir=output_dir, summary_writer=None, step=0)
+
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
         "`mode` must be one of 'predict', 'score' or 'predict_with_aux'. "
@@ -625,7 +643,6 @@ if __name__ == '__main__':
   from absl import app
   from absl import flags
   import gin
-  from t5x import gin_utils
   # pylint:enable=g-import-not-at-top
 
   FLAGS = flags.FLAGS
