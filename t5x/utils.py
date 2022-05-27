@@ -923,8 +923,9 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
 
   partitioned_infer_step = partitioner.partition(
       infer_step_with_indices,
-      in_axis_resources=(train_state_axes.params, PartitionSpec('data',), None,
-                         PartitionSpec('data',)),
+      in_axis_resources=(train_state_axes.params,
+                         partitioner.data_partition_spec, None,
+                         partitioner.data_partition_spec),
       out_axis_resources=(None, None))
 
   data_layout = partitioner.get_data_layout(batch_size)
