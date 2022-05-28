@@ -94,7 +94,7 @@ def train(
     infer_eval_dataset_cfg: Optional[utils.DatasetConfig],
     checkpoint_cfg: utils.CheckpointConfig,
     partitioner: partitioning.BasePartitioner,
-    trainer_cls: Type[trainer_lib.BaseTrainer],
+    trainer_cls: trainer_lib.BaseTrainerConstructor,
     model_dir: str,
     total_steps: int,
     eval_steps: int,

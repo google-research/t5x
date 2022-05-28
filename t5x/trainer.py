@@ -23,7 +23,7 @@ import enum
 import os
 import threading
 import time
-from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple, Union
+from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple, Union, Protocol
 
 from absl import logging
 import cached_property
@@ -787,6 +787,17 @@ def train_with_lr(
       if flax_mutables else None)
 
   return new_train_state, metrics
+
+
+class BaseTrainerConstructor(Protocol):
+  """A function that returns a BaseTrainer."""
+
+  def __call__(self, model: models.BaseModel,
+               train_state: train_state_lib.TrainState,
+               partitioner: partitioning.BasePartitioner,
+               eval_names: Sequence[str], summary_dir: Optional[str],
+               train_state_axes: Any, rng: Rng) -> BaseTrainer:
+    ...
 
 
 class Trainer(BaseTrainer):
