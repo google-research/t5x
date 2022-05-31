@@ -20,6 +20,7 @@ import math
 import os
 import time
 from typing import Callable, Sequence, Mapping, Tuple, Type, Optional
+import warnings
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
@@ -110,7 +111,7 @@ def train(
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None,
     run_eval_before_training: bool = False,
-    use_gda: bool = False) -> Tuple[int, train_state_lib.TrainState]:
+    use_gda: bool = True) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
   Args:
@@ -168,6 +169,10 @@ def train(
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
+  if not use_gda:
+    warnings.warn(
+        '`use_gda=False` is deprecated and will be removed on Aug-01-22.'
+        ' Please ensure that your workflow can use GDA.', DeprecationWarning)
   jax.config.update('jax_parallel_functions_output_gda', use_gda)
 
   # Each "epoch" of the training loop should be the min of the eval period,
