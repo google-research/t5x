@@ -73,12 +73,12 @@ which simply returns the predictions.
 ### Beam search
 
 The following lines can be added to a gin file in order to use
-[beam search](https://github.com/google-research/t5x/tree/main/t5x/decode.py;l=756;rcl=398734787)
+[beam search](https://github.com/google-research/t5x/tree/main/t5x/decoding.py;l=881;rcl=446762159)
 as a decoding function for an encoder-decoder model.
 
 ```gin
 models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 4
-models.EncoderDecoderModel.decode_fn = @decode.beam_search
+models.EncoderDecoderModel.decode_fn = @decoding.beam_search
 decode.beam_search.alpha = 0.6
 ```
 
@@ -121,14 +121,14 @@ implictly determined length information unless it is passed by
 
 ### Temperature sampling
 
-[Temperature sampling](https://github.com/google-research/t5x/tree/main/t5x/decode.py;l=28;rcl=398734787)
+[Temperature sampling](https://github.com/google-research/t5x/tree/main/t5x/decoding.py;l=37;rcl=446762159)
 can be used for multiple decoding strategies. The following lines configures
 temperature sampling as a `decode_fn`.
 
 ```gin
 models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 1
-models.EncoderDecoderModel.decode_fn = @decode.temperature_sample
-decode.temperature_sample:
+models.EncoderDecoderModel.decode_fn = @decoding.temperature_sample
+decoding.temperature_sample:
   temperature = 0.5
   topk = 20
 ```
