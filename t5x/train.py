@@ -501,6 +501,12 @@ def train(
       logging.info('Running inference eval before training.')
       _run_inference_eval()
 
+  # Save checkpoints before the training loop starts.
+  if checkpoint_period:
+    logging.info('Saving checkpoint before the training loop starts.')
+    checkpoint_manager.save(trainer.train_state,
+                            checkpoint_cfg.save.state_transformation_fns)
+
   # ----------------------------------------------------------------------------
   # Main training loop
   # ----------------------------------------------------------------------------
