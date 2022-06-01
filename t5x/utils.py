@@ -24,7 +24,7 @@ import os
 import re
 import time
 import typing
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union, Protocol
 import warnings
 
 from absl import logging
@@ -62,11 +62,60 @@ Shape = Tuple[int, ...]
 # TODO(adarob): Remove namespace mapping after client gin files are updated.
 TensorBoardLogger = seqio.TensorBoardLogger
 
+
+class EvaluatorConstructor(Protocol):
+  """A function that returns an Evaluator.
+
+  This protocol represents the actual callsite for the seqio.Evaluator c'tor
+  in this file. It allows users to bind additional args with partial() and
+  pass that partial into the fn without causing type check issues.
+  """
+
+  def __call__(
+      self,
+      mixture_or_task_name: str,
+      feature_converter: seqio.FeatureConverter,
+      eval_split: str,
+      use_cached: bool,
+      seed: Optional[int],
+      sequence_length: Optional[Mapping[str, int]],
+      log_dir: Optional[str],
+      use_memory_cache: bool,
+  ) -> seqio.Evaluator:
+    """The call for the seqio.Evaluator c'tor in this file.
+
+    Args:
+      mixture_or_task_name: a registered task or mixture name.
+      feature_converter: a feature converter object to use to convert the task
+        features to model features. Must be a subclass of
+        seqio.FeatureConverter.
+      eval_split: evaluation split. Typically "validation" or "test".
+      use_cached: whether to use the cached dataset instead of processing it on
+        the fly.
+      seed: random seed used for dataset shuffle and preprocessing. This is
+        usually not needed since eval datasets aren't shuffled and shouldn't use
+        stochastic operations. It is only useful for in certain data sources
+        such as `FewshotDataSource` where the training examples are randomly
+        selected during evaluation.
+      sequence_length: an optional length specification. If specified, these
+        will be the hard-limit on the evaluation data used for prediction. If
+        none of the preprocessors depend on the sequence length, it can be left
+        unspecified and the maximum length for each feature will be used. These
+        lengths are computed while caching the datasets.
+      log_dir: the directory to log outputs to. Required if `logger_cls` is
+        non-empty.
+      use_memory_cache: whether to use tf.data.Dataset#cache. May cause memory
+        issues for large datasets.
+
+    Returns:
+      A seqio.Evaluator.
+    """
+    ...
+
+
 # -----------------------------------------------------------------------------
 # Configurations
 # -----------------------------------------------------------------------------
-
-
 @dataclasses.dataclass
 class SaveCheckpointConfig:
   """Configuration for saving model checkpoints."""

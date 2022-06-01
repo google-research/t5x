@@ -22,7 +22,7 @@ r"""This script runs inference-evaluation on a T5X-compatible model.
 
 import functools
 import os
-from typing import Optional, Sequence, Type
+from typing import Optional, Sequence
 
 # pylint:disable=g-import-not-at-top
 # TODO(adarob): Re-enable once users are notified and tests are updated.
@@ -59,7 +59,7 @@ def evaluate(
     restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
     partitioner: partitioning.BasePartitioner,
     output_dir: str,
-    inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator,
+    inference_evaluator_cls: utils.EvaluatorConstructor = seqio.Evaluator,
     summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
     fallback_init_rng: Optional[int] = None):
   """Evaluation function.
@@ -108,7 +108,8 @@ def evaluate(
       use_cached=dataset_cfg.use_cached,
       seed=dataset_cfg.seed,
       sequence_length=dataset_cfg.task_feature_lengths,
-      log_dir=os.path.join(output_dir, 'inference_eval'))
+      log_dir=os.path.join(output_dir, 'inference_eval'),
+      use_memory_cache=dataset_cfg.use_memory_cache)
   if not evaluator.eval_tasks:
     raise ValueError(
         f"'{dataset_cfg.mixture_or_task_name}' has no metrics for evaluation.")

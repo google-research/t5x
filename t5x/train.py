@@ -19,7 +19,7 @@ import functools
 import math
 import os
 import time
-from typing import Callable, Sequence, Mapping, Tuple, Type, Optional
+from typing import Callable, Sequence, Mapping, Tuple, Optional
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
@@ -105,7 +105,7 @@ def train(
     use_hardware_rng: bool = False,
     summarize_config_fn: Callable[[str, metric_writers.MetricWriter, int],
                                   None],
-    inference_evaluator_cls: Type[seqio.Evaluator] = seqio.Evaluator,
+    inference_evaluator_cls: utils.EvaluatorConstructor = seqio.Evaluator,
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
     concurrent_metrics: bool = True,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
