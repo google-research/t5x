@@ -36,6 +36,7 @@ from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 import seqio
+from t5x import checkpoints
 from t5x import models
 from t5x import partitioning
 from t5x import train_state as train_state_lib
@@ -214,7 +215,7 @@ def train(
   # ---------------------------------------------------------------------------
 
   if (train_dataset_cfg.seed and
-      not (checkpoint_cfg.save or checkpoint_cfg.save.save_dataset)):
+      not (checkpoint_cfg.save and checkpoint_cfg.save.save_dataset)):
     logging.warning(
         'Providing a random seed for the train dataset with '
         '`checkpoint_train_ds=False` is dangerous since each '
@@ -282,8 +283,9 @@ def train(
       utils.RestoreCheckpointConfig(
           path=model_dir,
           mode='latest',
-          dtype=checkpoint_cfg.save.dtype,
-          checkpointer_cls=checkpoint_cfg.save.checkpointer_cls,
+          dtype=checkpoint_cfg.save.dtype if checkpoint_cfg.save else 'float32',
+          checkpointer_cls=checkpoint_cfg.save.checkpointer_cls
+          if checkpoint_cfg.save else checkpoints.Checkpointer,
           # Restore dataset state if it is being saved.
           restore_dataset=(checkpoint_cfg.save and
                            checkpoint_cfg.save.save_dataset),
@@ -331,10 +333,10 @@ def train(
       train_iter.iterator
       if isinstance(train_iter, clu.data.TfDatasetIterator) else None)
   checkpoint_manager = utils.LegacyCheckpointManager(
-      checkpoint_cfg.save,
-      valid_restore_cfg,
-      train_state_initializer.global_train_state_shape,
-      partitioner,
+      save_cfg=checkpoint_cfg.save,
+      restore_cfg=valid_restore_cfg,
+      train_state_shape=train_state_initializer.global_train_state_shape,
+      partitioner=partitioner,
       ds_iter=checkpointable_train_iter,
       model_dir=model_dir,
       use_gda=use_gda)
@@ -544,9 +546,11 @@ def train(
       logging.info('Training for %d steps.', num_steps)
       while host_step < epoch_end_step:
         if trainer.stop_training:
-          logging.info('Saving a checkpoint before early stopping...')
-          checkpoint_manager.save(trainer.train_state,
-                                  checkpoint_cfg.save.state_transformation_fns)
+          if checkpoint_period:
+            logging.info('Saving a checkpoint before early stopping...')
+            checkpoint_manager.save(
+                trainer.train_state,
+                checkpoint_cfg.save.state_transformation_fns)
           logging.info('Stopping training loop early since `stop_training` is '
                        'requested.')
           break
@@ -566,10 +570,11 @@ def train(
         host_step += inner_num_steps
       logging.info('END Train loop.')
     except trainer_lib.PreemptionError as e:
-      logging.info('Saving emergency checkpoint.')
-      checkpoint_manager.save(trainer.train_state,
-                              checkpoint_cfg.save.state_transformation_fns)
-      logging.info('Saving emergency checkpoint done.')
+      if checkpoint_period:
+        logging.info('Saving emergency checkpoint.')
+        checkpoint_manager.save(trainer.train_state,
+                                checkpoint_cfg.save.state_transformation_fns)
+        logging.info('Saving emergency checkpoint done.')
       raise e
 
     step_offset = host_step - first_step

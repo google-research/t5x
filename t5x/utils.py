@@ -159,9 +159,9 @@ class LegacyCheckpointer(orbax.checkpoint.Checkpointer):
   """
 
   def __init__(self,
-               save_checkpointer: checkpoints.Checkpointer,
-               restore_checkpointer: checkpoints.Checkpointer,
                *,
+               save_checkpointer: Optional[checkpoints.Checkpointer] = None,
+               restore_checkpointer: checkpoints.Checkpointer,
                strict: Optional[bool] = False):
     self._save_checkpointer = save_checkpointer
     self._restore_checkpointer = restore_checkpointer
@@ -193,6 +193,9 @@ class LegacyCheckpointer(orbax.checkpoint.Checkpointer):
     train_state = item
     del path  # stored in save_checkpointer
     # dataset_iterator is also saved, but is provided in checkpointer init
+    if self._save_checkpointer is None:
+      raise ValueError(
+          "`_save_checkpointer` is not set up. Can't save checkpoints.")
     self._save_checkpointer.save(
         train_state, state_transformation_fns, concurrent_gb=concurrent_gb)
 
@@ -248,24 +251,28 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
   """
 
   def __init__(self,
-               save_cfg: SaveCheckpointConfig,
+               *,
+               save_cfg: Optional[SaveCheckpointConfig] = None,
                restore_cfg: RestoreCheckpointConfig,
                train_state_shape: train_state_lib.TrainState,
                partitioner: partitioning.BasePartitioner,
                ds_iter: Optional[tf.data.Iterator] = None,
                model_dir: Optional[str] = None,
                use_gda: Optional[bool] = False):
-    if save_cfg.save_dataset:
-      assert ds_iter is not None
-    save_checkpointer = save_cfg.checkpointer_cls(
-        train_state=train_state_shape,
-        partitioner=partitioner,
-        checkpoints_dir=model_dir,
-        dataset_iterator=ds_iter if save_cfg.save_dataset else None,
-        save_dtype=save_cfg.dtype,
-        keep=save_cfg.keep,
-        use_gda=use_gda,
-        keep_dataset_checkpoints=save_cfg.keep_dataset_checkpoints)
+    if save_cfg is not None:
+      if save_cfg.save_dataset:
+        assert ds_iter is not None
+      save_checkpointer = save_cfg.checkpointer_cls(
+          train_state=train_state_shape,
+          partitioner=partitioner,
+          checkpoints_dir=model_dir,
+          dataset_iterator=ds_iter if save_cfg.save_dataset else None,
+          save_dtype=save_cfg.dtype,
+          keep=save_cfg.keep,
+          use_gda=use_gda,
+          keep_dataset_checkpoints=save_cfg.keep_dataset_checkpoints)
+    else:
+      save_checkpointer = None
 
     if restore_cfg:
       restore_checkpointer = restore_cfg.checkpointer_cls(
@@ -281,7 +288,9 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
       strict = False
 
     self._checkpointer = LegacyCheckpointer(
-        save_checkpointer, restore_checkpointer, strict=strict)
+        save_checkpointer=save_checkpointer,
+        restore_checkpointer=restore_checkpointer,
+        strict=strict)
 
   def save(self,
            train_state: train_state_lib.TrainState,

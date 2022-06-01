@@ -25,6 +25,7 @@ train/utils.DatasetConfig.seed = 42  # dataset seed
 
 TASK_FEATURE_LENGTHS = {"inputs": 8, "targets": 7}
 LABEL_SMOOTHING = 0.0
+TRAIN_STEPS = 3
 
 # Network specification overrides
 network.Transformer.config = @network.T5Config()
@@ -40,8 +41,6 @@ network.T5Config:
   mlp_activations = ('gelu', 'linear')
   dropout_rate = 0.0
   logits_via_embedding = False
-
-TRAIN_STEPS = 3
 
 train/utils.DatasetConfig:
   batch_size = 8
@@ -60,6 +59,7 @@ partitioning.PjitPartitioner:
 
 utils.CheckpointConfig:
   restore = None
+  save = None
 
 infer_eval/utils.DatasetConfig.task_feature_lengths = %TASK_FEATURE_LENGTHS
 
