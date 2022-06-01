@@ -611,11 +611,16 @@ class EncoderDecoderModel(BaseTransformerModel):
       intermediates = flax_core.unfreeze(
           modified_variables.get('intermediates', {}))
 
+      intermediates.setdefault('encoder', {})
+      intermediates['encoder']['input_tokens'] = (
+          batch['encoder_input_tokens'],)
+
       # Track per-token labels and loss weights as well. These are not
       # intermediate values of logit computation, so we manually add them here.
       intermediates.setdefault('decoder', {})
       intermediates['decoder']['target_tokens'] = (target_tokens,)
       intermediates['decoder']['loss_weights'] = (weights,)
+
       # Note that the values are singleton tuples. This is because values inside
       # `intermediates` should be tuples tracking all instantiations of a value.
       # These values each have just one instantiation, hence singletons.
