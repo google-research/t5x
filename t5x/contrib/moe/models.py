@@ -131,6 +131,7 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
 
     metrics = self._compute_metrics(
         logits=logits,
+        inputs=batch['encoder_input_tokens'],
         targets=targets,
         mask=weights,
         loss=total_loss,
