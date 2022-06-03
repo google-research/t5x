@@ -20,6 +20,7 @@ import dataclasses
 import functools
 import importlib
 import inspect
+import itertools
 import os
 import re
 import time
@@ -418,6 +419,61 @@ class DatasetConfig:
   module: Optional[str] = None
   # Whether to cache the dataset in memory (only applies to evaluation data).
   use_memory_cache: bool = True
+
+
+def create_gda(global_mesh: partitioning.Mesh, pspec: PartitionSpec,
+               global_shapes: PyTreeDef,
+               host_arrays: PyTreeDef) -> GlobalDeviceArray:
+  """Create GDA from input arrays."""
+  local_devices = global_mesh.local_devices
+
+  def _put_to_devices(x):
+    per_device_arrays = np.split(x, global_mesh.shape['data'], axis=0)
+    device_buffers = [
+        jax.device_put(arr, d)
+        for arr, d in itertools.product(per_device_arrays, local_devices)
+    ]
+    return device_buffers
+
+  device_buffers = jax.tree_map(_put_to_devices, host_arrays)
+
+  def _gda(dbs, shape):
+    return GlobalDeviceArray(shape, global_mesh, pspec, dbs)
+
+  return jax.tree_map(
+      _gda,
+      device_buffers,
+      global_shapes,
+      is_leaf=lambda x: isinstance(x, (list, tuple)))
+
+
+class GDADatasetIterator(clu.data.DatasetIterator):
+  """A wrapper iterator that returns GDA when the next element is requested."""
+
+  def __init__(self, iterator: clu.data.DatasetIterator,
+               mesh: partitioning.Mesh, pspec: PartitionSpec,
+               global_shapes: PyTreeDef):
+    self._iterator = iterator
+    self._global_shapes = global_shapes
+    self._mesh = mesh
+    self._pspec = pspec
+
+  def get_next(self):
+    return create_gda(self._mesh, self._pspec, self._global_shapes,
+                      self._iterator.get_next())
+
+  def reset(self):
+    return self._iterator.reset()
+
+  @property
+  def element_spec(self):
+    return self._iterator.element_spec
+
+  def save(self, filename):
+    return self._iterator.save(filename)
+
+  def load(self, filename):
+    return self._iterator.load(filename)
 
 
 #------------------------------------------------------------------------------

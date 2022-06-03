@@ -248,6 +248,18 @@ def train(
     raise ValueError(
         f'get_dataset_fn returned unsupported type {type(train_ds)}.')
 
+  input_shapes = {
+      k: (data_layout.batch_size, *v.shape[1:])
+      for k, v in train_iter.element_spec.items()
+  }
+  input_types = {
+      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
+  }
+
+  if use_gda:
+    train_iter = utils.GDADatasetIterator(train_iter, partitioner.mesh,
+                                          P('data'), input_shapes)
+
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
     train_eval_datasets = utils.get_training_eval_datasets(
@@ -308,14 +320,6 @@ def train(
       raise ValueError(
           'Restore checkpoint config may only have a single path in training.')
 
-  # Need to use full batch size.
-  input_shapes = {
-      k: (data_layout.batch_size, *v.shape[1:])
-      for k, v in train_ds.element_spec.items()
-  }
-  input_types = {
-      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
-  }
   init_or_restore_tick = time.time()
   train_state_initializer = utils.TrainStateInitializer(
       optimizer_def=model.optimizer_def,
