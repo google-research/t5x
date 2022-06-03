@@ -60,7 +60,9 @@ def parse_gin_flags(gin_search_paths: Sequence[str],
       gin_bindings,
       skip_unknown=skip_unknown,
       finalize_config=finalize_config)
-  logging.info('Gin Configuration:\n%s', gin.config_str())
+  logging.info('Gin Configuration:')
+  for line in gin.config_str().splitlines():
+    logging.info('%s', line)
 
 
 def rewrite_gin_args(args: Sequence[str]) -> Sequence[str]:
