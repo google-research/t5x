@@ -1483,8 +1483,10 @@ def override_params_axes_names(
 
 
 def get_local_data(x):
+  """Get local buffer for input data."""
   if isinstance(x, GlobalDeviceArray):
-    return x.local_data(0)
+    val = x.local_data(0)
+    return val
   elif isinstance(x, pxla.ShardedDeviceArray):
     val = x.device_buffers[0]
     if val.aval is None:
