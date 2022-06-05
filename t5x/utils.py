@@ -1482,6 +1482,7 @@ def override_params_axes_names(
 
 
 
+
 def get_local_data(x):
   """Get local buffer for input data."""
   if isinstance(x, GlobalDeviceArray):
