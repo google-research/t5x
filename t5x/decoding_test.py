@@ -134,7 +134,6 @@ class DecodeTest(parameterized.TestCase):
       return logits, {}
 
     def state_callback_fn(state):
-      i, sequences, cache, cur_token, ended, rng, log_prob = state
 
       def callback_fn(current_index_and_sequences):
         """Add EOS token after first time token id 3 has been sampled."""
@@ -146,9 +145,10 @@ class DecodeTest(parameterized.TestCase):
         return sequences
 
       sequences = hcb.call(
-          callback_fn, (i, sequences),
-          result_shape=api.ShapeDtypeStruct(sequences.shape, sequences.dtype))
-      return i, sequences, cache, cur_token, ended, rng, log_prob
+          callback_fn, (state.cur_index, state.sequences),
+          result_shape=api.ShapeDtypeStruct(state.sequences.shape,
+                                            state.sequences.dtype))
+      return state.replace(sequences=sequences)
 
     inputs = np.array([[0, 5, 6, 7, 0], [0, 8, 9, 0, 0]], dtype=np.int32)
     sampled_sequences, _ = decoding._temperature_sample_single_trial(
