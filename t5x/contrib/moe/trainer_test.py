@@ -17,11 +17,11 @@
 import contextlib
 
 from absl.testing import absltest
-from flax import optim
 import jax
 import numpy as np
 from t5x import metrics as metrics_lib
 from t5x import models as models_lib
+from t5x import optimizers
 from t5x import train_state as train_state_lib
 from t5x.contrib.moe import partitioning
 from t5x.contrib.moe import trainer as trainer_lib
@@ -72,9 +72,9 @@ class MoeTrainerTest(absltest.TestCase):
 
   def setUp(self):
     super().setUp()
-    self.init_optimizer = optim.Optimizer(
-        optim.GradientDescent(),
-        state=optim.OptimizerState(
+    self.init_optimizer = optimizers.Optimizer(
+        optimizers.sgd(0.1),
+        state=optimizers.OptimizerState(
             step=0, param_states={
                 'expert_bias': 0,
                 'kernel': 0
@@ -131,9 +131,9 @@ class MoeTrainerTest(absltest.TestCase):
     # Base rng must remain the same.
     np.testing.assert_array_equal(trainer._base_rng, initial_rng)
 
-    expected_optimizer = optim.Optimizer(
+    expected_optimizer = optimizers.Optimizer(
         self.init_optimizer.optimizer_def,
-        state=optim.OptimizerState(
+        state=optimizers.OptimizerState(
             step=[6],
             param_states={
                 'expert_bias': 60,  # 10 * (0+1+2+3) = 60

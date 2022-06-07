@@ -20,11 +20,10 @@ from absl import logging
 from flax import core as flax_core
 import jax
 import numpy as np
-
 from t5x import adafactor
+from t5x import optimizers
 from t5x import partitioning as t5x_partitioning
 from t5x import train_state as train_state_lib
-
 from t5x.contrib.moe import training_utils
 
 DataLayout = t5x_partitioning.DataLayout
@@ -179,7 +178,7 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
       return logical_axes
 
     prepend_expert = lambda x: PartitionSpec(  # pylint: disable=g-long-lambda
-        'expert',) + x if x else PartitionSpec('expert',)
+        *('expert',) + x) if x else PartitionSpec('expert',)
     optimizer_axes = logical_axes._optimizer  # pylint: disable=protected-access
     state_dict = flax_core.unfreeze(optimizer_axes.state_dict())
     state_dict['state']['param_states'] = training_utils.tree_map_with_names(
@@ -410,11 +409,10 @@ def _infer_state_filter_fn(
     train_state: FlaxOptimTrainState) -> Optional[Callable[[str], bool]]:
   """Infers relevant regex matching sharded expert model state for optimizer.
 
-  Only the Adafactor optimizer is currently supported.
-
   The model state generally inherits the correct partitioning specs from the
-  model parameters, except in cases where the kernel is factored (`v_col` and
-  `v_row` terms); see derive_logical_axes():
+  model parameters. In such cases, no state_filter_fn is required. However,
+  T5X's custom Adafactor optimizer, when factored, requires overrides to the
+  `v_col` and `v_row` kernel terms; see
   https://github.com/google-research/t5x/blob/main/t5x/adafactor.py#L591. For
   those cases, we use the state_filter_fn to identify the factored kernel terms
   that need to be partitioned along the expert axis.
@@ -426,15 +424,20 @@ def _infer_state_filter_fn(
     Function to identify which model state is sharded along 'expert' axis.
 
   Raises:
-    ValueError if optimizer (on train state) is not an Adafactor optimizer.
+    ValueError if optimizer (on train state) is not a recognized optimizer type.
   """
   optimizer = train_state._optimizer  # pylint: disable=protected-access
   optimizer_def = optimizer.optimizer_def
 
-  # TODO(jamesleethorp): Revisit once other T5X optimizers are available.
+  if isinstance(optimizer_def, optimizers.OptaxWrapper):
+    # T5X wrapped optax optimizers inherit the correct specs, so no state
+    # updates will be required.
+    return None
+
   if not isinstance(optimizer_def, adafactor.Adafactor):
-    raise ValueError('Inferred MoE overrides are currently only available for '
-                     f'the Adafactor optimizer. Received: {optimizer_def}')
+    raise ValueError('Unrecognized optimizer type. Expecting '
+                     'optimizers.OptaxWrapper or adafactor.Adafactor. '
+                     f'Received: {optimizer_def}')
 
   if optimizer_def.hyper_params.factored:
     # Factored kernel terms (`v_col` and `v_row`) need to be identified for

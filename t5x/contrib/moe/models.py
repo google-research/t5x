@@ -20,7 +20,6 @@ from typing import Callable, Mapping, Optional, Sequence, Tuple, Union
 import clu.metrics as clu_metrics
 from flax import core as flax_core
 from flax import linen as nn
-from flax import optim
 from flax import traverse_util
 from flax.core import scope as flax_scope
 import jax.numpy as jnp
@@ -29,6 +28,7 @@ from t5x import decoding
 from t5x import losses
 from t5x import metrics as metrics_lib
 from t5x import models
+from t5x import optimizers
 
 AveragePerStep = metrics_lib.AveragePerStep
 DecodeFnCallable = models.DecodeFnCallable
@@ -69,7 +69,7 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
       module: nn.Module,
       input_vocabulary: seqio.Vocabulary,
       output_vocabulary: seqio.Vocabulary,
-      optimizer_def: optim.OptimizerDef,
+      optimizer_def: optimizers.OptimizerDefType,
       decode_fn: DecodeFnCallable = decoding.beam_search,
       feature_converter_cls: Optional[Callable[...,
                                                seqio.FeatureConverter]] = None,
