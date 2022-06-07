@@ -121,6 +121,7 @@ async def main(_, gin_args: Dict[str, Any]):
     )
 
     staging = os.path.join(tempfile.mkdtemp(), _NAME.value)
+    os.makedirs(staging)
     # The t5x/ root directory.
     t5x_path = os.path.abspath(os.path.join(__file__, '..', '..', '..'))
     t5x_destination = os.path.join(staging, 't5x')
@@ -158,14 +159,18 @@ async def main(_, gin_args: Dict[str, Any]):
         xm.python_container(
             executor.Spec(),
             path=staging,
-            base_image='gcr.io/deeplearning-platform-release/base-cpu',
+            # TODO(chenandrew): deeplearning image is still on python3.7
+            # base_image='gcr.io/deeplearning-platform-release/base-cpu',
+            base_image='python:3.9',
             docker_instructions=[
                 *copy_t5x,
                 'WORKDIR t5x',
+
+                # Install gcloud. This is normally part of deeplearning image.
+                # Since we use python:3.9, we need to do this manually.
+                'RUN apt-get install apt-transport-https ca-certificates gnupg',
+                'RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - && apt-get update -y && apt-get install google-cloud-cli -y',
                 'RUN python3 -m pip install -e ".[tpu]" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html',
-                # TODO(chenandrew): Remove the below command.
-                # TFDS 4.5.2 is missing SplitInfo fields.
-                'RUN python3 -m pip install --force-reinstall tfds-nightly',
                 *pip_install,
                 *copy_projects,
             ],
