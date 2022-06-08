@@ -1489,6 +1489,8 @@ def get_local_data(x):
     return val
   elif isinstance(x, pxla.ShardedDeviceArray):
     val = x.device_buffers[0]
+    if isinstance(val, np.ndarray):
+      return val
     if val.aval is None:
       val.aval = jax.ShapedArray(val.shape, val.dtype)
     return val
