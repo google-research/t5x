@@ -35,6 +35,7 @@ import re
 import subprocess
 import time
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+import warnings
 
 from absl import logging
 from flax import serialization
@@ -425,7 +426,7 @@ class Checkpointer(object):
                keep: Optional[int] = None,
                save_dtype: jnp.dtype = np.float32,
                restore_dtype: Optional[jnp.dtype] = None,
-               use_gda: Optional[bool] = False,
+               use_gda: Optional[bool] = True,
                keep_dataset_checkpoints: Optional[int] = None):
     """Checkpointer constructor.
 
@@ -450,6 +451,10 @@ class Checkpointer(object):
         keep. If more than this number of data iterators exist after a save, the
         oldest ones will be automatically deleted to save space.
     """
+    if not use_gda:
+      warnings.warn(
+          '`use_gda=False` is deprecated and will be removed on Aug-01-22.'
+          ' Please ensure that your workflow can use GDA.', DeprecationWarning)
     self._train_state = train_state
     self._partitioner = partitioner
     self.checkpoints_dir = checkpoints_dir
