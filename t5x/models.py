@@ -572,11 +572,13 @@ class EncoderDecoderModel(BaseTransformerModel):
     # decodes: [batch, num_decodes, max_decode_len + 1]
     # scores: [batch, num_decodes]
     scanned = hasattr(self.module, 'scan_layers') and self.module.scan_layers
+
+    if 'eos_id' not in decoder_params:
+      decoder_params['eos_id'] = self.output_vocabulary.eos_id
     decodes, scores = self._decode_fn(
         inputs=decoder_prompt_inputs,
         cache=cache,
         tokens_to_logits=tokens_ids_to_logits,
-        eos_id=self.output_vocabulary.eos_id,
         num_decodes=num_decodes,
         cache_offset=1 if scanned else 0,
         **decoder_params)
@@ -993,11 +995,13 @@ class DecoderOnlyModel(BaseTransformerModel):
     # sampling with the prefix.
     # [batch, max_decode_length]
     scanned = hasattr(self.module, 'scan_layers') and self.module.scan_layers
+
+    if 'eos_id' not in decoder_params:
+      decoder_params['eos_id'] = self.output_vocabulary.eos_id
     decoded_sequences, scores = self._decode_fn(
         inputs=inputs,
         cache=prefilled_cache,
         tokens_to_logits=tokens_ids_to_logits,
-        eos_id=self.output_vocabulary.eos_id,
         num_decodes=num_decodes,
         initial_index=inputs_lengths,
         cache_offset=1 if scanned else 0,
