@@ -32,7 +32,9 @@ python -m t5x.main \
 """
 import concurrent.futures  # pylint:disable=unused-import
 import enum
+import importlib
 import os
+import sys
 from typing import Optional, Sequence
 
 from absl import app
@@ -43,11 +45,7 @@ import gin
 import jax
 import seqio
 
-from t5x import eval as eval_lib
 from t5x import gin_utils
-from t5x import infer as infer_lib
-from t5x import precompile as precompile_lib
-from t5x import train as train_lib
 from t5x import utils
 
 
@@ -103,22 +101,36 @@ _DEFAULT_GIN_SEARCH_PATHS = [
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ]
 
-train = train_lib.train
-evaluate = eval_lib.evaluate
-infer = infer_lib.infer
-precompile = precompile_lib.precompile
-
-_FUNC_MAP = {
-    RunMode.TRAIN: train,
-    RunMode.EVAL: evaluate,
-    RunMode.INFER: infer,
-    RunMode.PRECOMPILE: precompile,
-}
+main_module = sys.modules[__name__]
 
 
 def main(argv: Sequence[str]):
   if len(argv) > 1:
     raise app.UsageError('Too many command-line arguments.')
+
+  if _RUN_MODE.value is None:
+    raise ValueError("'run_mode' flag must be specified when using main.py.")
+  # Dynamic import the modules based on run_mode, e.g.
+  # If _RUN_MODE.value is 'train', below is equivalent of doing:
+  # from t5x import train
+  # train = train.train
+
+  # _RUN_MODE can never be None after this point.
+  # pytype: disable=attribute-error
+  lib_name = _RUN_MODE.value.name.lower()
+  import_attr = _RUN_MODE.value.name.lower()
+  # pytype: enable=attribute-error
+
+  parent_module = 't5x'
+
+
+  module_to_import = f'{parent_module}.{lib_name}'
+
+  logging.info('Dynamically importing : %s', module_to_import)
+  imported_lib = importlib.import_module(module_to_import)
+
+  entry_func = getattr(imported_lib, import_attr)
+  setattr(main_module, import_attr, entry_func)
 
 
   if _TFDS_DATA_DIR.value is not None:
@@ -127,7 +139,7 @@ def main(argv: Sequence[str]):
 
   # Register function explicitly under __main__ module, to maintain backward
   # compatability of existing '__main__' module references.
-  gin.register(_FUNC_MAP[_RUN_MODE.value], '__main__')
+  gin.register(entry_func, '__main__')
   if _GIN_SEARCH_PATHS.value != ['.']:
     logging.warning(
         'Using absolute paths for the gin files is strongly recommended.')
@@ -139,7 +151,7 @@ def main(argv: Sequence[str]):
   if _DRY_RUN.value:
     return
 
-  run_with_gin = gin.get_configurable(_FUNC_MAP[_RUN_MODE.value])
+  run_with_gin = gin.get_configurable(entry_func)
 
   run_with_gin()
 
