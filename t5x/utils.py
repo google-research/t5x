@@ -406,7 +406,7 @@ class DatasetConfig:
   mixture_or_task_name: str
   task_feature_lengths: Mapping[str, int]
   split: str
-  batch_size: int
+  batch_size: int  # Number of examples per batch.
   shuffle: bool
   seed: Optional[int]
   # Whether to use a precomputed version of the dataset from a cache dir.
@@ -1018,7 +1018,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
   Args:
     infer_step: a callable that executes one prediction step. Should not yet be
       partitioned or pmapped.
-    batch_size: the global infer batch size.
+    batch_size: the number of examples in the global infer batch.
     train_state_axes: Partitioning info for the train state object.
     partitioner: partitioner to use.
 
