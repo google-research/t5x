@@ -27,6 +27,7 @@ import clu.metrics as clu_metrics
 from flax import core as flax_core
 from flax import linen as nn
 from flax.core import scope as flax_scope
+from flax.linen import partitioning as flax_partitioning
 from flax.training import common_utils
 import jax
 import jax.numpy as jnp
@@ -813,13 +814,19 @@ class DecoderOnlyModel(BaseTransformerModel):
       decoder_causal_attention: jnp.ndarray,
   ) -> PyTreeDef:
     """Compute the key/value cache on the input prefix."""
-    _, variables_with_cache = self.module.apply({'params': params},
-                                                jnp.ones_like(inputs),
-                                                jnp.ones_like(inputs),
-                                                enable_dropout=False,
-                                                decode=True,
-                                                mutable=['cache'])
-    cache = variables_with_cache['cache']
+    _, initial_variables = self.module.apply({'params': params},
+                                             jnp.ones_like(inputs),
+                                             jnp.ones_like(inputs),
+                                             enable_dropout=False,
+                                             decode=True,
+                                             mutable=['cache'])
+    cache = initial_variables['cache']
+    if 'cache_axes' in initial_variables:
+      cache_axes = initial_variables['cache_axes']
+
+      cache = jax.tree_util.tree_map(
+          flax_partitioning.with_sharding_constraint, cache,
+          flax_partitioning.get_axis_names(cache_axes))
 
     # Prefill our cache with all the inputs. `inputs_lengths` is the index of
     # the last input token. The cache will be filled for all the input
