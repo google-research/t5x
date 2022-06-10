@@ -20,6 +20,7 @@
 from __gin__ import dynamic_registration
 
 import __main__ as train_script
+import seqio
 from t5x import gin_utils
 from t5x import partitioning
 from t5x import utils
@@ -36,6 +37,13 @@ USE_CACHED_TASKS = True
 MIXTURE_OR_TASK_MODULE = None
 SHUFFLE_TRAIN_EXAMPLES = True
 
+# Sometimes overridden
+EVAL_STEPS = 20
+
+# Convenience overrides.
+EVALUATOR_USE_MEMORY_CACHE = True
+EVALUATOR_NUM_EXAMPLES = None  # Use all examples in the infer_eval dataset.
+JSON_WRITE_N_RESULTS = None  # Write all inferences.
 # HW RNG is faster than SW, but has limited determinism.
 # Most notably it is not deterministic across different
 # submeshes.
@@ -49,21 +57,30 @@ train_script.train:
   model_dir = %MODEL_DIR
   train_dataset_cfg = @train/utils.DatasetConfig()
   train_eval_dataset_cfg = @train_eval/utils.DatasetConfig()
-  infer_eval_dataset_cfg = None
+  infer_eval_dataset_cfg = @infer_eval/utils.DatasetConfig()
   checkpoint_cfg = @utils.CheckpointConfig()
   partitioner = @partitioning.PjitPartitioner()
   trainer_cls = @trainer.Trainer
   total_steps = %TRAIN_STEPS
-  eval_steps = 20
+  eval_steps = %EVAL_STEPS
   eval_period = 1000
   random_seed = %RANDOM_SEED
   use_hardware_rng = %USE_HARDWARE_RNG
   summarize_config_fn = @gin_utils.summarize_gin_config
+  inference_evaluator_cls = @seqio.Evaluator
 
 partitioning.PjitPartitioner:
   num_partitions = 1
   model_parallel_submesh = None
   logical_axis_rules = @partitioning.standard_logical_axis_rules()
+
+seqio.Evaluator:
+  logger_cls = [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]
+  num_examples = %EVALUATOR_NUM_EXAMPLES
+  use_memory_cache = %EVALUATOR_USE_MEMORY_CACHE
+
+seqio.JSONLogger:
+  write_n_results = %JSON_WRITE_N_RESULTS
 
 train/utils.DatasetConfig:
   mixture_or_task_name = %MIXTURE_OR_TASK_NAME
@@ -85,6 +102,17 @@ train_eval/utils.DatasetConfig:
   seed = 42
   use_cached = %USE_CACHED_TASKS
   pack = True
+  module = %MIXTURE_OR_TASK_MODULE
+
+infer_eval/utils.DatasetConfig:
+  mixture_or_task_name = %MIXTURE_OR_TASK_NAME
+  task_feature_lengths = None  # compute max
+  split = 'validation'
+  batch_size = %BATCH_SIZE
+  shuffle = False
+  seed = 42
+  use_cached = %USE_CACHED_TASKS
+  pack = False
   module = %MIXTURE_OR_TASK_MODULE
 
 utils.CheckpointConfig:
