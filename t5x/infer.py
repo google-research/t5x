@@ -391,8 +391,6 @@ def infer(
   """
   logging.info('Process ID: %d', jax.process_index())
 
-  summarize_config_fn(model_dir=output_dir, summary_writer=None, step=0)
-
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
         "`mode` must be one of 'predict', 'score' or 'predict_with_aux'. "
@@ -456,6 +454,7 @@ def infer(
   # Log the variable shapes information and write to a file.
   model_info_log_file = os.path.join(output_dir, 'model-info.txt')
   if shard_id == 0:
+    summarize_config_fn(model_dir=output_dir, summary_writer=None, step=0)
     utils.log_model_info(model_info_log_file,
                          train_state_initializer.global_train_state_shape,
                          partitioner)
