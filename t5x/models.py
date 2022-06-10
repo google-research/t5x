@@ -277,6 +277,7 @@ class BaseTransformerModel(BaseModel):
 
     loss_normalizing_factor: Optional[Union[
         float, int, str, losses.SpecialLossNormalizingFactor]]
+
     (loss_normalizing_factor,
      weights) = losses.get_loss_normalizing_factor_and_weights(
          self._loss_normalizing_factor, batch)
@@ -290,7 +291,9 @@ class BaseTransformerModel(BaseModel):
         loss_normalizing_factor=loss_normalizing_factor)
     metrics = self._compute_metrics(
         logits=logits,
+        inputs=batch['encoder_input_tokens'],
         targets=batch['decoder_target_tokens'],
+        encoder_segment_ids=batch.get('decoder_segment_ids', None),
         mask=weights,
         loss=loss,
         z_loss=z_loss)
@@ -299,13 +302,21 @@ class BaseTransformerModel(BaseModel):
   def _compute_metrics(
       self,
       logits: jnp.ndarray,
+      inputs: jnp.ndarray,
       targets: jnp.ndarray,
       mask: jnp.ndarray,
       loss: jnp.ndarray,
       z_loss: Optional[jnp.ndarray] = None,
+      encoder_segment_ids: Optional[jnp.ndarray] = None,
   ) -> MetricsMap:
     return compute_base_metrics(
-        logits=logits, targets=targets, mask=mask, loss=loss, z_loss=z_loss)
+        logits=logits,
+        inputs=inputs,
+        targets=targets,
+        encoder_segment_ids=encoder_segment_ids,
+        mask=mask,
+        loss=loss,
+        z_loss=z_loss)
 
 
 class EncoderDecoderModel(BaseTransformerModel):
@@ -1112,20 +1123,25 @@ def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray,
 
 def compute_base_metrics(
     logits: jnp.ndarray,
+    inputs: jnp.ndarray,
     targets: jnp.ndarray,
     mask: jnp.ndarray,
     loss: jnp.ndarray,
     z_loss: Optional[jnp.ndarray] = None,
+    encoder_segment_ids: Optional[jnp.ndarray] = None,
 ) -> MetricsMap:
   """Compute summary metrics.
 
   Args:
    logits: [batch, length, num_classes] float array.
+   inputs: The input tokens in this batch.
    targets: categorical targets [batch, length] int array of categories.
    mask: None or array of shape [batch, length]. Note: must consist of boolean
      values (float-valued weights not supported).
    loss: loss (float)
    z_loss: z_loss (float)
+   encoder_segment_ids: A vector of indices created determining which tokens 
+     in the input correspond to which segments.
 
   Returns:
     Dict of metrics.
@@ -1137,7 +1153,11 @@ def compute_base_metrics(
   # Note: apply mask again even though mask has already been applied to loss.
   # This is needed to divide by mask sum, but should not affect correctness of
   # the numerator.
-  nonpadding_tokens = jnp.sum(mask) if mask is not None else targets.size
+  nonpadding_target_tokens = jnp.sum(mask) if mask is not None else targets.size
+  nonpadding_input_tokens = jnp.sum(inputs != 0)
+  nonpadding_total_tokens = nonpadding_input_tokens + nonpadding_target_tokens
+  segments = 1 if encoder_segment_ids is None else jnp.max(encoder_segment_ids)
+  effective_batch_size = num_examples * segments
   metrics = {
       'accuracy':
           clu_metrics.Accuracy.from_model_output(
@@ -1145,7 +1165,7 @@ def compute_base_metrics(
       'loss':
           metrics_lib.AveragePerStep(total=loss),
       'loss_per_nonpadding_target_token':
-          clu_metrics.Average(total=loss, count=nonpadding_tokens),
+          clu_metrics.Average(total=loss, count=nonpadding_target_tokens),
       'loss_per_all_target_tokens':
           clu_metrics.Average(total=loss, count=num_tokens),
       'timing/seqs_per_second':
@@ -1164,8 +1184,15 @@ def compute_base_metrics(
       'timing/target_tokens_per_second_per_core':
           metrics_lib.TimeRate.from_model_output(numerator=num_tokens /
                                                  num_devices),
-      'nonpadding_fraction':
-          clu_metrics.Average(total=nonpadding_tokens, count=num_tokens),
+      'nonpadding_target_fraction':
+          clu_metrics.Average(total=nonpadding_target_tokens, count=num_tokens),
+      'nonpadding_input_fraction':
+          clu_metrics.Average(total=nonpadding_input_tokens, count=inputs.size),
+      'nonpadding_total_fraction':
+          clu_metrics.Average(
+              total=nonpadding_total_tokens, count=inputs.size + targets.size),
+      'effective_batch_size':
+          metrics_lib.AveragePerStep(total=effective_batch_size)
   }
   if z_loss is not None:
     metrics.update({
