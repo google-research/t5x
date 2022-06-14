@@ -352,34 +352,37 @@ class EncoderDecoderModel(BaseTransformerModel):
     decoder_shape = input_shapes['decoder_input_tokens']
     decoder_type = input_types.get('decoder_input_tokens', jnp.float32)
     if 'encoder_positions' in input_shapes:
-      encoder_positions = jnp.ones(
-          input_shapes['encoder_positions'],
+      encoder_positions = jax.random.randint(
+          jax.random.PRNGKey(0), input_shapes['encoder_positions'], 0, 1,
           input_types.get('encoder_positions', jnp.int32))
     else:
       encoder_positions = None
     if 'decoder_positions' in input_shapes:
-      decoder_positions = jnp.ones(
-          input_shapes['decoder_positions'],
+      decoder_positions = jax.random.randint(
+          jax.random.PRNGKey(0), input_shapes['decoder_positions'], 0, 1,
           input_types.get('decoder_positions', jnp.int32))
     else:
       decoder_positions = None
     if 'encoder_segment_ids' in input_shapes:
-      encoder_segment_ids = jnp.ones(
-          input_shapes['encoder_segment_ids'],
+      encoder_segment_ids = jax.random.randint(
+          jax.random.PRNGKey(0), input_shapes['encoder_segment_ids'], 0, 1,
           input_types.get('encoder_segment_ids', jnp.int32))
     else:
       encoder_segment_ids = None
     if 'decoder_segment_ids' in input_shapes:
-      decoder_segment_ids = jnp.ones(
-          input_shapes['decoder_segment_ids'],
+      decoder_segment_ids = jax.random.randint(
+          jax.random.PRNGKey(0), input_shapes['decoder_segment_ids'], 0, 1,
           input_types.get('decoder_segment_ids', jnp.int32))
     else:
       decoder_segment_ids = None
     initial_variables = self.module.init(
         rng,
-        jnp.ones(encoder_shape, encoder_type),
-        jnp.ones(decoder_shape, decoder_type),
-        jnp.ones(decoder_shape, decoder_type),
+        jax.random.randint(
+            jax.random.PRNGKey(0), encoder_shape, 0, 1, encoder_type),
+        jax.random.randint(
+            jax.random.PRNGKey(0), decoder_shape, 0, 1, decoder_type),
+        jax.random.randint(
+            jax.random.PRNGKey(0), decoder_shape, 0, 1, decoder_type),
         encoder_positions=encoder_positions,
         decoder_positions=decoder_positions,
         encoder_segment_ids=encoder_segment_ids,
