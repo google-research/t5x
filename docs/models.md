@@ -126,3 +126,28 @@ LongT5 Large | [longt5/models/longt5_1_1_transient_large.gin](https://github.com
 LongT5 XL    | [longt5/models/longt5_1_1_transient_xl.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_transient_global_xl.gin)       | [gs://t5-data/pretrained_models/t5x/longt5/tglobal_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/tglobal_xl)
 
 
+#### Mixture of Experts (MoE) Checkpoints
+
+These MoE checkpoints need to be used with T5X MoE overrides -- specifically,
+the MoeTrainer and the MoePjitPartitioner. For example, for fine-tuning, use the
+[MoE fine-tune run config](https://github.com/google-research/t5x/tree/main/t5x/contrib/moe/configs/runs/finetune.gin).
+
+
+##### Converted Mesh Tensorflow checkpoints
+
+These are the checkpoints from the original
+[Switch Transformer model](https://arxiv.org/abs/2101.03961).
+
+Model                                    | Gin File Location                                                                                                            | Checkpoint Location
+---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | -------------------
+Switch Transformer Base 8 Experts        | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e8/checkpoint_500100](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e8)
+Switch Transformer Base 16 Experts       | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e16/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e16)
+Switch Transformer Base 32 Experts       | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e32/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e32)
+Switch Transformer Base 64 Experts       | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e64/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e64)
+Switch Transformer Base 128 Experts      | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e128/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e128)
+Switch Transformer Base 256 Experts      | [switch_classic_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_base.gin)   | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/base/e256/checkpoint_550000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/base/e256)
+Switch Transformer Large 128 Experts     | [switch_classic_large.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_large.gin) | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/large/e128/checkpoint_483100](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/large/e128)
+Switch Transformer XXL 128 Experts       | [switch_classic_xxl.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_xxl.gin)     | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/xxl/e128/checkpoint_634600](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/xxl/e128)
+Switch Transformer C 2048 Experts (1.6T) | [switch_classic_c.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_classic_c.gin)         | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/c/e2048/checkpoint_611800](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/c/e2048)
+
+
