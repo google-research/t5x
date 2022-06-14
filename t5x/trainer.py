@@ -990,6 +990,8 @@ class EarlyStoppingAction(BaseAction):
       return False
 
     m = metrics_by_task[self._task][self._metric]
+    if isinstance(m, (int, float)):
+      m = clu.values.Scalar(m)
 
     if not isinstance(m, clu.values.Scalar):
       logging.warning("Metric %s does not have Scalar type. Found %s.",
