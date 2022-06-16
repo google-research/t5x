@@ -28,14 +28,14 @@ import seqio
 from t5x import decoding
 from t5x import losses
 from t5x import metrics as metrics_lib
-from t5x import models
+from t5x import models as base_models
 from t5x import optimizers
 
 AveragePerStep = metrics_lib.AveragePerStep
-DecodeFnCallable = models.DecodeFnCallable
+DecodeFnCallable = base_models.DecodeFnCallable
 FrozenVariableDict = flax_scope.FrozenVariableDict
 MetricsMap = metrics_lib.MetricsMap
-PyTreeDef = models.PyTreeDef
+PyTreeDef = base_models.PyTreeDef
 Sum = metrics_lib.Sum
 
 
@@ -62,8 +62,8 @@ class ExpertMetrics:
   router_confidence: float
 
 
-class MoeEncoderDecoderModel(models.EncoderDecoderModel):
-  """Subclass which propagates MoE auxiliary loss and metrics."""
+class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
+  """Encoder-decoder subclass which propagates MoE auxiliary loss & metrics."""
 
   def __init__(
       self,
@@ -89,13 +89,13 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
         label_smoothing=label_smoothing,
         z_loss=z_loss,
         loss_normalizing_factor=loss_normalizing_factor)
-    self.aux_loss_factor = aux_loss_factor
-    self.router_z_loss_factor = router_z_loss_factor
+    self._aux_loss_factor = aux_loss_factor
+    self._router_z_loss_factor = router_z_loss_factor
 
   def loss_fn(
-      self, params: models.PyTreeDef, batch: Mapping[str, jnp.ndarray],
+      self, params: base_models.PyTreeDef, batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jnp.ndarray]) -> Tuple[jnp.ndarray, MetricsMap]:
-    """Cross-entropy loss function with auxiliary MoE load balancing loss.
+    """Cross-entropy loss function with auxiliary MoE losses.
 
     Args:
       params: Model parameters.
@@ -108,50 +108,111 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
     """
     logits, state = self._compute_logits(
         params, batch, dropout_rng, mutable=['intermediates'])
-    loss_normalizing_factor: Optional[Union[
-        float, int, str, losses.SpecialLossNormalizingFactor]]
-    (loss_normalizing_factor,
-     weights) = losses.get_loss_normalizing_factor_and_weights(
-         self._loss_normalizing_factor, batch)
+    return _moe_loss_fn(batch, logits, state, self._label_smoothing,
+                        self._z_loss, self._loss_normalizing_factor,
+                        self._aux_loss_factor, self._router_z_loss_factor)
 
-    targets = batch['decoder_target_tokens']
-    total_loss, z_loss, _ = losses.compute_weighted_cross_entropy(
-        logits,
-        targets=targets,
-        weights=weights,
-        label_smoothing=self._label_smoothing,
-        z_loss=self._z_loss,
+
+class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
+  """Decoder-only subclass which propagates MoE auxiliary loss and metrics."""
+
+  def __init__(
+      self,
+      module: nn.Module,
+      vocabulary: seqio.Vocabulary,
+      optimizer_def: optimizers.OptimizerDefType,
+      decode_fn: DecodeFnCallable = decoding.temperature_sample,
+      inputs_bidirectional_attention: bool = False,
+      feature_converter_cls: Optional[Callable[...,
+                                               seqio.FeatureConverter]] = None,
+      label_smoothing: float = 0.0,
+      z_loss: float = 0.0,
+      loss_normalizing_factor: Optional[float] = None,
+      aux_loss_factor: float = 0.,
+      router_z_loss_factor: float = 0.):
+    super().__init__(
+        module=module,
+        vocabulary=vocabulary,
+        optimizer_def=optimizer_def,
+        decode_fn=decode_fn,
+        inputs_bidirectional_attention=inputs_bidirectional_attention,
+        feature_converter_cls=feature_converter_cls,
+        label_smoothing=label_smoothing,
+        z_loss=z_loss,
         loss_normalizing_factor=loss_normalizing_factor)
+    self._aux_loss_factor = aux_loss_factor
+    self._router_z_loss_factor = router_z_loss_factor
 
-    # Extract and add MoE losses to total loss.
-    diversity_metrics = _extract_diversity_metrics(state)
-    if diversity_metrics:
-      # TODO(jamesleethorp): Because we currently cannot sow under scan
-      #  (https://github.com/google/flax/blob/66b4a0eda04c97420279216fae64c269a9bbb269/flax/linen/partitioning.py#L567-L611),
-      #  we cannot use any auxiliary losses when training under scan. We need
-      #  to figure something out for this case.
-      aux_loss, router_z_loss = _expert_losses(diversity_metrics,
-                                               self.aux_loss_factor,
-                                               self.router_z_loss_factor)
-      total_loss += aux_loss + router_z_loss
+  def loss_fn(
+      self, params: base_models.PyTreeDef, batch: Mapping[str, jnp.ndarray],
+      dropout_rng: Optional[jnp.ndarray]) -> Tuple[jnp.ndarray, MetricsMap]:
+    """Cross-entropy loss function with auxiliary MoE losses.
 
-    metrics = self._compute_metrics(
-        logits=logits,
-        targets=targets,
-        mask=weights,
-        loss=total_loss,
-        z_loss=z_loss)
-    if diversity_metrics:
-      metrics.update(
-          _expert_metrics(
-              diversity_metrics,
-              total_loss,
-              z_loss,
-              aux_loss,
-              router_z_loss,
-              num_tokens=targets.size))
+    Args:
+      params: Model parameters.
+      batch: Batch of training examples.
+      dropout_rng: Random number generator key for dropout.
 
-    return total_loss, metrics
+    Returns:
+      - Model loss.
+      - Metrics.
+    """
+    logits, state = self._compute_logits(
+        params, batch, dropout_rng, mutable=['intermediates'])
+    return _moe_loss_fn(batch, logits, state, self._label_smoothing,
+                        self._z_loss, self._loss_normalizing_factor,
+                        self._aux_loss_factor, self._router_z_loss_factor)
+
+
+def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
+                 state: flax_scope.FrozenVariableDict, label_smoothing: float,
+                 z_loss: float, loss_normalizing_factor: Optional[float],
+                 aux_loss_factor: float,
+                 router_z_loss_factor: float) -> Tuple[jnp.ndarray, MetricsMap]:
+  """Computes combined cross-entropy and MoE auxiliary loss."""
+  loss_normalizing_factor: Optional[Union[float, int, str,
+                                          losses.SpecialLossNormalizingFactor]]
+  (loss_normalizing_factor,
+   weights) = losses.get_loss_normalizing_factor_and_weights(
+       loss_normalizing_factor, batch)
+
+  targets = batch['decoder_target_tokens']
+  total_loss, z_loss, _ = losses.compute_weighted_cross_entropy(
+      logits,
+      targets=targets,
+      weights=weights,
+      label_smoothing=label_smoothing,
+      z_loss=z_loss,
+      loss_normalizing_factor=loss_normalizing_factor)
+
+  # Extract and add MoE losses to total loss.
+  diversity_metrics = _extract_diversity_metrics(state)
+  if diversity_metrics:
+    # TODO(jamesleethorp): Because we currently cannot sow under scan
+    #  (https://github.com/google/flax/blob/66b4a0eda04c97420279216fae64c269a9bbb269/flax/linen/partitioning.py#L567-L611),
+    #  we cannot use any auxiliary losses when training under scan. We need
+    #  to figure something out for this case.
+    aux_loss, router_z_loss = _expert_losses(diversity_metrics, aux_loss_factor,
+                                             router_z_loss_factor)
+    total_loss += aux_loss + router_z_loss
+
+  metrics = base_models.compute_base_metrics(
+      logits=logits,
+      targets=targets,
+      mask=weights,
+      loss=total_loss,
+      z_loss=z_loss)
+  if diversity_metrics:
+    metrics.update(
+        _expert_metrics(
+            diversity_metrics,
+            total_loss,
+            z_loss,
+            aux_loss,
+            router_z_loss,
+            num_tokens=targets.size))
+
+  return total_loss, metrics
 
 
 def _extract_diversity_metrics(
