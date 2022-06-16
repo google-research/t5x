@@ -2,11 +2,11 @@
 #
 # See t5x/contrib/moe/configs/runs/pretrain.gin for instructions.
 #
-# You must also include a binding for MODEL.
+# You must also include bindings for MODEL and NUM_EXPERTS (typically set by the
+# model gin config).
 #
 # Required to be set:
 #
-# - NUM_EXPERTS
 # - NUM_MODEL_PARTITIONS  (1 if no model parallelism)
 # - MIXTURE_OR_TASK_NAME
 # - TASK_FEATURE_LENGTHS
