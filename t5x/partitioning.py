@@ -30,6 +30,7 @@ from jax import random
 from jax.experimental import PartitionSpec
 from jax.experimental.maps import Mesh
 from jax.experimental.pjit import pjit as jax_pjit
+from jax.experimental.mesh_utils import create_hybrid_device_mesh
 import numpy as np
 from t5x import train_state as train_state_lib
 
@@ -291,6 +292,91 @@ def get_gpu_mesh() -> Mesh:
     devices[device.process_index, device.id % jax.local_device_count()] = device
   return Mesh(devices, ['data', 'model'])
 
+def get_multiprocess_aware_gpu_mesh(num_partitions: int) -> Mesh:
+  """Construct an xmap/pjit Mesh for GPUs based on `num_partitions`
+
+  The resulting mesh has two resource axes: 'model', according to the provided
+  `num_partitions` value and 'data', which covers the rest of the mesh. For a
+  single process which usually runs on a single node, the mesh will be of shape
+  `[jax.local_devices//num_partitions, num_partitions]`. For multiple processes,
+  which are usually run on separate nodes, the mesh is a 'hybrid mesh' with
+  `num_partitions` first distributed across the faster inner mesh of devices
+  (nvlink, i.e. within a node) as much as possible and the remaining
+  `num_partitions` factor is distributed across the outer mesh of devices
+  (across nodes). The remaining factor is treated as the data parallel dim.
+  For multiprocess (on multiple nodes), where
+  `total_devices` = `jax.process_count()` * `jax.local_device_count(), the mesh
+  is actually of shape:
+  (dcn_dp, dcn_mp, nvlink_dp, nvlink_mp) while it's virtually just
+  (total_devices//num_partitions, num_partitions).
+  Where `dcn_mp` * `nvlink_mp` = `num_partitions`,
+  `dcn_dp` * `nvlink_dp` = `total_devices` // `num_partitions` and
+  `prod(dcn_dp, dcn_mp, nvlink_dp, nvlink_mp)` = `total_devices`.
+
+  For more info, look at `create_hybrid_device_mesh` method present in
+  https://github.com/google/jax/blob/main/jax/experimental/mesh_utils.py
+
+
+  Args:
+    num_partitions: an Integer to specify the 'model parallel' dimension. This
+      should be strictly less than or equal to the total number of devices
+      available across processes (`jax.process_count() * jax.local_devices()`
+      with the assumtion that there are identical number of devices across all
+      processes).
+
+  Returns:
+    A xmap / pjit Mesh containing the virtual device mesh with data, model axes.
+  """
+
+  assert num_partitions > 0, 'num_partitions value should be at least 1'
+
+  nvlink_size = jax.local_device_count()
+  dcn_size = jax.process_count()
+
+  err_msg = (
+        'num_partitions should be less than or equal to the total devices '
+        'available. Also, it should evenly divide the total devices')
+
+  # Make sure we have enough devices available for model parallelism.
+  # Data parallelism is derived from `num_partitions` and number of
+  # available devices.
+  assert nvlink_size * dcn_size % num_partitions == 0, err_msg
+
+  # Fit as much of model parallelism (`num_partitions`) dimension in the
+  # faster inner network.
+  nvlink_mp = min(num_partitions, nvlink_size)
+
+  err_msg = (
+        'num_partitions should evenly divide the number of local devices if '
+        'less than the number of local devices')
+
+  # Accordingly find the data parallel dimension for the faster inner mesh.
+  assert nvlink_size % nvlink_mp == 0, err_msg
+  nvlink_dp = nvlink_size // nvlink_mp
+
+  err_msg = ('nvlink_mp should evenly divide num_partitions')
+
+  # Remaining model parallelism (`num_partitions`) dimension to map to
+  # the outer slower network.
+  assert num_partitions % nvlink_mp == 0, err_msg
+  dcn_mp = num_partitions // nvlink_mp
+
+  err_msg = ('dcn_mp should evenly divide the dcn_size')
+
+  # Finally, figure out the outer data parallel dimension
+  assert dcn_size % dcn_mp == 0, err_msg
+  dcn_dp = dcn_size // dcn_mp
+
+  devices = create_hybrid_device_mesh(
+      mesh_shape=[nvlink_dp, nvlink_mp],
+      dcn_mesh_shape=[dcn_dp, dcn_mp],
+      process_is_granule=True)
+
+  global_mesh = Mesh(devices, ['data', 'model'])
+  logging.info('global_mesh axes_names: %s', global_mesh.axis_names)
+  logging.info('global_mesh devices: %s', global_mesh.devices)
+  logging.info('global_mesh devices shape: %s', global_mesh.devices.shape)
+  return global_mesh
 
 def default_mesh(num_partitions: int,
                  model_parallel_submesh: Optional[HardwareMesh] = None,
@@ -320,7 +406,7 @@ def default_mesh(num_partitions: int,
   if platform == 'cpu':
     return get_cpu_mesh()
   elif platform == 'gpu':
-    return get_gpu_mesh()
+    return get_multiprocess_aware_gpu_mesh(num_partitions)
 
   mps = None
   if device_kind in ('TPU v2', 'TPU v3'):
