@@ -21,6 +21,7 @@ import cached_property
 from flax import core as flax_core
 import jax
 from jax.experimental.maps import Mesh
+from jax.experimental.pjit import pjit
 import numpy as np
 from t5x import adafactor
 from t5x import optimizers
@@ -296,13 +297,12 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
     in_axis_resources = _override_partition_specs(in_axis_resources)
     out_axis_resources = _override_partition_specs(out_axis_resources)
 
-    pjitted = base_partitioning.pjit(
+    pjitted = pjit(
         fn,
         in_axis_resources=in_axis_resources,
         out_axis_resources=out_axis_resources,
         static_argnums=static_argnums,
-        donate_argnums=donate_argnums,
-        backend=self._backend)
+        donate_argnums=donate_argnums)
 
     return base_partitioning.PjittedFnWithContext(pjitted, self.mesh,
                                                   self._logical_axis_rules)

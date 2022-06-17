@@ -30,7 +30,7 @@ from jax import random
 from jax.experimental import PartitionSpec
 from jax.experimental.maps import Mesh
 from jax.experimental.mesh_utils import create_hybrid_device_mesh
-from jax.experimental.pjit import pjit as jax_pjit
+from jax.experimental.pjit import pjit
 import numpy as np
 from t5x import train_state as train_state_lib
 
@@ -65,25 +65,6 @@ class AxisNames(tuple):
 
 # pjit wrappers for cpu fallback.
 # -----------------------------------------------------------------------------
-# TODO(levskaya): upstream this fallback behavior to jax pjit.
-def pjit(
-    fun: Callable,  # pylint: disable=g-bare-generic
-    in_axis_resources,
-    out_axis_resources,
-    static_argnums: Union[int, Sequence[int]] = (),
-    donate_argnums: Union[int, Sequence[int]] = (),
-    backend: Optional[str] = None):
-  """Wrapper for pjit that calls normal jit on cpu."""
-  if jax.devices(backend)[0].platform == 'cpu':
-    return jax.jit(
-        fun, static_argnums=static_argnums, donate_argnums=donate_argnums)
-  else:
-    return jax_pjit(
-        fun,
-        in_axis_resources,
-        out_axis_resources,
-        static_argnums=static_argnums,
-        donate_argnums=donate_argnums)
 
 
 def with_sharding_constraint(x, axis_resources):
@@ -799,8 +780,7 @@ class BasePjitPartitioner(BasePartitioner):
         in_axis_resources=in_axis_resources,
         out_axis_resources=out_axis_resources,
         static_argnums=static_argnums,
-        donate_argnums=donate_argnums,
-        backend=self._backend)
+        donate_argnums=donate_argnums)
 
     return PjittedFnWithContext(pjitted, self.mesh)
 
@@ -877,8 +857,7 @@ class PjitPartitioner(BasePjitPartitioner):
         in_axis_resources=in_axis_resources,
         out_axis_resources=out_axis_resources,
         static_argnums=static_argnums,
-        donate_argnums=donate_argnums,
-        backend=self._backend)
+        donate_argnums=donate_argnums)
 
     return PjittedFnWithContext(pjitted, self.mesh, self._logical_axis_rules)
 
