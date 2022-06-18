@@ -21,7 +21,7 @@ convert them once to a T5X checkpoint.
 Example usage:
 
 CUDA_VISIBLE_DEVICES=""
-python -m t5x.scripts.convert_tf_checkpoint \
+python -m t5x.convert_tf_checkpoint \
  --gin_file=t5x/examples/t5/t5_1_0/small.gin\
  --gin.convert_checkpoint.model=%MODEL\
  --gin.convert_checkpoint.tf_checkpoint_path=\
