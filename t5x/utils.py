@@ -1202,7 +1202,7 @@ def import_module(module: str):
       raise RuntimeError(
           'Your Task/Mixture module contains gin configurables that must be '
           'loaded before gin flag parsing. One fix is to add '
-          f"'import {module}' in your gin file.")
+          f"'import {module}' in your gin file.") from e
     raise e
 
 
