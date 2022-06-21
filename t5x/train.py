@@ -301,7 +301,8 @@ def train(
           # Restore dataset state if it is being saved.
           restore_dataset=(checkpoint_cfg.save and
                            checkpoint_cfg.save.save_dataset),
-          state_transformation_fns=state_transforms_for_restore)
+          state_transformation_fns=state_transforms_for_restore,
+          use_gda=use_gda)
   ]
   # 2. From a checkpoint specified by `checkpoint_cfg.restore.path`, if set.
   if checkpoint_cfg.restore:

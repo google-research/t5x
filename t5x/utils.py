@@ -136,6 +136,8 @@ class SaveCheckpointConfig:
   # Transformations to apply, in order, to the state before writing.
   state_transformation_fns: Sequence[checkpoints.SaveStateTransformationFn] = (
       dataclasses.field(default_factory=list))
+  # Enable GDA in this Checkpointer.
+  use_gda: bool = False
 
   def __post_init__(self):
     if self.dtype not in ('float32', 'bfloat16'):
@@ -175,6 +177,8 @@ class RestoreCheckpointConfig:
   # be applied after the `assignment_map` transformations.
   state_transformation_fns: Sequence[
       checkpoints.RestoreStateTransformationFn] = ()
+  # Enable GDA in this Checkpointer.
+  use_gda: bool = False
 
   def __post_init__(self):
     if self.mode not in ('specific', 'latest', 'all'):
@@ -319,7 +323,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
           dataset_iterator=ds_iter if save_cfg.save_dataset else None,
           save_dtype=save_cfg.dtype,
           keep=save_cfg.keep,
-          use_gda=use_gda,
+          use_gda=save_cfg.use_gda,
           keep_dataset_checkpoints=save_cfg.keep_dataset_checkpoints)
     else:
       save_checkpointer = None
@@ -331,7 +335,8 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
           checkpoints_dir='',  # unused for restore
           dataset_iterator=ds_iter if restore_cfg.restore_dataset else None,
           restore_dtype=jnp.dtype(restore_cfg.dtype)
-          if restore_cfg.dtype else None)
+          if restore_cfg.dtype else None,
+          use_gda=use_gda and restore_cfg.use_gda)
       strict = restore_cfg.strict
     else:
       restore_checkpointer = None
@@ -809,7 +814,8 @@ class TrainStateInitializer:
           partitioner=self._partitioner,
           checkpoints_dir='',  # unused for restore
           dataset_iterator=ds_iter if cfg.restore_dataset else None,
-          restore_dtype=jnp.dtype(cfg.dtype) if cfg.dtype else None)
+          restore_dtype=jnp.dtype(cfg.dtype) if cfg.dtype else None,
+          use_gda=cfg.use_gda)
 
       from_tensorflow = gfile.exists(path + '.index')
       if from_tensorflow and cfg.state_transformation_fns:
