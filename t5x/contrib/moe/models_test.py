@@ -94,9 +94,8 @@ class ModelsTest(absltest.TestCase):
 
   def test_extract_from_non_expert_model(self):
     empty_state = FrozenDict({'intermediates': {}})
-    with self.assertRaisesRegex(ValueError,
-                                'Unable to find any expert diversity metrics.'):
-      models._extract_diversity_metrics(empty_state)
+    actual_metrics = models._extract_diversity_metrics(empty_state)
+    self.assertEmpty(actual_metrics)
 
   def test_model(self):
     encoder_input_tokens = jnp.ones((2, 3))

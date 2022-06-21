@@ -17,6 +17,7 @@
 import dataclasses
 from typing import Callable, Mapping, Optional, Sequence, Tuple, Union
 
+from absl import logging
 import clu.metrics as clu_metrics
 from flax import core as flax_core
 from flax import linen as nn
@@ -124,10 +125,15 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
 
     # Extract and add MoE losses to total loss.
     diversity_metrics = _extract_diversity_metrics(state)
-    aux_loss, router_z_loss = _expert_losses(diversity_metrics,
-                                             self.aux_loss_factor,
-                                             self.router_z_loss_factor)
-    total_loss += aux_loss + router_z_loss
+    if diversity_metrics:
+      # TODO(jamesleethorp): Because we currently cannot sow under scan
+      #  (https://github.com/google/flax/blob/66b4a0eda04c97420279216fae64c269a9bbb269/flax/linen/partitioning.py#L567-L611),
+      #  we cannot use any auxiliary losses when training under scan. We need
+      #  to figure something out for this case.
+      aux_loss, router_z_loss = _expert_losses(diversity_metrics,
+                                               self.aux_loss_factor,
+                                               self.router_z_loss_factor)
+      total_loss += aux_loss + router_z_loss
 
     metrics = self._compute_metrics(
         logits=logits,
@@ -135,14 +141,15 @@ class MoeEncoderDecoderModel(models.EncoderDecoderModel):
         mask=weights,
         loss=total_loss,
         z_loss=z_loss)
-    metrics.update(
-        _expert_metrics(
-            diversity_metrics,
-            total_loss,
-            z_loss,
-            aux_loss,
-            router_z_loss,
-            num_tokens=targets.size))
+    if diversity_metrics:
+      metrics.update(
+          _expert_metrics(
+              diversity_metrics,
+              total_loss,
+              z_loss,
+              aux_loss,
+              router_z_loss,
+              num_tokens=targets.size))
 
     return total_loss, metrics
 
@@ -166,9 +173,11 @@ def _extract_diversity_metrics(
       if path[-1] == 'diversity_metrics'
   ]
   if not diversity_metrics:
-    raise ValueError(
-        'Unable to find any expert diversity metrics. Please check that MoE '
-        'metrics and losses are correctly sown.')
+    logging.warning(
+        'Unable to find any expert diversity metrics. This is expected if '
+        'using scan, in which cases we cannot use any auxiliary MoE losses. '
+        'If not using scan, please check that Moe layer metrics and losses are '
+        'correctly sown.')
   # Convert modeling library DiversityMetrics objects to local ExpertMetrics
   # objects to avoid modeling library dependencies.
   return [
