@@ -257,6 +257,13 @@ def write_inferences_to_file(
     raise ValueError(
         'include_all_inputs and input_fields_to_include should not be set'
         ' simultaneously.')
+  if include_all_inputs:
+    logging.info('Include all model inputs in the output JSONL files.')
+  if input_fields_to_include is not None:
+    logging.info(
+        'Include the following model inputs in the output JSONL files: \'%s\'.',
+        input_fields_to_include)
+
   with gfile.GFile(path, 'w') as f:
     for i, inp in task_ds.enumerate().as_numpy_iterator():
       predictions = all_predictions[i]
