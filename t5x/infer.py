@@ -391,7 +391,10 @@ def infer(
   """
   logging.info('Process ID: %d', jax.process_index())
 
-  summarize_config_fn(model_dir=output_dir, summary_writer=None, step=0)
+  # Only allow `shard_id` 0 to write config summary, since the config summary
+  # does NOT depend on `shard_id`.
+  if shard_id == 0:
+    summarize_config_fn(model_dir=output_dir, summary_writer=None, step=0)
 
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
