@@ -424,8 +424,6 @@ class DatasetConfig:
   module: Optional[str] = None
   # Whether to cache the dataset in memory (only applies to evaluation data).
   use_memory_cache: bool = True
-  # Whether to trim output features from tasks.
-  trim_output_features: bool = True
 
 
 def create_gda(global_mesh: partitioning.Mesh, pspec: PartitionSpec,
@@ -1320,13 +1318,10 @@ def get_dataset_inner(cfg: DatasetConfig,
       shuffle=cfg.shuffle,
       num_epochs=num_epochs,
       feature_converter=feature_converter_cls(
-          pack=cfg.pack,
-          use_custom_packing_ops=cfg.use_custom_packing_ops,
-          apply_length_check=cfg.trim_output_features),  # pytype: disable=not-instantiable
+          pack=cfg.pack, use_custom_packing_ops=cfg.use_custom_packing_ops),  # pytype: disable=not-instantiable
       shard_info=shard_info,
       use_cached=cfg.use_cached,
-      seed=seed,
-      trim_output_features=cfg.trim_output_features)
+      seed=seed)
   ds = ds.batch(batch_size, drop_remainder=True)
   return ds
 
