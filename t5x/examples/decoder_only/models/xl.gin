@@ -1,0 +1,11 @@
+# Decoder-only model (XXL) with TODO(hwchung): parameters.
+
+include 't5x/examples/decoder_only/models/base.gin'  # imports vocab, optimizer and model.
+
+# ------------------- Network specification overrides --------------------------
+network.TransformerConfig:
+  emb_dim = 2048
+  num_heads = 32
+  num_layers = 24
+  head_dim = 64
+  mlp_dim = 5120

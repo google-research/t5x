@@ -23,7 +23,7 @@ import __main__ as train_script
 train_script.train.random_seed = 42  # dropout seed
 train/utils.DatasetConfig.seed = 42  # dataset seed
 
-TASK_FEATURE_LENGTHS = {"inputs": 8, "targets": 7}
+TASK_FEATURE_LENGTHS = {"inputs": 8, "targets": 8}
 LABEL_SMOOTHING = 0.0
 TRAIN_STEPS = 3
 
