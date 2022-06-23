@@ -667,6 +667,29 @@ if __name__ == '__main__':
       'seqio_additional_cache_dirs', [],
       'Directories to search for cached Tasks in addition to defaults.')
 
+  # Following flags are needed for multiprocess runs
+  flags.DEFINE_boolean(
+    'multiprocess',
+    False,
+    help='If set, enable multihost runs, initialize using `jax.distributed()`. '
+    'Care required to provide correct `coordinator_address`, `num_processes` '
+    'and `process_id` values as well.')
+
+  flags.DEFINE_string(
+    'coordinator_address',
+    None,
+    help='The IP address and port using which all the processes can coordinate '
+    'for communication.')
+
+  flags.DEFINE_integer(
+    'num_processes',
+    None,
+    help='Total num of processes in multi process runs.' )
+
+  flags.DEFINE_integer(
+    'process_id',
+    None,
+    help='Index of the current process.')
 
 
   def main(argv: Sequence[str]):
@@ -677,6 +700,19 @@ if __name__ == '__main__':
     """True main function."""
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
+
+    # check if all the required info is present for multiprocess runs
+    if FLAGS.multiprocess:
+      err_msg = ('Provide values for `num_processes` and `process_id` variables')
+      assert FLAGS.coordinator_address != None and \
+             FLAGS.num_processes != None and \
+             FLAGS.process_id != None, err_msg
+
+      logging.info('Server address: %s, Total hosts: %d, Host ID: %d',
+                   FLAGS.coordinator_address, FLAGS.num_processes, FLAGS.process_id)
+
+      # jax multiprocess initialize
+      jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.num_processes, FLAGS.process_id)
 
     if FLAGS.tfds_data_dir:
       seqio.set_tfds_data_dir_override(FLAGS.tfds_data_dir)
