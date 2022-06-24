@@ -101,6 +101,16 @@ _DEFAULT_GIN_SEARCH_PATHS = [
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ]
 
+# Mapping of run_mode to the attribute used in the imported module, e.g.
+# {EVAL : 'evaluate'} will load 'evaluate' in eval.py.
+_ATTR_BY_RUN_MODE = {
+    RunMode.TRAIN: 'train',
+    RunMode.EVAL: 'evaluate',
+    RunMode.INFER: 'infer',
+    RunMode.PRECOMPILE: 'precompile',
+}
+
+
 main_module = sys.modules[__name__]
 
 
@@ -118,7 +128,7 @@ def main(argv: Sequence[str]):
   # _RUN_MODE can never be None after this point.
   # pytype: disable=attribute-error
   lib_name = _RUN_MODE.value.name.lower()
-  import_attr = _RUN_MODE.value.name.lower()
+  import_attr = _ATTR_BY_RUN_MODE[_RUN_MODE.value]
   # pytype: enable=attribute-error
 
   parent_module = 't5x'
