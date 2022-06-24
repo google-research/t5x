@@ -34,9 +34,10 @@ import os
 import re
 import subprocess
 import time
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 from absl import logging
+import clu.data
 from flax import serialization
 from flax import traverse_util
 import jax
@@ -376,6 +377,18 @@ class RestoreStateTransformationFn(typing_extensions.Protocol):
     """
 
 
+class _TfDataCheckpointer:
+
+  def __init__(self, dataset_iterator: tf.data.Iterator):
+    self._dataset_ckpt = tf.train.Checkpoint(ds=dataset_iterator)
+
+  def save(self, filename: str):
+    self._dataset_ckpt.write(filename)
+
+  def load(self, filename: str):
+    self._dataset_ckpt.read(filename).assert_consumed()
+
+
 class Checkpointer(object):
   """Handles saving and restoring potentially-sharded T5X checkpoints.
 
@@ -416,17 +429,19 @@ class Checkpointer(object):
       oldest ones will be automatically deleted to save space.
   """
 
-  def __init__(self,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               checkpoints_dir: str,
-               dataset_iterator: Optional[tf.data.Iterator] = None,
-               *,
-               keep: Optional[int] = None,
-               save_dtype: jnp.dtype = np.float32,
-               restore_dtype: Optional[jnp.dtype] = None,
-               use_gda: Optional[bool] = False,
-               keep_dataset_checkpoints: Optional[int] = None):
+  def __init__(
+      self,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      checkpoints_dir: str,
+      dataset_iterator: Optional[Union[tf.data.Iterator,
+                                       clu.data.DatasetIterator]] = None,
+      *,
+      keep: Optional[int] = None,
+      save_dtype: jnp.dtype = np.float32,
+      restore_dtype: Optional[jnp.dtype] = None,
+      use_gda: Optional[bool] = False,
+      keep_dataset_checkpoints: Optional[int] = None):
     """Checkpointer constructor.
 
     Args:
@@ -458,8 +473,9 @@ class Checkpointer(object):
     # Immutable due to use in `_get_parameter_infos`
     self._save_dtype = save_dtype
     self.restore_dtype = restore_dtype
-    self._dataset_ckpt = (
-        tf.train.Checkpoint(ds=dataset_iterator) if dataset_iterator else None)
+    if isinstance(dataset_iterator, tf.data.Iterator):
+      dataset_iterator = _TfDataCheckpointer(dataset_iterator)
+    self._dataset_iterator = dataset_iterator
     self._use_gda = use_gda
     if self._use_gda:
       logging.info('Checkpointing using GDA format is enabled.')
@@ -672,7 +688,8 @@ class Checkpointer(object):
       logging.info("Writing dataset iterator state to '%s'.",
                    self._dataset_ckpt_name)
       try:
-        self._dataset_ckpt.write(os.path.join(tmp_dir, self._dataset_ckpt_name))
+        self._dataset_iterator.save(
+            os.path.join(tmp_dir, self._dataset_ckpt_name))
       except tf.errors.FailedPreconditionError as e:
         logging.error(
             'Input pipeline must be stateless in order to checkpoint. Cache '
@@ -987,11 +1004,11 @@ class Checkpointer(object):
       if key not in restore_parameter_infos_flat:
         logging.info('Not restoring key from ckpt: %s', key)
 
-    if self._dataset_ckpt:
+    if self._dataset_iterator:
       logging.info("Restoring dataset iterator from '%s'.",
                    self._dataset_ckpt_name)
-      self._dataset_ckpt.read(os.path.join(
-          ckpt_dir, self._dataset_ckpt_name)).assert_consumed()
+      self._dataset_iterator.load(
+          os.path.join(ckpt_dir, self._dataset_ckpt_name))
 
     return self._restore_train_state(state_dict)
 

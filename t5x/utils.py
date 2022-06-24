@@ -309,7 +309,8 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
                restore_cfg: RestoreCheckpointConfig,
                train_state_shape: train_state_lib.TrainState,
                partitioner: partitioning.BasePartitioner,
-               ds_iter: Optional[tf.data.Iterator] = None,
+               ds_iter: Optional[Union[tf.data.Iterator,
+                                       clu.data.DatasetIterator]] = None,
                model_dir: Optional[str] = None,
                use_gda: Optional[bool] = False):
     if save_cfg is not None:

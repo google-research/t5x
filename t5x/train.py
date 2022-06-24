@@ -334,15 +334,12 @@ def train(
       restore_cfgs)
   if len(restore_paths) > 1:
     raise ValueError('Multiple restore paths not permitted in training.')
-  checkpointable_train_iter = (
-      train_iter.iterator
-      if isinstance(train_iter, clu.data.TfDatasetIterator) else None)
   checkpoint_manager = utils.LegacyCheckpointManager(
       save_cfg=checkpoint_cfg.save,
       restore_cfg=valid_restore_cfg,
       train_state_shape=train_state_initializer.global_train_state_shape,
       partitioner=partitioner,
-      ds_iter=checkpointable_train_iter,
+      ds_iter=train_iter,
       model_dir=model_dir,
       use_gda=use_gda)
 
