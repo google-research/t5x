@@ -92,8 +92,7 @@ class MoeTrainer(trainer.Trainer):
 
     self._num_experts = num_experts
     self._sharded_match_fn = sharded_match_fn
-    self.data_partition_spec = partitioning.data_partition_spec(
-        partitioner.two_data_axes)
+    self.data_partition_spec = partitioner.data_partition_spec
 
   @cached_property
   def _partitioned_train_step(self) -> PartitionedTrainCallable:

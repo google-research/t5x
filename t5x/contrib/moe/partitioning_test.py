@@ -19,9 +19,11 @@ from typing import Any
 from absl.testing import absltest
 from flax import core as flax_core
 from flax.linen import partitioning as flax_partitioning
+import jax
 import numpy as np
 import optax
 from t5x import optimizers
+from t5x import test_utils
 from t5x import train_state as train_state_lib
 from t5x.contrib.moe import partitioning as moe_partitioning
 from t5x.contrib.moe import training_utils
@@ -64,32 +66,73 @@ def create_train_state() -> FlaxOptimTrainState:
 
 class PartitioningTest(absltest.TestCase):
 
-  def test_default_data_layout(self):
-    # No expert replication required. Use default data layout.
-    partitioner = moe_partitioning.MoePjitPartitioner(
-        num_experts=8, num_partitions=1)
-    self.assertFalse(partitioner.two_data_axes)
-    self.assertEqual(
-        partitioner.get_data_layout(batch_size=32),
-        DataLayout(
-            batch_size=32,
-            shard_id=0,
-            num_shards=1,
-            is_first_host_in_replica_set=True))
+  @mock.patch('jax.local_devices')
+  @mock.patch('jax.devices')
+  @mock.patch('jax._src.lib.xla_bridge.process_index')
+  def test_default_mesh(self, process_index_fn, devices_fn, local_devices_fn):
+    # Mesh with 8 devices.
+    devices = test_utils.make_devices(2, 2, 1, 2, kind='TPU v3')
+    devices_fn.return_value = devices
+    local_devices_fn.return_value = [d for d in devices if d.process_index == 0]
+    process_index_fn.return_value = 0
 
-  def test_two_data_axis_layout_override(self):
-    partitioner = moe_partitioning.MoePjitPartitioner(
-        num_experts=8, num_partitions=1)
-    # Force override case to check layout is valid.
-    partitioner.two_data_axes = True
-    partitioner._data_axis = ('data', 'model')
-    self.assertEqual(
-        partitioner.get_data_layout(batch_size=8),
-        DataLayout(
-            batch_size=8,
-            shard_id=0,
-            num_shards=1,
-            is_first_host_in_replica_set=True))
+    with self.subTest(name='more_experts_than_devices'):
+      mesh = moe_partitioning.default_moe_mesh(num_experts=16, num_partitions=1)
+      self.assertEqual(mesh.devices.shape, (1, 8, 1))
+      self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
+
+    with self.subTest(name='equal_experts_and_devices'):
+      mesh = moe_partitioning.default_moe_mesh(num_experts=8, num_partitions=1)
+      self.assertEqual(mesh.devices.shape, (1, 8, 1))
+      self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
+
+    with self.subTest(name='fewer_experts_than_devices'):
+      mesh = moe_partitioning.default_moe_mesh(num_experts=4, num_partitions=1)
+      self.assertEqual(mesh.devices.shape, (2, 4, 1))
+      self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
+
+    with self.subTest(name='nontrivial_model_partitions'):
+      mesh = moe_partitioning.default_moe_mesh(num_experts=8, num_partitions=4)
+      self.assertEqual(mesh.devices.shape, (1, 2, 4))
+      self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
+
+    with self.subTest(name='specified_model_parallel_submesh'):
+      mesh = moe_partitioning.default_moe_mesh(
+          num_experts=8, model_parallel_submesh=(1, 1, 1, 2))
+      self.assertEqual(mesh.devices.shape, (1, 4, 2))
+      self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
+
+  def test_gpu_mesh(self):
+    mesh = moe_partitioning.get_gpu_mesh()
+    self.assertEqual(mesh.devices.shape, (1, jax.device_count(), 1))
+    self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
+
+  def test_cpu_mesh(self):
+    mesh = moe_partitioning.get_cpu_mesh()
+    self.assertEqual(mesh.devices.shape, (1, jax.device_count(), 1))
+    self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
+
+  @mock.patch('jax.local_devices')
+  @mock.patch('jax.devices')
+  @mock.patch('jax._src.lib.xla_bridge.process_index')
+  def test_local_chunker_data_layout(self, process_index_fn, devices_fn,
+                                     local_devices_fn):
+    # Mesh with 32 devices.
+    devices = test_utils.make_devices(4, 4, 1, 2, kind='TPU v3')
+    devices_fn.return_value = devices
+    local_devices_fn.return_value = [d for d in devices if d.process_index == 0]
+
+    for process_index, shard_id in zip([0, 1, 2, 3], [0, 2, 1, 3]):
+      process_index_fn.return_value = process_index
+      partitioner = moe_partitioning.MoePjitPartitioner(
+          num_experts=8, num_partitions=1)
+      self.assertEqual(
+          partitioner.get_data_layout(batch_size=32),
+          DataLayout(
+              batch_size=32,
+              shard_id=shard_id,
+              num_shards=4,
+              is_first_host_in_replica_set=True))
 
   def test_logical_axes_for_moe_partitioner_no_overrides(self):
     partitioner = moe_partitioning.MoePjitPartitioner(
@@ -208,53 +251,14 @@ class PartitioningTest(absltest.TestCase):
                 },
             })))
 
-  @mock.patch('jax.device_count')
-  def test_overridden_logical_axis_rules(self, device_count: int):
-    device_count.return_value = 4
-    # Fewer experts than devices --> modified axis rules with two 'batch' axes.
+  def test_logical_axis_rules(self):
     self.assertEqual(
         moe_partitioning.standard_logical_axis_rules(
-            num_experts=1,
-            num_partitions=1,
-            model_parallel_submesh=None,
-            additional_rules=[('additional', 'model'),
-                              ('expert_magic', 'data')]),
+            additional_rules=[('additional', 'model'), ('expert_magic',
+                                                        'data')]),
         [
-            ('batch', ('data', 'model')),  # Shard batch over entire mesh
+            ('batch', ('data', 'expert')),  # Shard batch over entire mesh
             # No sharding of weights over model axis.
-            ('vocab', None),
-            ('embed', None),
-            ('mlp', None),
-            ('heads', None),
-            ('kv', None),
-            ('joined_kv', None),
-            ('relpos_buckets', None),
-            ('abspos_buckets', None),
-            ('length', None),
-            ('layers', None),
-            ('stack', None),
-            ('mlp_activations', None),
-            ('expert', 'data'),  # Shard experts over "first" data axis only
-            ('expert_mlp', None),
-            ('expert_group', None),
-            # Experts replicated along "second" data axis
-            ('expert_replicas', 'model'),
-            ('unmodeled', None),
-            ('additional', None),
-            ('expert_magic', 'data'),
-        ])
-
-  def test_default_logical_axis(self):
-    # Model parallelism used --> default logical axis rules.
-    self.assertEqual(
-        moe_partitioning.standard_logical_axis_rules(
-            num_experts=1,
-            num_partitions=2,
-            model_parallel_submesh=None,
-            additional_rules=[('additional', 'model')]),
-        [
-            ('batch', 'data'),  # Shard batch over single data axis
-            # Default model annotations used.
             ('vocab', 'model'),
             ('embed', None),
             ('mlp', 'model'),
@@ -267,54 +271,33 @@ class PartitioningTest(absltest.TestCase):
             ('layers', None),
             ('stack', None),
             ('mlp_activations', None),
-            ('expert', 'data'),  # Shard experts along data axis
+            ('expert', 'expert'),  # Shard experts along expert axis
             ('expert_mlp', 'model'),
             ('expert_group', None),
-            ('expert_replicas', None),
+            # Experts replicated along "pure" data axis
+            ('expert_replicas', 'data'),
             ('unmodeled', None),
             ('additional', 'model'),
+            ('expert_magic', 'data'),
         ])
 
-  def test_2d_parameter_sharding_unsupported(self):
-    with self.assertRaisesRegex(ValueError, 'is not supported for MoE.'):
-      moe_partitioning.standard_logical_axis_rules(
-          num_experts=4, num_partitions=1, parameter_partitioning_dims=2)
-
   def test_data_partition_spec(self):
-    self.assertEqual(
-        moe_partitioning.data_partition_spec(two_data_axes=False),
-        PartitionSpec('data',))
-    self.assertEqual(
-        moe_partitioning.data_partition_spec(two_data_axes=True),
-        PartitionSpec(('data', 'model'),))
-
-  @mock.patch('jax.device_count')
-  def test_when_to_override_model_axis(self, device_count: int):
-    device_count.return_value = 4
-
-    # More experts than devices.
-    self.assertFalse(
-        moe_partitioning._override_model_axis(
-            num_experts=8, num_partitions=1, model_parallel_submesh=None))
-
-    # Fewer experts than devices.
-    self.assertTrue(
-        moe_partitioning._override_model_axis(
-            num_experts=1, num_partitions=1, model_parallel_submesh=None))
-
-    # Model parallelism used.
-    self.assertFalse(
-        moe_partitioning._override_model_axis(
-            num_experts=1, num_partitions=2, model_parallel_submesh=None))
+    partitioner = moe_partitioning.MoePjitPartitioner(
+        num_experts=2, num_partitions=1)
+    self.assertEqual(partitioner.data_partition_spec,
+                     PartitionSpec(('data', 'expert'),))
 
   def test_axis_resource_overrides(self):
-    input_resources = (PartitionSpec('data'), PartitionSpec('model'), None,
+    input_resources = (PartitionSpec('data'), PartitionSpec('model'),
+                       PartitionSpec('expert'), None,
                        PartitionSpec('unrecognized'))
     overridden_resources = moe_partitioning._override_partition_specs(
         input_resources)
-    # 'data' -> ('data', 'model'). 'model' -> None.
-    self.assertEqual(overridden_resources, (PartitionSpec(
-        ('data', 'model'),), None, None, PartitionSpec('unrecognized',)))
+    # 'data' -> ('data', 'expert').
+    self.assertEqual(
+        overridden_resources,
+        (PartitionSpec(('data', 'expert'),), PartitionSpec('model'),
+         PartitionSpec('expert'), None, PartitionSpec('unrecognized',)))
 
 if __name__ == '__main__':
   absltest.main()

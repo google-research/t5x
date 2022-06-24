@@ -17,35 +17,107 @@
 from typing import Any, Callable, Optional, Sequence, Union
 
 from absl import logging
+import cached_property
 from flax import core as flax_core
 import jax
+from jax.experimental.maps import Mesh
 import numpy as np
 from t5x import adafactor
 from t5x import optimizers
-from t5x import partitioning as t5x_partitioning
+from t5x import partitioning as base_partitioning
 from t5x import train_state as train_state_lib
 from t5x.contrib.moe import training_utils
 
-DataLayout = t5x_partitioning.DataLayout
+DataLayout = base_partitioning.DataLayout
 FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
-HardwareMesh = t5x_partitioning.HardwareMesh
+HardwareMesh = base_partitioning.HardwareMesh
 InferenceState = train_state_lib.InferenceState
-LogicalAxisRules = t5x_partitioning.LogicalAxisRules
-PartitionSpec = t5x_partitioning.PartitionSpec
+JaxDevice = jax.lib.xla_client.Device
+LogicalAxisRules = base_partitioning.LogicalAxisRules
+PartitionSpec = base_partitioning.PartitionSpec
 Pytree = Any
 TrainState = train_state_lib.TrainState
 
 
-class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
+def get_cpu_mesh() -> Mesh:
+  """Trivial MoE mesh for CPU Testing."""
+  base_cpu_mesh = base_partitioning.get_cpu_mesh()
+  # Add extra dimension for new 'expert' axis.
+  devices = np.expand_dims(base_cpu_mesh.devices, axis=-1)
+  return Mesh(devices, ['data', 'expert', 'model'])
+
+
+def get_gpu_mesh() -> Mesh:
+  """Simple MoE mesh for GPUs."""
+  base_cpu_mesh = base_partitioning.get_gpu_mesh()
+  # Add extra dimension for new 'expert' axis.
+  devices = np.expand_dims(base_cpu_mesh.devices, axis=-1)
+  return Mesh(devices, ['data', 'expert', 'model'])
+
+
+def default_moe_mesh(num_experts: int,
+                     num_partitions: Optional[int] = None,
+                     model_parallel_submesh: Optional[HardwareMesh] = None,
+                     backend: Optional[str] = None) -> Mesh:
+  """Construct default xmap/pjit mesh for MoE.
+
+  Unlike the vanilla T5X mesh, this mesh has three resource axes:
+  - 'expert': a 1D submesh with length that divides into `num_experts`,
+  - 'model': specified by the provided `model_parallel_submesh` shape, and
+  - 'data', which covers the rest of the mesh.
+
+  Relative to the vanilla T5X mesh, the `expert` axis is constructed by
+  factoring along the 'data' axis length.
+
+  Args:
+    num_experts: Total number of experts across all devices.
+    num_partitions: Specifies the size of the model parallel submesh to be
+      automatically selected for the current topology. See
+      `model_parallel_submesh` for details on how this submesh is used. Mutually
+      exclusive with `model_parallel_submesh`.
+    model_parallel_submesh: 4-tuple that specifies the `(x, y, z, c)` submesh
+      model-parallel device tile. See also t5x/partitioning.py for details. This
+      argument is mutually exclusive with `num_partitions`.
+    backend: Fetch devices from the pinned backend, if specified. This is useful
+      for explicitly specifying the devices other than relying on
+      jax_platform_name.
+
+  Returns:
+    xmap/pjit 3D Mesh with 'data', 'expert' and 'model' mesh axes.
+  """
+  # Base mesh has shape ('data', 'model').
+  logging.info('For MoE, first construct vanilla T5X (data, model) mesh.')
+  base_default_mesh = base_partitioning.default_mesh(num_partitions,
+                                                     model_parallel_submesh,
+                                                     backend)
+  data_axis_size, model_axis_size = base_default_mesh.devices.shape
+
+  # Factor out the largest divisor of 'data' axis satisfying <= `num_experts`.
+  expert_axis_size = num_experts
+  while data_axis_size % expert_axis_size != 0:
+    expert_axis_size -= 1
+
+  # Reshape mesh to ('data', 'expert', 'model').
+  devices = base_default_mesh.devices.reshape(-1, expert_axis_size,
+                                              model_axis_size)
+  global_mesh = Mesh(devices, ['data', 'expert', 'model'])
+  logging.info('Overridden MoE global_mesh axes_names: %s',
+               global_mesh.axis_names)
+  logging.info('Overridden MoE global_mesh devices: %s', global_mesh.devices)
+  return global_mesh
+
+
+class MoePjitPartitioner(base_partitioning.PjitPartitioner):
   """Pjit partitioner with overrides for Mixture of Experts support.
 
-  This MoE partitioner has two overrides relative to the default partitioner:
-  (1) It prepends an 'expert' axis to all MoE optimizer state terms, so that
-      they are sharded along the 'expert' axis; see get_logical_axes().
-  (2) In cases where model parallelism is used and the number of experts is less
-      than the number of devices, we treat the 'model' axis as a secondary data
-      axis. This allows us to decouple expert parallelism ('data' mesh axis)
-      from data parallelism ('data' and 'model' axes).
+  This MoE partitioner overrides the default partitioner to use the MoE friendly
+  ('data', 'expert', 'model') mesh. MoE params and state are partitioned along
+  the 'expert' axis. Data is partitioned along both of the 'data' AND 'expert'
+  axes.
+
+  Additionally, when training with T5X's Adafactor optimizer, it handles an edge
+  case where the MoE optimizer state terms do NOT automatically inherit the
+  'expert' axis annotation from the model params; see get_logical_axes().
   """
 
   def __init__(self,
@@ -71,28 +143,14 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
         stay in the host memory.
       logical_axis_rules: A priority-ordered sequence of KV tuples that maps
         logical axis names to either `None` (not sharded), 'model' (to shard
-        across the model-parallel submesh), or 'data' (to shard across the
-        data-parallel submesh).
+        across the model-parallel submesh), 'data' (to shard across the
+        data-parallel submesh), or 'expert' (for expert parallelism).
       state_filter_fn: Function to identify which optimizer state axis rules
         should be overridden to be sharded along the 'expert' axis. If None
         (default), Adafactor expert sharding overrides are used.
     """
-    # If True, treat 'model' axis as secondary data axis.
-    self.two_data_axes = _override_model_axis(num_experts, num_partitions,
-                                              model_parallel_submesh)
-    if self.two_data_axes:
-      # Override num_partitions to repurpose the 'model' axis as a secondary
-      # data axis, along which only the batch is sharded. Experts will be
-      # replicated along this secondary data axis.
-      num_partitions = jax.device_count() // num_experts
-
-      # Override user specified model parallel submesh. Rely on T5X partitioning
-      # to determine new submesh from updated `num_partitions`.
-      logging.info(
-          'Overriding user specified `model_parallel_submesh`=%s to support '
-          'expert parallelism for updated `num_partitions`=%d',
-          model_parallel_submesh, num_partitions)
-      model_parallel_submesh = None
+    if logical_axis_rules is None:
+      logical_axis_rules = standard_logical_axis_rules()
 
     super().__init__(
         num_partitions=num_partitions,
@@ -100,15 +158,33 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
         params_on_devices=params_on_devices,
         logical_axis_rules=logical_axis_rules)
 
+    self._num_experts = num_experts
     self._state_filter_fn = state_filter_fn
+
+  @property
+  def data_partition_spec(self) -> PartitionSpec:
+    """Returns MoE data partitioning spec.
+
+    Data is sharded across the 'data' and 'expert' axes.
+
+    Returns:
+      Mesh dependent partition spec.
+    """
+    return PartitionSpec(('data', 'expert'),)
+
+  @cached_property.cached_property
+  def mesh(self) -> Mesh:
+    """Overrides default T5X mesh with ('data', 'expert', 'model') mesh."""
+    return default_moe_mesh(self._num_experts, self._num_partitions,
+                            self._model_parallel_submesh, self._backend)
 
   def get_data_layout(self,
                       batch_size: Optional[int] = None,
                       host_index: Optional[int] = None) -> DataLayout:
     """Returns filled `DataLayout` based on the partitioned model layout.
 
-    Overrides default data layout in case were both mesh axes ('data' and
-    'model') are treated as data axes.
+    Overrides default data layout for MoE, where we treat 'data' and 'expert'
+    axes as "data" axes.
 
     Args:
       batch_size: If set, indicates the requested batch size. If not set, the
@@ -121,30 +197,30 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
     Returns:
       Filled `DataLayout` structure.
     """
-    if self.two_data_axes:
-      if host_index is not None:
-        raise NotImplementedError('Explicit host_index is not yet implemented.')
-      mesh_size = self._local_chunker.global_mesh.shape[
-          'data'] * self._local_chunker.global_mesh.shape['model']
-      batch_size = batch_size or mesh_size
-      if batch_size % mesh_size:
-        raise ValueError(
-            f'Batch size ({batch_size}) must be divisible by corresponding '
-            f'mesh size ({mesh_size}).')
-      num_shards = self._local_chunker.num_chunks['data']
-      if batch_size % num_shards:
-        raise ValueError(
-            f'Batch size ({batch_size}) must be divisible by number of '
-            f'replicas ({num_shards}).')
-      replica_id = self._local_chunker.get_local_chunk_info(
-          (batch_size,), ('data', 'model')).replica_id
-      return DataLayout(
-          batch_size=batch_size,
-          shard_id=self._local_chunker.chunk_ids['data'],
-          num_shards=num_shards,
-          is_first_host_in_replica_set=(replica_id == 0))
-    else:
-      return super().get_data_layout(batch_size, host_index)
+    if host_index is not None:
+      raise NotImplementedError('Explicit host_index is not yet implemented.')
+    data_mesh_size = self._local_chunker.global_mesh.shape[
+        'data'] * self._local_chunker.global_mesh.shape['expert']
+    batch_size = batch_size or data_mesh_size
+    if batch_size % data_mesh_size:
+      raise ValueError(
+          f'Batch size ({batch_size}) must be divisible by corresponding data '
+          f'mesh size ({data_mesh_size}).')
+    num_data_shards = self._local_chunker.num_chunks[
+        'data'] * self._local_chunker.num_chunks['expert']
+    if batch_size % num_data_shards:
+      raise ValueError(
+          f'Batch size ({batch_size}) must be divisible by total number of '
+          f'experts replicas ({num_data_shards}).')
+    replica_id = self._local_chunker.get_local_chunk_info(
+        (batch_size,), ('data', 'expert', 'model')).replica_id
+    return DataLayout(
+        batch_size=batch_size,
+        shard_id=(self._local_chunker.chunk_ids['data'] +
+                  self._local_chunker.chunk_ids['expert'] *
+                  self._local_chunker.num_chunks['data']),
+        num_shards=num_data_shards,
+        is_first_host_in_replica_set=(replica_id == 0))
 
   def get_logical_axes(
       self, train_state: Union[FlaxOptimTrainState, InferenceState]
@@ -152,8 +228,9 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
     """Returns a copy of TrainState with Optional[AxisNames] as leaves.
 
     Overrides the default logical axes by prepending the 'expert' axis to any
-    MoE optimizer state terms (identified by self._state_filter_fn) so they are
-    correctly sharded along the 'expert' axis.
+    MoE optimizer state terms (identified by self._state_filter_fn); this is
+    useful for T5X's Adafactor optimizer, which does not propagate param
+    annotations to the optimizer state when the optimizers is factored.
 
     Args:
       train_state: Object holding all relevant training of inference state.
@@ -193,11 +270,11 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
       out_axis_resources: Pytree,
       static_argnums: Union[int, Sequence[int]] = (),
       donate_argnums: Union[int, Sequence[int]] = ()
-  ) -> t5x_partitioning.PjittedFnWithContext:
+  ) -> base_partitioning.PjittedFnWithContext:
     """Partitions the computation using pjit.
 
-    Overrides the default pjit partitioning in cases where expert and data axes
-    are decoupled -- wherein we treat the 'model' axis as a secondary data axis.
+    Overrides the default pjit partitioning to ensure that data is sharded along
+    both of the 'data' and 'expert' axes.
 
     Args:
       fn: Function to partition.
@@ -214,13 +291,12 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
     Returns:
       A partitioned version of the input function.
     """
-    if self.two_data_axes:
-      # Both axes are used for data parallelism in this case, so we override the
-      # partition specs.
-      in_axis_resources = _override_partition_specs(in_axis_resources)
-      out_axis_resources = _override_partition_specs(out_axis_resources)
+    # Override the partition specs to use 'data' AND 'expert' axes for data
+    # parallelism.
+    in_axis_resources = _override_partition_specs(in_axis_resources)
+    out_axis_resources = _override_partition_specs(out_axis_resources)
 
-    pjitted = t5x_partitioning.pjit(
+    pjitted = base_partitioning.pjit(
         fn,
         in_axis_resources=in_axis_resources,
         out_axis_resources=out_axis_resources,
@@ -228,37 +304,27 @@ class MoePjitPartitioner(t5x_partitioning.PjitPartitioner):
         donate_argnums=donate_argnums,
         backend=self._backend)
 
-    return t5x_partitioning.PjittedFnWithContext(pjitted, self.mesh,
-                                                 self._logical_axis_rules)
+    return base_partitioning.PjittedFnWithContext(pjitted, self.mesh,
+                                                  self._logical_axis_rules)
 
 
 def standard_logical_axis_rules(
-    num_experts: int,
-    num_partitions: Optional[int] = None,
-    model_parallel_submesh: Optional[HardwareMesh] = None,
     activation_partitioning_dims: int = 1,
     parameter_partitioning_dims: int = 1,
     additional_rules: Optional[LogicalAxisRules] = None):
   """Returns partitioning rules for MoE models.
 
+  MoE params and state are partitioned along the 'expert' axis. Data is
+  partitioned along both of the 'data' AND 'expert' axes.
+
   The partitioning rules vary based on whether the expert and data axes need to
   be decoupled; see also MoePjitPartitioner for details of when expert and data
   axes need to be decouple.
 
-  2D parameter sharding (`parameter_partitioning_dims=2`) is not supported.
-  Sharding parameters along the 'data' axis will interfere with expert
-  parallelism, because experts are also partitioned along the 'data' axis.
+  Buyer beware: 2D parameter sharding (`parameter_partitioning_dims=2`) is
+  technically supported but untested.
 
   Args:
-    num_experts: Total number of experts across all devices.
-    num_partitions: Size of the model parallel submesh. Model parallelism is
-      only used if num_model_partitions > 1. Ignored if model_parallel_submesh
-      is specified.
-    model_parallel_submesh: 4-tuple that specifies the `(x, y, z, c)` submesh
-      model-parallel device tile -- an axis of accelerator parallelism
-      orthogonal to data parallelism. Model parallelism is only used if
-      np.prod(model_parallel_submesh) > 1. Mutually exclusive with
-      `num_partitions`.
     activation_partitioning_dims: Enables 2-D activation sharding when set to 2.
     parameter_partitioning_dims: Enables 2-D parameter sharding when set to 2.
     additional_rules: Additional rules (a sequence of tuples) that will be
@@ -266,114 +332,49 @@ def standard_logical_axis_rules(
 
   Returns:
     Sequence of logical axis rules.
-
-  Raises:
-    ValueError if parameter_partitioning_dims=2.
   """
-  if parameter_partitioning_dims == 2:
-    raise ValueError('2D parameter sharding (`parameter_partitioning_dims=2`) '
-                     'is not supported for MoE.')
+  _ = base_partitioning.global_mesh_defined()
 
-  default_rules = t5x_partitioning.standard_logical_axis_rules(
+  if parameter_partitioning_dims == 2:
+    raise logging.warning(
+        '2D parameter sharding (`parameter_partitioning_dims=2`) is supported '
+        'but untested for MoE.')
+
+  default_rules = base_partitioning.standard_logical_axis_rules(
       activation_partitioning_dims, parameter_partitioning_dims)
   moe_rules = [
-      ('expert', 'data'),  # Shard experts along the data axis
+      ('expert', 'expert'),  # Shard experts along the expert axis
       ('expert_mlp', 'model'),  # Expert MLPs partitioned along model axis
       ('expert_group', None),  # Replicated axis for all-to-all constraints
-      ('expert_replicas', None),  # Experts replicated along this axis
+      ('expert_replicas', 'data'),  # Experts replicated along "pure" data axis
       ('unmodeled', None),  # Replicated weights
   ]
   standard_rules = list(default_rules) + moe_rules
   if additional_rules:
     standard_rules.extend(additional_rules)
 
-  if _override_model_axis(num_experts, num_partitions, model_parallel_submesh):
-    overridden_rules = []
-    for logical_axis, mesh_axis in standard_rules:
-      if logical_axis == 'batch':
-        # Because we now treat the 'model' axis as a second data axis, we want
-        # to shard batches across both axes.
-        overridden_mesh_axis = ('data', 'model')
-      elif logical_axis == 'expert_replicas':
-        # "model" axis is repurposed as a second data axis, along which experts
-        # are replicated.
-        overridden_mesh_axis = 'model'
-      elif mesh_axis == 'model':
-        # Any weights ordinarily partitioned along the model axis, should be
-        # explicitly replicated.
-        overridden_mesh_axis = None
-      else:
-        overridden_mesh_axis = mesh_axis
-      overridden_rules.append((logical_axis, overridden_mesh_axis))
+  overridden_rules = []
+  for logical_axis, mesh_axis in standard_rules:
+    if logical_axis == 'batch':
+      # Data is sharded across both 'data' and 'expert axes.
+      overridden_mesh_axis = ('data', 'expert')
+    else:
+      overridden_mesh_axis = mesh_axis
+    overridden_rules.append((logical_axis, overridden_mesh_axis))
 
-    return overridden_rules
-
-  else:
-    return standard_rules
-
-
-def data_partition_spec(two_data_axes: bool) -> PartitionSpec:
-  """Returns data partitioning spec.
-
-  Args:
-    two_data_axes: If True, use 'model' axis as secondary data axis. Otherwise,
-      only use 'data' axis for data sharding.
-
-  Returns:
-    Mesh dependent partition spec.
-  """
-  if two_data_axes:
-    # Use 'model' axis as secondary data axis. Shard batches across both axes.
-    return PartitionSpec(('data', 'model'),)
-  else:
-    return PartitionSpec('data',)
-
-
-def _override_model_axis(
-    num_experts: int, num_partitions: Optional[int],
-    model_parallel_submesh: Optional[HardwareMesh]) -> bool:
-  """Returns true iff there is no model parallelism & num experts < num devices.
-
-  Args:
-    num_experts: Total number of experts across all devices.
-    num_partitions: Size of the model parallel submesh. Model parallelism is
-      only used if num_model_partitions > 1. Mutually exclusive with
-      `model_parallel_submesh`.
-    model_parallel_submesh: 4-tuple that specifies the `(x, y, z, c)` submesh
-      model-parallel device tile -- an axis of accelerator parallelism
-      orthogonal to data parallelism. Model parallelism is only used if
-      np.prod(model_parallel_submesh) > 1. Mutually exclusive with
-      `num_partitions`.
-
-  Returns:
-    True if there is no model parallelism & num experts < num devices; False
-    otherwise.
-  """
-  if (num_partitions is None) == (model_parallel_submesh is None):
-    raise ValueError(
-        'One, and only one, of {num_partitions, model_parallel_submesh} must '
-        'be specified. Received: %s and %s' %
-        (num_partitions, model_parallel_submesh))
-
-  if num_experts == 0 or jax.device_count() <= num_experts:
-    # No expert replication required. No need to override model mesh axis.
-    return False
-
-  return ((num_partitions is not None and num_partitions <= 1) or
-          (model_parallel_submesh is not None and
-           np.prod(model_parallel_submesh) <= 1))
+  return overridden_rules
 
 
 def _override_partition_specs(resources: Pytree):
-  """Override axis resources for two data axes setup.
+  """Override raw axis resources so data is sharded over 'data' & 'expert' axes.
 
-  In the two data axes setup, we treat the 'model' axis as a secondary data
-  axis. To this end, we override any hardcoded, raw partition specs:
-  - PartitionSpec('data',) -> PartitionSpec(('data', 'model'),)
-  - PartitionSpec('model',) -> None
-  There is no need to override any params or optimizer state as these will
-  inherit the correct specs from the logical axis rules; see
-  standard_logical_axis_rules().
+  Here, we only override any raw partition specs that are hardcoded in T5X
+  libraries:
+  PartitionSpec('data',) -> PartitionSpec(('data', 'expert'),)
+
+  NOTE: We do not (and there is no need) to override any params or optimizer
+  state (which appear as large Pytrees) as these will inherit the correct specs
+  from the logical axis rules; see also standard_logical_axis_rules().
 
   Args:
     resources: Axis resource assignment specifications.
@@ -383,25 +384,22 @@ def _override_partition_specs(resources: Pytree):
     'data' axis.
   """
 
-  def _maybe_overridde_spec(axis_resource: Pytree):
-    """Overrides "data" and "model" partition specs; leaves others unchanged."""
+  def _maybe_override_spec(axis_resource: Pytree):
+    """Overrides raw "data" partition specs; leaves others unchanged."""
     if axis_resource == PartitionSpec('data',):
-      # Shard all batches across both axes.
-      return PartitionSpec(('data', 'model'),)
-    elif axis_resource == PartitionSpec('model',):
-      # No model parallelism.
-      return None
+      # Shard all batches across 'data' and 'expert' axes.
+      return PartitionSpec(('data', 'expert'),)
     else:
       return axis_resource
 
   if resources is None:
     return resources
   elif not isinstance(resources, Sequence):
-    return _maybe_overridde_spec(resources)
+    return _maybe_override_spec(resources)
   else:
     overridden_resources = []
     for resource in resources:
-      overridden_resources.append(_maybe_overridde_spec(resource))
+      overridden_resources.append(_maybe_override_spec(resource))
   return tuple(overridden_resources)
 
 

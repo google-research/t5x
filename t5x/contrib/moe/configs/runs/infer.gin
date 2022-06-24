@@ -33,9 +33,5 @@ infer_script.infer.partitioner = @moe_partitioning.MoePjitPartitioner()
 moe_partitioning.MoePjitPartitioner:
   num_experts = %NUM_EXPERTS
   num_partitions = %NUM_MODEL_PARTITIONS
-  logical_axis_rules = @moe_partitioning.standard_logical_axis_rules()
-moe_partitioning.standard_logical_axis_rules:
-  num_experts = %NUM_EXPERTS
-  num_partitions = %NUM_MODEL_PARTITIONS
 
 utils.DatasetConfig.batch_size = %BATCH_SIZE
