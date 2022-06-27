@@ -1,7 +1,6 @@
 # Fine-tune a Mixture of Experts model.
 #
-# This file allows for fine-tuning with data, expert and model parallelism. To
-# use model parallelism, set NUM_MODEL_PARTITIONS > 1.
+# This file allows for fine-tuning with data, expert and model parallelism.
 #
 #
 # You must also include bindings for MODEL and NUM_EXPERTS (typically set by the
@@ -9,7 +8,7 @@
 #
 # Required to be set:
 #
-# - NUM_MODEL_PARTITIONS  (1 if no model parallelism)
+# - NUM_MODEL_PARTITIONS or MODEL_PARALLEL_SUBMESH (only specify one)
 # - MIXTURE_OR_TASK_NAME
 # - TASK_FEATURE_LENGTHS
 # - TRAIN_STEPS  # includes pretrain steps
@@ -32,13 +31,16 @@ from t5x import utils
 
 include 't5x/configs/runs/finetune.gin'
 
-NUM_MODEL_PARTITIONS = %gin.REQUIRED
+# One of these should be overridden.
+NUM_MODEL_PARTITIONS = None
+MODEL_PARALLEL_SUBMESH = None
 
 # We use the MoE partitioner.
 train_script.train.partitioner = @moe_partitioning.MoePjitPartitioner()
 moe_partitioning.MoePjitPartitioner:
   num_experts = %NUM_EXPERTS
   num_partitions = %NUM_MODEL_PARTITIONS
+  model_parallel_submesh = %MODEL_PARALLEL_SUBMESH
 
 # And the MoE trainer.
 train_script.train.trainer_cls = @moe_trainer.MoeTrainer

@@ -7,7 +7,7 @@
 #
 # Required to be set:
 #
-# - NUM_MODEL_PARTITIONS  (1 if no model parallelism)
+# - NUM_MODEL_PARTITIONS or MODEL_PARALLEL_SUBMESH (only specify one)
 # - MIXTURE_OR_TASK_NAME
 # - TASK_FEATURE_LENGTHS
 # - TRAIN_STEPS

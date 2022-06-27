@@ -365,6 +365,39 @@ def standard_logical_axis_rules(
   return overridden_rules
 
 
+def compute_num_model_partitions(
+    num_model_partitions: Optional[int],
+    model_parallel_submesh: Optional[HardwareMesh]) -> int:
+  """Returns number of model partitions.
+
+  Args:
+    num_model_partitions: Specifies the size of the model parallel submesh.
+    model_parallel_submesh: 4-tuple that specifies the `(x, y, z, c)` submesh
+      model-parallel device tile
+
+  Returns:
+    Size of model parallel submesh.
+
+  Raises:
+    ValueError if neither num_model_partitions nor model_parallel_submesh are
+    specified, or if they are inconsistent.
+  """
+  if num_model_partitions is None and model_parallel_submesh is None:
+    raise ValueError('At least one of num_model_partitions and '
+                     'model_parallel_submesh must be specified.')
+
+  if num_model_partitions is not None:
+    if (model_parallel_submesh is not None and
+        num_model_partitions != np.prod(model_parallel_submesh)):
+      raise ValueError(
+          'num_model_partitions and model_parallel_submesh are inconsistent. '
+          'Received: %s and %s' %
+          (num_model_partitions, model_parallel_submesh))
+    return num_model_partitions
+  else:
+    return np.prod(model_parallel_submesh)
+
+
 def _override_partition_specs(resources: Pytree):
   """Override raw axis resources so data is sharded over 'data' & 'expert' axes.
 

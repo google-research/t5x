@@ -299,5 +299,39 @@ class PartitioningTest(absltest.TestCase):
         (PartitionSpec(('data', 'expert'),), PartitionSpec('model'),
          PartitionSpec('expert'), None, PartitionSpec('unrecognized',)))
 
+  def test_compute_num_model_partitions(self):
+
+    with self.subTest(name='no_model_parallel_submesh'):
+      self.assertEqual(
+          moe_partitioning.compute_num_model_partitions(
+              num_model_partitions=2, model_parallel_submesh=None), 2)
+
+    with self.subTest(name='no_model_partitions'):
+      self.assertEqual(
+          moe_partitioning.compute_num_model_partitions(
+              num_model_partitions=None, model_parallel_submesh=(1, 2, 1, 2)),
+          4)
+
+    with self.subTest(name='partitions_and_submesh'):
+      self.assertEqual(
+          moe_partitioning.compute_num_model_partitions(
+              num_model_partitions=4, model_parallel_submesh=(1, 2, 1, 2)), 4)
+
+    with self.subTest(name='inconsistent_partitions'):
+      with self.assertRaisesRegex(
+          ValueError,
+          'num_model_partitions and model_parallel_submesh are inconsistent.'):
+        _ = moe_partitioning.compute_num_model_partitions(
+            num_model_partitions=1, model_parallel_submesh=(1, 2, 1, 2))
+
+    with self.subTest(name='no_submesh_or_partitions'):
+      with self.assertRaisesRegex(
+          ValueError,
+          'At least one of num_model_partitions and model_parallel_submesh must '
+          'be specified.'):
+        _ = moe_partitioning.compute_num_model_partitions(
+            num_model_partitions=None, model_parallel_submesh=None)
+
+
 if __name__ == '__main__':
   absltest.main()
