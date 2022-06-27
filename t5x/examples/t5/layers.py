@@ -493,6 +493,11 @@ class Embed(nn.Module):
       inputs = inputs.astype(self.cast_input_dtype)
     if not jnp.issubdtype(inputs.dtype, jnp.integer):
       raise ValueError('Input type must be an integer or unsigned integer.')
+    # If some input is larger than self.num_embeddings, we raise exception to
+    # prevent suboptimal training. (b/234125344)
+    if inputs.max() >= self.num_embeddings:
+      raise ValueError('Some input exceeds the number of embeddings. Please '
+                       'increase the number of embeddings to resolve.')
     if self.one_hot:
       iota = lax.iota(jnp.int32, self.num_embeddings)
       one_hot = jnp.array(inputs[..., jnp.newaxis] == iota, dtype=self.dtype)
