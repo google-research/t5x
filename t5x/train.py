@@ -238,23 +238,19 @@ def train(
 
   _verify_matching_vocabs(train_dataset_cfg)
 
-  train_ds = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
-                            model.FEATURE_CONVERTER_CLS)
-  if isinstance(train_ds, tf.data.Dataset):
-    train_iter = clu.data.TfDatasetIterator(train_ds)
-  elif isinstance(train_ds, clu.data.DatasetIterator):
-    train_iter = train_ds
-  else:
+  train_iter = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
+                              model.FEATURE_CONVERTER_CLS)
+  if isinstance(train_iter, tf.data.Dataset):
+    train_iter = clu.data.TfDatasetIterator(train_iter)
+  elif not isinstance(train_iter, clu.data.DatasetIterator):
     raise ValueError(
-        f'get_dataset_fn returned unsupported type {type(train_ds)}.')
+        f'get_dataset_fn returned unsupported type {type(train_iter)}.')
 
   input_shapes = {
       k: (data_layout.batch_size, *v.shape[1:])
       for k, v in train_iter.element_spec.items()
   }
-  input_types = {
-      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
-  }
+  input_types = {k: v.dtype for k, v in train_iter.element_spec.items()}
 
   if use_gda:
     train_iter = utils.GDADatasetIterator(train_iter, partitioner.mesh,
@@ -334,15 +330,12 @@ def train(
       restore_cfgs)
   if len(restore_paths) > 1:
     raise ValueError('Multiple restore paths not permitted in training.')
-  checkpointable_train_iter = (
-      train_iter.iterator
-      if isinstance(train_iter, clu.data.TfDatasetIterator) else None)
   checkpoint_manager = utils.LegacyCheckpointManager(
       save_cfg=checkpoint_cfg.save,
       restore_cfg=valid_restore_cfg,
       train_state_shape=train_state_initializer.global_train_state_shape,
       partitioner=partitioner,
-      ds_iter=checkpointable_train_iter,
+      ds_iter=train_iter,
       model_dir=model_dir,
       use_gda=use_gda)
 
