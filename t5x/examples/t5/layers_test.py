@@ -401,6 +401,25 @@ class EmbeddingTest(parameterized.TestCase):
 
   @parameterized.named_parameters(
       {
+          'testcase_name': 'not_one_hot',
+          'one_hot': False
+      }, {
+          'testcase_name': 'one_hot',
+          'one_hot': True
+      })
+  def test_embedder_raises_exception_for_out_of_bound_input(self, one_hot):
+    """Tests that inputs are integers and that an exception is raised if not."""
+    embed = layers.Embed(num_embeddings=10, features=5, one_hot=one_hot)
+    inputs = np.expand_dims(np.arange(5, dtype=np.int64), 1)
+    variables = embed.init(jax.random.PRNGKey(0), inputs)
+    # Creates bad inputs which exceed the number of embeddings.
+    bad_inputs = np.expand_dims(np.arange(10, 15, dtype=np.int64), 1)
+    with self.assertRaisesRegex(ValueError,
+                                'Some input exceeds the number of embeddings*'):
+      _ = embed.apply(variables, bad_inputs)
+
+  @parameterized.named_parameters(
+      {
           'testcase_name': 'with_ones',
           'init_fn': jax.nn.initializers.ones,
           'num_embeddings': 10,
