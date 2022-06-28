@@ -288,16 +288,32 @@ class PartitioningTest(absltest.TestCase):
                      PartitionSpec(('data', 'expert'),))
 
   def test_axis_resource_overrides(self):
-    input_resources = (PartitionSpec('data'), PartitionSpec('model'),
-                       PartitionSpec('expert'), None,
-                       PartitionSpec('unrecognized'))
-    overridden_resources = moe_partitioning._override_partition_specs(
-        input_resources)
-    # 'data' -> ('data', 'expert').
-    self.assertEqual(
-        overridden_resources,
-        (PartitionSpec(('data', 'expert'),), PartitionSpec('model'),
-         PartitionSpec('expert'), None, PartitionSpec('unrecognized',)))
+
+    with self.subTest(name='sequence_of_resources'):
+      input_resources = (PartitionSpec('data'), PartitionSpec('model'),
+                         PartitionSpec('expert'), None,
+                         PartitionSpec('unrecognized'))
+      # 'data' -> ('data', 'expert').
+      self.assertEqual(
+          moe_partitioning._override_partition_specs(input_resources),
+          (PartitionSpec(('data', 'expert'),), PartitionSpec('model'),
+           PartitionSpec('expert'), None, PartitionSpec('unrecognized',)))
+
+    with self.subTest(name='single_resource'):
+      # 'data' -> ('data', 'expert').
+      self.assertEqual(
+          moe_partitioning._override_partition_specs(PartitionSpec('data',)),
+          PartitionSpec(('data', 'expert'),))
+
+    with self.subTest(name='no_override'):
+      # 'data' -> ('data', 'expert').
+      self.assertEqual(
+          moe_partitioning._override_partition_specs(
+              PartitionSpec(('data', 'expert'))),
+          PartitionSpec(('data', 'expert'),))
+
+    with self.subTest(name='no_resource'):
+      self.assertIsNone(moe_partitioning._override_partition_specs(None))
 
   def test_compute_num_model_partitions(self):
 

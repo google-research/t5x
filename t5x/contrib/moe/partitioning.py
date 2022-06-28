@@ -420,20 +420,20 @@ def _override_partition_specs(resources: Pytree):
   def _maybe_override_spec(axis_resource: Pytree):
     """Overrides raw "data" partition specs; leaves others unchanged."""
     if axis_resource == PartitionSpec('data',):
-      # Shard all batches across 'data' and 'expert' axes.
+      # Shard all data across 'data' and 'expert' axes.
       return PartitionSpec(('data', 'expert'),)
     else:
       return axis_resource
 
-  if resources is None:
-    return resources
-  elif not isinstance(resources, Sequence):
+  if isinstance(resources, PartitionSpec):
     return _maybe_override_spec(resources)
-  else:
+  elif isinstance(resources, Sequence):
     overridden_resources = []
     for resource in resources:
       overridden_resources.append(_maybe_override_spec(resource))
-  return tuple(overridden_resources)
+    return tuple(overridden_resources)
+  else:
+    return resources
 
 
 def _infer_state_filter_fn(
