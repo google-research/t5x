@@ -829,9 +829,9 @@ class Checkpointer(object):
       return param_info.ts_spec
 
     transformed_state_dict, transformed_parameter_infos = (
-        self._transform_state_and_infos(train_state.state_dict(),
-                                        self._parameter_infos,
-                                        state_transformation_fns))
+        _transform_state_and_infos(train_state.state_dict(),
+                                   self._parameter_infos,
+                                   state_transformation_fns))
 
     state_dict_for_save = self._get_state_dict_for_save(transformed_state_dict)
 
@@ -866,9 +866,8 @@ class Checkpointer(object):
       state_transformation_fns: Sequence[SaveStateTransformationFn],
   ) -> Tuple[PyTreeDef, PyTreeDef]:
     """Applies transformations to the state dict and parameter infos PyTrees."""
-    for fn in state_transformation_fns:
-      state_dict, parameter_infos = fn(state_dict, parameter_infos)
-    return state_dict, parameter_infos
+    return _transform_state_and_infos(state_dict, parameter_infos,
+                                      state_transformation_fns)
 
   def restore(
       self,
@@ -1428,6 +1427,17 @@ def _get_optimizer_state_dict(
                      f'Got version: {version}')
 
 
+def _transform_state_and_infos(
+    state_dict: PyTreeDef,
+    parameter_infos: PyTreeDef,
+    state_transformation_fns: Sequence[SaveStateTransformationFn],
+) -> Tuple[PyTreeDef, PyTreeDef]:
+  """Applies transformations to the state dict and parameter infos PyTrees."""
+  for fn in state_transformation_fns:
+    state_dict, parameter_infos = fn(state_dict, parameter_infos)
+  return state_dict, parameter_infos
+
+
 async def _read_ts(param_info: _ParameterInfo,
                    maybe_tspec: Any,
                    ckpt_path: str,
@@ -1693,3 +1703,137 @@ def load_t5x_checkpoint(
   if restore_dtype is not None:
     state_dict['target'] = _cast(state_dict['target'], restore_dtype)
   return state_dict
+
+
+@dataclasses.dataclass
+class _OrbaxParamInfo:
+  name: str
+  mesh_axes: partitioning.PartitionSpec
+
+
+class CheckpointManager(orbax.checkpoint.CheckpointManager):
+  """Implementation of CheckpointManager interface for T5X."""
+
+  def __init__(self,
+               directory: str,
+               train_state_shape: train_state_lib.TrainState,
+               partitioner: partitioning.BasePartitioner,
+               ds_iter: Optional[tf.data.Iterator] = None,
+               save_dtype: Optional[jnp.dtype] = None,
+               restore_dtype: Optional[jnp.dtype] = None,
+               keep: Optional[int] = None,
+               keep_dataset_checkpoints: Optional[int] = None):
+    self._train_state_shape = train_state_shape
+    self._partitioner = partitioner
+    self._ds_iter = ds_iter
+    self._save_dtype = save_dtype
+    self._restore_dtype = restore_dtype
+
+    options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=keep)
+    # TODO(cpgaffney) handle dataset save/restore
+    super().__init__(
+        directory=directory,
+        checkpointers={
+            'state_dict': orbax.checkpoint.PyTreeCheckpointer(),
+        },
+        options=options)
+
+  def _parameter_infos(self, train_state):
+    param_names = traverse_util.unflatten_dict({
+        k: '/'.join(k) for k in traverse_util.flatten_dict(
+            train_state.state_dict(), keep_empty_nodes=True)
+    })
+    mesh_axes = self._partitioner.get_mesh_axes(train_state).state_dict()
+    return jax.tree_map(_OrbaxParamInfo, param_names, mesh_axes)
+
+  def save(self,
+           train_state: train_state_lib.TrainState,
+           state_transformation_fns: Sequence[SaveStateTransformationFn] = ()):
+    step = train_state.step
+    step = step.get() if isinstance(step, LazyArray) else step
+    step = _get_local_data(step)
+    # Integer, to avoid side effects in the checkpoint path.
+    step = int(step)
+
+    # TODO(cpgaffney) support transformations_fns.
+    state_dict, param_infos = (
+        _transform_state_and_infos(
+            train_state.state_dict(),
+            self._parameter_infos(self._train_state_shape),
+            state_transformation_fns))
+
+    def _save_args(param_info):
+      dtype = None
+      if param_info.name.split('.')[0] == 'target':
+        dtype = self._save_dtype
+      return orbax.checkpoint.SaveArgs(
+          use_flax=param_info.mesh_axes is None, dtype=dtype)
+
+    save_args = jax.tree_map(_save_args, param_infos)
+
+    state_dict['version'] = VERSION
+    save_args['version'] = orbax.checkpoint.SaveArgs(use_flax=True)
+    items = {'state_dict': state_dict}
+    save_kwargs = {'state_dict': {'save_args': save_args}}
+
+    super().save(step, items, save_kwargs=save_kwargs)
+
+  def restore(
+      self,
+      step: int,
+      fallback_state: Optional[Mapping[str, Any]] = None,
+      state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
+      lazy_parameters: Optional[bool] = False) -> train_state_lib.TrainState:
+
+    if step is None:
+      step = self.latest_step()
+
+    items = {'state_dict': None}
+
+    def _restore_args(param_info):
+      dtype = None
+      if param_info.name.split('.')[0] == 'target':
+        dtype = self._restore_dtype
+      if param_info.mesh_axes is None:
+        return orbax.checkpoint.RestoreArgs(
+            as_gda=False, dtype=dtype, lazy=lazy_parameters)
+      return orbax.checkpoint.RestoreArgs(
+          mesh=self._partitioner.mesh,
+          mesh_axes=param_info.mesh_axes,
+          dtype=dtype,
+          lazy=lazy_parameters)
+
+    restore_args = jax.tree_map(_restore_args,
+                                self._parameter_infos(self._train_state_shape))
+    restore_args['version'] = orbax.checkpoint.RestoreArgs(as_gda=False)
+    restore_kwargs = {'state_dict': {'restore_args': restore_args}}
+
+    restored = super().restore(step, items, restore_kwargs=restore_kwargs)
+    state_dict = restored['state_dict']
+
+    state_dict = {'version': state_dict['version'], 'optimizer': state_dict}
+    del state_dict['optimizer']['version']
+    state_dict = _get_optimizer_state_dict(state_dict,
+                                           self._train_state_shape.state_dict(),
+                                           state_transformation_fns)
+
+    # If `fallback_state` was specified, then fill the missing parameters.
+    if fallback_state is not None:
+      state_dict = state_utils.merge_state(state_dict, fallback_state)
+
+    train_state = self._train_state_shape.restore_state(state_dict)
+
+    return train_state
+
+
+def convert_old_checkpoints(checkpointer: Checkpointer):
+  checkpoint_manager = CheckpointManager(
+      checkpointer.checkpoints_dir,
+      checkpointer._train_state,  # pylint: disable=protected-access
+      checkpointer._partitioner)  # pylint: disable=protected-access
+  for step in checkpointer.all_steps():
+    train_state = checkpointer.restore(step=step)
+    # TODO(cpgaffney) handle dataset.
+    # TODO(cpgaffney) handle state_transformation_fns.
+    checkpoint_manager.save(train_state)
+  # TODO(cpgaffney) remove old format steps?
