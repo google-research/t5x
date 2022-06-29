@@ -333,9 +333,8 @@ def get_multiprocess_aware_gpu_mesh(num_partitions: int) -> Mesh:
   nvlink_size = jax.local_device_count()
   dcn_size = jax.process_count()
 
-  err_msg = (
-        'num_partitions should be less than or equal to the total devices '
-        'available. Also, it should evenly divide the total devices')
+  err_msg = ('num_partitions should be less than or equal to the total devices '
+             'available. Also, it should evenly divide the total devices')
 
   # Make sure we have enough devices available for model parallelism.
   # Data parallelism is derived from `num_partitions` and number of
@@ -347,8 +346,8 @@ def get_multiprocess_aware_gpu_mesh(num_partitions: int) -> Mesh:
   nvlink_mp = min(num_partitions, nvlink_size)
 
   err_msg = (
-        'num_partitions should evenly divide the number of local devices if '
-        'less than the number of local devices')
+      'num_partitions should evenly divide the number of local devices if '
+      'less than the number of local devices')
 
   # Accordingly find the data parallel dimension for the faster inner mesh.
   assert nvlink_size % nvlink_mp == 0, err_msg
@@ -367,10 +366,9 @@ def get_multiprocess_aware_gpu_mesh(num_partitions: int) -> Mesh:
   assert dcn_size % dcn_mp == 0, err_msg
   dcn_dp = dcn_size // dcn_mp
 
-  devices = create_hybrid_device_mesh(
-      mesh_shape=[nvlink_dp, nvlink_mp],
-      dcn_mesh_shape=[dcn_dp, dcn_mp],
-      process_is_granule=True)
+  devices = create_hybrid_device_mesh(mesh_shape=[nvlink_dp, nvlink_mp],
+                                      dcn_mesh_shape=[dcn_dp, dcn_mp],
+                                      process_is_granule=True)
 
   global_mesh = Mesh(devices, ['data', 'model'])
   logging.info('global_mesh axes_names: %s', global_mesh.axis_names)
@@ -986,3 +984,4 @@ class PjitPartitioner(BasePjitPartitioner):
 
     return logical_axes.restore_state(
         traverse_util.unflatten_dict(flat_mesh_axes, sep='/'))
+
