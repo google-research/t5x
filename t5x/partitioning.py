@@ -29,6 +29,7 @@ from jax import numpy as jnp
 from jax import random
 from jax.experimental import PartitionSpec
 from jax.experimental.maps import Mesh
+from jax.experimental.mesh_utils import create_hybrid_device_mesh
 from jax.experimental.pjit import pjit as jax_pjit
 import numpy as np
 from t5x import train_state as train_state_lib
@@ -269,7 +270,7 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
   # reshape to (data, model)
   devices = devices.reshape(-1, np.prod(model_parallel_submesh))
   global_mesh = Mesh(devices, ['data', 'model'])
-  logging.info('global_mesh axes_names: %s', global_mesh.axis_names)
+  logging.info('global_mesh axis_names: %s', global_mesh.axis_names)
   logging.info('global_mesh devices: %s', global_mesh.devices)
   return global_mesh
 
@@ -283,13 +284,26 @@ def get_cpu_mesh() -> Mesh:
   return Mesh(devices, ['data', 'model'])
 
 
-def get_gpu_mesh() -> Mesh:
-  """Simple mesh for GPUs."""
-  devices = np.empty((jax.host_count(), jax.local_device_count()),
-                     dtype=np.object)
-  for device in jax.devices():
-    devices[device.process_index, device.id % jax.local_device_count()] = device
-  return Mesh(devices, ['data', 'model'])
+def get_gpu_mesh(num_partitions: int) -> Mesh:
+  """Mesh for GPUs that preferentially places 'model' on NVLink."""
+  nvlink_size = jax.local_device_count()
+  dcn_size = jax.process_count()
+  nvlink_mp = min(num_partitions, nvlink_size)
+  nvlink_dp, extra1 = divmod(nvlink_size, nvlink_mp)
+  dcn_mp, extra2 = divmod(num_partitions, nvlink_mp)
+  assert not (extra1 or extra2), ('number of partitions on GPU must be a factor'
+                                  ' or multiple of the number of local devices')
+  dcn_dp = dcn_size // dcn_mp
+
+  devices = create_hybrid_device_mesh(
+      mesh_shape=[nvlink_dp, nvlink_mp],
+      dcn_mesh_shape=[dcn_dp, dcn_mp],
+      process_is_granule=True)
+
+  global_mesh = Mesh(devices, ['data', 'model'])
+  logging.info('global_mesh axis_names: %s', global_mesh.axis_names)
+  logging.info('global_mesh devices: %s', global_mesh.devices)
+  return global_mesh
 
 
 def default_mesh(num_partitions: int,
@@ -320,7 +334,7 @@ def default_mesh(num_partitions: int,
   if platform == 'cpu':
     return get_cpu_mesh()
   elif platform == 'gpu':
-    return get_gpu_mesh()
+    return get_gpu_mesh(num_partitions)
 
   mps = None
   if device_kind in ('TPU v2', 'TPU v3'):

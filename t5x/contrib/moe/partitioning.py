@@ -49,9 +49,9 @@ def get_cpu_mesh() -> Mesh:
 
 def get_gpu_mesh() -> Mesh:
   """Simple MoE mesh for GPUs."""
-  base_cpu_mesh = base_partitioning.get_gpu_mesh()
-  # Add extra dimension for new 'expert' axis.
-  devices = np.expand_dims(base_cpu_mesh.devices, axis=-1)
+  base_gpu_mesh = base_partitioning.get_gpu_mesh(jax.local_device_count())
+  # Move devices from the 'model' to the 'expert' axis.
+  devices = np.expand_dims(base_gpu_mesh.devices, axis=-1)
   return Mesh(devices, ['data', 'expert', 'model'])
 
 
