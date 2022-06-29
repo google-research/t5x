@@ -669,28 +669,24 @@ if __name__ == '__main__':
 
   # Following flags are needed for multiprocess runs
   flags.DEFINE_boolean(
-    'multiprocess',
-    False,
-    help='If set, enable multihost runs, initialize using `jax.distributed()`. '
-    'Care required to provide correct `coordinator_address`, `num_processes` '
-    'and `process_id` values as well.')
+      'multiprocess',
+      False,
+      help='If set, enable multihost runs, initialize using '
+      '`jax.distributed()`. Care required to provide correct '
+      '`coordinator_address`, `num_processes` and `process_id` '
+      'values as well.')
 
   flags.DEFINE_string(
-    'coordinator_address',
-    None,
-    help='The IP address and port using which all the processes can coordinate '
-    'for communication. e.g. `127.0.0.1:12345`')
+      'coordinator_address',
+      None,
+      help='The IP address and port using which all the processes can '
+      'coordinate for communication. e.g. `127.0.0.1:12345`.')
 
-  flags.DEFINE_integer(
-    'num_processes',
-    None,
-    help='Total num of processes in multi process runs.' )
+  flags.DEFINE_integer('num_processes',
+                       None,
+                       help='Total num of processes in multi process runs.')
 
-  flags.DEFINE_integer(
-    'process_id',
-    None,
-    help='Index of the current process.')
-
+  flags.DEFINE_integer('process_id', None, help='Index of the current process.')
 
   def main(argv: Sequence[str]):
     """Wrapper for pdb post mortems."""
@@ -704,21 +700,23 @@ if __name__ == '__main__':
     # check if all the required info is present for multiprocess runs
     if FLAGS.multiprocess:
 
-      logging.info('Coordinator address: %s, Total Processes: %d, '
-                    'Process ID: %d',
-                   FLAGS.coordinator_address, FLAGS.num_processes,
-                   FLAGS.process_id)
-
       err_msg = ('To properly use multiprocess, provide valid values for '
                  '`coordinator_address`, `num_processes` and `process_id` '
                  'variables!')
+
       if FLAGS.coordinator_address == None or \
           FLAGS.num_processes == None or \
           FLAGS.process_id == None :
         raise ValueError(err_msg)
 
+      logging.info(
+          'Coordinator address: %s, Total Processes: %d, '
+          'Process ID: %d', FLAGS.coordinator_address, FLAGS.num_processes,
+          FLAGS.process_id)
+
       # jax multiprocess initialize
-      jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.num_processes, FLAGS.process_id)
+      jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.num_processes,
+                                 FLAGS.process_id)
 
     if FLAGS.tfds_data_dir:
       seqio.set_tfds_data_dir_override(FLAGS.tfds_data_dir)
