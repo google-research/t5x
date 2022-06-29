@@ -679,7 +679,7 @@ if __name__ == '__main__':
     'coordinator_address',
     None,
     help='The IP address and port using which all the processes can coordinate '
-    'for communication.')
+    'for communication. e.g. `127.0.0.1:12345`')
 
   flags.DEFINE_integer(
     'num_processes',
@@ -703,13 +703,19 @@ if __name__ == '__main__':
 
     # check if all the required info is present for multiprocess runs
     if FLAGS.multiprocess:
-      err_msg = ('Provide values for `num_processes` and `process_id` variables')
-      assert FLAGS.coordinator_address != None and \
-             FLAGS.num_processes != None and \
-             FLAGS.process_id != None, err_msg
 
-      logging.info('Server address: %s, Total hosts: %d, Host ID: %d',
-                   FLAGS.coordinator_address, FLAGS.num_processes, FLAGS.process_id)
+      logging.info('Coordinator address: %s, Total Processes: %d, '
+                    'Process ID: %d',
+                   FLAGS.coordinator_address, FLAGS.num_processes,
+                   FLAGS.process_id)
+
+      err_msg = ('To properly use multiprocess, provide valid values for '
+                 '`coordinator_address`, `num_processes` and `process_id` '
+                 'variables!')
+      if FLAGS.coordinator_address == None or \
+          FLAGS.num_processes == None or \
+          FLAGS.process_id == None :
+        raise ValueError(err_msg)
 
       # jax multiprocess initialize
       jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.num_processes, FLAGS.process_id)
