@@ -847,7 +847,9 @@ class Checkpointer(object):
     for k in state_dict_for_save.keys():
       # ensure that only 'target' is cast
       future_written_state[k] = jax.tree_multimap(
-          functools.partial(_write_array, cast=(k == 'target')),
+          functools.partial(
+              _write_array,
+              cast=(k == 'target' and self._save_dtype is not None)),
           state_dict_for_save[k], transformed_parameter_infos[k])
 
     # Block until complete on this host.

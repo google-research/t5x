@@ -139,9 +139,9 @@ class SaveCheckpointConfig:
   use_gda: bool = False
 
   def __post_init__(self):
-    if self.dtype not in ('float32', 'bfloat16'):
+    if self.dtype not in (None, 'float32', 'bfloat16'):
       raise ValueError(
-          "`SaveCheckpointConfig.dtype` must be one of 'float32' or "
+          "`SaveCheckpointConfig.dtype` must be one of None, 'float32' or "
           f"'bfloat16'. Got {self.dtype}.")
 
 
