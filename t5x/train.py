@@ -704,9 +704,8 @@ if __name__ == '__main__':
                  '`coordinator_address`, `num_processes` and `process_id` '
                  'variables!')
 
-      if FLAGS.coordinator_address == None or \
-          FLAGS.num_processes == None or \
-          FLAGS.process_id == None :
+      if (FLAGS.coordinator_address == None or FLAGS.num_processes == None or
+          FLAGS.process_id == None):
         raise ValueError(err_msg)
 
       logging.info(
