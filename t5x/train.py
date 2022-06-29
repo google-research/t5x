@@ -700,13 +700,13 @@ if __name__ == '__main__':
     # check if all the required info is present for multiprocess runs
     if FLAGS.multiprocess:
 
-      err_msg = ('To properly use multiprocess, provide valid values for '
-                 '`coordinator_address`, `num_processes` and `process_id` '
-                 'variables!')
-
-      if (FLAGS.coordinator_address == None or FLAGS.num_processes == None or
+      if (FLAGS.coordinator_address == None or
+          FLAGS.num_processes == None or
           FLAGS.process_id == None):
-        raise ValueError(err_msg)
+        raise ValueError(
+            '`coordinator_address`, `num_processes` and `process_id` '
+            'should not be None. Please provide those values to initialize the '
+            'distributed system')
 
       logging.info(
           'Coordinator address: %s, Total Processes: %d, '
