@@ -256,7 +256,9 @@ def train(
     train_iter = utils.GDADatasetIterator(train_iter, partitioner.mesh,
                                           P('data'), input_shapes)
 
-  if train_eval_dataset_cfg:
+  logging.info('train.py: get_dataset_fn=%s, train_eval_get_dataset_fn=%s',
+               get_dataset_fn, train_eval_get_dataset_fn)
+  if train_eval_dataset_cfg and False:
     _verify_matching_vocabs(train_eval_dataset_cfg)
     train_eval_datasets = utils.get_training_eval_datasets(
         train_eval_dataset_cfg,
@@ -365,7 +367,7 @@ def train(
   # ---------------------------------------------------------------------------
   # Trainer
   # ---------------------------------------------------------------------------
-
+  # pytype: disable=wrong-arg-types
   trainer: trainer_lib.BaseTrainer = trainer_cls(
       model=model,
       train_state=train_state,
@@ -375,6 +377,7 @@ def train(
       summary_dir=model_dir,
       rng=trainer_rng)
   del train_state
+  # pytype: enable=wrong-arg-types
 
   train_metrics = trainer.train_metrics_manager
   summarize_config_fn(model_dir, train_metrics.summary_writer, host_step)
@@ -387,7 +390,7 @@ def train(
   # ----------------------------------------------------------------------------
   # Init evaluator to set up cached datasets
   evaluator = None
-  if infer_eval_dataset_cfg is not None:
+  if infer_eval_dataset_cfg is not None and False:
     _verify_matching_vocabs(infer_eval_dataset_cfg)
     evaluator = inference_evaluator_cls(
         log_dir=os.path.join(model_dir, 'inference_eval'),
