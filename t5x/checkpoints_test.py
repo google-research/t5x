@@ -322,6 +322,7 @@ class CheckpointsTest(parameterized.TestCase):
                     shape=(8192, 8192),
                     ts_spec=ts.Spec({
                         'driver': 'zarr',
+                        'metadata_key': 'zarray',
                         'dtype': 'float32',
                         'kvstore': {  # pylint:disable=duplicate-key
                             'driver': 'file',
@@ -345,6 +346,7 @@ class CheckpointsTest(parameterized.TestCase):
                     shape=(2, 16),
                     ts_spec=ts.Spec({
                         'driver': 'zarr',
+                        'metadata_key': 'zarray',
                         'dtype': 'float32',
                         'kvstore': {  # pylint:disable=duplicate-key
                             'driver': 'file',
@@ -583,6 +585,7 @@ class CheckpointsTest(parameterized.TestCase):
 
     bias_tspec = {
         'driver': 'zarr',
+        'metadata_key': 'zarray',
         'kvstore': {
             'driver': 'file',
             'path': f'{self.tmp_dir}/checkpoint_{step}.tmp-0/target.bias',
@@ -590,6 +593,7 @@ class CheckpointsTest(parameterized.TestCase):
     }
     kernel_tspec = {
         'driver': 'zarr',
+        'metadata_key': 'zarray',
         'kvstore': {
             'driver': 'file',
             'path': f'{self.tmp_dir}/checkpoint_{step}.tmp-0/target.kernel',
@@ -1482,6 +1486,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'unsharded_param': np.ones((5, 5), dtype=np.int32),
                 'sharded_param': {
                     'driver': 'zarr',
+                    'metadata_key': 'zarray',
                     'dtype': 'float32',
                     'kvstore': {
                         'driver': 'file',
@@ -1508,6 +1513,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'unsharded_param': np.ones((5, 5), dtype=np.int32),
                 'sharded_param': {
                     'driver': 'zarr',
+                    'metadata_key': 'zarray',
                     'dtype': 'float32',
                     'kvstore': {
                         'bucket': 't5x-dummy-bucket',
@@ -1538,6 +1544,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'unsharded_param': np.ones((5, 5), dtype=np.int32),
                 'sharded_param': {
                     'driver': 'zarr',
+                    'metadata_key': 'zarray',
                     'dtype': 'float32',
                     'kvstore': {
                         'bucket': 't5x-dummy-bucket',
@@ -1565,6 +1572,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'unsharded_param': np.ones((5, 5), dtype=np.int32),
                 'sharded_param': {
                     'driver': 'zarr',
+                    'metadata_key': 'zarray',
                     'dtype': 'float32',
                     'kvstore': {
                         'driver': driver,
@@ -1607,6 +1615,7 @@ class CheckpointsTest(parameterized.TestCase):
   def test_update_ts_path_from_relative_to_absolute_gfile(self):
     ts_spec_dict = {
         'driver': 'zarr',
+        'metadata_key': 'zarray',
         'dtype': 'float32',
         'kvstore': {
             'driver': 'file',
@@ -1624,6 +1633,7 @@ class CheckpointsTest(parameterized.TestCase):
 
     expected = {
         'driver': 'zarr',
+        'metadata_key': 'zarray',
         'dtype': 'float32',
         'kvstore': {
             'driver': 'file',
@@ -1647,6 +1657,7 @@ class CheckpointsTest(parameterized.TestCase):
   def test_update_ts_path_from_relative_to_absolute_gcs(self):
     ts_spec_dict = {
         'driver': 'zarr',
+        'metadata_key': 'zarray',
         'dtype': 'float32',
         'kvstore': {
             'bucket': 't5x-dummy-bucket',
@@ -1669,6 +1680,7 @@ class CheckpointsTest(parameterized.TestCase):
 
     expected = {
         'driver': 'zarr',
+        'metadata_key': 'zarray',
         'dtype': 'float32',
         'kvstore': {
             'bucket': 'test-bucket',  # bucket should be changed.

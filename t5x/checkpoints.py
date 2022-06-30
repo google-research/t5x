@@ -563,6 +563,7 @@ class Checkpointer(object):
       if self.checkpoints_dir.startswith('gs://'):
         spec = {
             'driver': 'zarr',
+            'metadata_key': 'zarray',  # Avoids hidden '.zarray' files.
             'dtype': jnp.dtype(arr.dtype).name,
             'kvstore': {
                 'driver': 'gcs',
@@ -577,6 +578,7 @@ class Checkpointer(object):
       else:
         spec = {
             'driver': 'zarr',
+            'metadata_key': 'zarray',  # Avoids hidden '.zarray' files.
             'dtype': jnp.dtype(arr.dtype).name,
             'kvstore': {
                 'driver': 'file',
