@@ -473,6 +473,7 @@ class Checkpointer(object):
     # Immutable due to use in `_get_parameter_infos`
     self._save_dtype = save_dtype
     self.restore_dtype = restore_dtype
+    self._original_dataset_iterator = dataset_iterator
     if isinstance(dataset_iterator, tf.data.Iterator):
       dataset_iterator = _TfDataCheckpointer(dataset_iterator)
     self._dataset_iterator = dataset_iterator
@@ -1707,6 +1708,30 @@ def load_t5x_checkpoint(
   return state_dict
 
 
+_OPTIMIZER_KEY = 'optimizer'
+_VERSION_KEY = 'version'
+_CHECKPOINTS_SUBDIR = 'checkpoints'
+_STATE_KEY = 'state'
+_DATASET_KEY = 'dataset'
+_FLAX_CHECKPOINT_FILE = 'checkpoint'
+
+
+def _transforms_from_state_transformation_fns(
+    state_transformation_fns: Sequence[SaveStateTransformationFn]):
+  """Constructs Orbax transforms from state_transformation_fns."""
+  result = {}
+  for fn in state_transformation_fns:
+    assignments = fn.keywords['assignment_map']  # pytype: disable=attribute-error
+    for dest, origin in assignments:
+      if origin is None:
+        result[_OPTIMIZER_KEY + '/' +
+               dest] = orbax.checkpoint.Transform(use_fallback=True)
+      else:
+        result[_OPTIMIZER_KEY + '/' + dest] = orbax.checkpoint.Transform(
+            original_key=_OPTIMIZER_KEY + '/' + origin)
+  return result
+
+
 @dataclasses.dataclass
 class _OrbaxParamInfo:
   name: str
@@ -1720,25 +1745,38 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
                directory: str,
                train_state_shape: train_state_lib.TrainState,
                partitioner: partitioning.BasePartitioner,
-               ds_iter: Optional[tf.data.Iterator] = None,
+               dataset_iterator: Optional[tf.data.Iterator] = None,
                save_dtype: Optional[jnp.dtype] = None,
                restore_dtype: Optional[jnp.dtype] = None,
                keep: Optional[int] = None,
                keep_dataset_checkpoints: Optional[int] = None):
     self._train_state_shape = train_state_shape
     self._partitioner = partitioner
-    self._ds_iter = ds_iter
+    self._dataset_iterator = dataset_iterator
     self._save_dtype = save_dtype
     self._restore_dtype = restore_dtype
+
+    checkpoints_dir = tf.io.gfile.join(directory, _CHECKPOINTS_SUBDIR)
+    tf.io.gfile.makedirs(checkpoints_dir)
+
+    data_layout = partitioner.get_data_layout()
+    dataset_ckpt_name = (
+        f'{_TRAIN_DS_PREFIX}-'
+        f'{data_layout.shard_id:03}-of-{data_layout.num_shards:03}')
+    self._should_write_dataset_ckpt = (
+        self._dataset_iterator and data_layout.is_first_host_in_replica_set)
+
+    checkpointers = {
+        _STATE_KEY: orbax.checkpoint.PyTreeCheckpointer(),
+    }
+    if self._should_write_dataset_ckpt:
+      checkpointers[_DATASET_KEY] = orbax.checkpoint.DatasetCheckpointer(
+          checkpoint_filename=dataset_ckpt_name)
 
     options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=keep)
     # TODO(cpgaffney) handle dataset save/restore
     super().__init__(
-        directory=directory,
-        checkpointers={
-            'state_dict': orbax.checkpoint.PyTreeCheckpointer(),
-        },
-        options=options)
+        directory=checkpoints_dir, checkpointers=checkpointers, options=options)
 
   def _parameter_infos(self, train_state):
     param_names = traverse_util.unflatten_dict({
@@ -1773,10 +1811,18 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
 
     save_args = jax.tree_map(_save_args, param_infos)
 
-    state_dict['version'] = VERSION
-    save_args['version'] = orbax.checkpoint.SaveArgs(use_flax=True)
-    items = {'state_dict': state_dict}
-    save_kwargs = {'state_dict': {'save_args': save_args}}
+    state_dict = {
+        _VERSION_KEY: VERSION,
+        _OPTIMIZER_KEY: state_dict,
+    }
+    save_args = {
+        _VERSION_KEY: orbax.checkpoint.SaveArgs(use_flax=True),
+        _OPTIMIZER_KEY: save_args,
+    }
+    items = {_STATE_KEY: state_dict}
+    if self._should_write_dataset_ckpt:
+      items[_DATASET_KEY] = self._dataset_iterator
+    save_kwargs = {_STATE_KEY: {'save_args': save_args}}
 
     super().save(step, items, save_kwargs=save_kwargs)
 
@@ -1790,7 +1836,18 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     if step is None:
       step = self.latest_step()
 
-    items = {'state_dict': None}
+    transforms = _transforms_from_state_transformation_fns(
+        state_transformation_fns)
+
+    # If `fallback_state` was specified, then fill the missing parameters.
+    if fallback_state is None:
+      state_dict = self._train_state_shape.state_dict()
+    else:
+      structure = self.structure()[_STATE_KEY]
+      state_dict = _get_optimizer_state_dict(
+          structure, self._train_state_shape.state_dict(),
+          state_transformation_fns)
+      state_dict = state_utils.merge_state(state_dict, fallback_state)
 
     def _restore_args(param_info):
       dtype = None
@@ -1807,35 +1864,110 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
 
     restore_args = jax.tree_map(_restore_args,
                                 self._parameter_infos(self._train_state_shape))
-    restore_args['version'] = orbax.checkpoint.RestoreArgs(as_gda=False)
-    restore_kwargs = {'state_dict': {'restore_args': restore_args}}
+    state_dict = {
+        _VERSION_KEY: VERSION,
+        _OPTIMIZER_KEY: dict(state_dict),
+    }
+    items = {_STATE_KEY: state_dict}
+    if self._should_write_dataset_ckpt:
+      items[_DATASET_KEY] = self._dataset_iterator
+    restore_args = {
+        _VERSION_KEY: orbax.checkpoint.RestoreArgs(as_gda=False),
+        _OPTIMIZER_KEY: restore_args,
+    }
+    restore_kwargs = {
+        _STATE_KEY: {
+            'restore_args': restore_args,
+            'transforms': transforms
+        }
+    }
 
     restored = super().restore(step, items, restore_kwargs=restore_kwargs)
-    state_dict = restored['state_dict']
-
-    state_dict = {'version': state_dict['version'], 'optimizer': state_dict}
-    del state_dict['optimizer']['version']
+    state_dict = restored[_STATE_KEY]
+    if self._should_write_dataset_ckpt:
+      self._dataset_iterator = restored[_DATASET_KEY]
     state_dict = _get_optimizer_state_dict(state_dict,
                                            self._train_state_shape.state_dict(),
-                                           state_transformation_fns)
-
-    # If `fallback_state` was specified, then fill the missing parameters.
-    if fallback_state is not None:
-      state_dict = state_utils.merge_state(state_dict, fallback_state)
+                                           [])
 
     train_state = self._train_state_shape.restore_state(state_dict)
 
     return train_state
 
 
-def convert_old_checkpoints(checkpointer: Checkpointer):
-  checkpoint_manager = CheckpointManager(
-      checkpointer.checkpoints_dir,
-      checkpointer._train_state,  # pylint: disable=protected-access
-      checkpointer._partitioner)  # pylint: disable=protected-access
-  for step in checkpointer.all_steps():
-    train_state = checkpointer.restore(step=step)
-    # TODO(cpgaffney) handle dataset.
-    # TODO(cpgaffney) handle state_transformation_fns.
-    checkpoint_manager.save(train_state)
-  # TODO(cpgaffney) remove old format steps?
+def convert_old_checkpoints(directory: str):
+  """Converts a directory with T5X format checkpoint to Orbax format.
+
+  Non-Orbax T5X checkpoints have similar a similar structure to Orbax
+  checkpoints, but with important differences.
+
+  T5X Legacy:
+  directory/
+    checkpoint_0/
+      checkpoint  # flax-serialized binary file
+        # inside file: top-level 'version' and 'optimizer' keys.
+        # within 'optimizer' the structure broadly mirrors outside params.
+        # arrays serialized with flax do not appear outside
+      target.layers_0.kernel  # individual arrays saved with Tensorstore.
+      target.layers_0.bias
+      state.param_states....
+      # files prefixed with 'train_ds' are dataset checkpoint files.
+      train_ds-001-of-001.index
+      train_ds-001-of-001.data-00000-of-00001
+    checkpoint_1/
+    ...
+
+  Orbax:
+  directory/
+    checkpoints/
+      0/
+        state/
+          checkpoint  # flax-serialized binary file
+            # inside file: top-level 'version' and 'optimizer' keys.
+            # serialized PyTree structure mirrors arrays outside.
+            # arrays serialized with flax do not appear outside
+          optimizer.target.layers_0.kernel
+          optimizer.target.layers_0.bias
+          optimizer.state.param_states
+        dataset/
+          ckpt-001-of-001.index
+          ckpt-001-of-001.data-00000-of-00001
+      1/
+      ...
+
+  Args:
+    directory: path to checkpoint files.
+  """
+
+  checkpoints_dir = tf.io.gfile.join(directory, _CHECKPOINTS_SUBDIR)
+  tf.io.gfile.makedirs(checkpoints_dir)
+  for file in tf.io.gfile.listdir(directory):
+    path = tf.io.gfile.join(directory, file)
+    match = re.fullmatch(r'checkpoint_(\d+)', file)
+    if not match:
+      continue
+    step_dir = match.expand(r'\1')
+    step_path = tf.io.gfile.join(checkpoints_dir, step_dir)
+    tf.io.gfile.rename(path, step_path)
+
+    tf.io.gfile.makedirs(tf.io.gfile.join(step_path, _STATE_KEY))
+    tf.io.gfile.makedirs(tf.io.gfile.join(step_path, _DATASET_KEY))
+
+    for param_file in tf.io.gfile.listdir(step_path):
+      if param_file == _STATE_KEY or param_file == _DATASET_KEY:
+        continue
+
+      if _TRAIN_DS_PREFIX in param_file:
+        tf.io.gfile.rename(
+            tf.io.gfile.join(step_path, param_file),
+            tf.io.gfile.join(step_path, _DATASET_KEY, param_file))
+      else:
+        if param_file == _FLAX_CHECKPOINT_FILE:
+          new_param_file = param_file
+        else:
+          new_param_file = _OPTIMIZER_KEY + '.' + param_file
+        logging.info(tf.io.gfile.join(step_path, param_file))
+        logging.info(tf.io.gfile.join(step_path, _STATE_KEY, new_param_file))
+        tf.io.gfile.rename(
+            tf.io.gfile.join(step_path, param_file),
+            tf.io.gfile.join(step_path, _STATE_KEY, new_param_file))
