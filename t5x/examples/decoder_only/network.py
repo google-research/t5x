@@ -66,8 +66,8 @@ class DecoderLayer(nn.Module):
     # be called with `decode=True` and will reuse the cached bias. This
     # significantly improves performance during decoding with many decode steps.
     decoder_bias = layers.RelativePositionBiases(
-        num_buckets=32,
-        max_distance=128,
+        num_buckets=cfg.num_buckets,
+        max_distance=cfg.max_distance,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
         embedding_init=nn.initializers.variance_scaling(1.0, 'fan_avg',

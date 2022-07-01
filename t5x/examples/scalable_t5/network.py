@@ -63,8 +63,8 @@ class EncoderLayer(nn.Module):
 
     # Relative position embedding as attention biases.
     encoder_bias = layers.RelativePositionBiases(
-        num_buckets=32,
-        max_distance=128,
+        num_buckets=cfg.num_buckets,
+        max_distance=cfg.max_distance,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
         embedding_init=nn.initializers.variance_scaling(
@@ -133,8 +133,8 @@ class DecoderLayer(nn.Module):
     # Relative position embedding as attention biases.
     l = max_decode_length if decode and max_decode_length else inputs.shape[-2]
     decoder_bias = layers.RelativePositionBiases(
-        num_buckets=32,
-        max_distance=128,
+        num_buckets=cfg.num_buckets,
+        max_distance=cfg.max_distance,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
         embedding_init=nn.initializers.variance_scaling(
