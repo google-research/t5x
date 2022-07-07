@@ -204,8 +204,8 @@ class CheckpointConfig:
   restore: Optional[RestoreCheckpointConfig] = None
 
 
-class LegacyCheckpointer(orbax.checkpoint.Checkpointer):
-  """Implementation of Checkpointer interface for T5X.
+class LegacyCheckpointHandler(orbax.checkpoint.CheckpointHandler):
+  """Implementation of CheckpointHandler interface for T5X.
 
   Relies on underlying save_checkpointer and restore_checkpointer, which are
   t5x.checkpoints.Checkpointer objects.
@@ -220,11 +220,9 @@ class LegacyCheckpointer(orbax.checkpoint.Checkpointer):
     self._restore_checkpointer = restore_checkpointer
     self._strict = strict
 
-  async def async_save(self, path: str, item: Any):
-    raise NotImplementedError
-
-  async def async_restore(self, path: str, item: Optional[Any] = None) -> Any:
-    raise NotImplementedError
+  def structure(self, directory: str) -> Any:
+    """Unimplemented. See parent class."""
+    return NotImplementedError
 
   def save(self,
            path: str,
@@ -299,7 +297,7 @@ class LegacyCheckpointer(orbax.checkpoint.Checkpointer):
 class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
   """Implementation of CheckpointManager interface for T5X.
 
-  Uses underlying LegacyCheckpointer to handle save/restore for Dataset and
+  Uses underlying LegacyCheckpointHandler to handle save/restore for Dataset and
   TrainState.
   """
 
@@ -342,7 +340,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
       restore_checkpointer = None
       strict = False
 
-    self._checkpointer = LegacyCheckpointer(
+    self._checkpointer = LegacyCheckpointHandler(
         save_checkpointer=save_checkpointer,
         restore_checkpointer=restore_checkpointer,
         strict=strict)
