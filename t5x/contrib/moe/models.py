@@ -15,7 +15,7 @@
 """Provides model subclasses with Mixture of Experts support."""
 
 import dataclasses
-from typing import Callable, Mapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 from absl import logging
 import clu.metrics as clu_metrics
@@ -23,6 +23,7 @@ from flax import core as flax_core
 from flax import linen as nn
 from flax import traverse_util
 from flax.core import scope as flax_scope
+import jax
 import jax.numpy as jnp
 import seqio
 from t5x import decoding
@@ -112,6 +113,38 @@ class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
                         self._z_loss, self._loss_normalizing_factor,
                         self._aux_loss_factor, self._router_z_loss_factor)
 
+  def predict_batch_with_aux(  # pylint: disable=useless-super-delegation
+      self,
+      params: PyTreeDef,
+      batch: Mapping[str, jnp.ndarray],
+      rng: Optional[jax.random.KeyArray] = None,
+      decoder_params: Optional[MutableMapping[str, Any]] = None,
+      return_all_decodes: bool = False,
+      num_decodes: int = 1,
+      prompt_with_targets: bool = False
+  ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
+    """Predict with fast decoding beam search on a batch.
+
+    This override is only included for dependency injection configurability
+    (e.g. gin). See parent method docstring for detailed description.
+
+    Args:
+      params: Model parameters.
+      batch: Batch of inputs.
+      rng: RNG key to use during prediction.
+      decoder_params: Additional (model-independent) parameters for the decoder.
+      return_all_decodes: Whether to return the entire beam or just the top-1.
+      num_decodes: Number of beams to use in beam search.
+      prompt_with_targets: Whether to force decode decoder_inputs.
+
+    Returns:
+      - Batch of predictions, with the entire beam if requested,
+      - Auxiliary dictionary of decoder scores.
+    """
+    return super().predict_batch_with_aux(params, batch, rng, decoder_params,
+                                          return_all_decodes, num_decodes,
+                                          prompt_with_targets)
+
 
 class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
   """Decoder-only subclass which propagates MoE auxiliary loss and metrics."""
@@ -162,6 +195,41 @@ class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
     return _moe_loss_fn(batch, logits, state, self._label_smoothing,
                         self._z_loss, self._loss_normalizing_factor,
                         self._aux_loss_factor, self._router_z_loss_factor)
+
+  def predict_batch_with_aux(  # pylint: disable=useless-super-delegation
+      self,
+      params: PyTreeDef,
+      batch: Mapping[str, jnp.ndarray],
+      rng: Optional[jax.random.KeyArray] = None,
+      *,
+      return_all_decodes: bool = False,
+      num_decodes: int = 1,
+      decoder_params: Optional[MutableMapping[str, Any]] = None,
+  ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
+    """Predict with prefix.
+
+    This override is only included for dependency injection configurability
+    (e.g. gin). See parent method docstring for detailed description.
+
+    Args:
+      params: Model parameters.
+      batch: Batch of inputs with the model features specified in
+        seqio.DecoderFeatureConverter.
+      rng: RNG key to use during prediction.
+      return_all_decodes: Whether to return the entire beam or just the top-1.
+      num_decodes: Number of decoded sequences to be returned.
+      decoder_params: Additional (model-independent) parameters for the decoder.
+
+    Returns:
+      Sampled sequences of shape [batch, max_decode_length].
+    """
+    return super().predict_batch_with_aux(
+        params,
+        batch,
+        rng,
+        return_all_decodes=return_all_decodes,
+        num_decodes=num_decodes,
+        decoder_params=decoder_params)
 
 
 def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
