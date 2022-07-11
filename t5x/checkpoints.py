@@ -840,7 +840,7 @@ class Checkpointer(object):
         return _cast(maybe_arr, self._save_dtype)
       return maybe_arr
 
-    state_dict_for_save['target'] = jax.tree_multimap(
+    state_dict_for_save['target'] = jax.tree_multimap(  # pytype: disable=unsupported-operands  # dynamic-method-lookup
         _cast_arr_if_not_partitioned, state_dict_for_save['target'],
         transformed_parameter_infos['target'])
     future_written_state = {}
@@ -1358,7 +1358,7 @@ class SaveBestCheckpointer(Checkpointer):
       return existing_steps
 
     # Don't filter out the last step.
-    last_step = existing_steps.pop()
+    last_step = existing_steps.pop()  # pytype: disable=attribute-error  # dynamic-method-lookup
     existing_steps = [
         s for s in existing_steps if s % self._force_keep_period != 0
     ]
