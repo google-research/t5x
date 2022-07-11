@@ -390,7 +390,7 @@ python3 ${T5X_DIR}/t5x/train.py \
 
 We have released the checkpoints of many of the original T5 models and their
 variants a native T5X format for maximal efficiency.
-See the [complete list](docs/usage/finetune.md#public-research-models) including the
+See the [complete list](https://github.com/google-research/t5x/blob/main/docs/models.md) including the
 matching Gin configuration files.
 
 These are converted from the public [Mesh TensorFlow
