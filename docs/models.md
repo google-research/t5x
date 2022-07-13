@@ -13,6 +13,20 @@ checkpoint locations.
 +   All Gin files:
     [`t5x/configs/models/`](https://github.com/google-research/t5x/tree/main/t5x/configs/)
 
+### Selecting a model:
+
+Publicly Available Models:
+
+Model             | Use Case
+---------------------------------------     | ---------------------------------------------------
+[T5 1.1](#t5-11-checkpoints)                | Improved T5, recommended for most research. English only.
+[T5](#t5-checkpoints)                       | The original T5 work for reproducibility. English only.
+[T5 1.1 LM-Adapted](#t5-11-lm-adapted-checkpoints)| Trained for 100k additional steps on the LM objective, per [prompt tuning paper](https://arxiv.org/abs/2104.08691).
+[MT5](#mt5-checkpoints)                     | Multilingual T5. Recommended for multiligual research. Note that at smaller scales (at least through XL), MT5 performance is lower than T5 on English tasks.
+[LongT5](#longt5-checkpoints)               | TBD
+[MoE](#mixture-of-experts-moe-checkpoints)  | Useful for MoE experimentation.
+
+
 ### Public Research Models
 
 #### T5 Checkpoints
