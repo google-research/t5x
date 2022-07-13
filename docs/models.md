@@ -23,6 +23,8 @@ Transformer](https://arxiv.org/abs/1910.10683). They are encoder-decoder models
 trained on [C4](https://www.tensorflow.org/datasets/catalog/c4) with a denoising
 objective.
 
+**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+
 Model    | Gin File Location                                                              | Checkpoint Location
 -------- | ------------------------------------------------------------------------------ | -------------------
 T5 Small | [t5_small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/small.gin) | [gs://t5-data/pretrained_models/t5x/t5_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_small)
@@ -50,6 +52,8 @@ For English-language, sequence-to-sequence-style tasks (ones where the goal is
 to map from an input text sequence to a target sequence) these are usually the
 best models to fine-tune.
 
+**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+
 Model        | Gin File Location                                                                  | Checkpoint Location
 ------------ | ---------------------------------------------------------------------------------- | -------------------
 T5 1.1 Small | [t5_1_1/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin) | [gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_small)
@@ -67,6 +71,8 @@ ability of the model to be used for
 [prompt tuning](https://arxiv.org/abs/2104.08691). These checkpoints were also
 used within the BigScience [T0](https://arxiv.org/abs/2110.08207) project.
 
+**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+
 Model                | Gin File Location                                                                                                   | Checkpoint Location
 -------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
 T5 1.1 LM-100K Small | [t5_1_1_small.gin](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin) | [t5_1_1_lm100k_small/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_lm100k_small)
@@ -83,6 +89,8 @@ They are encoder-decoder models trained on
 [multilingual C4](https://www.tensorflow.org/datasets/catalog/c4#c4multilingual)
 with a denoising objective. These are the best checkpoints to fine-tune for
 non-English sequence-to-sequence tasks.
+
+**Vocabulary:** [mc4.250000.100extra](gs://t5-data/vocabs/mc4.250000.100extra)
 
 Model     | Gin File Location                                                            | Checkpoint Location
 --------- | ---------------------------------------------------------------------------- | -------------------
@@ -107,6 +115,8 @@ The checkpoints below use local attention, which uses a sliding window to reduce
 training time from quadratic (with regards to input length) to linear. These are
 the recommended checkpoints to use for faster training/inference time.
 
+**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+
 Model                        | Gin File Location                                                                                                                     | Checkpoint Location
 ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------
 LongT5 Local Attention Base  | [longt5/models/longt5_1_1_base.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_base.gin)   | [gs://t5-data/pretrained_models/t5x/longt5/local_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/local_base)
@@ -118,6 +128,8 @@ The checkpoints below use transient global attention, which introduces global
 tokens at each encoder layer to allow tokens to interact with each other at
 longer distances. These are the recommended checkpoints to use for increased
 performance on long input sequence tasks.
+
+**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
 
 Model        | Gin File Location                                                                                                                                                | Checkpoint Location
 ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------
@@ -137,6 +149,8 @@ the MoeTrainer and the MoePjitPartitioner. For example, for fine-tuning, use the
 
 These are the checkpoints from the original
 [Switch Transformer model](https://arxiv.org/abs/2101.03961).
+
+**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
 
 Model                                    | Gin File Location                                                                                            | Checkpoint Location
 ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------
