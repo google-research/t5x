@@ -67,7 +67,7 @@ else:
 
 @jax.jit
 def _merge_metrics(a, b):
-  return jax.tree_multimap(
+  return jax.tree_map(
       lambda a, b: a.merge(b), a, b, is_leaf=metrics_lib.is_metric_obj)
 
 
@@ -197,8 +197,8 @@ class WeightMetricsComputer(object):
     metrics.update(
         self._make_rms_metrics(
             "weight_update_rms",
-            jax.tree_multimap(jnp.subtract, new_train_state.params,
-                              old_train_state.params)))
+            jax.tree_map(jnp.subtract, new_train_state.params,
+                         old_train_state.params)))
     metrics.update(self._make_max_metrics("weight_max", new_train_state.params))
 
     return metrics
@@ -691,7 +691,7 @@ def accumulate_grads_microbatched(
       metrics, grad, flax_mutables = metrics_and_grad(loop_cnt, dropout_rng,
                                                       flax_mutables)
 
-      grad_accum = jax.tree_multimap(jnp.add, grad_accum, grad)
+      grad_accum = jax.tree_map(jnp.add, grad_accum, grad)
       metrics = jax.lax.cond(loop_cnt == 0, lambda _: metrics,
                              lambda _: merge_metrics(prev_metrics, metrics),
                              None)

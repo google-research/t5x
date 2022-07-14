@@ -54,9 +54,9 @@ def check_eq(xs, ys, atol=None, rtol=None):
   ys_leaves, ys_tree = jax.tree_flatten(ys)
   assert xs_tree == ys_tree, f"Tree shapes don't match. \n{xs_tree}\n{ys_tree}"
   assert jax.tree_util.tree_all(
-      jax.tree_multimap(lambda x, y: np.array(x).shape == np.array(y).shape,
-                        xs_leaves, ys_leaves)), "Leaves' shapes don't match."
-  assert jax.tree_multimap(
+      jax.tree_map(lambda x, y: np.array(x).shape == np.array(y).shape,
+                   xs_leaves, ys_leaves)), "Leaves' shapes don't match."
+  assert jax.tree_map(
       functools.partial(_assert_numpy_allclose, atol=atol, rtol=rtol),
       xs_leaves, ys_leaves)
 
@@ -71,7 +71,7 @@ def tree_shape(x):
 
 
 def tree_equals(x, y):
-  return jax.tree_util.tree_all(jax.tree_multimap(operator.eq, x, y))
+  return jax.tree_util.tree_all(jax.tree_map(operator.eq, x, y))
 
 
 def get_fake_tokenized_dataset_no_pretokenized(*_, split='validation', **__):

@@ -425,7 +425,7 @@ class UtilsTest(parameterized.TestCase):
             ("mlp/wo/bias", ("embed",)),  # used
         ])
 
-    jax.tree_multimap(
+    jax.tree_map(
         np.testing.assert_equal, overridden_variables,
         flax.core.freeze({
             "params": {

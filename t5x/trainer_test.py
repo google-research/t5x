@@ -68,8 +68,7 @@ def _validate_events(test_case, summary_dir, expected_metrics, steps):
     else:
       actual_events[event.summary.value[0].tag] = float(tf.make_ndarray(tensor))
 
-  jax.tree_multimap(test_case.assertAlmostEqual, actual_events,
-                    expected_metrics)
+  jax.tree_map(test_case.assertAlmostEqual, actual_events, expected_metrics)
 
 
 class MetricsManagerTest(absltest.TestCase):
@@ -226,7 +225,7 @@ def fake_apply_grads(optimizer,
   del weight_metrics_computer
   del other_state_variables
   metrics['learning_rate'] = clu.metrics.Average(learning_rate, count=1)
-  optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
+  optimizer = jax.tree_map(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics
 
 
@@ -357,8 +356,8 @@ class TrainerTest(parameterized.TestCase):
 
     # Base rng must remain the same
     np.testing.assert_array_equal(trainer._base_rng, initial_rng)
-    jax.tree_multimap(np.testing.assert_equal, trainer.train_state,
-                      expected_train_state)
+    jax.tree_map(np.testing.assert_equal, trainer.train_state,
+                 expected_train_state)
     # Expected step is 6 since we increment it along with the other optimizer
     # values.
     steps = [2, 2, 2]
@@ -900,7 +899,7 @@ def fake_mut_apply_grads(optimizer, grad_accum, metrics, learning_rate,
   del weight_metrics_computer, other_state_variables
   metrics['learning_rate'] = clu.metrics.Average.from_model_output(
       learning_rate)
-  optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
+  optimizer = jax.tree_map(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics
 
 
@@ -965,8 +964,7 @@ class MutableTrainerTest(parameterized.TestCase):
                                         self.init_train_state)
     # Base rng must remain the same
     np.testing.assert_array_equal(trainer._base_rng, initial_rng)
-    jax.tree_multimap(np.testing.assert_equal, train_state,
-                      expected_train_state)
+    jax.tree_map(np.testing.assert_equal, train_state, expected_train_state)
 
     self.assertIsNone(trainer._compiled_train_step)
     self.assertEqual(trainer._partitioned_train_step.call_count, num_steps)

@@ -363,8 +363,8 @@ class CheckpointsTest(parameterized.TestCase):
                         replica_id=1), axes=PartitionSpec(None, 'model'))
         }
     }  # pyformat: disable
-    jax.tree_multimap(self.assertEqual, checkpointer._get_parameter_infos(),
-                      expected_parameter_infos)
+    jax.tree_map(self.assertEqual, checkpointer._get_parameter_infos(),
+                 expected_parameter_infos)
 
   def test_get_multioptimizer_parameter_infos(self):
     train_state = make_train_state(
@@ -490,8 +490,8 @@ class CheckpointsTest(parameterized.TestCase):
       self.assertEqual(actual_train_state.step, step)
       self.assertEqual(actual_train_state.step.dtype, np.int32)
       self.assertEqual(actual_train_state._optimizer.state.step.dtype, np.int32)
-      jax.tree_multimap(np.testing.assert_array_equal,
-                        actual_train_state.param_states, param_states)
+      jax.tree_map(np.testing.assert_array_equal,
+                   actual_train_state.param_states, param_states)
       self.assertEqual(actual_train_state.param_states['kernel'].dtype,
                        np.uint8)
       self.assertSameElements(actual_train_state.params, ('bias', 'kernel'))
@@ -544,8 +544,8 @@ class CheckpointsTest(parameterized.TestCase):
                    actual_optimizer.target)
       self.assertEqual(actual_step, step)
       self.assertEqual(actual_step.dtype, np.int32)
-      jax.tree_multimap(np.testing.assert_array_equal, actual_param_states,
-                        param_states)
+      jax.tree_map(np.testing.assert_array_equal, actual_param_states,
+                   param_states)
       self.assertSameElements(actual_params, ('bias', 'kernel'))
       self.assertTrue(
           all(
@@ -681,16 +681,16 @@ class CheckpointsTest(parameterized.TestCase):
     with gfile.GFile(f'{self.tmp_dir}/checkpoint_{step}/checkpoint', 'rb') as f:
       ckpt_contents = serialization.msgpack_restore(f.read())
     self.assertEqual(ckpt_contents['version'], checkpoints.VERSION)
-    jax.tree_multimap(np.testing.assert_allclose,
-                      ckpt_contents['optimizer']['state']['param_states'],
-                      param_states)
+    jax.tree_map(np.testing.assert_allclose,
+                 ckpt_contents['optimizer']['state']['param_states'],
+                 param_states)
     self.assertEqual(ckpt_contents['optimizer']['state']['step'].dtype,
                      np.int32)
     if disable_partitioning:
       # Parameters should also be in the msgpack checkpoint file.
-      jax.tree_multimap(
-          np.testing.assert_allclose, ckpt_contents['optimizer']['target'],
-          jax.tree_map(lambda arr: arr.astype(save_dtype), params))
+      jax.tree_map(np.testing.assert_allclose,
+                   ckpt_contents['optimizer']['target'],
+                   jax.tree_map(lambda arr: arr.astype(save_dtype), params))
 
     # Jax tree maps ignore Nones so actually check this value is None
     if multi_optimizer:
@@ -737,14 +737,14 @@ class CheckpointsTest(parameterized.TestCase):
   def test_load_t5x_checkpoint(self):
     self.validate_save(1, 1)
     ckpt = checkpoints.load_t5x_checkpoint(self.tmp_dir)
-    jax.tree_multimap(np.testing.assert_array_equal,
-                      self.train_state.state_dict(), ckpt)
+    jax.tree_map(np.testing.assert_array_equal, self.train_state.state_dict(),
+                 ckpt)
 
   def test_load_t5x_checkpoint_of_multioptimizer(self):
     self.validate_save(1, 1, multi_optimizer=True)
     ckpt = checkpoints.load_t5x_checkpoint(self.tmp_dir)
-    jax.tree_multimap(np.testing.assert_array_equal,
-                      self.train_state_multi_optimizer.state_dict(), ckpt)
+    jax.tree_map(np.testing.assert_array_equal,
+                 self.train_state_multi_optimizer.state_dict(), ckpt)
     # Jax tree maps ignore Nones so actually check this value is None
     self.assertIsNone(ckpt['state']['param_states']['kernel'])
 
@@ -754,7 +754,7 @@ class CheckpointsTest(parameterized.TestCase):
     lazy_ckpt = checkpoints.load_t5x_checkpoint(
         self.tmp_dir, lazy_parameters=True)
     lazy_loaded_ckpt = jax.tree_map(lambda x: x.get(), lazy_ckpt)
-    jax.tree_multimap(np.testing.assert_array_equal, ckpt, lazy_loaded_ckpt)
+    jax.tree_map(np.testing.assert_array_equal, ckpt, lazy_loaded_ckpt)
 
   def test_load_t5x_checkpoint_of_multioptimizer_lazy(self):
     self.validate_save(1, 1, multi_optimizer=True)
@@ -762,7 +762,7 @@ class CheckpointsTest(parameterized.TestCase):
     lazy_ckpt = checkpoints.load_t5x_checkpoint(
         self.tmp_dir, lazy_parameters=True)
     lazy_loaded_ckpt = jax.tree_map(lambda x: x.get(), lazy_ckpt)
-    jax.tree_multimap(np.testing.assert_array_equal, ckpt, lazy_loaded_ckpt)
+    jax.tree_map(np.testing.assert_array_equal, ckpt, lazy_loaded_ckpt)
     # Jax tree maps ignore Nones so actually check this value is None
     self.assertIsNone(lazy_loaded_ckpt['state']['param_states']['kernel'])
 
@@ -1231,11 +1231,10 @@ class CheckpointsTest(parameterized.TestCase):
     self.assertEqual(actual_train_state.step, 42)
     self.assertEqual(actual_train_state._optimizer.optimizer_def,
                      self.train_state._optimizer.optimizer_def)
-    jax.tree_multimap(np.testing.assert_array_equal,
-                      actual_train_state.param_states,
-                      self.train_state.param_states)
-    jax.tree_multimap(np.testing.assert_array_equal, actual_train_state.params,
-                      self.train_state.params)
+    jax.tree_map(np.testing.assert_array_equal, actual_train_state.param_states,
+                 self.train_state.param_states)
+    jax.tree_map(np.testing.assert_array_equal, actual_train_state.params,
+                 self.train_state.params)
 
   def test_assignment_map_unused(self):
     self.validate_save(1, 1)
@@ -1342,11 +1341,10 @@ class CheckpointsTest(parameterized.TestCase):
     self.assertEqual(actual_train_state._optimizer.optimizer_def,
                      self.train_state._optimizer.optimizer_def)
     self.assertEqual(actual_train_state.step, 1337)  # note: from-scratch
-    jax.tree_multimap(np.testing.assert_array_equal,
-                      actual_train_state.param_states,
-                      self.train_state.param_states)
-    jax.tree_multimap(np.testing.assert_array_equal, actual_train_state.params,
-                      self.train_state.params)
+    jax.tree_map(np.testing.assert_array_equal, actual_train_state.param_states,
+                 self.train_state.param_states)
+    jax.tree_map(np.testing.assert_array_equal, actual_train_state.params,
+                 self.train_state.params)
 
   def verify_restore_checkpoint_from_path(
       self,
@@ -1471,8 +1469,8 @@ class CheckpointsTest(parameterized.TestCase):
         lambda x: x.get()  # pylint: disable=g-long-lambda
         if isinstance(x, LazyArray) else x,
         train_state)
-    jax.tree_multimap(np.testing.assert_allclose, train_state.state_dict(),
-                      loaded_train_state)
+    jax.tree_map(np.testing.assert_allclose, train_state.state_dict(),
+                 loaded_train_state)
 
   def test_update_ts_from_gfile_to_gcs(self):
     ckpt_contents = {
@@ -1527,7 +1525,7 @@ class CheckpointsTest(parameterized.TestCase):
         }
     }
     actual = checkpoints._maybe_update_ts_from_file_to_gcs(ckpt_contents)
-    jax.tree_multimap(np.testing.assert_array_equal, actual, expected)
+    jax.tree_map(np.testing.assert_array_equal, actual, expected)
 
   def test_update_ts_from_gcs_to_file(self):
     ckpt_contents = {
@@ -1584,7 +1582,7 @@ class CheckpointsTest(parameterized.TestCase):
     }
 
     actual = checkpoints._maybe_update_ts_from_gcs_to_file(ckpt_contents)
-    jax.tree_multimap(np.testing.assert_array_equal, actual, expected)
+    jax.tree_map(np.testing.assert_array_equal, actual, expected)
 
   def assert_update_ts_path_from_relative_to_absolute(self, ts_spec_dict,
                                                       expected, ckpt_dir):
@@ -1596,13 +1594,13 @@ class CheckpointsTest(parameterized.TestCase):
         ckpt_dir, normalized_ts_spec_dict)
     normalized_ts_spec_dict = ts.Spec(normalized_ts_spec_dict).to_json()
     normalized_expected = ts.Spec(expected).to_json()
-    jax.tree_multimap(np.testing.assert_array_equal, normalized_ts_spec_dict,
-                      normalized_expected)
+    jax.tree_map(np.testing.assert_array_equal, normalized_ts_spec_dict,
+                 normalized_expected)
 
     # Test without normalization (corresponds to tensorstore<0.1.14)
     checkpoints._update_ts_path_from_relative_to_absolute(
         ckpt_dir, ts_spec_dict)
-    jax.tree_multimap(np.testing.assert_array_equal, ts_spec_dict, expected)
+    jax.tree_map(np.testing.assert_array_equal, ts_spec_dict, expected)
 
   def test_update_ts_path_from_relative_to_absolute_gfile(self):
     ts_spec_dict = {
@@ -1736,7 +1734,7 @@ class CheckpointsTest(parameterized.TestCase):
         checkpoint, test_utils.get_t5_test_model())
     state_dict = train_state._optimizer.state_dict()
     ckpt = checkpoints.load_t5x_checkpoint(checkpoint)
-    jax.tree_multimap(np.testing.assert_array_equal, state_dict, ckpt)
+    jax.tree_map(np.testing.assert_array_equal, state_dict, ckpt)
 
 
 

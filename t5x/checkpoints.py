@@ -840,13 +840,13 @@ class Checkpointer(object):
         return _cast(maybe_arr, self._save_dtype)
       return maybe_arr
 
-    state_dict_for_save['target'] = jax.tree_multimap(  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+    state_dict_for_save['target'] = jax.tree_map(  # pytype: disable=unsupported-operands  # dynamic-method-lookup
         _cast_arr_if_not_partitioned, state_dict_for_save['target'],
         transformed_parameter_infos['target'])
     future_written_state = {}
     for k in state_dict_for_save.keys():
       # ensure that only 'target' is cast
-      future_written_state[k] = jax.tree_multimap(
+      future_written_state[k] = jax.tree_map(
           functools.partial(
               _write_array,
               cast=(k == 'target' and self._save_dtype is not None)),
@@ -1080,7 +1080,7 @@ class Checkpointer(object):
     for k in written_state_dict.keys():
       # ensure that only 'target' is cast
       restore_dtype = self.restore_dtype if k == 'target' else None
-      state_dict[k] = jax.tree_multimap(
+      state_dict[k] = jax.tree_map(
           functools.partial(
               self._create_lazy_awaitable_array,
               ckpt_path=ckpt_path,
@@ -1122,8 +1122,8 @@ class Checkpointer(object):
         return arr
       return maybe_arr
 
-    state_dict = jax.tree_multimap(_partition_parameter, full_state_dict,
-                                   self._parameter_infos)
+    state_dict = jax.tree_map(_partition_parameter, full_state_dict,
+                              self._parameter_infos)
     if self.restore_dtype is not None:
       state_dict['target'] = _cast(state_dict['target'], self.restore_dtype)
 
@@ -1453,7 +1453,7 @@ async def _read_ts(param_info: _ParameterInfo,
 
   Note:
     We use param_infos as the first argument because this function is only used
-    in `jax.tree_multimap` calls. In a tree multimap if the leaf of the first
+    in `jax.tree_map` calls. In a tree multimap if the leaf of the first
     tree is `None` then is is ignored, even if the second tree has a subtree
     at that point. This means that when we are using something like a
     MultiOptimizer we can set the parameter info for a variable to `None` and
@@ -1691,7 +1691,7 @@ def load_t5x_checkpoint(
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
 
-  state_dict = jax.tree_multimap(
+  state_dict = jax.tree_map(
       functools.partial(
           _create_lazy_awaitable_array,
           ckpt_path=path,

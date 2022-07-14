@@ -702,8 +702,8 @@ class DecodeTest(parameterized.TestCase):
         }
     }
 
-    jax.tree_multimap(np.testing.assert_array_equal,
-                      decoding.cache_map(fn, cache), gold_cache)
+    jax.tree_map(np.testing.assert_array_equal, decoding.cache_map(fn, cache),
+                 gold_cache)
 
   def test_cache_map_with_index(self):
     cache = {
@@ -764,9 +764,8 @@ class DecodeTest(parameterized.TestCase):
         },
     }
 
-    jax.tree_multimap(np.testing.assert_array_equal,
-                      decoding.cache_map(fn, cache, apply_to_index=True),
-                      gold_cache)
+    jax.tree_map(np.testing.assert_array_equal,
+                 decoding.cache_map(fn, cache, apply_to_index=True), gold_cache)
 
   def test_beam_search(self):
     # Toy problem, we have 4 states, A, B, START, END, (plus PAD).

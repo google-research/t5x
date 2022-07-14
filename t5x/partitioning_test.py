@@ -230,7 +230,7 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
     expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(m=None, v=None, v_col=None, v_row=None),
         adafactor._AdafactorParamState(m=None, v=None, v_col=None, v_row=None))
-    jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
+    jax.tree_map(self.assertEqual, axes_spec, expected_axes_spec)
 
     axes_spec = self.get_axes_spec(partitioner, factored=True, momentum=True)
     expected_axes_spec = self.get_expected_axes_spec(
@@ -238,7 +238,7 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
             m=p0_spec, v=None, v_col=None, v_row=None),
         adafactor._AdafactorParamState(
             m=p1_spec, v=None, v_col=None, v_row=None))
-    jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
+    jax.tree_map(self.assertEqual, axes_spec, expected_axes_spec)
 
     axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=True)
     expected_axes_spec = self.get_expected_axes_spec(
@@ -246,7 +246,7 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
             m=p0_spec, v=p0_spec, v_col=None, v_row=None),
         adafactor._AdafactorParamState(
             m=p1_spec, v=p1_spec, v_col=None, v_row=None))
-    jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
+    jax.tree_map(self.assertEqual, axes_spec, expected_axes_spec)
 
     axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=False)
     expected_axes_spec = self.get_expected_axes_spec(
@@ -254,7 +254,7 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
             m=None, v=p0_spec, v_col=None, v_row=None),
         adafactor._AdafactorParamState(
             m=None, v=p1_spec, v_col=None, v_row=None))
-    jax.tree_multimap(self.assertEqual, axes_spec, expected_axes_spec)
+    jax.tree_map(self.assertEqual, axes_spec, expected_axes_spec)
 
   @parameterized.product(activation_dims=(1, 2), param_dims=(1, 2))
   def test_standard_logical_axis_rules(self, activation_dims, param_dims):

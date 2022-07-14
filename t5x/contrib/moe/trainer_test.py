@@ -64,7 +64,7 @@ def fake_apply_grads(optimizer,
   del weight_metrics_computer
   del other_state_variables
   metrics['learning_rate'] = metrics_lib.Sum.from_model_output(learning_rate)
-  optimizer = jax.tree_multimap(lambda x, g: x + g, optimizer, grad_accum)
+  optimizer = jax.tree_map(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics
 
 
@@ -145,8 +145,8 @@ class MoeTrainerTest(absltest.TestCase):
         })
     expected_train_state = train_state_lib.FlaxOptimTrainState(
         expected_optimizer)
-    jax.tree_multimap(np.testing.assert_allclose, trainer.train_state,
-                      expected_train_state)
+    jax.tree_map(np.testing.assert_allclose, trainer.train_state,
+                 expected_train_state)
 
     if precompile:
       self.assertEqual(trainer._compiled_train_step.call_count, num_steps)

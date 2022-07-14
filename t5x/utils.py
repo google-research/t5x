@@ -1132,8 +1132,8 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     all_inferences = batched_results
 
     # List[B * shard_count, ...] -> [B * shard_count * batch_count, ...]
-    all_inferences = jax.tree_multimap(lambda *args: np.concatenate(args),
-                                       *all_inferences)
+    all_inferences = jax.tree_map(lambda *args: np.concatenate(args),
+                                  *all_inferences)
     all_indices = np.concatenate(all_indices)
 
     all_inferences, all_indices = _remove_padding(all_inferences, all_indices)
