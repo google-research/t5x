@@ -33,6 +33,7 @@ import clu.data
 import jax
 from jax import random
 from jax.experimental import multihost_utils
+from jax.experimental.global_device_array import GlobalDeviceArray
 import jax.numpy as jnp
 import numpy as np
 import seqio
@@ -238,23 +239,28 @@ def train(
 
   _verify_matching_vocabs(train_dataset_cfg)
 
-  train_iter = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
-                              model.FEATURE_CONVERTER_CLS)
-  if isinstance(train_iter, tf.data.Dataset):
-    train_iter = clu.data.TfDatasetIterator(train_iter)
-  elif not isinstance(train_iter, clu.data.DatasetIterator):
+  train_ds = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
+                            model.FEATURE_CONVERTER_CLS)
+  checkpoint_dataset = False
+  if isinstance(train_ds, tf.data.Dataset):
+    train_iter = clu.data.TfDatasetIterator(train_ds)
+    checkpoint_dataset = True
+  elif isinstance(train_ds, clu.data.DatasetIterator):
+    train_iter = train_ds
+  else:
     raise ValueError(
-        f'get_dataset_fn returned unsupported type {type(train_iter)}.')
+        f'get_dataset_fn returned unsupported type {type(train_ds)}.')
 
   input_shapes = {
       k: (data_layout.batch_size, *v.shape[1:])
       for k, v in train_iter.element_spec.items()
   }
-  input_types = {k: v.dtype for k, v in train_iter.element_spec.items()}
+  input_types = {
+      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
+  }
 
   if use_gda:
-    train_iter = utils.GDADatasetIterator(train_iter, partitioner.mesh,
-                                          P('data'), input_shapes)
+    train_iter = utils.GDADatasetIterator(train_iter, partitioner, input_shapes)
 
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
@@ -297,8 +303,7 @@ def train(
           # Restore dataset state if it is being saved.
           restore_dataset=(checkpoint_cfg.save and
                            checkpoint_cfg.save.save_dataset),
-          state_transformation_fns=state_transforms_for_restore,
-          use_gda=use_gda)
+          state_transformation_fns=state_transforms_for_restore)
   ]
   # 2. From a checkpoint specified by `checkpoint_cfg.restore.path`, if set.
   if checkpoint_cfg.restore:
@@ -330,12 +335,14 @@ def train(
       restore_cfgs)
   if len(restore_paths) > 1:
     raise ValueError('Multiple restore paths not permitted in training.')
+  checkpointable_train_iter = (
+      train_iter.iterator if checkpoint_dataset else None)
   checkpoint_manager = utils.LegacyCheckpointManager(
       save_cfg=checkpoint_cfg.save,
       restore_cfg=valid_restore_cfg,
       train_state_shape=train_state_initializer.global_train_state_shape,
       partitioner=partitioner,
-      ds_iter=train_iter,
+      ds_iter=checkpointable_train_iter,
       model_dir=model_dir,
       use_gda=use_gda)
 
@@ -528,9 +535,23 @@ def train(
 
   logging.info('Compiling train loop.')
   logging.flush()
-  dummy_batch = {
-      k: np.ones(v.shape, v.dtype) for k, v in train_iter.element_spec.items()
-  }
+
+  def _as_gda(arr):
+    return GlobalDeviceArray.from_callback(arr.shape, partitioner.mesh,
+                                           partitioner.data_partition_spec,
+                                           lambda idx: arr[idx])
+
+  if use_gda:
+    dummy_batch = {
+        k: np.ones((data_layout.batch_size, *v.shape[1:]), v.dtype)
+        for k, v in train_iter.element_spec.items()
+    }
+    dummy_batch = jax.tree_map(_as_gda, dummy_batch)
+  else:
+    dummy_batch = {
+        k: np.ones(v.shape, v.dtype)
+        for k, v in train_iter.element_spec.items()
+    }
   trainer.compile_train(dummy_batch)
 
   # Main Loop over "epochs".
@@ -660,22 +681,6 @@ if __name__ == '__main__':
       'seqio_additional_cache_dirs', [],
       'Directories to search for cached Tasks in addition to defaults.')
 
-  flags.DEFINE_boolean(
-      'multiprocess_gpu',
-      False,
-      help='Initialize JAX distributed system for multi-host GPU, using '
-      '`coordinator_address`, `process_count`, and `process_index`.')
-
-  flags.DEFINE_string(
-      'coordinator_address',
-      None,
-      help='IP address:port for multi-host GPU coordinator.')
-
-  flags.DEFINE_integer(
-      'process_count', None, help='Number of processes for multi-host GPU.')
-
-  flags.DEFINE_integer('process_index', None, help='Index of this process.')
-
 
 
   def main(argv: Sequence[str]):
@@ -686,21 +691,6 @@ if __name__ == '__main__':
     """True main function."""
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
-
-    if FLAGS.multiprocess_gpu:
-      if (FLAGS.coordinator_address is None or FLAGS.process_count is None or
-          FLAGS.process_index is None):
-        raise ValueError(
-            '`coordinator_address`, `process_count` and `process_index` '
-            'must be provided alongside `multiprocess_gpu`')
-
-      logging.info(
-          'Initializing distributed system for multi-host GPU:\n'
-          '  coordinator_address: %s\n  process_count: %s\n  process_index: %s',
-          FLAGS.coordinator_address, FLAGS.process_count, FLAGS.process_index)
-
-      jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.process_count,
-                                 FLAGS.process_index)
 
     if FLAGS.tfds_data_dir:
       seqio.set_tfds_data_dir_override(FLAGS.tfds_data_dir)

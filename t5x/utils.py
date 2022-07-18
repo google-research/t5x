@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """General utility functions for t5x."""
+import collections
 import collections.abc
 from concurrent.futures import thread
 import contextlib
@@ -20,7 +21,6 @@ import dataclasses
 import functools
 import importlib
 import inspect
-import itertools
 import os
 import re
 import time
@@ -37,6 +37,7 @@ from flax.linen import partitioning as flax_partitioning
 import jax
 from jax import prng
 from jax import pxla
+from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
 from jax.experimental.global_device_array import GlobalDeviceArray
 import jax.numpy as jnp
@@ -426,24 +427,95 @@ class DatasetConfig:
   trim_output_features: bool = True
 
 
-def create_gda(global_mesh: partitioning.Mesh, pspec: PartitionSpec,
-               global_shapes: PyTreeDef,
-               host_arrays: PyTreeDef) -> GlobalDeviceArray:
-  """Create GDA from input arrays."""
-  local_devices = global_mesh.local_devices
+def _get_index_mappings(device_to_idxs):
+  """Get device and host to index set mappings for GDA construction."""
+  idx_to_devices = collections.defaultdict(set)
+  host_to_idx_set = collections.defaultdict(set)
+  for d, idx in device_to_idxs.items():
+    host_to_idx_set[d.process_index].add(gda_lib._hashed_index(idx))  # pylint: disable=protected-access
+    idx_to_devices[gda_lib._hashed_index(idx)].add(d)  # pylint: disable=protected-access
 
-  def _put_to_devices(x):
-    per_device_arrays = np.split(x, global_mesh.shape['data'], axis=0)
-    device_buffers = [
-        jax.device_put(arr, d)
-        for arr, d in itertools.product(per_device_arrays, local_devices)
-    ]
+  assert jax.process_index() in host_to_idx_set
+  for h1, set1 in host_to_idx_set.items():
+    for h2, set2 in host_to_idx_set.items():
+      if h1 == h2:
+        continue
+      assert not (set1 & set2) or set1 == set2
+
+  return host_to_idx_set, idx_to_devices
+
+
+def _create_gda(partitioner: partitioning.BasePartitioner,
+                global_shapes: PyTreeDef, host_arrays: PyTreeDef) -> PyTreeDef:
+  """Create GDA from input arrays.
+
+  Example:
+
+  Consider a case where the global input array has length 128. The global mesh
+  specifies that the data dimension be sharded into 8 shards. This means we want
+  shards of length 16. The data_layout, defined by the partitioner object,
+  specifies that the data should be divided into two shards, one per host. Each
+  host will have a local slice of the data (length 64).
+
+  In this function, we will divide the local array into 4 shards of length 16.
+  Each of these will be placed onto a separate device. If the sharding had
+  specified only 4 global shards instead of 8, we would have divided our local
+  array into only 2 shards. In this case, the first shard would be placed on the
+  first two devices (replicated) and the second on the following two devices.
+
+  Args:
+    partitioner: Partitioner object containing mesh and mesh_axes
+    global_shapes: PyTree matching host_arrays specifying global shape of each
+      array.
+    host_arrays: PyTree of LOCAL arrays (not global) that should be converted to
+      GDA.
+
+  Returns:
+    PyTree matching host_arrays of GDA.
+  """
+  global_mesh = partitioner.mesh
+  axes = partitioner.data_partition_spec
+  local_devices = global_mesh.local_devices
+  local_device_count = jax.local_device_count()
+
+  # Global input array is already split into per-host shards.
+  def _put_to_devices(x, global_shape):
+    # Mapping of device to index slice from *global* array.
+    device_to_idxs = gda_lib.get_shard_indices(global_shape, global_mesh, axes)
+    # Mapping of host to a set of unique index slices for that host.
+    # Mapping of index slice to a list of devices onto which the slice should be
+    # placed.
+    host_to_idx_set, idx_to_devices = _get_index_mappings(device_to_idxs)
+
+    shard_length = gda_lib.get_shard_shape(global_shape, global_mesh, axes)[0]
+    num_shards = len(x) // shard_length
+    try:
+      local_array_shards = np.split(x, num_shards, axis=0)
+    except ValueError as array_split_error:
+      raise ValueError(
+          f'Unable to put to devices shape {x.shape} with '
+          f'local device count {local_device_count}') from array_split_error
+
+    # Construct mapping of device to index in the split local array.
+    device_to_split_array_idx = {}
+    i = 0
+    for _, idx_set in host_to_idx_set.items():
+      for idx in idx_set:
+        for d in idx_to_devices[idx]:
+          device_to_split_array_idx[d] = i % len(local_array_shards)
+        i += 1
+
+    device_buffers = []
+    for d in local_devices:
+      i = device_to_split_array_idx[d]
+      device_buffers.append(jax.device_put(local_array_shards[i], d))
+
     return device_buffers
 
-  device_buffers = jax.tree_map(_put_to_devices, host_arrays)
+  device_buffers = jax.tree_map(_put_to_devices, host_arrays, global_shapes)
 
-  def _gda(dbs, shape):
-    return GlobalDeviceArray(shape, global_mesh, pspec, dbs)
+  def _gda(dbs, global_shape):
+    return GlobalDeviceArray(global_shape, global_mesh, axes, dbs)
 
   return jax.tree_map(
       _gda,
@@ -456,16 +528,15 @@ class GDADatasetIterator(clu.data.DatasetIterator):
   """A wrapper iterator that returns GDA when the next element is requested."""
 
   def __init__(self, iterator: clu.data.DatasetIterator,
-               mesh: partitioning.Mesh, pspec: PartitionSpec,
+               partitioner: partitioning.BasePartitioner,
                global_shapes: PyTreeDef):
     self._iterator = iterator
     self._global_shapes = global_shapes
-    self._mesh = mesh
-    self._pspec = pspec
+    self._partitioner = partitioner
 
   def get_next(self):
-    return create_gda(self._mesh, self._pspec, self._global_shapes,
-                      self._iterator.get_next())
+    return _create_gda(self._partitioner, self._global_shapes,
+                       self._iterator.get_next())
 
   def reset(self):
     return self._iterator.reset()
@@ -479,6 +550,11 @@ class GDADatasetIterator(clu.data.DatasetIterator):
 
   def load(self, filename):
     return self._iterator.load(filename)
+
+  @property
+  def iterator(self):
+    return self._iterator.iterator if isinstance(
+        self._iterator, clu.data.TfDatasetIterator) else self._iterator
 
 
 #------------------------------------------------------------------------------
