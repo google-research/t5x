@@ -68,6 +68,9 @@ class TrainState(typing_extensions.Protocol):
   def replace_params(self, params: VariableDict) -> 'TrainState':
     ...
 
+  def replace_flax_mutables(self, flax_mutables: FrozenDict) -> 'TrainState':
+    ...
+
   def replace_step(self, step: jnp.ndarray) -> 'TrainState':
     ...
 
@@ -117,7 +120,7 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
   # Flax mutable fields.
   flax_mutables: FrozenDict = EMPTY_DICT
   # Contains axis metadata (e.g., names) matching flax_mutables tree.
-  flax_mutables_axes: Optional[FrozenVariableDict] = EMPTY_DICT
+  flax_mutables_axes: Optional[FrozenVariableDict] = None
 
   @classmethod
   def create(cls, optimizer_def: optimizers.OptimizerDefType,
@@ -179,6 +182,10 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
 
   def replace_params(self, params: VariableDict) -> 'FlaxOptimTrainState':
     return self.replace(_optimizer=self._optimizer.replace(target=params))
+
+  def replace_flax_mutables(self,
+                            flax_mutables: FrozenDict) -> 'FlaxOptimTrainState':
+    return self.replace(flax_mutables=flax_mutables)
 
   def replace_step(self, step: jnp.ndarray) -> 'FlaxOptimTrainState':
     state_dict = self.state_dict()
@@ -259,6 +266,10 @@ class InferenceState(flax.struct.PyTreeNode):
 
   def replace_params(self, params: FrozenVariableDict) -> 'InferenceState':
     return self.replace(params=params)
+
+  def replace_flax_mutables(self,
+                            flax_mutables: FrozenDict) -> 'InferenceState':
+    return self.replace(flax_mutables=flax_mutables)
 
   def restore_state(self, state_dict: Mapping[str, Any]) -> 'InferenceState':
     return self.replace(
