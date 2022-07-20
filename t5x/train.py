@@ -533,9 +533,6 @@ def train(
   logging.info('Training with artificial "epochs" of %d steps.',
                steps_per_epoch)
 
-  logging.info('Compiling train loop.')
-  logging.flush()
-
   def _as_gda(arr):
     return GlobalDeviceArray.from_callback(arr.shape, partitioner.mesh,
                                            partitioner.data_partition_spec,
@@ -552,7 +549,10 @@ def train(
         k: np.ones(v.shape, v.dtype)
         for k, v in train_iter.element_spec.items()
     }
-  trainer.compile_train(dummy_batch)
+  if first_epoch < num_epochs:
+    logging.info('Compiling train loop.')
+    logging.flush()
+    trainer.compile_train(dummy_batch)
 
   # Main Loop over "epochs".
   for epoch in range(first_epoch, num_epochs):
