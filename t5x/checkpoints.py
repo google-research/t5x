@@ -35,6 +35,7 @@ import re
 import subprocess
 import time
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
+import warnings
 
 from absl import logging
 import clu.data
@@ -440,7 +441,7 @@ class Checkpointer(object):
       keep: Optional[int] = None,
       save_dtype: jnp.dtype = np.float32,
       restore_dtype: Optional[jnp.dtype] = None,
-      use_gda: Optional[bool] = False,
+      use_gda: Optional[bool] = True,
       keep_dataset_checkpoints: Optional[int] = None):
     """Checkpointer constructor.
 
@@ -465,6 +466,10 @@ class Checkpointer(object):
         keep. If more than this number of data iterators exist after a save, the
         oldest ones will be automatically deleted to save space.
     """
+    if not use_gda:
+      warnings.warn(
+          '`use_gda=False` is deprecated and will be removed on Oct-01-22.'
+          ' Please ensure that your workflow can use GDA.', DeprecationWarning)
     self._train_state = train_state
     self._partitioner = partitioner
     self.checkpoints_dir = checkpoints_dir
@@ -491,9 +496,10 @@ class Checkpointer(object):
 
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-  def _get_state_dict_for_save(self,
-                               state_dict: Dict[str, Any],
-                               lazy_load: bool = True) -> Mapping[str, Any]:
+  def _get_state_dict_for_save(
+      self,
+      state_dict: Dict[str, Any],
+      lazy_load: bool = True) -> MutableMapping[str, Any]:
     """Gets the optimizer state dict."""
 
     def _lazy_load_device_array(arr):
@@ -536,7 +542,7 @@ class Checkpointer(object):
             local_chunk_info=None,
             axes=None)
 
-      if self._use_gda and isinstance(arr, gda_lib.GlobalDeviceArray):
+      if isinstance(arr, gda_lib.GlobalDeviceArray):
         local_chunk_info = None
         metadata = gda_serialization._get_metadata(arr)  # pylint: disable=protected-access
         del metadata['dtype']
@@ -762,7 +768,8 @@ class Checkpointer(object):
         return maybe_arr
 
       # Only write each chunk of a parameter from one host
-      if self._use_gda or param_info.local_chunk_info.replica_id == 0:
+      if isinstance(maybe_arr, gda_lib.GlobalDeviceArray
+                   ) or param_info.local_chunk_info.replica_id == 0:
         arr = maybe_arr
 
         # Wait until memory is available.
@@ -807,7 +814,7 @@ class Checkpointer(object):
               'dtype': jnp.dtype(arr.dtype).name,  # dtype before cast
           }
 
-        if self._use_gda:
+        if isinstance(arr, gda_lib.GlobalDeviceArray):
           await gda_serialization.async_serialize(arr, tmp_ts_spec_dict)
         else:
           t = await ts.open(
@@ -840,7 +847,7 @@ class Checkpointer(object):
         return _cast(maybe_arr, self._save_dtype)
       return maybe_arr
 
-    state_dict_for_save['target'] = jax.tree_map(  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+    state_dict_for_save['target'] = jax.tree_map(
         _cast_arr_if_not_partitioned, state_dict_for_save['target'],
         transformed_parameter_infos['target'])
     future_written_state = {}
@@ -1053,14 +1060,26 @@ class Checkpointer(object):
     if self._use_gda:
       mesh = self._partitioner.mesh
       axes = param_info.axes
-    get_fn = functools.partial(
-        _read_ts,
-        param_info,
-        maybe_ts_spec,
-        ckpt_path=ckpt_path,
-        restore_dtype=restore_dtype,
-        mesh=mesh,
-        axes=axes)
+
+    async def get_fn():
+      nonlocal mesh
+      nonlocal axes
+      arr = await _read_ts(
+          param_info,
+          maybe_ts_spec,
+          ckpt_path=ckpt_path,
+          restore_dtype=restore_dtype,
+          mesh=mesh,
+          axes=axes)
+      if self._use_gda and isinstance(arr, (np.ndarray, jnp.ndarray)):
+        if axes is None:
+          axes = PartitionSpec(None,)
+        if restore_dtype is not None:
+          arr = arr.astype(restore_dtype)
+        arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
+                                                      lambda idx: arr[idx])
+      return arr
+
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
 
