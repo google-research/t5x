@@ -167,10 +167,15 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
   """
   input_devices = input_devices or jax.devices(backend)
   input_local_devices = input_local_devices or jax.local_devices(0, backend)
-  last_device = input_devices[-1]
+  # Sort input_devices based on coords, as backends might not return devices
+  # in order.
+  last_device = sorted(input_devices, key=get_coords)[-1]
+  last_input_local_devices = sorted(input_local_devices, key=get_coords)[-1]
+  logging.info('last device coords : %r\nlast local device coords: %r',
+               get_coords(last_device), get_coords(last_input_local_devices))
   global_hardware_mesh = bounds_from_last_device(last_device)
   mesh_ndim = len(global_hardware_mesh)
-  local_hardware_mesh = bounds_from_last_device(input_local_devices[-1])
+  local_hardware_mesh = bounds_from_last_device(last_input_local_devices)
   mesh_err = (
       f'each dimension of the model parallel submesh {model_parallel_submesh} '
       'must be a factor of the corresponding dimension of the global device '
