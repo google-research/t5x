@@ -106,6 +106,7 @@ def _split_variables_and_axes(
       _validate_params_axes(v, variables_and_axes[k[:-5]])  # k without "_axes".
     else:
       variables[k] = v
+  # Shouldn't we return None below if `axes`` is empty?
   return flax.core.freeze(variables), flax.core.freeze(axes)
 
 
