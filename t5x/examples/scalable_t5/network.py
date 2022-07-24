@@ -23,7 +23,6 @@ import jax
 import jax.numpy as jnp
 from t5x.examples.scalable_t5 import layers
 
-
 with_sharding_constraint = nn_partitioning.with_sharding_constraint
 scan_with_axes = nn_partitioning.scan_with_axes
 remat = nn_partitioning.remat
@@ -67,9 +66,9 @@ class EncoderLayer(nn.Module):
         max_distance=128,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
-        embedding_init=nn.initializers.variance_scaling(
-            1.0, 'fan_avg', 'uniform'),
-        name='relative_posemb')(inputs.shape[-2], inputs.shape[-2], True)
+        embedding_init=nn.initializers.variance_scaling(1.0, 'fan_avg',
+                                                        'uniform'),
+        name='relpos_bias')(inputs.shape[-2], inputs.shape[-2], True)
 
     # Attention block.
     assert inputs.ndim == 3
@@ -137,9 +136,9 @@ class DecoderLayer(nn.Module):
         max_distance=128,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
-        embedding_init=nn.initializers.variance_scaling(
-            1.0, 'fan_avg', 'uniform'),
-        name='relative_posemb')(l, l, False)
+        embedding_init=nn.initializers.variance_scaling(1.0, 'fan_avg',
+                                                        'uniform'),
+        name='relpos_bias')(l, l, False)
 
     inputs = with_sharding_constraint(inputs, ('batch', 'length', 'embed'))
 
@@ -259,7 +258,7 @@ class Encoder(nn.Module):
           in_axes=(nn.broadcast, nn.broadcast),
           length=cfg.num_encoder_layers,
           axis_name='layers')(
-              config=cfg, name='layers')(x, encoder_mask, deterministic)
+              config=cfg, name='encoder')(x, encoder_mask, deterministic)
     else:
       for lyr in range(cfg.num_encoder_layers):
         # [batch, length, emb_dim] -> [batch, length, emb_dim]
@@ -326,9 +325,9 @@ class Decoder(nn.Module):
                    nn.broadcast, nn.broadcast),
           length=cfg.num_decoder_layers,
           axis_name='layers')(
-              config=cfg, name='layers')(
-                  y, encoded, decoder_mask, encoder_decoder_mask,
-                  deterministic, decode, max_decode_length)
+              config=cfg,
+              name='decoder')(y, encoded, decoder_mask, encoder_decoder_mask,
+                              deterministic, decode, max_decode_length)
     else:
       for lyr in range(cfg.num_decoder_layers):
         # [batch, length, emb_dim] -> [batch, length, emb_dim]
