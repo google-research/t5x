@@ -1,4 +1,4 @@
-# Decoder-only model (XXL) with TODO(hwchung): parameters.
+# Decoder-only model (XL) with 764274688 parameters.
 
 include 't5x/examples/decoder_only/models/base.gin'  # imports vocab, optimizer and model.
 
