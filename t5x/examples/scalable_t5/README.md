@@ -1,15 +1,9 @@
 # Scalable T5
 
-NB: This particular example is still WIP.  We're investigating a slight training
-regression compared to the "vanilla" T5 example.
-
 This directory is very similar to the vanilla T5X "T5" example, but demonstrates
 a host of techniques needed to scale model training to giant models run on
 large TPU or GPU cluster environments using XLA's SPMD capabilities.  See the
 notes for the main "t5" example for general details on setup and execution.
-
-__Note__: many of the APIs built on top of `pjit` by Flax and T5X for easier
-model parallel programming are still experimental, and may change.
 
 ## Intermediate variable annotations
 
