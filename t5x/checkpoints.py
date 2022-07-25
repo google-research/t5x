@@ -1734,10 +1734,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     options = orbax.checkpoint.CheckpointManagerOptions(max_to_keep=keep)
     # TODO(cpgaffney) handle dataset save/restore
     super().__init__(
-        directory=directory,
-        handlers={
-            'state_dict': orbax.checkpoint.PyTreeCheckpointHandler(),
-        },
+        directory, {'state_dict': orbax.checkpoint.PyTreeCheckpointHandler()},
         options=options)
 
   def _parameter_infos(self, train_state):
