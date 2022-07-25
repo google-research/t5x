@@ -205,8 +205,8 @@ class CheckpointConfig:
   restore: Optional[RestoreCheckpointConfig] = None
 
 
-class LegacyCheckpointHandler(orbax.checkpoint.CheckpointHandler):
-  """Implementation of CheckpointHandler interface for T5X.
+class LegacyCheckpointer(orbax.checkpoint.Checkpointer):
+  """Implementation of Checkpointer interface for T5X.
 
   Relies on underlying save_checkpointer and restore_checkpointer, which are
   t5x.checkpoints.Checkpointer objects.
@@ -298,7 +298,7 @@ class LegacyCheckpointHandler(orbax.checkpoint.CheckpointHandler):
 class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
   """Implementation of CheckpointManager interface for T5X.
 
-  Uses underlying LegacyCheckpointHandler to handle save/restore for Dataset and
+  Uses underlying LegacyCheckpointer to handle save/restore for Dataset and
   TrainState.
   """
 
@@ -341,7 +341,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
       restore_checkpointer = None
       strict = False
 
-    self._checkpointer = LegacyCheckpointHandler(
+    self._checkpointer = LegacyCheckpointer(
         save_checkpointer=save_checkpointer,
         restore_checkpointer=restore_checkpointer,
         strict=strict)
