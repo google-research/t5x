@@ -217,7 +217,7 @@ def write_inferences_to_file(
     path: File path to write to.
     inferences: A tuple containing (predictions, aux_values). If mode is
       'predict' then the `predictions` will be token IDs. If it's
-      'scores' then it'll be a collection of scores. `aux_values` will be an
+      'score' then it'll be a collection of scores. `aux_values` will be an
       empty dictionary unless mode is 'predict_with_aux', in which case it'll
       contain the model's auxiliary outputs.
     task_ds: Original task dataset. Features from task with suffix
