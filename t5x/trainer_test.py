@@ -40,6 +40,8 @@ from tensorflow.io import gfile
 mock = absltest.mock
 jax.config.parse_flags_with_absl()
 
+FlaxMutables = flax.core.FrozenDict
+
 
 # Make `log_elapsed_time` a no-op to simplify mocking of `time.time()`.
 @contextlib.contextmanager
@@ -247,13 +249,13 @@ def fake_eval_fn_without_weight_sum(params, batch):
 
 
 def fake_value_and_grad_fn_without_weight_sum(callable_fn, has_aux=False):
-  del callable_fn, has_aux
+  del callable_fn
 
   def fake_grad_fn_without_weight_sum(train_state_params,
                                       batch,
                                       dropout_rng,
                                       flax_mutables=None):
-    del dropout_rng, train_state_params, flax_mutables
+    del dropout_rng, train_state_params
     # Add `i` to each optimzer value.
     i = batch['i'].sum()
     optimizer = optimizers.Optimizer(
@@ -272,7 +274,16 @@ def fake_value_and_grad_fn_without_weight_sum(callable_fn, has_aux=False):
     # Add j to each metric.
     j = batch['j'].sum()
     metrics = {'loss': metrics_lib.Sum(j), 'accuracy': metrics_lib.Sum(j)}
-    return (None, metrics), grad_accum.params
+
+    if flax_mutables is not None:
+      aux = metrics, flax_mutables
+    else:
+      aux = metrics
+
+    if has_aux:
+      return (None, aux), grad_accum.params
+    else:
+      return None, grad_accum.params
 
   return fake_grad_fn_without_weight_sum
 
@@ -919,14 +930,16 @@ class MutableTrainerTest(parameterized.TestCase):
             'kernel': np.zeros((2, 4))
         })
     self.init_train_state = train_state_lib.FlaxOptimTrainState(
-        self.init_optimizer)
+        _optimizer=self.init_optimizer,
+        flax_mutables=FlaxMutables(variables={
+            'keys': np.zeros((10, 2)),
+            'values': np.zeros((10, 5)),
+        }))
     train_state_axes = jax.tree_map(lambda x: None, self.init_train_state)
     model_dir = self.create_tempdir().full_path
 
     mapfn = lambda i: {'i': [tf.cast(i, tf.int32)], 'j': [tf.cast(1, tf.int32)]}
     self.dataset = tf.data.Dataset.range(6).map(mapfn).batch(
-        2, drop_remainder=True)
-    self.dataset1 = tf.data.Dataset.range(6).map(mapfn).batch(
         2, drop_remainder=True)
 
     self.test_trainer = trainer_lib.Trainer(
@@ -968,6 +981,39 @@ class MutableTrainerTest(parameterized.TestCase):
 
     self.assertIsNone(trainer._compiled_train_step)
     self.assertEqual(trainer._partitioned_train_step.call_count, num_steps)
+
+  @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_without_weight_sum)
+  def test_accumulate_grads_microbatched_without_weight_sum_single_batch(self):
+    batch_iter = self.dataset.as_numpy_iterator()
+    batch = next(batch_iter)
+    num_microbatches = 1
+    grad_accum, metrics, flax_mutables = trainer_lib.accumulate_grads_microbatched(
+        self.test_trainer._model, self.init_train_state, batch,
+        self.test_trainer._base_rng, num_microbatches)
+
+    i = batch['i'].sum()
+    expected_grad_accum = jax.tree_map(lambda x: i,
+                                       self.init_train_state).params
+    self.assertEqual(expected_grad_accum, grad_accum)
+    self.assertEqual(metrics['loss'].compute(), 2)
+    self.assertEqual(metrics['accuracy'].compute(), 2)
+    self.assertIsNotNone(flax_mutables)
+
+  @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_without_weight_sum)
+  def test_accumulate_grads_microbatched_without_weight_sum_multiple_batches(
+      self):
+    batch_iter = self.dataset.as_numpy_iterator()
+    batch = next(batch_iter)
+    num_micro_batches = 2
+    grad_accum, metrics, flax_mutables = trainer_lib.accumulate_grads_microbatched(
+        self.test_trainer._model, self.init_train_state, batch,
+        self.test_trainer._base_rng, num_micro_batches)
+
+    expected_grad_accum = {'bias': jnp.ones(4), 'kernel': jnp.ones((2, 4))}
+    chex.assert_trees_all_equal(expected_grad_accum, grad_accum)
+    self.assertEqual(metrics['loss'].compute(), 2)
+    self.assertEqual(metrics['accuracy'].compute(), 2)
+    self.assertIsNotNone(flax_mutables)
 
   def tearDown(self) -> None:
     # Manually close managers to avoid phantom threads crossing test cases.

@@ -643,9 +643,10 @@ def accumulate_grads_microbatched(
       (_, metrics), grad_accum = grad_fn(train_state.params, batch, dropout_rng)
       flax_mutables = None
     else:
-      (_, metrics, flax_mutables), grad_accum = grad_fn(train_state.params,
-                                                        batch, dropout_rng,
-                                                        initial_flax_mutables)
+      (_, (metrics,
+           flax_mutables)), grad_accum = grad_fn(train_state.params, batch,
+                                                 dropout_rng,
+                                                 initial_flax_mutables)
   else:
     assert batch_size % num_microbatches == 0, (
         "Batch size isn't divided evenly by num_microbatches.")
@@ -676,9 +677,9 @@ def accumulate_grads_microbatched(
         (_, metrics), grad = grad_fn(train_state.params, mbatch,
                                      sub_dropout_rng)
       else:
-        (_, metrics, flax_mutables), grad = grad_fn(train_state.params, mbatch,
-                                                    sub_dropout_rng,
-                                                    flax_mutables)
+        (_, (metrics, flax_mutables)), grad = grad_fn(train_state.params,
+                                                      mbatch, sub_dropout_rng,
+                                                      flax_mutables)
       return metrics, grad, flax_mutables
 
     def per_microbatch_train_step(
