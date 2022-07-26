@@ -58,8 +58,7 @@ Many common datasets and benchmarks, e.g. [GLUE](https://gluebenchmark.com/),
 [CNN/Daily Mail](https://github.com/abisee/cnn-dailymail), etc. have been
 implemented as SeqIO Tasks/Mixtures and can be used directly. These
 Tasks/Mixtures are defined in
-[`t5/data/tasks.py`](https://github.com/google-research/text-to-text-transfer-transformer/tree/main/t5/data/tasks.py)
-and
+[`t5/data/tasks.py`](https://github.com/google-research/text-to-text-transfer-transformer/tree/main/t5/data/tasks.py) and
 [`t5/data/mixtures.py`](https://github.com/google-research/text-to-text-transfer-transformer/tree/main/t5/data/mixtures.py).
 
 For the example run, you will evaluate the model on the Natural Questions
@@ -217,3 +216,9 @@ be useful, especially when customizing your eval job.
 ### Defining a custom SeqIO Task/Mixture to evaluate on {.no-toc}
 
 Refer to [SeqIO documentation](https://github.com/google/seqio/blob/main/README.md).
+
+### Defining a custom metric to evaluate
+
+The best way to define a custom metric is to define a new SeqIO Task/Mixture
+that contains this custom metric. Please refer to the SeqIO Documentation on
+[custom metrics](https://github.com/google/seqio/blob/main/README.md#metrics).
