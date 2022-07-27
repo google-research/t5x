@@ -63,7 +63,7 @@ from tensorboard.backend.event_processing import event_file_loader
 from tensorboard.backend.event_processing import io_wrapper
 
 PartitionSpec = partitioning.PartitionSpec
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 LazyArray = checkpoint_importer.LazyArray
 LazyAwaitableArray = checkpoint_importer.LazyAwaitableArray
 LazyThreadPoolArray = checkpoint_importer.LazyThreadPoolArray
@@ -219,7 +219,7 @@ def _cast(target: PyTreeDef, dtype: jnp.dtype):
     else:
       return x.astype(dtype)
 
-  return jax.tree_map(maybe_cast, target)
+  return jax.tree_util.tree_map(maybe_cast, target)
 
 
 def _update_ts_path_from_relative_to_absolute(
@@ -281,7 +281,8 @@ def _maybe_update_ts_from_file_to_gcs(ckpt_contents):
     return not isinstance(
         value, dict) or set(value.keys()) >= {'driver', 'kvstore', 'metadata'}
 
-  return jax.tree_map(_gfile_to_gcs_driver, ckpt_contents, is_leaf=_is_leaf)
+  return jax.tree_util.tree_map(
+      _gfile_to_gcs_driver, ckpt_contents, is_leaf=_is_leaf)
 
 
 def _maybe_update_ts_from_gcs_to_file(ckpt_contents):
@@ -313,7 +314,8 @@ def _maybe_update_ts_from_gcs_to_file(ckpt_contents):
     return not isinstance(
         value, dict) or set(value.keys()) >= {'driver', 'kvstore', 'metadata'}
 
-  return jax.tree_map(_gcs_to_file_driver, ckpt_contents, is_leaf=_is_leaf)
+  return jax.tree_util.tree_map(
+      _gcs_to_file_driver, ckpt_contents, is_leaf=_is_leaf)
 
 
 class _BytesConditionVariable(object):
@@ -502,7 +504,7 @@ class Checkpointer(object):
       return arr
 
     if lazy_load:
-      state_dict = jax.tree_map(_lazy_load_device_array, state_dict)
+      state_dict = jax.tree_util.tree_map(_lazy_load_device_array, state_dict)
     return state_dict
 
   def _get_parameter_infos(self):
@@ -599,7 +601,7 @@ class Checkpointer(object):
             self._train_state.state_dict(), keep_empty_nodes=True)
     })
 
-    return jax.tree_map(
+    return jax.tree_util.tree_map(
         _get_param_info, param_names,
         self._get_state_dict_for_save(self._train_state.state_dict()),
         self._partitioner.get_mesh_axes(self._train_state).state_dict())
@@ -701,7 +703,8 @@ class Checkpointer(object):
         f'checkpointer:tensorstore_write_complete:{tmp_dir}')
 
     if jax.process_index() == 0:
-      written_state_dict = jax.tree_map(_get_local_data, written_state_dict)
+      written_state_dict = jax.tree_util.tree_map(_get_local_data,
+                                                  written_state_dict)
 
       # Write msgpack file in host 0 only
       msgpack_bytes = serialization.to_bytes({
@@ -840,13 +843,13 @@ class Checkpointer(object):
         return _cast(maybe_arr, self._save_dtype)
       return maybe_arr
 
-    state_dict_for_save['target'] = jax.tree_map(  # pytype: disable=unsupported-operands  # dynamic-method-lookup
+    state_dict_for_save['target'] = jax.tree_util.tree_map(  # pytype: disable=unsupported-operands  # dynamic-method-lookup
         _cast_arr_if_not_partitioned, state_dict_for_save['target'],
         transformed_parameter_infos['target'])
     future_written_state = {}
     for k in state_dict_for_save.keys():
       # ensure that only 'target' is cast
-      future_written_state[k] = jax.tree_map(
+      future_written_state[k] = jax.tree_util.tree_map(
           functools.partial(
               _write_array,
               cast=(k == 'target' and self._save_dtype is not None)),
@@ -962,7 +965,7 @@ class Checkpointer(object):
     # `dummy_written_state_dict` is a pytree with a `dummy_spec` for leaves
     # (params or states) written as msgpack and a ts.Spec (in a dict) for leaves
     # written by TensorStore.
-    dummy_written_state_dict = jax.tree_map(
+    dummy_written_state_dict = jax.tree_util.tree_map(
         lambda x: x.ts_spec or dummy_spec,
         self._parameter_infos,
     )
@@ -1080,7 +1083,7 @@ class Checkpointer(object):
     for k in written_state_dict.keys():
       # ensure that only 'target' is cast
       restore_dtype = self.restore_dtype if k == 'target' else None
-      state_dict[k] = jax.tree_map(
+      state_dict[k] = jax.tree_util.tree_map(
           functools.partial(
               self._create_lazy_awaitable_array,
               ckpt_path=ckpt_path,
@@ -1088,7 +1091,8 @@ class Checkpointer(object):
           written_state_dict[k])
 
     if not lazy_parameters:
-      future_state_dict = jax.tree_map(lambda x: x.get_async(), state_dict)
+      future_state_dict = jax.tree_util.tree_map(lambda x: x.get_async(),
+                                                 state_dict)
       state_dict = _run_future_tree(future_state_dict)
 
     if self.restore_dtype is not None:
@@ -1122,8 +1126,8 @@ class Checkpointer(object):
         return arr
       return maybe_arr
 
-    state_dict = jax.tree_map(_partition_parameter, full_state_dict,
-                              self._parameter_infos)
+    state_dict = jax.tree_util.tree_map(_partition_parameter, full_state_dict,
+                                        self._parameter_infos)
     if self.restore_dtype is not None:
       state_dict['target'] = _cast(state_dict['target'], self.restore_dtype)
 
@@ -1453,9 +1457,9 @@ async def _read_ts(param_info: _ParameterInfo,
 
   Note:
     We use param_infos as the first argument because this function is only used
-    in `jax.tree_map` calls. In a tree multimap if the leaf of the first
-    tree is `None` then is is ignored, even if the second tree has a subtree
-    at that point. This means that when we are using something like a
+    in `jax.tree_util.tree_map` calls. In a tree multimap if the leaf of the
+    first tree is `None` then is is ignored, even if the second tree has a
+    subtree at that point. This means that when we are using something like a
     MultiOptimizer we can set the parameter info for a variable to `None` and
     we can skip processing it, even if the checkpoint has a subtree with things
     like optimizer state variables in it.
@@ -1691,7 +1695,7 @@ def load_t5x_checkpoint(
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
 
-  state_dict = jax.tree_map(
+  state_dict = jax.tree_util.tree_map(
       functools.partial(
           _create_lazy_awaitable_array,
           ckpt_path=path,
@@ -1699,7 +1703,8 @@ def load_t5x_checkpoint(
       ckpt_optimizer_state_with_specs)
 
   if not lazy_parameters:
-    future_state_dict = jax.tree_map(lambda x: x.get_async(), state_dict)
+    future_state_dict = jax.tree_util.tree_map(lambda x: x.get_async(),
+                                               state_dict)
     state_dict = _run_future_tree(future_state_dict)
 
   if restore_dtype is not None:
@@ -1747,7 +1752,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
             train_state.state_dict(), keep_empty_nodes=True)
     })
     mesh_axes = self._partitioner.get_mesh_axes(train_state).state_dict()
-    return jax.tree_map(_OrbaxParamInfo, param_names, mesh_axes)
+    return jax.tree_util.tree_map(_OrbaxParamInfo, param_names, mesh_axes)
 
   def save(self,
            train_state: train_state_lib.TrainState,
@@ -1772,7 +1777,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       return orbax.checkpoint.SaveArgs(
           use_flax=param_info.mesh_axes is None, dtype=dtype)
 
-    save_args = jax.tree_map(_save_args, param_infos)
+    save_args = jax.tree_util.tree_map(_save_args, param_infos)
 
     state_dict['version'] = VERSION
     save_args['version'] = orbax.checkpoint.SaveArgs(use_flax=True)
@@ -1806,8 +1811,8 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
           dtype=dtype,
           lazy=lazy_parameters)
 
-    restore_args = jax.tree_map(_restore_args,
-                                self._parameter_infos(self._train_state_shape))
+    restore_args = jax.tree_util.tree_map(
+        _restore_args, self._parameter_infos(self._train_state_shape))
     restore_args['version'] = orbax.checkpoint.RestoreArgs(as_gda=False)
     restore_kwargs = {'state_dict': {'restore_args': restore_args}}
 

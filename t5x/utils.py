@@ -55,7 +55,7 @@ import typing_extensions
 
 
 Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 PartitionSpec = partitioning.PartitionSpec
 DType = Union[np.dtype, type(jnp.bfloat16)]
 Shape = Tuple[int, ...]

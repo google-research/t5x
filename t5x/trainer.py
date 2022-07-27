@@ -56,7 +56,7 @@ MetricMapSpec = Mapping[str, jax.ShapeDtypeStruct]
 MetricValueMapType = Mapping[str, clu.values.Value]
 ModelWeights = Any
 MutableMetricMapType = Dict[str, clu.metrics.Metric]
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 PartitionSpec = partitioning.PartitionSpec
 
 if TYPE_CHECKING:  # See b/163639353
@@ -67,13 +67,13 @@ else:
 
 @jax.jit
 def _merge_metrics(a, b):
-  return jax.tree_map(
+  return jax.tree_util.tree_map(
       lambda a, b: a.merge(b), a, b, is_leaf=metrics_lib.is_metric_obj)
 
 
 # Merges two metrics pytrees (mapping of metric_name (str) to clu.Metric object)
 def merge_metrics(a, b):
-  a, b = jax.tree_map(utils.get_local_data, (a, b))
+  a, b = jax.tree_util.tree_map(utils.get_local_data, (a, b))
   return _merge_metrics(a, b)
 
 
@@ -189,7 +189,9 @@ class WeightMetricsComputer(object):
     metrics.update(self._make_rms_metrics("weight_gradient_rms", gradients))
     grad_norm = jnp.sqrt(
         jnp.sum(
-            jnp.array([jnp.vdot(x, x) for x in jax.tree_leaves(gradients)])))
+            jnp.array([
+                jnp.vdot(x, x) for x in jax.tree_util.tree_leaves(gradients)
+            ])))
     metrics.update({
         "weight_gradient_norm":
             metrics_lib.AveragePerStep.from_model_output(grad_norm)
@@ -197,8 +199,8 @@ class WeightMetricsComputer(object):
     metrics.update(
         self._make_rms_metrics(
             "weight_update_rms",
-            jax.tree_map(jnp.subtract, new_train_state.params,
-                         old_train_state.params)))
+            jax.tree_util.tree_map(jnp.subtract, new_train_state.params,
+                                   old_train_state.params)))
     metrics.update(self._make_max_metrics("weight_max", new_train_state.params))
 
     return metrics
@@ -355,7 +357,7 @@ class MetricsManager(object):
 
     def _summarize_and_write():
       # For thread safety we first copy the metrics to host.
-      fetched_metrics = jax.tree_map(jax.device_get, metrics)
+      fetched_metrics = jax.tree_util.tree_map(jax.device_get, metrics)
 
       duration = duration_future.result()
       # We set the duration on time-related metrics.
@@ -369,8 +371,9 @@ class MetricsManager(object):
       def _ensure_not_on_device(x):
         assert not isinstance(x, jax.numpy.DeviceArray)
 
-      jax.tree_map(_ensure_not_on_device, final_metrics)
-      final_metrics = jax.tree_map(utils.get_local_data, final_metrics)
+      jax.tree_util.tree_map(_ensure_not_on_device, final_metrics)
+      final_metrics = jax.tree_util.tree_map(utils.get_local_data,
+                                             final_metrics)
 
       summary = {k: v.compute_value() for k, v in final_metrics.items()}
       with self._writer_lock:
@@ -669,7 +672,7 @@ def accumulate_grads_microbatched(
       dropout_rng, sub_dropout_rng = jax.random.split(dropout_rng)
       mbatch = get_microbatch(batch, loop_cnt)
       # We need to annotate the microbatch sharding as we would a batch.
-      mbatch = jax.tree_map(
+      mbatch = jax.tree_util.tree_map(
           lambda x: partitioning.with_sharding_constraint(  # pylint: disable=g-long-lambda
               x, data_partition_spec),
           mbatch)
@@ -692,7 +695,7 @@ def accumulate_grads_microbatched(
       metrics, grad, flax_mutables = metrics_and_grad(loop_cnt, dropout_rng,
                                                       flax_mutables)
 
-      grad_accum = jax.tree_map(jnp.add, grad_accum, grad)
+      grad_accum = jax.tree_util.tree_map(jnp.add, grad_accum, grad)
       metrics = jax.lax.cond(loop_cnt == 0, lambda _: metrics,
                              lambda _: merge_metrics(prev_metrics, metrics),
                              None)
@@ -700,8 +703,8 @@ def accumulate_grads_microbatched(
 
     # Initialize gradient accumulation loop state.
     accum_dtype = jnp.float32
-    grad_accum_init = jax.tree_map(lambda x: jnp.zeros(x.shape, accum_dtype),
-                                   train_state.params)
+    grad_accum_init = jax.tree_util.tree_map(
+        lambda x: jnp.zeros(x.shape, accum_dtype), train_state.params)
     initial_metrics_shape, _, _ = jax.eval_shape(
         metrics_and_grad, loop_cnt=0, dropout_rng=dropout_rng)
 

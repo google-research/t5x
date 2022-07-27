@@ -583,15 +583,15 @@ class Adafactor(OptimizerDef):
             NONE if x in (ROW, COLUMN) else x for x in axis_rules)
       return axis_rules
 
-    factor_map = jax.tree_map(apply_rules, param_logical_axes)
+    factor_map = jax.tree_util.tree_map(apply_rules, param_logical_axes)
     factor_map = utils.flatten_dict_string_keys(factor_map)
 
     self.hyper_params = self.hyper_params.replace(factor_map=factor_map)
 
   def derive_logical_axes(self, optimizer_state, param_logical_axes):
     """Derives optimizer logical partitioning from model logical partitions."""
-    optimizer_logical_axes = jax.tree_map(lambda x: None,
-                                          optimizer_state.state_dict())
+    optimizer_logical_axes = jax.tree_util.tree_map(
+        lambda x: None, optimizer_state.state_dict())
     optimizer_logical_axes['target'] = param_logical_axes
 
     def factor_rule(logical_axes, adafactor_leaf):
@@ -601,7 +601,7 @@ class Adafactor(OptimizerDef):
           v=logical_axes if adafactor_leaf['v'].shape != (1,) else None,
           m=logical_axes if self.hyper_params.beta1 else None)
 
-    optimizer_logical_axes['state']['param_states'] = jax.tree_map(
+    optimizer_logical_axes['state']['param_states'] = jax.tree_util.tree_map(
         factor_rule, unfreeze(param_logical_axes),
         optimizer_state.state_dict()['state']['param_states'])
 

@@ -24,7 +24,7 @@ from jax import random
 import jax.numpy as jnp
 import numpy as np
 
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 
 # Constants
 # "Effective negative infinity" constant for masking in beam search.

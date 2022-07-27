@@ -38,7 +38,7 @@ JaxDevice = jax.lib.xla_client.Device
 TpuMesh = Tuple[int, int, int, int]  # (x, y, z, num_cores).
 OtherMesh = Tuple[int, int]
 HardwareMesh = Union[TpuMesh, OtherMesh]
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 TrainState = train_state_lib.TrainState
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
 
@@ -185,7 +185,7 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
       for g, m in zip(global_hardware_mesh, model_parallel_submesh)), mesh_err
   assert not any(
       g % l for g, l in zip(global_hardware_mesh, local_hardware_mesh))
-  devices = np.empty(global_hardware_mesh, dtype=np.object)
+  devices = np.empty(global_hardware_mesh, dtype=object)
   for device in input_devices:
     device_coords = get_coords(device)
     devices[device_coords] = device
