@@ -293,8 +293,8 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
     """
     # Override the partition specs to use 'data' AND 'expert' axes for data
     # parallelism.
-    in_axis_resources = _override_partition_specs(in_axis_resources)
-    out_axis_resources = _override_partition_specs(out_axis_resources)
+    in_axis_resources = override_partition_specs(in_axis_resources)
+    out_axis_resources = override_partition_specs(out_axis_resources)
 
     pjitted = base_partitioning.pjit(
         fn,
@@ -398,7 +398,7 @@ def compute_num_model_partitions(
     return np.prod(model_parallel_submesh)
 
 
-def _override_partition_specs(resources: Pytree):
+def override_partition_specs(resources: Pytree):
   """Override raw axis resources so data is sharded over 'data' & 'expert' axes.
 
   Here, we only override any raw partition specs that are hardcoded in T5X
