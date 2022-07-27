@@ -310,18 +310,22 @@ def temperature_sample(
     max_decode_steps = jnp.minimum(max_decode_steps,
                                    max_decode_steps_hard_limit)
 
-  # [batch, len] -> [batch * num_decodes, len]
-  expanded_inputs = flat_batch_beam_expand(inputs, num_decodes)
-  expanded_cache = cache_map(
-      functools.partial(
-          flat_batch_beam_expand, beam_size=num_decodes, offset=cache_offset),
-      cache,
-      # When we start with a prefilled cache, the cache index is no longer a
-      # scalar that will broadcast across multiple decodes, it is a vector and
-      # needs to be updated to handle the multiple decodes.
-      apply_to_index=initial_index is not None)
-  if initial_index is not None:
-    initial_index = flat_batch_beam_expand(initial_index, num_decodes)
+  if num_decodes > 1:
+    # [batch, len] -> [batch * num_decodes, len]
+    expanded_inputs = flat_batch_beam_expand(inputs, num_decodes)
+    expanded_cache = cache_map(
+        functools.partial(
+            flat_batch_beam_expand, beam_size=num_decodes, offset=cache_offset),
+        cache,
+        # When we start with a prefilled cache, the cache index is no longer a
+        # scalar that will broadcast across multiple decodes, it is a vector and
+        # needs to be updated to handle the multiple decodes.
+        apply_to_index=initial_index is not None)
+    if initial_index is not None:
+      initial_index = flat_batch_beam_expand(initial_index, num_decodes)
+  else:
+    expanded_inputs = inputs
+    expanded_cache = cache
 
   # expanded_decodes: [batch * num_decodes, len]
   # expanded_log_prob: [batch * num_decodes]
