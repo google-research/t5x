@@ -422,6 +422,13 @@ class DatasetConfig:
   # Whether to trim output features from tasks.
   trim_output_features: bool = True
 
+  # Whether to shard and batch the full, repeated dataset
+  # to avoid issues with uneven file shards.
+  # NOTE: This causes reordering of batch_indexes.
+  # If the performance over a batch is sensitive to the batch_index order,
+  # this setting must be set to False
+  repeat_before_shard: bool = True
+
 
 def _get_index_mappings(device_to_idxs):
   """Get device and host to index set mappings for GDA construction."""
@@ -1431,6 +1438,12 @@ def get_training_eval_datasets(
         f'Batch size ({cfg.batch_size}) must be divisible by number of '
         f'shards ({num_shards}).')
 
+  dataset_generator = functools.partial(
+      get_dataset_fn,
+      feature_converter_cls=feature_converter_cls,
+      num_epochs=eval_steps * cfg.batch_size,
+      continue_from_last_checkpoint=False)
+
   def _repeat_shard_batch_take_cache(ds: tf.data.Dataset):
     # We shard and batch the full, repeated dataset to avoid issues with uneven
     # file shards.
@@ -1440,34 +1453,37 @@ def get_training_eval_datasets(
         cfg.batch_size // num_shards,
         drop_remainder=True).take(eval_steps).cache()
 
+  def _repeat_take(ds: tf.data.Dataset):
+    if not isinstance(ds, tf.data.Dataset):
+      raise ValueError('Only tf.data.Dataset objects supported.')
+    return ds.repeat().take(eval_steps)
+
   for task in seqio.get_subtasks(mixture_or_task):
     if cfg.split not in task.splits:
       logging.info("Task %s has no '%s' split; skipping training evaluation.",
                    task.name, cfg.split)
       continue
     logging.info('Loading task %s for training evaluation.', task.name)
-    task_cfg = dataclasses.replace(
-        cfg, mixture_or_task_name=task.name, batch_size=1)
-    # We set `num_epochs` to be finite to avoid infinite loops on shards that
-    # have input examples that are all filtered.
-    datasets[task.name] = _repeat_shard_batch_take_cache(
-        get_dataset_fn(
-            task_cfg,
-            shard_id=0,
-            num_shards=1,
-            feature_converter_cls=feature_converter_cls,
-            num_epochs=eval_steps * cfg.batch_size,
-            continue_from_last_checkpoint=False))
+    task_cfg = dataclasses.replace(cfg, mixture_or_task_name=task.name)
+
+    if cfg.repeat_before_shard:
+      task_cfg = dataclasses.replace(task_cfg, batch_size=1)
+      # We set `num_epochs` to be finite to avoid infinite loops on shards that
+      # have input examples that are all filtered.
+      datasets[task.name] = _repeat_shard_batch_take_cache(
+          dataset_generator(task_cfg, shard_id=0, num_shards=1))
+    else:
+      datasets[task.name] = _repeat_take(
+          dataset_generator(task_cfg, shard_id=shard_id, num_shards=num_shards))
 
   if isinstance(mixture_or_task, seqio.Mixture):
-    datasets[mixture_or_task.name] = _repeat_shard_batch_take_cache(
-        get_dataset_fn(
-            dataclasses.replace(cfg, batch_size=1),
-            shard_id=0,
-            num_shards=1,
-            feature_converter_cls=feature_converter_cls,
-            num_epochs=eval_steps * cfg.batch_size,
-            continue_from_last_checkpoint=False))
+    if cfg.repeat_before_shard:
+      mixture_cfg = dataclasses.replace(cfg, batch_size=1)
+      datasets[mixture_or_task.name] = _repeat_shard_batch_take_cache(
+          dataset_generator(mixture_cfg, shard_id=0, num_shards=1))
+    else:
+      datasets[mixture_or_task.name] = _repeat_take(
+          dataset_generator(cfg, shard_id=shard_id, num_shards=num_shards))
 
   return datasets
 
