@@ -30,27 +30,19 @@ from t5x.contrib.moe import models
 Accuracy = clu_metrics_lib.Accuracy
 Average = clu_metrics_lib.Average
 AveragePerStep = metrics_lib.AveragePerStep
-ExpertMetrics = models.ExpertMetrics
 FrozenDict = flax_core.frozen_dict.FrozenDict
 
 
 class ModelsTest(absltest.TestCase):
 
   def test_expert_losses(self):
-    diversity_metrics = [
-        ExpertMetrics(
-            auxiliary_loss=1.,
-            router_z_loss=0.,
-            fraction_tokens_left_behind=0.5,
-            expert_usage=0.5,
-            router_confidence=0.5),
-        ExpertMetrics(
-            auxiliary_loss=2.,
-            router_z_loss=1.,
-            fraction_tokens_left_behind=0.5,
-            expert_usage=0.5,
-            router_confidence=0.5)
-    ]
+    diversity_metrics = {
+        'auxiliary_loss': jnp.array([1., 2.]),
+        'router_z_loss': jnp.array([0., 1.]),
+        'fraction_tokens_left_behind': jnp.array([0.5, 0.5]),
+        'expert_usage': jnp.array([0.5, 0.5]),
+        'router_confidence': jnp.array([0.5, 0.5])
+    }
     aux_loss, router_z_loss = models._expert_losses(
         diversity_metrics, auxiliary_loss_factor=0.1, router_z_loss_factor=10)
 
@@ -58,20 +50,13 @@ class ModelsTest(absltest.TestCase):
     self.assertEqual(router_z_loss, 5.)
 
   def test_expert_metrics(self):
-    diversity_metrics = [
-        ExpertMetrics(
-            auxiliary_loss=1.,
-            router_z_loss=0.,
-            fraction_tokens_left_behind=1.,
-            expert_usage=0.7,
-            router_confidence=0.5),
-        ExpertMetrics(
-            auxiliary_loss=2.,
-            router_z_loss=1.,
-            fraction_tokens_left_behind=0.5,
-            expert_usage=0.5,
-            router_confidence=0.5)
-    ]
+    diversity_metrics = {
+        'auxiliary_loss': jnp.array([1., 2.]),
+        'router_z_loss': jnp.array([0., 1.]),
+        'fraction_tokens_left_behind': jnp.array([1., 0.5]),
+        'expert_usage': jnp.array([0.7, 0.5]),
+        'router_confidence': jnp.array([0.5, 0.5])
+    }
     actual_metrics = models._expert_metrics(
         diversity_metrics,
         total_loss=100.,
@@ -97,8 +82,8 @@ class ModelsTest(absltest.TestCase):
 
   def test_extract_from_non_expert_model(self):
     empty_state = FrozenDict({'intermediates': {}})
-    actual_metrics = models._extract_diversity_metrics(empty_state)
-    self.assertEmpty(actual_metrics)
+    with self.assertRaisesRegex(ValueError, 'Unable to find expert metric'):
+      models._extract_diversity_metrics(empty_state)
 
   def test_encoder_decoder_model(self):
     encoder_input_tokens = jnp.ones((2, 3))
@@ -179,9 +164,15 @@ class ModelsTest(absltest.TestCase):
         'decoder_loss_weights': jnp.array([[1, 1, 1, 0], [0, 1, 0, 1]])
     }
     logits = jnp.arange(0, 24).reshape((2, 4, 3))
-    # Expert metrics extraction is covered by other tests. We don't test it here
-    # to avoid introducing modeling library dependencies to this test.
-    state = FrozenDict({'intermediates': {}})
+    state = FrozenDict({
+        'intermediates': {
+            'auxiliary_loss': jnp.array([[0.2]]),
+            'router_z_loss': jnp.array([[0.1]]),
+            'router_confidence': jnp.array([[0.4]]),
+            'expert_usage': jnp.array([[0.9]]),
+            'fraction_tokens_left_behind': jnp.array([[0.1]])
+        }
+    })
 
     loss, metrics = models._moe_loss_fn(
         batch,
@@ -193,15 +184,25 @@ class ModelsTest(absltest.TestCase):
         aux_loss_factor=0.1,
         router_z_loss_factor=0.01)
 
-    self.assertAlmostEqual(loss, 5.0380306)
+    self.assertAlmostEqual(loss, 5.0590305)
     self.assertContainsSubset(
         {
+            'experts/auxiliary_loss':
+                AveragePerStep(total=jnp.array(0.02), steps=1),
+            'experts/router_z_loss':
+                AveragePerStep(total=jnp.array(0.001), steps=1),
+            'experts/router_confidence':
+                AveragePerStep(total=jnp.array(0.5), steps=1),
+            'experts/expert_usage':
+                AveragePerStep(total=jnp.array(0.9), steps=1),
+            'experts/fraction_tokens_left_behind':
+                AveragePerStep(total=jnp.array(0.1), steps=1),
             'accuracy':
                 Accuracy(total=jnp.array(2.), count=jnp.array(5)),
             'cross_ent_loss':
-                AveragePerStep(steps=1, total=jnp.array(5.0380306)),
+                AveragePerStep(steps=1, total=jnp.array(5.0590305)),
             'loss':
-                AveragePerStep(steps=1, total=jnp.array(5.0380306)),
+                AveragePerStep(steps=1, total=jnp.array(5.0590305)),
             'timing/seqs_per_second':
                 metrics_lib.TimeRate(duration=None, numerator=2),
             'timing/steps_per_second':

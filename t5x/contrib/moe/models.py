@@ -14,10 +14,8 @@
 
 """Provides model subclasses with Mixture of Experts support."""
 
-import dataclasses
-from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Mapping, MutableMapping, Optional, Tuple, Union
 
-from absl import logging
 import clu.metrics as clu_metrics
 from flax import core as flax_core
 from flax import linen as nn
@@ -39,28 +37,8 @@ MetricsMap = metrics_lib.MetricsMap
 PyTreeDef = base_models.PyTreeDef
 Sum = metrics_lib.Sum
 
-
-@dataclasses.dataclass()
-class ExpertMetrics:
-  """Metrics for analyzing diversity among experts in mixture of experts models.
-
-  Attributes:
-    auxiliary_loss: Auxiliary load balancing loss.
-    router_z_loss: Router z-loss. Encourages router logits to remain small in an
-      effort to improve stability.
-    fraction_tokens_left_behind: Fraction of tokens NOT processed by any expert.
-    expert_usage: Fraction of total capacity, across all experts, used to
-      process tokens. Larger expert capacities or non-uniform token routing will
-      result in smaller expert usage values.
-    router_confidence: How confident the router is about the tokens that it has
-      routed.
-  """
-  auxiliary_loss: float
-  router_z_loss: float
-
-  fraction_tokens_left_behind: float
-  expert_usage: float
-  router_confidence: float
+MOE_METRICS = ('auxiliary_loss', 'router_z_loss', 'fraction_tokens_left_behind',
+               'expert_usage', 'router_confidence')
 
 
 class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
@@ -255,14 +233,10 @@ def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
 
   # Extract and add MoE losses to total loss.
   diversity_metrics = _extract_diversity_metrics(state)
-  if diversity_metrics:
-    # TODO(jamesleethorp): Because we currently cannot sow under scan
-    #  (https://github.com/google/flax/blob/66b4a0eda04c97420279216fae64c269a9bbb269/flax/linen/partitioning.py#L567-L611),
-    #  we cannot use any auxiliary losses when training under scan. We need
-    #  to figure something out for this case.
-    aux_loss, router_z_loss = _expert_losses(diversity_metrics, aux_loss_factor,
-                                             router_z_loss_factor)
-    total_loss += aux_loss + router_z_loss
+
+  aux_loss, router_z_loss = _expert_losses(diversity_metrics, aux_loss_factor,
+                                           router_z_loss_factor)
+  total_loss += aux_loss + router_z_loss
 
   metrics = base_models.compute_base_metrics(
       logits=logits,
@@ -270,21 +244,20 @@ def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
       mask=weights,
       loss=total_loss,
       z_loss=z_loss)
-  if diversity_metrics:
-    metrics.update(
-        _expert_metrics(
-            diversity_metrics,
-            total_loss,
-            z_loss,
-            aux_loss,
-            router_z_loss,
-            num_tokens=targets.size))
+  metrics.update(
+      _expert_metrics(
+          diversity_metrics,
+          total_loss,
+          z_loss,
+          aux_loss,
+          router_z_loss,
+          num_tokens=targets.size))
 
   return total_loss, metrics
 
 
 def _extract_diversity_metrics(
-    state: flax_scope.FrozenVariableDict) -> Sequence[ExpertMetrics]:
+    state: flax_scope.FrozenVariableDict) -> Dict[str, jnp.ndarray]:
   """Extract expert diversity metrics from sown state intermediates.
 
   Args:
@@ -296,27 +269,42 @@ def _extract_diversity_metrics(
   Raises:
     ValueError if unable to extract any diversity metrics from model state.
   """
+
+  def unwrap(wrapped_diversity_metric: jnp.ndarray) -> float:
+    """Unpacks metrics from array with dummy dims.
+
+
+    Args:
+      wrapped_diversity_metric: Diversity metrics wrapped with dummy dimensions
+        in an array.
+
+    Returns:
+      Scalar diversity metric.
+    """
+    return jnp.squeeze(wrapped_diversity_metric)
+
   state_dict = traverse_util.flatten_dict(flax_core.unfreeze(state))
-  diversity_metrics = [
-      metric for path, metric in state_dict.items()
-      if path[-1] == 'diversity_metrics'
-  ]
-  if not diversity_metrics:
-    logging.warning(
-        'Unable to find any expert diversity metrics. This is expected if '
-        'using scan, in which cases we cannot use any auxiliary MoE losses. '
-        'If not using scan, please check that Moe layer metrics and losses are '
-        'correctly sown.')
-  # Convert modeling library DiversityMetrics objects to local ExpertMetrics
-  # objects to avoid modeling library dependencies.
-  return [
-      ExpertMetrics(metric.auxiliary_loss, metric.router_z_loss,
-                    metric.fraction_tokens_left_behind, metric.expert_usage,
-                    metric.router_confidence) for metric in diversity_metrics
-  ]
+
+  flattened_metrics = {}
+  for metric in MOE_METRICS:
+    flattened_metrics[metric] = [
+        unwrap(value)
+        for path, value in state_dict.items()
+        if path[-1] == metric
+    ]
+
+    if not flattened_metrics[metric]:
+      raise ValueError(
+          f'Unable to find expert metric: {metric}. Please check that MoE '
+          'metrics and losses are correctly sown.')
+
+  return {
+      k: jnp.asarray(v, dtype=jnp.float32)
+      for k, v in flattened_metrics.items()
+  }
 
 
-def _expert_losses(diversity_metrics: Sequence[ExpertMetrics],
+def _expert_losses(diversity_metrics: Mapping[str, jnp.ndarray],
                    auxiliary_loss_factor: float,
                    router_z_loss_factor: float) -> Tuple[float, float]:
   """Summarizes per-layer MoE auxiliary losses.
@@ -335,14 +323,13 @@ def _expert_losses(diversity_metrics: Sequence[ExpertMetrics],
     - Load balancing loss.
     - Router z-loss.
   """
-  aux_loss = auxiliary_loss_factor * jnp.array(
-      [m.auxiliary_loss for m in diversity_metrics], dtype=jnp.float32).mean()
-  router_z_loss = router_z_loss_factor * jnp.array(
-      [m.router_z_loss for m in diversity_metrics], dtype=jnp.float32).mean()
+  aux_loss = auxiliary_loss_factor * diversity_metrics['auxiliary_loss'].mean()
+  router_z_loss = router_z_loss_factor * diversity_metrics[
+      'router_z_loss'].mean()
   return aux_loss, router_z_loss
 
 
-def _expert_metrics(diversity_metrics: Sequence[ExpertMetrics],
+def _expert_metrics(diversity_metrics: Mapping[str, jnp.ndarray],
                     total_loss: float, z_loss: float, auxiliary_loss: float,
                     router_z_loss: float, num_tokens: int) -> MetricsMap:
   """Summarizes per-layer expert metrics for the entire model.
@@ -369,17 +356,13 @@ def _expert_metrics(diversity_metrics: Sequence[ExpertMetrics],
           AveragePerStep.from_model_output(router_z_loss),
       'experts/fraction_tokens_left_behind':
           AveragePerStep.from_model_output(
-              jnp.array(
-                  [m.fraction_tokens_left_behind for m in diversity_metrics],
-                  dtype=jnp.float32).mean()),
+              diversity_metrics['fraction_tokens_left_behind'].mean()),
       'experts/expert_usage':
           AveragePerStep.from_model_output(
-              jnp.array([m.expert_usage for m in diversity_metrics],
-                        dtype=jnp.float32).mean()),
+              diversity_metrics['expert_usage'].mean()),
       'experts/router_confidence':
           AveragePerStep.from_model_output(
-              jnp.array([m.router_confidence for m in diversity_metrics],
-                        dtype=jnp.float32).mean()),
+              diversity_metrics['router_confidence'].mean()),
       # Override vanilla T5 cross entropy loss metrics with corrected loss that
       # accounts for MoE losses.
       'cross_ent_loss':
