@@ -221,10 +221,6 @@ class LegacyCheckpointer(orbax.checkpoint.Checkpointer):
     self._restore_checkpointer = restore_checkpointer
     self._strict = strict
 
-  def structure(self, directory: str) -> Any:
-    """Unimplemented. See parent class."""
-    return NotImplementedError
-
   def save(self,
            path: str,
            item: train_state_lib.TrainState,
