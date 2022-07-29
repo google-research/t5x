@@ -49,6 +49,7 @@ BATCH_SIZE = 128
 
 # Sometimes overridden
 EVAL_STEPS = 20
+EVAL_PERIOD = 1000
 
 # Convenience overrides.
 EVALUATOR_USE_MEMORY_CACHE = True
@@ -75,7 +76,7 @@ train_script.train:
   trainer_cls = @trainer.Trainer
   total_steps = %TRAIN_STEPS
   eval_steps = %EVAL_STEPS
-  eval_period = 1000
+  eval_period = %EVAL_PERIOD
   random_seed = %RANDOM_SEED
   use_hardware_rng = %USE_HARDWARE_RNG
   summarize_config_fn = @gin_utils.summarize_gin_config
