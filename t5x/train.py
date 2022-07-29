@@ -20,7 +20,7 @@ import functools
 import math
 import os
 import time
-from typing import Callable, Sequence, Mapping, Tuple, Optional
+from typing import Callable, Sequence, Mapping, Tuple, Type, Optional
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
@@ -113,6 +113,8 @@ def train(
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None,
     run_eval_before_training: bool = False,
+    train_state_initializer_cls: Type[
+        utils.TrainStateInitializer] = utils.TrainStateInitializer,
     use_gda: bool = False) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
@@ -163,6 +165,8 @@ def train(
       defaults to `get_dataset_fn`.
     run_eval_before_training: If True, calculate training eval and inference
       eval metrics before training begins.
+    train_state_initializer_cls: t5x.utils.TrainStateInitializer class
+      for initializing partitioned TrainState from checkpoints or scratch.
     use_gda: if True, uses GlobalDeviceArray. Experimental feature.
 
   Returns:
@@ -324,7 +328,7 @@ def train(
           'Restore checkpoint config may only have a single path in training.')
 
   init_or_restore_tick = time.time()
-  train_state_initializer = utils.TrainStateInitializer(
+  train_state_initializer = train_state_initializer_cls(
       optimizer_def=model.optimizer_def,
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,

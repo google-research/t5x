@@ -351,6 +351,8 @@ def infer(
     merge_chunked_results: bool = True,
     write_fn: WriteFn = write_inferences_to_file,
     checkpoint_ds_iter: bool = True,
+    train_state_initializer_cls: Type[
+        utils.TrainStateInitializer] = utils.TrainStateInitializer,
     fallback_init_rng: Optional[int] = None,
     merge_fn: MergeFn = merge_chunks_to_file,
     summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
@@ -380,6 +382,8 @@ def infer(
       `checkpoint_period` to enable faster restore. This must be disabled for
       certain datasets, for example since stateful iterators (e.g. from
       seqio.FunctionTask) cannot be checkpointed.
+    train_state_initializer_cls: t5x.utils.TrainStateInitializer class
+      for initializing partitioned TrainState from checkpoints or scratch.
     fallback_init_rng: A random seed used for parameter initialization during
       model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
       set to True. If None, parameter initialization is not allowed during model
@@ -450,7 +454,7 @@ def infer(
   }
   # Initialize optimizer from the existing checkpoint.
   # TODO(adarob): Support inference over multiple checkpoints.
-  train_state_initializer = utils.TrainStateInitializer(
+  train_state_initializer = train_state_initializer_cls(
       optimizer_def=None,  # Do not load optimizer state.
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,

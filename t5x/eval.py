@@ -22,7 +22,7 @@ r"""This script runs inference-evaluation on a T5X-compatible model.
 
 import functools
 import os
-from typing import Optional, Sequence
+from typing import Optional, Sequence, Type
 
 # pylint:disable=g-import-not-at-top
 # TODO(adarob): Re-enable once users are notified and tests are updated.
@@ -61,6 +61,8 @@ def evaluate(
     output_dir: str,
     inference_evaluator_cls: utils.EvaluatorConstructor = seqio.Evaluator,
     summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
+    train_state_initializer_cls: Type[
+        utils.TrainStateInitializer] = utils.TrainStateInitializer,
     fallback_init_rng: Optional[int] = None):
   """Evaluation function.
 
@@ -76,6 +78,8 @@ def evaluate(
     summarize_config_fn: A function that takes in the model directory, an
       optional SummaryWriter, and the step number, and writes a summary of the
       configuration. SummaryWriter will be None in most cases.
+    train_state_initializer_cls: t5x.utils.TrainStateInitializer class
+      for initializing partitioned TrainState from checkpoints or scratch.
     fallback_init_rng: A random seed used for parameter initialization during
       model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
       set to True. If None, parameter initialization is not allowed during model
@@ -123,7 +127,7 @@ def evaluate(
       k: (batch_size,) + s for k, s in evaluator.model_feature_shapes.items()
   }
 
-  train_state_initializer = utils.TrainStateInitializer(
+  train_state_initializer = train_state_initializer_cls(
       optimizer_def=None,  # Do not load optimizer state.
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
