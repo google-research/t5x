@@ -49,14 +49,13 @@ class TokensIdsToLogitsCallable(typing_extensions.Protocol):
   """Token ids to logits mapping call signature."""
 
   def __call__(
-      self, token_ids: jnp.ndarray, cache: Mapping[str, jnp.ndarray]
+      self, decoding_state: decoding.DecodingState
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Performs forward pass to convert token ids to logits.
 
     Args:
-      token_ids: [batch_size, 1] int32 tokens for single position used during
-        incremental decoding. Non-0 prefix tokens to be used as a forced prompt.
-      cache: flax attention cache.
+      decoding_state: Current decoding state, including current token ids and
+        cache.
 
     Returns:
       a tuple of logits with a shape [batch_size, vocab_size] and an updated
@@ -419,10 +418,13 @@ class EncoderDecoderModel(BaseTransformerModel):
         mutable=mutable)
 
   def _compute_logits_from_slice(
-      self, flat_ids: jnp.ndarray, flat_cache: Mapping[str, jnp.ndarray],
-      params: PyTreeDef, encoded_inputs: jnp.ndarray, raw_inputs: jnp.ndarray,
+      self, decoding_state: decoding.DecodingState, params: PyTreeDef,
+      encoded_inputs: jnp.ndarray, raw_inputs: jnp.ndarray,
       max_decode_length: int) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Token slice to logits from decoder model."""
+    flat_ids = decoding_state.cur_token
+    flat_cache = decoding_state.cache
+
     # flat_ids: [batch * beam, seq_len=1]
     # cache is expanded inside beam_search to become flat_cache
     # flat_cache: [batch * beam, num_heads, depth_per_head, max_decode_len]
@@ -734,12 +736,13 @@ class DecoderOnlyModel(BaseTransformerModel):
 
   def _compute_logits_from_slice(
       self,
-      flat_ids: jnp.ndarray,
-      flat_cache: Mapping[str, jnp.ndarray],
+      decoding_state: decoding.DecodingState,
       params: PyTreeDef,
       max_decode_length: int,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Token slice to logits from decoder model."""
+    flat_ids = decoding_state.cur_token
+    flat_cache = decoding_state.cache
     # flat_ids: [batch, seq_len=1]
     # flat_cache['cached_(keys|values)']:
     #   [batch, num_heads, depth_per_head, max_decode_length]
