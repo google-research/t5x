@@ -421,8 +421,11 @@ class EncoderDecoderModel(BaseTransformerModel):
   def _compute_logits_from_slice(
       self, flat_ids: jnp.ndarray, flat_cache: Mapping[str, jnp.ndarray],
       params: PyTreeDef, encoded_inputs: jnp.ndarray, raw_inputs: jnp.ndarray,
+      decoder_causal_attention: jnp.ndarray,
       max_decode_length: int) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Token slice to logits from decoder model."""
+    del decoder_causal_attention
+
     # flat_ids: [batch * beam, seq_len=1]
     # cache is expanded inside beam_search to become flat_cache
     # flat_cache: [batch * beam, num_heads, depth_per_head, max_decode_len]
@@ -737,9 +740,11 @@ class DecoderOnlyModel(BaseTransformerModel):
       flat_ids: jnp.ndarray,
       flat_cache: Mapping[str, jnp.ndarray],
       params: PyTreeDef,
+      decoder_causal_attention: jnp.ndarray,
       max_decode_length: int,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Token slice to logits from decoder model."""
+    del decoder_causal_attention
     # flat_ids: [batch, seq_len=1]
     # flat_cache['cached_(keys|values)']:
     #   [batch, num_heads, depth_per_head, max_decode_length]
@@ -986,6 +991,7 @@ class DecoderOnlyModel(BaseTransformerModel):
     tokens_ids_to_logits = functools.partial(
         self._compute_logits_from_slice,
         params=params,
+        decoder_causal_attention=batch['decoder_causal_attention'],
         max_decode_length=max_decode_length)
 
     if decoder_params is None:
