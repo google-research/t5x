@@ -634,6 +634,9 @@ def infer(
     # Wait for host 0 to finish writing before exiting.
     multihost_utils.sync_global_devices(f'{task.name}:complete')
 
+    with gfile.GFile(os.path.join(output_dir, 'COMPLETED'), 'w') as f:
+      f.write('')
+
   for task in seqio.get_subtasks(task_or_mixture):
     logging.info("Starting inference for task '%s'", task.name)
     infer_task(task)
