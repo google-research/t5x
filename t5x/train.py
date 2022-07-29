@@ -686,6 +686,22 @@ if __name__ == '__main__':
       'seqio_additional_cache_dirs', [],
       'Directories to search for cached Tasks in addition to defaults.')
 
+  flags.DEFINE_boolean(
+      'multiprocess_gpu',
+      False,
+      help='Initialize JAX distributed system for multi-host GPU, using '
+      '`coordinator_address`, `process_count`, and `process_index`.')
+
+  flags.DEFINE_string(
+      'coordinator_address',
+      None,
+      help='IP address:port for multi-host GPU coordinator.')
+
+  flags.DEFINE_integer(
+      'process_count', None, help='Number of processes for multi-host GPU.')
+
+  flags.DEFINE_integer('process_index', None, help='Index of this process.')
+
 
 
   def main(argv: Sequence[str]):
@@ -696,6 +712,21 @@ if __name__ == '__main__':
     """True main function."""
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
+
+    if FLAGS.multiprocess_gpu:
+      if (FLAGS.coordinator_address is None or FLAGS.process_count is None or
+          FLAGS.process_index is None):
+        raise ValueError(
+            '`coordinator_address`, `process_count` and `process_index` '
+            'must be provided alongside `multiprocess_gpu`')
+
+      logging.info(
+          'Initializing distributed system for multi-host GPU:\n'
+          '  coordinator_address: %s\n  process_count: %s\n  process_index: %s',
+          FLAGS.coordinator_address, FLAGS.process_count, FLAGS.process_index)
+
+      jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.process_count,
+                                 FLAGS.process_index)
 
     if FLAGS.tfds_data_dir:
       seqio.set_tfds_data_dir_override(FLAGS.tfds_data_dir)
