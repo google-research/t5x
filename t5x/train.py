@@ -474,7 +474,7 @@ def train(
       return
     logging.info('Running inference evaluation.')
     evaluate_tick = time.time()
-    all_metrics, _, _ = evaluator.evaluate(
+    all_metrics, _ = evaluator.evaluate(
         compute_metrics=jax.process_index() == 0,
         step=host_step,
         predict_fn=functools.partial(

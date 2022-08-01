@@ -179,16 +179,22 @@ def evaluate(
 
     # Run final evaluation (with decoding) on the full eval dataset.
     host_step = int(utils.get_local_data(train_state.step))
-    all_metrics, _, _ = evaluator.evaluate(
+    model_fns = {
+        seqio.metrics.ModelOutputType.PREDICTION:
+            functools.partial(
+                predict_fn, train_state=train_state, rng=jax.random.PRNGKey(0)),
+        seqio.metrics.ModelOutputType.SCORE:
+            functools.partial(score_fn, train_state=train_state),
+        seqio.metrics.ModelOutputType.PREDICTION_WITH_AUX:
+            functools.partial(
+                predict_with_aux_fn,
+                train_state=train_state,
+                rng=jax.random.PRNGKey(0))
+    }
+    all_metrics, _ = evaluator.evaluate(
         compute_metrics=jax.process_index() == 0,
         step=host_step,
-        predict_fn=functools.partial(
-            predict_fn, train_state=train_state, rng=jax.random.PRNGKey(0)),
-        score_fn=functools.partial(score_fn, train_state=train_state),
-        predict_with_aux_fn=functools.partial(
-            predict_with_aux_fn,
-            train_state=train_state,
-            rng=jax.random.PRNGKey(0)))
+        model_fns=model_fns)
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
     multihost_utils.sync_global_devices(f'step_{host_step}:complete')
