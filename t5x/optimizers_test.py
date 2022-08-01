@@ -260,7 +260,8 @@ class OptaxWrapperTest(chex.TestCase):
 
     partitioner = partitioning.PjitPartitioner(
         num_partitions=2,
-        logical_axis_rules=partitioning.standard_logical_axis_rules())
+        logical_axis_rules=partitioning.standard_logical_axis_rules(),
+        use_cpu_pjit=True)
 
     train_state_initializer = utils.TrainStateInitializer(
         optimizer_def=model.optimizer_def,

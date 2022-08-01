@@ -17,10 +17,12 @@ r"""Script to pretrain or finetune in JAX using a SeqIO pipeline.
 """
 
 import functools
+import logging
 import math
 import os
 import time
-from typing import Callable, Sequence, Mapping, Tuple, Type, Optional
+from typing import Callable, Mapping, Optional, Sequence, Tuple, Type
+import warnings
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
@@ -115,7 +117,7 @@ def train(
     run_eval_before_training: bool = False,
     train_state_initializer_cls: Type[
         utils.TrainStateInitializer] = utils.TrainStateInitializer,
-    use_gda: bool = False) -> Tuple[int, train_state_lib.TrainState]:
+    use_gda: bool = True) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
   Args:
@@ -175,6 +177,10 @@ def train(
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
+  if not use_gda:
+    warnings.warn(
+        '`use_gda=False` is deprecated and will be removed on Oct-01-22.'
+        ' Please ensure that your workflow can use GDA.', DeprecationWarning)
   jax.config.update('jax_parallel_functions_output_gda', use_gda)
 
   # Each "epoch" of the training loop should be the min of the eval period,
@@ -359,7 +365,8 @@ def train(
           init_rng))
 
   # 3. If no checkpoint to restore, init from scratch.
-  train_state = train_state or train_state_initializer.from_scratch(init_rng)
+  scratch = train_state_initializer.from_scratch(init_rng)
+  train_state = train_state or scratch
   train_state_axes = train_state_initializer.train_state_axes
   init_or_restore_secs = time.time() - init_or_restore_tick
   logging.info('Initialize/restore complete (%.2f seconds).',
