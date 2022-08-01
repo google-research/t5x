@@ -365,8 +365,7 @@ def train(
           init_rng))
 
   # 3. If no checkpoint to restore, init from scratch.
-  scratch = train_state_initializer.from_scratch(init_rng)
-  train_state = train_state or scratch
+  train_state = train_state or train_state_initializer.from_scratch(init_rng)
   train_state_axes = train_state_initializer.train_state_axes
   init_or_restore_secs = time.time() - init_or_restore_tick
   logging.info('Initialize/restore complete (%.2f seconds).',
