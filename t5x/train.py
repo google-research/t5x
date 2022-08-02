@@ -17,12 +17,10 @@ r"""Script to pretrain or finetune in JAX using a SeqIO pipeline.
 """
 
 import functools
-import logging
 import math
 import os
 import time
-from typing import Callable, Mapping, Optional, Sequence, Tuple, Type
-import warnings
+from typing import Callable, Sequence, Mapping, Tuple, Type, Optional
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
@@ -117,7 +115,7 @@ def train(
     run_eval_before_training: bool = False,
     train_state_initializer_cls: Type[
         utils.TrainStateInitializer] = utils.TrainStateInitializer,
-    use_gda: bool = True) -> Tuple[int, train_state_lib.TrainState]:
+    use_gda: bool = False) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
   Args:
@@ -177,10 +175,6 @@ def train(
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
-  if not use_gda:
-    warnings.warn(
-        '`use_gda=False` is deprecated and will be removed on Oct-01-22.'
-        ' Please ensure that your workflow can use GDA.', DeprecationWarning)
   jax.config.update('jax_parallel_functions_output_gda', use_gda)
 
   # Each "epoch" of the training loop should be the min of the eval period,
