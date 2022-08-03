@@ -183,7 +183,7 @@ the MoeTrainer and the MoePjitPartitioner. For example, for fine-tuning, use the
 
 ##### Converted Mesh Tensorflow checkpoints
 
-These are the checkpoints from the original
+These are the checkpoints from the 
 [Switch Transformer model](https://arxiv.org/abs/2101.03961).
 
 **Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
