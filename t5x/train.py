@@ -742,5 +742,6 @@ if __name__ == '__main__':
         FLAGS.gin_file,
         FLAGS.gin_bindings)
     train_using_gin()
+    jax.effects_barrier()
 
   gin_utils.run(main)
