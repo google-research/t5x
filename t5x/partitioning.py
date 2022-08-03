@@ -277,6 +277,7 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
   global_mesh = Mesh(devices, ['data', 'model'])
   logging.info('global_mesh axis_names: %s', global_mesh.axis_names)
   logging.info('global_mesh devices: %s', global_mesh.devices)
+  logging.info('global_mesh devices shape: %s', global_mesh.devices.shape)
   return global_mesh
 
 
