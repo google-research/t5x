@@ -23,6 +23,7 @@ import jax
 import numpy as np
 import optax
 from t5x import optimizers
+from t5x import partitioning as base_partitioning
 from t5x import test_utils
 from t5x import train_state as train_state_lib
 from t5x.contrib.moe import partitioning as moe_partitioning
@@ -111,6 +112,41 @@ class PartitioningTest(absltest.TestCase):
     mesh = moe_partitioning.get_cpu_mesh()
     self.assertEqual(mesh.devices.shape, (1, jax.device_count(), 1))
     self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
+
+  @mock.patch('jax.local_devices')
+  @mock.patch('jax.devices')
+  @mock.patch('jax._src.lib.xla_bridge.process_index')
+  def test_local_chunker_moe_usage(self, process_index_fn, devices_fn,
+                                   local_devices_fn):
+    # The MoE partitioning library uses a 2D "data" mesh spanning ('expert',
+    # 'data') axes, so we reshape the batch across this 2D "data" mesh when
+    # computing replica ids from local chunk info. In this test, we check that
+    # the replica ids constructed in this manner are equivalent to the default
+    # replica id (over a single 'data' mesh axis).
+
+    # Mesh with 32 devices.
+    devices = test_utils.make_devices(2, 2, 1, 2, kind='TPU v3')
+    devices_fn.return_value = devices
+    local_devices_fn.return_value = [d for d in devices if d.process_index == 0]
+    process_index_fn.return_value = 0
+
+    num_expert_partitions = 8
+    moe_mesh = moe_partitioning.default_moe_mesh(
+        num_experts=num_expert_partitions, num_partitions=2)
+    moe_chunker = base_partitioning.LocalChunker(moe_mesh)
+
+    base_mesh = base_partitioning.default_mesh(num_partitions=2)
+    base_chunker = base_partitioning.LocalChunker(base_mesh)
+
+    for batch_size in [8, 16, 32, 64]:
+      moe_global_array_shape = (batch_size // num_expert_partitions,
+                                num_expert_partitions)
+      moe_replica_id = moe_chunker.get_local_chunk_info(
+          moe_global_array_shape, ('data', 'expert')).replica_id
+      base_global_array_shape = (batch_size,)
+      base_replica_id = base_chunker.get_local_chunk_info(
+          base_global_array_shape, ('data',)).replica_id
+      self.assertEqual(moe_replica_id, base_replica_id)
 
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')

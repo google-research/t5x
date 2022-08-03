@@ -199,27 +199,37 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
     """
     if host_index is not None:
       raise NotImplementedError('Explicit host_index is not yet implemented.')
-    data_mesh_size = self._local_chunker.global_mesh.shape[
-        'data'] * self._local_chunker.global_mesh.shape['expert']
+
+    num_data_partitions = self._local_chunker.global_mesh.shape['data']
+    num_expert_partitions = self._local_chunker.global_mesh.shape['expert']
+
+    data_mesh_size = num_data_partitions * num_expert_partitions
     batch_size = batch_size or data_mesh_size
     if batch_size % data_mesh_size:
       raise ValueError(
-          f'Batch size ({batch_size}) must be divisible by corresponding data '
-          f'mesh size ({data_mesh_size}).')
-    num_data_shards = self._local_chunker.num_chunks[
+          f'Batch size ({batch_size}) must be divisible by entire data mesh '
+          f'size ({data_mesh_size}). Note that for MoE, the data mesh spans '
+          'both the "expert" and "data" virtual mesh axes.')
+
+    num_shards = self._local_chunker.num_chunks[
         'data'] * self._local_chunker.num_chunks['expert']
-    if batch_size % num_data_shards:
+    if batch_size % num_shards:
       raise ValueError(
           f'Batch size ({batch_size}) must be divisible by total number of '
-          f'experts replicas ({num_data_shards}).')
+          f'shards ({num_shards}) across "data" and "expert" mesh axes.')
+
+    # Partition the batch over both of the 'data' and 'expert' axes.
+    global_array_shape = (batch_size // num_expert_partitions,
+                          num_expert_partitions)
     replica_id = self._local_chunker.get_local_chunk_info(
-        (batch_size,), ('data', 'expert', 'model')).replica_id
+        global_array_shape, ('data', 'expert')).replica_id
+
     return DataLayout(
         batch_size=batch_size,
         shard_id=(self._local_chunker.chunk_ids['data'] +
                   self._local_chunker.chunk_ids['expert'] *
                   self._local_chunker.num_chunks['data']),
-        num_shards=num_data_shards,
+        num_shards=num_shards,
         is_first_host_in_replica_set=(replica_id == 0))
 
   def get_logical_axes(
