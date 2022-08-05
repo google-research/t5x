@@ -19,7 +19,7 @@
 #
 # - DROPOUT_RATE
 # - BATCH_SIZE
-# - Trainer.num_microbatches
+# - MoeTrainer.num_microbatches
 
 from __gin__ import dynamic_registration
 
