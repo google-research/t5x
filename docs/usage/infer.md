@@ -12,5 +12,5 @@ tutorial. You can also run evals as part of your fine-tuning run.
 T5X supports a few inference modes. Please refer to the appropriate tutorial
 based on your use-case:
 
-1.  Run inference on [SeqIO Tasks/Mixtures](infer-seqio)
-1.  Run inference on [TF Example files](infer-files)
+1.  Run inference on [SeqIO Tasks/Mixtures](infer-seqio.md)
+1.  Run inference on [TF Example files](infer-files.md)
