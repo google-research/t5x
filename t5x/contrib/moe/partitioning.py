@@ -355,7 +355,7 @@ def standard_logical_axis_rules(
   moe_rules = [
       ('expert', 'expert'),  # Shard experts along the expert axis
       ('expert_mlp', 'model'),  # Expert MLPs partitioned along model axis
-      ('expert_group', None),  # Replicated axis for all-to-all constraints
+      ('expert_replicas', None),  # Replicated axis for all-to-all constraints
       ('expert_replicas', 'data'),  # Experts replicated along "pure" data axis
       ('unmodeled', None),  # Replicated weights
   ]

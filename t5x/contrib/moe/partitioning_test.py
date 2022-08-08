@@ -309,7 +309,7 @@ class PartitioningTest(absltest.TestCase):
             ('mlp_activations', None),
             ('expert', 'expert'),  # Shard experts along expert axis
             ('expert_mlp', 'model'),
-            ('expert_group', None),
+            ('expert_replicas', None),
             # Experts replicated along "pure" data axis
             ('expert_replicas', 'data'),
             ('unmodeled', None),
