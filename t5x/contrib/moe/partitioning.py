@@ -165,12 +165,12 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
   def data_partition_spec(self) -> PartitionSpec:
     """Returns MoE data partitioning spec.
 
-    Data is sharded across the 'data' and 'expert' axes.
+    Data is sharded across the 'expert' and 'data' axes.
 
     Returns:
       Mesh dependent partition spec.
     """
-    return PartitionSpec(('data', 'expert'),)
+    return PartitionSpec(('expert', 'data'),)
 
   @cached_property.cached_property
   def mesh(self) -> Mesh:
@@ -218,11 +218,11 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
           f'Batch size ({batch_size}) must be divisible by total number of '
           f'shards ({num_shards}) across "data" and "expert" mesh axes.')
 
-    # Partition the batch over both of the 'data' and 'expert' axes.
-    global_array_shape = (batch_size // num_expert_partitions,
-                          num_expert_partitions)
+    # Partition the batch over both of the 'expert' and 'data' axes.
+    global_array_shape = (num_expert_partitions,
+                          batch_size // num_expert_partitions)
     replica_id = self._local_chunker.get_local_chunk_info(
-        global_array_shape, ('data', 'expert')).replica_id
+        global_array_shape, ('expert', 'data')).replica_id
 
     return DataLayout(
         batch_size=batch_size,
@@ -355,7 +355,6 @@ def standard_logical_axis_rules(
   moe_rules = [
       ('expert', 'expert'),  # Shard experts along the expert axis
       ('expert_mlp', 'model'),  # Expert MLPs partitioned along model axis
-      ('expert_replicas', None),  # Replicated axis for all-to-all constraints
       ('expert_replicas', 'data'),  # Experts replicated along "pure" data axis
       ('unmodeled', None),  # Replicated weights
   ]
@@ -367,7 +366,7 @@ def standard_logical_axis_rules(
   for logical_axis, mesh_axis in standard_rules:
     if logical_axis == 'batch':
       # Data is sharded across both 'data' and 'expert axes.
-      overridden_mesh_axis = ('data', 'expert')
+      overridden_mesh_axis = ('expert', 'data')
     else:
       overridden_mesh_axis = mesh_axis
     overridden_rules.append((logical_axis, overridden_mesh_axis))
@@ -413,7 +412,7 @@ def override_partition_specs(resources: Pytree):
 
   Here, we only override any raw partition specs that are hardcoded in T5X
   libraries:
-  PartitionSpec('data',) -> PartitionSpec(('data', 'expert'),)
+  PartitionSpec('data',) -> PartitionSpec(('expert', 'data'),)
 
   NOTE: We do not (and there is no need) to override any params or optimizer
   state (which appear as large Pytrees) as these will inherit the correct specs
@@ -431,7 +430,7 @@ def override_partition_specs(resources: Pytree):
     """Overrides raw "data" partition specs; leaves others unchanged."""
     if axis_resource == PartitionSpec('data',):
       # Shard all data across 'data' and 'expert' axes.
-      return PartitionSpec(('data', 'expert'),)
+      return PartitionSpec(('expert', 'data'),)
     else:
       return axis_resource
 

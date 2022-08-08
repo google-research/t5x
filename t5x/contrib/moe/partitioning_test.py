@@ -142,7 +142,7 @@ class PartitioningTest(absltest.TestCase):
       moe_global_array_shape = (batch_size // num_expert_partitions,
                                 num_expert_partitions)
       moe_replica_id = moe_chunker.get_local_chunk_info(
-          moe_global_array_shape, ('data', 'expert')).replica_id
+          moe_global_array_shape, ('expert', 'data')).replica_id
       base_global_array_shape = (batch_size,)
       base_replica_id = base_chunker.get_local_chunk_info(
           base_global_array_shape, ('data',)).replica_id
@@ -293,7 +293,7 @@ class PartitioningTest(absltest.TestCase):
             additional_rules=[('additional', 'model'), ('expert_magic',
                                                         'data')]),
         [
-            ('batch', ('data', 'expert')),  # Shard batch over entire mesh
+            ('batch', ('expert', 'data')),  # Shard batch over entire mesh
             # No sharding of weights over model axis.
             ('vocab', 'model'),
             ('embed', None),
@@ -309,7 +309,6 @@ class PartitioningTest(absltest.TestCase):
             ('mlp_activations', None),
             ('expert', 'expert'),  # Shard experts along expert axis
             ('expert_mlp', 'model'),
-            ('expert_replicas', None),
             # Experts replicated along "pure" data axis
             ('expert_replicas', 'data'),
             ('unmodeled', None),
@@ -321,7 +320,7 @@ class PartitioningTest(absltest.TestCase):
     partitioner = moe_partitioning.MoePjitPartitioner(
         num_experts=2, num_partitions=1)
     self.assertEqual(partitioner.data_partition_spec,
-                     PartitionSpec(('data', 'expert'),))
+                     PartitionSpec(('expert', 'data'),))
 
   def test_axis_resource_overrides(self):
 
@@ -329,24 +328,24 @@ class PartitioningTest(absltest.TestCase):
       input_resources = (PartitionSpec('data'), PartitionSpec('model'),
                          PartitionSpec('expert'), None,
                          PartitionSpec('unrecognized'))
-      # 'data' -> ('data', 'expert').
+      # 'data' -> ('expert', 'data').
       self.assertEqual(
           moe_partitioning.override_partition_specs(input_resources),
-          (PartitionSpec(('data', 'expert'),), PartitionSpec('model'),
+          (PartitionSpec(('expert', 'data'),), PartitionSpec('model'),
            PartitionSpec('expert'), None, PartitionSpec('unrecognized',)))
 
     with self.subTest(name='single_resource'):
-      # 'data' -> ('data', 'expert').
+      # 'data' -> ('expert', 'data').
       self.assertEqual(
           moe_partitioning.override_partition_specs(PartitionSpec('data',)),
-          PartitionSpec(('data', 'expert'),))
+          PartitionSpec(('expert', 'data'),))
 
     with self.subTest(name='no_override'):
-      # 'data' -> ('data', 'expert').
+      # 'data' -> ('expert', 'data').
       self.assertEqual(
           moe_partitioning.override_partition_specs(
-              PartitionSpec(('data', 'expert'))),
-          PartitionSpec(('data', 'expert'),))
+              PartitionSpec(('expert', 'data'))),
+          PartitionSpec(('expert', 'data'),))
 
     with self.subTest(name='no_resource'):
       self.assertIsNone(moe_partitioning.override_partition_specs(None))
