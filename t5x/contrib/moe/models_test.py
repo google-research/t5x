@@ -80,6 +80,44 @@ class ModelsTest(absltest.TestCase):
     }
     self.assertEqual(actual_computed_metrics, expected_metrics)
 
+  def test_extract_diversity_metrics(self):
+    state = flax_core.freeze({
+        'intermediates': {
+            'moe_layer_0': {
+                'auxiliary_loss': (jnp.array([[0.2]]), jnp.array([[0.1]])),
+                'router_z_loss': (jnp.array([[0.1]]), jnp.array([[0.2]])),
+                'router_confidence': (jnp.array([[0.4]]), jnp.array([[0.2]])),
+                'expert_usage': (jnp.array([[0.9]]), jnp.array([[0.2]])),
+                'fraction_tokens_left_behind': (jnp.array([[0.1]]),
+                                                jnp.array([[0.2]])),
+            },
+            'moe_layer_1': {
+                'auxiliary_loss': (jnp.array([[0.2]]), jnp.array([[0.]])),
+                'router_z_loss': (jnp.array([[0.1]]), jnp.array([[0.]])),
+                'router_confidence': (jnp.array([[0.4]]), jnp.array([[0.5]])),
+                'expert_usage': (jnp.array([[0.9]]), jnp.array([[0.8]])),
+                'fraction_tokens_left_behind': (jnp.array([[0.1]]),
+                                                jnp.array([[0.3]])),
+            }
+        }
+    })
+    extracted_metrics = models._extract_diversity_metrics(state)
+
+    expected_raw_metrics = {
+        'auxiliary_loss':
+            jnp.array([[[0.2]], [[0.05]]], dtype=jnp.float32),
+        'router_z_loss':
+            jnp.array([[[0.1]], [[0.1]]], dtype=jnp.float32),
+        'fraction_tokens_left_behind':
+            jnp.array([[[0.1]], [[0.25]]], dtype=jnp.float32),
+        'expert_usage':
+            jnp.array([[[0.9]], [[0.5]]], dtype=jnp.float32),
+        'router_confidence':
+            jnp.array([[[0.4]], [[0.35]]], dtype=jnp.float32)
+    }
+    for metric, expected_value in expected_raw_metrics.items():
+      np.testing.assert_allclose(extracted_metrics[metric], expected_value)
+
   def test_extract_from_non_expert_model(self):
     empty_state = FrozenDict({'intermediates': {}})
     with self.assertRaisesRegex(ValueError, 'Unable to find expert metric'):
@@ -164,13 +202,13 @@ class ModelsTest(absltest.TestCase):
         'decoder_loss_weights': jnp.array([[1, 1, 1, 0], [0, 1, 0, 1]])
     }
     logits = jnp.arange(0, 24).reshape((2, 4, 3))
-    state = FrozenDict({
+    state = flax_core.freeze({
         'intermediates': {
-            'auxiliary_loss': jnp.array([[0.2]]),
-            'router_z_loss': jnp.array([[0.1]]),
-            'router_confidence': jnp.array([[0.4]]),
-            'expert_usage': jnp.array([[0.9]]),
-            'fraction_tokens_left_behind': jnp.array([[0.1]])
+            'auxiliary_loss': (jnp.array([[0.2]]),),
+            'router_z_loss': (jnp.array([[0.1]]),),
+            'router_confidence': (jnp.array([[0.4]]),),
+            'expert_usage': (jnp.array([[0.9]]),),
+            'fraction_tokens_left_behind': (jnp.array([[0.1]]),),
         }
     })
 

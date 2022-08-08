@@ -258,50 +258,36 @@ def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
 
 def _extract_diversity_metrics(
     state: flax_scope.FrozenVariableDict) -> Dict[str, jnp.ndarray]:
-  """Extract expert diversity metrics from sown state intermediates.
+  """Extract average expert diversity metrics from sown state intermediates.
 
   Args:
     state: Model state holding sown intermediate metrics.
 
   Returns:
-    Single diversity metrics instance per MoE layer.
+    Diversity metrics, averaged across MoE layers.
 
   Raises:
-    ValueError if unable to extract any diversity metrics from model state.
+    ValueError if unable to extract diversity metrics from model state.
   """
-
-  def unwrap(wrapped_diversity_metric: jnp.ndarray) -> float:
-    """Unpacks metrics from array with dummy dims.
-
-
-    Args:
-      wrapped_diversity_metric: Diversity metrics wrapped with dummy dimensions
-        in an array.
-
-    Returns:
-      Scalar diversity metric.
-    """
-    return jnp.squeeze(wrapped_diversity_metric)
-
   state_dict = traverse_util.flatten_dict(flax_core.unfreeze(state))
 
-  flattened_metrics = {}
+  avg_metrics = {}
   for metric in MOE_METRICS:
-    flattened_metrics[metric] = [
-        unwrap(value)
-        for path, value in state_dict.items()
-        if path[-1] == metric
-    ]
+    summed_metric = 0.
+    count = 0
+    for path, value in state_dict.items():
+      if path[-1] == metric:
+        summed_metric += jnp.asarray(value, dtype=jnp.float32)
+        count += 1
 
-    if not flattened_metrics[metric]:
+    if count == 0:
       raise ValueError(
           f'Unable to find expert metric: {metric}. Please check that MoE '
           'metrics and losses are correctly sown.')
 
-  return {
-      k: jnp.asarray(v, dtype=jnp.float32)
-      for k, v in flattened_metrics.items()
-  }
+    avg_metrics[metric] = summed_metric / count
+
+  return avg_metrics
 
 
 def _expert_losses(diversity_metrics: Mapping[str, jnp.ndarray],
