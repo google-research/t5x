@@ -165,8 +165,8 @@ def train(
       defaults to `get_dataset_fn`.
     run_eval_before_training: If True, calculate training eval and inference
       eval metrics before training begins.
-    train_state_initializer_cls: t5x.utils.TrainStateInitializer class
-      for initializing partitioned TrainState from checkpoints or scratch.
+    train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
+      initializing partitioned TrainState from checkpoints or scratch.
     use_gda: if True, uses GlobalDeviceArray. Experimental feature.
 
   Returns:
@@ -713,6 +713,7 @@ if __name__ == '__main__':
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
 
+
     if FLAGS.multiprocess_gpu:
       if (FLAGS.coordinator_address is None or FLAGS.process_count is None or
           FLAGS.process_index is None):
@@ -743,5 +744,6 @@ if __name__ == '__main__':
         FLAGS.gin_bindings)
     train_using_gin()
     jax.effects_barrier()
+
 
   gin_utils.run(main)
