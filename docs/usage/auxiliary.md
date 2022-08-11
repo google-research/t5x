@@ -97,13 +97,13 @@ We provide the sample script below.
 ```sh
 declare -a ARGS=(
 --cell=iz
---platform=jf_2x2
+--platform=jd=2x2
 --final_auxiliary_job_steps=0
 --replace_gin_file=True
 --auxiliary_job_mixtures=wmt14_enfr_v003
 --auxiliary_job_gin_file=t5x/examples/t5/t5_1_1/examples/base_wmt14enfr_eval.gin
 --auxiliary_job_cell=iz
---auxiliary_job_platform=jf_2x2
+--auxiliary_job_platform=jd=2x2
 --auxiliary_job_build_target_path=//t5x:eval
 --gin_file=t5x/examples/t5/t5_1_1/examples/base_wmt14enfr_train.gin
 )
@@ -148,13 +148,13 @@ We provide the sample script below.
 ```sh
 declare -a ARGS=(
 --cell=iz
---platform=jf_2x2
+--platform=jd=2x2
 --final_auxiliary_job_steps=200
 --replace_gin_file=True
 --auxiliary_job_mixtures=wmt14_enfr_v003
 --auxiliary_job_gin_file=t5x/examples/t5/t5_1_1/examples/base_wmt14enfr_finetune.gin
 --auxiliary_job_cell=iz
---auxiliary_job_platform=jf_2x2
+--auxiliary_job_platform=jd=2x2
 --auxiliary_job_build_target_path=//t5x:train
 --gin_file=t5x/examples/t5/t5_1_1/examples/base_c4_pretrain.gin
 )
