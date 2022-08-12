@@ -111,7 +111,8 @@ def train(
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
     concurrent_metrics: bool = True,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
-    train_eval_get_dataset_fn: Optional[utils.GetDatasetCallable] = None,
+    train_eval_get_dataset_fn: utils.GetEvalDatasetCallable = utils
+    .get_training_eval_datasets,
     run_eval_before_training: bool = False,
     train_state_initializer_cls: Type[
         utils.TrainStateInitializer] = utils.TrainStateInitializer,
@@ -162,7 +163,7 @@ def train(
       chaining futures and mutating states concurrently might be error-prone.
     train_eval_get_dataset_fn: Optional callable use to get the train-eval
       datasets based on the DatasetConfig and shard information. If missing, it
-      defaults to `get_dataset_fn`.
+      defaults to `utils.get_training_eval_datasets`.
     run_eval_before_training: If True, calculate training eval and inference
       eval metrics before training begins.
     train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
@@ -269,14 +270,9 @@ def train(
 
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
-    train_eval_datasets = utils.get_training_eval_datasets(
-        train_eval_dataset_cfg,
-        ds_shard_id,
-        num_ds_shards,
-        eval_steps,
-        model.FEATURE_CONVERTER_CLS,
-        get_dataset_fn=train_eval_get_dataset_fn if train_eval_get_dataset_fn
-        is not None else get_dataset_fn)  # type: Mapping[str, tf.data.Dataset]
+    train_eval_datasets = train_eval_get_dataset_fn(
+        train_eval_dataset_cfg, ds_shard_id, num_ds_shards, eval_steps,
+        model.FEATURE_CONVERTER_CLS)  # type: Mapping[str, tf.data.Dataset]
     if not train_eval_datasets:
       logging.warning(
           'No train_eval datasets loaded from config `train_eval_dataset_cfg`: '

@@ -201,15 +201,14 @@ class UtilsTest(parameterized.TestCase):
           "Variable param_states/c/v_row size 8 shape (2, 4) partition spec ('b1',) "
           "Variable step size 1 shape () partition spec None ")
 
-
-  def test_get_training_eval_datasets_task(self):
+  @mock.patch.object(utils, "get_dataset")
+  def test_get_training_eval_datasets_task(self, mock_get_dataset):
     task = mock.create_autospec(seqio.Task, instance=True)
     task.name = "mock_task"
     task.splits = set(["train", "test"])
     seqio.TaskRegistry.add_provider("mock_task", task)
 
-    mock_get_dataset_fn = mock.Mock(
-        return_value=tf.data.Dataset.range(10).batch(1))
+    mock_get_dataset.return_value = tf.data.Dataset.range(10).batch(1)
     mock_fc_cls = mock.Mock()
 
     cfg = utils.DatasetConfig(
@@ -226,10 +225,9 @@ class UtilsTest(parameterized.TestCase):
         shard_id=0,
         num_shards=1,
         eval_steps=3,
-        feature_converter_cls=mock_fc_cls,
-        get_dataset_fn=mock_get_dataset_fn)
+        feature_converter_cls=mock_fc_cls)
 
-    mock_get_dataset_fn.assert_called_once_with(
+    mock_get_dataset.assert_called_once_with(
         dataclasses.replace(cfg, batch_size=1),
         shard_id=0,
         num_shards=1,
@@ -245,18 +243,17 @@ class UtilsTest(parameterized.TestCase):
     ])
 
     # 2 shards, shard 0
-    mock_get_dataset_fn.reset_mock()
+    mock_get_dataset.reset_mock()
     ds = utils.get_training_eval_datasets(
         cfg,
         shard_id=0,
         num_shards=2,
         eval_steps=3,
-        feature_converter_cls=mock_fc_cls,
-        get_dataset_fn=mock_get_dataset_fn)
+        feature_converter_cls=mock_fc_cls)
 
     # Call the underlying function loading all shards since the fn shards at the
     # example level.
-    mock_get_dataset_fn.assert_called_once_with(
+    mock_get_dataset.assert_called_once_with(
         dataclasses.replace(cfg, batch_size=1),
         shard_id=0,
         num_shards=1,
@@ -272,18 +269,17 @@ class UtilsTest(parameterized.TestCase):
     ])
 
     # 2 shards, shard 1
-    mock_get_dataset_fn.reset_mock()
+    mock_get_dataset.reset_mock()
     ds = utils.get_training_eval_datasets(
         cfg,
         shard_id=1,
         num_shards=2,
         eval_steps=3,
-        feature_converter_cls=mock_fc_cls,
-        get_dataset_fn=mock_get_dataset_fn)
+        feature_converter_cls=mock_fc_cls)
 
     # Call the underlying function loading all shards since the fn shards at the
     # example level.
-    mock_get_dataset_fn.assert_called_once_with(
+    mock_get_dataset.assert_called_once_with(
         dataclasses.replace(cfg, batch_size=1),
         shard_id=0,
         num_shards=1,
@@ -307,10 +303,10 @@ class UtilsTest(parameterized.TestCase):
           shard_id=0,
           num_shards=3,
           eval_steps=3,
-          feature_converter_cls=mock_fc_cls,
-          get_dataset_fn=mock_get_dataset_fn)
+          feature_converter_cls=mock_fc_cls)
 
-  def test_get_training_eval_datasets_mixture(self):
+  @mock.patch.object(utils, "get_dataset")
+  def test_get_training_eval_datasets_mixture(self, mock_get_dataset):
     # Register a mock SeqIO mixture.
     task1 = mock.create_autospec(seqio.Task, instance=True)
     task1.name = "mock_task1"
@@ -324,8 +320,7 @@ class UtilsTest(parameterized.TestCase):
         "mock_mix", ["mock_task1", "mock_task2"], default_rate=1.0)
     seqio.MixtureRegistry.add_provider("mock_mix", mixture)
 
-    mock_get_dataset = mock.Mock(
-        return_value=tf.data.Dataset.range(10).batch(1))
+    mock_get_dataset.return_value = tf.data.Dataset.range(10).batch(1)
 
     # Verify calls to utils.get_dataset
     cfg = utils.DatasetConfig(
@@ -341,8 +336,7 @@ class UtilsTest(parameterized.TestCase):
         shard_id=0,
         num_shards=2,
         eval_steps=3,
-        feature_converter_cls=seqio.FeatureConverter,
-        get_dataset_fn=mock_get_dataset)
+        feature_converter_cls=seqio.FeatureConverter)
 
     expected_calls = [
         mock.call(
