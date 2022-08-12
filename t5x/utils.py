@@ -899,7 +899,7 @@ class TrainStateInitializer:
         return restore_checkpointer.restore_from_tf_checkpoint(
             path, strict=cfg.strict)
 
-      else:
+      elif 'checkpoint_' in path:
         fallback_state = get_fallback_state(
             cfg, lambda rng: self.from_scratch(rng).state_dict(), init_rng)
 
@@ -909,10 +909,38 @@ class TrainStateInitializer:
             path=path,
             state_transformation_fns=cfg.state_transformation_fns,
             fallback_state=fallback_state)
+      else:
+        logging.error('Unknown checkpoint `%s`', path)
+        return None
 
-    restore_cfg, paths = get_first_valid_restore_config_and_paths(restore_cfgs)
-    for path in paths:
-      yield _restore_path(path, restore_cfg)
+    empty_rounds = 0
+    while empty_rounds < 120:  # 2h
+      restore_cfg, paths = get_first_valid_restore_config_and_paths(
+          restore_cfgs)
+      # For specific checkpoint just return it.
+      if restore_cfg is not None and restore_cfg.mode != 'all' and paths:
+        checkpoint = _restore_path(paths[0], restore_cfg)
+        if checkpoint is not None:
+          yield checkpoint
+        return
+      # Some weird hack to eval all and then look for new checkpoints.
+      for path in paths:
+        model_dir = os.path.dirname(path)
+        checkpoint_step = os.path.basename(path).split('-')[-1]
+        eval_file = os.path.join(
+            model_dir, 'inference_eval',
+            f'wagen_summarization_rndprefix-{checkpoint_step}.jsonl')
+        if gfile.exists(eval_file):
+          logging.info('Checkpoint `%s` already evaluated. Skipping.', path)
+          continue
+        checkpoint = _restore_path(path, restore_cfg)
+        if checkpoint is not None:
+          empty_rounds = 0
+          yield checkpoint
+      logging.info('All available checkpoints evaluated. Sleeping for 60s.')
+      empty_rounds += 1
+      time.sleep(60)
+    logging.info('No new checkpoint for 2h. Will exit.')
 
   def from_checkpoint(
       self,
@@ -1499,7 +1527,7 @@ class _RegexMap(collections.abc.Mapping):
   def __len__(self) -> int:
     return len(self._kvs)
 
-  def __iter__(self) -> Iterable[Tuple[re.Pattern, Any]]:
+  def __iter__(self) -> Iterable[Tuple[re.Pattern[str], Any]]:
     return iter(self._kvs)
 
 
