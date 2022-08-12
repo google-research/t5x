@@ -525,7 +525,7 @@ def infer(
         input_ckpt.read(ckpt_path).assert_consumed()
 
     output_fname = f'{task.name}-{mode}.jsonl-{shard_id:05}-of-{num_shards:05}'
-    if gfile.exists(os.path.join(output_dir, output_fname)):
+    if gfile.exists(os.path.join(output_dir, f'{output_fname}.COMPLETED')):
       logging.info(
           "File %s exists. Skipping inference for shard %d/%d of task '%s'",
           output_fname, shard_id, num_shards, task.name)
