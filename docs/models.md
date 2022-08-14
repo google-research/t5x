@@ -96,6 +96,7 @@ T5 1.1 LM-100K Large | [t5_1_1_large.gin](https://github.com/google-research/t5x
 T5 1.1 LM-100K XL    | [t5_1_1_xl.gin](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_xl.gin)       | [t5_1_1_lm100k_xl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_lm100k_xl)
 T5 1.1 LM-100K XXL   | [t5_1_1_xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_xxl.gin)     | [t5_1_1_lm100k_xxl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_lm100k_xxl)
 
+
 #### mT5 Checkpoints
 
 These are the checkpoints used in the paper
@@ -183,7 +184,7 @@ the MoeTrainer and the MoePjitPartitioner. For example, for fine-tuning, use the
 
 ##### Converted Mesh Tensorflow checkpoints
 
-These are the checkpoints from the 
+These are the checkpoints from the
 [Switch Transformer model](https://arxiv.org/abs/2101.03961).
 
 **Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
