@@ -1336,7 +1336,7 @@ def get_vocabulary(
 def get_dataset(cfg: DatasetConfig,
                 shard_id: int,
                 num_shards: int,
-                feature_converter_cls: Type[seqio.FeatureConverter],
+                feature_converter_cls: Callable[..., seqio.FeatureConverter],
                 num_epochs: Optional[int] = None,
                 continue_from_last_checkpoint: bool = False) -> tf.data.Dataset:
   """Returns a dataset from SeqIO based on a `DatasetConfig`."""
@@ -1369,7 +1369,8 @@ def get_dataset(cfg: DatasetConfig,
 
 def get_dataset_inner(cfg: DatasetConfig,
                       shard_info: seqio.ShardInfo,
-                      feature_converter_cls: Type[seqio.FeatureConverter],
+                      feature_converter_cls: Callable[...,
+                                                      seqio.FeatureConverter],
                       seed: Optional[int] = None,
                       num_epochs: Optional[int] = None):
   """Internal fn to load a dataset from SeqIO based on a `DatasetConfig`."""
@@ -1414,17 +1415,34 @@ class GetDatasetCallable(typing_extensions.Protocol):
     ...
 
 
+class GetEvalDatasetCallable(typing_extensions.Protocol):
+  """Interface for a function returning a dataset (iterator)."""
+
+  def __call__(
+      self, cfg: DatasetConfig, shard_id: int, num_shards: int, eval_steps: int,
+      feature_converter_cls: Callable[..., seqio.FeatureConverter]
+  ) -> Mapping[str, tf.data.Dataset]:
+    ...
+
+
 def get_training_eval_datasets(
     cfg: DatasetConfig,
     shard_id: int,
     num_shards: int,
     eval_steps: int,
     feature_converter_cls: Callable[..., seqio.FeatureConverter],
-    get_dataset_fn: GetDatasetCallable = get_dataset,
+    deterministic: bool = False,
+    model_dir: Optional[str] = None,
+    start_step: int = 0,
 ) -> Mapping[str, tf.data.Dataset]:
   """Returns a mapping from eval task name to its dataset."""
   mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
   datasets = {}
+  get_dataset_fn = get_dataset
+  if deterministic:
+    assert model_dir is not None
+    get_dataset_fn = functools.partial(
+        get_deterministic_dataset, model_dir=model_dir, start_step=start_step)
 
   if cfg.batch_size % num_shards:
     raise ValueError(
