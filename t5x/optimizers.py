@@ -21,10 +21,12 @@ Additional support for the legacy Adafactor implementation.
 """
 
 import functools
-from typing import Any, Optional, Union, Sequence, Tuple
+from typing import Any, Optional, Union, Sequence, Tuple, Mapping
 
 import flax
-from flax import optim  # just used for transitional type definitions
+
+# just used for transitional type definitions
+
 from flax import serialization
 from flax import struct
 from flax import traverse_util
@@ -162,9 +164,10 @@ class Optimizer(struct.PyTreeNode):
 
 # Transitional Type Definitions
 
-OptimizerType = Union[optim.Optimizer, Optimizer]
-OptimizerStateType = Union[optim.OptimizerState, OptimizerState]
-OptimizerDefType = Union[optim.OptimizerDef, OptimizerDef]
+OptimizerType = Optimizer
+OptimizerStateType = Union[OptimizerState, Mapping[str, Any]]
+OptimizerDefType = OptimizerDef
+
 
 # Optax Elementwise Wrapper
 

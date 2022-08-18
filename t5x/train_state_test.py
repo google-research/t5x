@@ -15,7 +15,6 @@
 """Tests for train_state."""
 from absl.testing import absltest
 from flax import linen as nn
-from flax import optim
 import flax.core
 from flax.linen import partitioning as flax_partitioning
 import jax
@@ -312,30 +311,6 @@ class FlaxOptimTrainStateTest(absltest.TestCase):
                 }
             }
         }))
-
-  def test_as_logical_axes_unsupported_optimizer(self):
-    model_variables = flax.core.freeze({
-        'params': {
-            'dense': {
-                'bias': np.zeros(4),
-                'kernel': np.zeros((2, 4))
-            }
-        },
-        'params_axes': {
-            'dense': {
-                'bias_axes': AxisMetadata(names=('embed',)),
-                'kernel_axes': AxisMetadata(names=('vocab', 'embed')),
-            }
-        },
-    })
-    optimizer_def = optim.GradientDescent(0.42)
-    state = train_state_lib.FlaxOptimTrainState.create(optimizer_def,
-                                                       model_variables)
-    with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "Optimizer 'GradientDescent' requires a `derive_logical_axes` method "
-        'to be used with named axis partitioning.'):
-      state.as_logical_axes()
 
   def test_to_state_dict(self):
     model_variables = flax.core.freeze({

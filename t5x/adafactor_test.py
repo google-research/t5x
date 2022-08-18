@@ -22,7 +22,6 @@ from absl.testing import absltest
 from absl.testing import parameterized
 
 import flax
-from flax import optim  # used for equivalence testing only
 from flax import traverse_util
 import jax
 from jax import numpy as jnp
@@ -84,7 +83,7 @@ def tree_equals(x, y):
 def _get_multi_adafactor(
     learning_rate: float, step_offset: int,
     adafactor_exclude_from_parameter_scale: Sequence[str]
-) -> optim.MultiOptimizer:
+) -> optimizers.MultiOptimizer:
   """Get adafactor with support for excluding some parameters from scaling."""
 
   def _should_not_scale(path):
@@ -94,15 +93,15 @@ def _get_multi_adafactor(
       lambda path, _: not _should_not_scale(path))
   unscaled_vars = traverse_util.ModelParamTraversal(
       lambda path, _: _should_not_scale(path))
-  scaled_opt = optim.Adafactor(
+  scaled_opt = adafactor.Adafactor(
       learning_rate, decay_rate=0.8, step_offset=step_offset)
-  unscaled_opt = optim.Adafactor(
+  unscaled_opt = adafactor.Adafactor(
       learning_rate,
       decay_rate=0.8,
       step_offset=step_offset,
       multiply_by_parameter_scale=False)
-  return optim.MultiOptimizer((scaled_vars, scaled_opt),
-                              (unscaled_vars, unscaled_opt))
+  return optimizers.MultiOptimizer(
+      ((scaled_vars, scaled_opt), (unscaled_vars, unscaled_opt)))
 
 
 # Inline test data
@@ -463,7 +462,7 @@ class AdafactorTest(parameterized.TestCase):
     p = {'a': random.uniform(k1, shape)}
     g = {'a': random.uniform(k2, shape)}
 
-    orig_opt = optim.Adafactor(0.1).create(p)
+    orig_opt = adafactor.Adafactor(0.1).create(p)
     new_opt = adafactor.Adafactor(0.1, factor_map=None).create(p)
     check_eq(orig_opt.state_dict(), new_opt.state_dict())
 
@@ -490,7 +489,7 @@ class AdafactorTest(parameterized.TestCase):
     p = {'a': random.uniform(k3, shape), 'b': random.uniform(k4, shape)}
     g = {'a': random.uniform(k5, shape), 'b': random.uniform(k6, shape)}
 
-    orig_opt = optim.Adafactor(0.1).create(p)
+    orig_opt = adafactor.Adafactor(0.1).create(p)
     factor_map = adafactor.HParamMap(
         rules=((('a'), rule), ('.*', adafactor.HEURISTIC_RULE)))
     new_opt = adafactor.Adafactor(0.1, factor_map=factor_map).create(p)
