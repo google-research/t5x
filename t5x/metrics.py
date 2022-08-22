@@ -216,8 +216,8 @@ class TimeRate(Time):
     return self.numerator / duration
 
   def replace_duration(self, duration: Scalar) -> "Time":
-    if not (isinstance(self.numerator, np.ndarray) or
-            isinstance(self.numerator, GlobalDeviceArray)):
+    if not isinstance(self.numerator,
+                      (int, float, np.number, np.ndarray, GlobalDeviceArray)):
       raise ValueError(
           "Expected numerator to be of type np.ndarray or GlobalDeviceArray "
           "since method should be called outside of a compiled function. "
