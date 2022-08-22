@@ -14,7 +14,7 @@
 
 """Pjit partitioner with Mixture of Experts overrides."""
 
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence, Tuple, Union
 
 from absl import logging
 import cached_property
@@ -487,3 +487,5 @@ def _infer_state_filter_fn(
     # Non-factored kernel terms (`v`) inherit the correct specs, so no state
     # updates will be required.
     return None
+
+
