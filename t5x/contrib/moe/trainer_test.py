@@ -18,6 +18,7 @@ import contextlib
 
 from absl.testing import absltest
 import jax
+from jax._src import dispatch as jax_dispatch
 import numpy as np
 from t5x import metrics as metrics_lib
 from t5x import models as models_lib
@@ -37,7 +38,7 @@ def fake_log_elapsed_time(_):
   yield
 
 
-jax._src.dispatch.log_elapsed_time = fake_log_elapsed_time
+jax_dispatch.log_elapsed_time = fake_log_elapsed_time
 
 
 def fake_accum_grads(model, optimizer, batch, rng, num_microbatches,

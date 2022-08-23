@@ -37,6 +37,7 @@ from flax.linen import partitioning as flax_partitioning
 import jax
 from jax import prng
 from jax import pxla
+from jax._src import random as jax_random
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
 from jax.experimental.global_device_array import GlobalDeviceArray
@@ -588,7 +589,7 @@ def set_hardware_rng_ops():
   rbg_prng_key = functools.partial(prng.seed_with_impl,
                                    prng.unsafe_rbg_prng_impl)
   jax.random.PRNGKey = rbg_prng_key
-  jax._src.random.PRNGKey = rbg_prng_key  # pylint: disable=protected-access
+  jax_random.PRNGKey = rbg_prng_key  # pylint: disable=protected-access
 
 
 # -----------------------------------------------------------------------------

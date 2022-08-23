@@ -20,6 +20,7 @@ from absl.testing import absltest
 from flax import core as flax_core
 from flax.linen import partitioning as flax_partitioning
 import jax
+from jax._src.lib import xla_bridge
 import numpy as np
 import optax
 from t5x import optimizers
@@ -69,7 +70,7 @@ class PartitioningTest(absltest.TestCase):
 
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')
-  @mock.patch('jax._src.lib.xla_bridge.process_index')
+  @mock.patch.object(xla_bridge, 'process_index')
   def test_default_mesh(self, process_index_fn, devices_fn, local_devices_fn):
     # Mesh with 8 devices.
     devices = test_utils.make_devices(2, 2, 1, 2, kind='TPU v3')
@@ -115,7 +116,7 @@ class PartitioningTest(absltest.TestCase):
 
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')
-  @mock.patch('jax._src.lib.xla_bridge.process_index')
+  @mock.patch.object(xla_bridge, 'process_index')
   def test_local_chunker_moe_usage(self, process_index_fn, devices_fn,
                                    local_devices_fn):
     # The MoE partitioning library uses a 2D "data" mesh spanning ('expert',
@@ -150,7 +151,7 @@ class PartitioningTest(absltest.TestCase):
 
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')
-  @mock.patch('jax._src.lib.xla_bridge.process_index')
+  @mock.patch.object(xla_bridge, 'process_index')
   def test_local_chunker_data_layout(self, process_index_fn, devices_fn,
                                      local_devices_fn):
     # Mesh with 32 devices.

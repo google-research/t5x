@@ -25,6 +25,7 @@ import clu.metrics
 import clu.values
 import flax
 import jax
+from jax._src import dispatch as jax_dispatch
 import jax.numpy as jnp
 import numpy as np
 from t5x import metrics as metrics_lib
@@ -49,7 +50,7 @@ def fake_log_elapsed_time(_):
   yield
 
 
-jax._src.dispatch.log_elapsed_time = fake_log_elapsed_time
+jax_dispatch.log_elapsed_time = fake_log_elapsed_time
 
 
 def _validate_events(test_case, summary_dir, expected_metrics, steps):
