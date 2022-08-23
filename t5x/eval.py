@@ -90,6 +90,9 @@ def evaluate(
     utils.import_module(dataset_cfg.module)
   batch_size = dataset_cfg.batch_size
 
+  # TODO(b/234480674): GDA not supported for eval.
+  restore_checkpoint_cfg.use_gda = False
+
   summarize_config_fn(model_dir=output_dir, summary_writer=None, step=0)
 
   ds_vocabs = utils.get_vocabulary(dataset_cfg)

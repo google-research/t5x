@@ -138,7 +138,7 @@ class SaveCheckpointConfig:
   state_transformation_fns: Sequence[checkpoints.SaveStateTransformationFn] = (
       dataclasses.field(default_factory=list))
   # Enable GDA in this Checkpointer.
-  use_gda: bool = False
+  use_gda: bool = True
 
   def __post_init__(self):
     if self.dtype not in (None, 'float32', 'bfloat16'):
@@ -179,7 +179,7 @@ class RestoreCheckpointConfig:
   state_transformation_fns: Sequence[
       checkpoints.RestoreStateTransformationFn] = ()
   # Enable GDA in this Checkpointer.
-  use_gda: bool = False
+  use_gda: bool = True
 
   def __post_init__(self):
     if self.mode not in ('specific', 'latest', 'all'):
@@ -308,7 +308,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
                ds_iter: Optional[Union[tf.data.Iterator,
                                        clu.data.DatasetIterator]] = None,
                model_dir: Optional[str] = None,
-               use_gda: Optional[bool] = False):
+               use_gda: Optional[bool] = True):
     if save_cfg is not None:
       if save_cfg.save_dataset:
         assert ds_iter is not None
