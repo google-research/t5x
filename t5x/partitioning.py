@@ -67,6 +67,7 @@ class AxisNames(tuple):
 # ----------------------------------------------------------------------------
 # TODO(levskaya): This function is now no different than jax_pjit, but callers
 # currently depend on `backend` argument
+# TODO(Cherry): remove frontend
 def pjit(
     fun: Callable,  # pylint: disable=g-bare-generic
     in_axis_resources,
