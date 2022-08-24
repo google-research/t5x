@@ -565,7 +565,8 @@ def _id_fn(x, ix):
   """Identity function for copying parameters to the devices, sharded."""
   # A pure identity such as `lambda x, *: x` can get optimized away, so we
   # include a random.split as a cheap function that cannot be optimized away.
-  return x, random.split(jnp.array([ix, ix], dtype=jnp.uint32))
+  y = random.split(random.PRNGKey(jnp.array(ix, dtype=jnp.uint32)))
+  return x, y
 
 
 @dataclasses.dataclass
