@@ -73,9 +73,11 @@ def pjit(
     out_axis_resources,
     static_argnums: Union[int, Sequence[int]] = (),
     donate_argnums: Union[int, Sequence[int]] = (),
-    backend: Optional[str] = None):
+    backend: Optional[str] = None,
+    frontend: Optional[str] = None):
   """Wrapper for pjit."""
   del backend
+  del frontend
   return jax_pjit(
       fun,
       in_axis_resources,
