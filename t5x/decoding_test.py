@@ -21,7 +21,6 @@ from unittest import mock
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-from jax._src import api
 from jax.experimental import host_callback as hcb
 import jax.numpy as jnp
 import numpy as np
@@ -150,7 +149,7 @@ class DecodeTest(parameterized.TestCase):
 
       sequences = hcb.call(
           callback_fn, (state.cur_index, state.sequences),
-          result_shape=api.ShapeDtypeStruct(state.sequences.shape,
+          result_shape=jax.ShapeDtypeStruct(state.sequences.shape,
                                             state.sequences.dtype))
       return state.replace(sequences=sequences)
 
