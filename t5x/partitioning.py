@@ -64,30 +64,9 @@ class AxisNames(tuple):
 
 
 # pjit wrappers for cpu fallback.
-# ----------------------------------------------------------------------------
-# TODO(levskaya): This function is now no different than jax_pjit, but callers
-# currently depend on `backend` argument
-def pjit(
-    fun: Callable,  # pylint: disable=g-bare-generic
-    in_axis_resources,
-    out_axis_resources,
-    static_argnums: Union[int, Sequence[int]] = (),
-    donate_argnums: Union[int, Sequence[int]] = (),
-    backend: Optional[str] = None):
-  """Wrapper for pjit."""
-  del backend
-  return jax_pjit(
-      fun,
-      in_axis_resources,
-      out_axis_resources,
-      static_argnums=static_argnums,
-      donate_argnums=donate_argnums)
-
-
-# pjit wrappers for cpu fallback.
 # -----------------------------------------------------------------------------
 # TODO(levskaya): upstream this fallback behavior to jax pjit.
-def pjit_with_cpu_fallback(
+def pjit(
     fun: Callable,  # pylint: disable=g-bare-generic
     in_axis_resources,
     out_axis_resources,
@@ -845,8 +824,7 @@ class PjitPartitioner(BasePjitPartitioner):
                model_parallel_submesh: Optional[HardwareMesh] = None,
                params_on_devices: bool = True,
                backend: Optional[str] = None,
-               logical_axis_rules: Optional[LogicalAxisRules] = None,
-               use_cpu_pjit: Optional[bool] = False):
+               logical_axis_rules: Optional[LogicalAxisRules] = None):
     """PjitPartitioner constructor.
 
     See https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/partitioning for details.
@@ -880,8 +858,6 @@ class PjitPartitioner(BasePjitPartitioner):
         logical axis names to either `None` (not sharded), 'model' (to shard
         across the model-parallel submesh), or 'data' (to shard across the
         data-parallel submesh).
-      use_cpu_pjit: enables wrapper function for pjit which just jits the
-        function if using CPU backend.
     """
     super().__init__(
         num_partitions=num_partitions,
@@ -893,7 +869,6 @@ class PjitPartitioner(BasePjitPartitioner):
     self._logical_axis_rules = tuple(logical_axis_rules)
     self._data_axis, = flax_partitioning.logical_to_mesh_axes(
         ['batch'], logical_axis_rules)
-    self._use_cpu_pjit = use_cpu_pjit
 
   def partition(
       self,
@@ -904,11 +879,7 @@ class PjitPartitioner(BasePjitPartitioner):
       donate_argnums: Union[int, Sequence[int]] = ()
   ) -> PjittedFnWithContext:
     """Partitions the function using jax.pjit."""
-    if self._use_cpu_pjit:
-      pjit_fn = pjit_with_cpu_fallback
-    else:
-      pjit_fn = pjit
-    pjitted = pjit_fn(
+    pjitted = pjit(
         fn,
         in_axis_resources=in_axis_resources,
         out_axis_resources=out_axis_resources,

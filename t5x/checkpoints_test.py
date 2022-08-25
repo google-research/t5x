@@ -13,7 +13,6 @@
 # limitations under the License.
 
 """Tests for t5x.checkpoints."""
-# TODO(b/234480674): Deprecate this test in favor of gda_checkpoints_test.
 import concurrent.futures
 import functools
 import itertools
@@ -255,8 +254,7 @@ class CheckpointsTest(parameterized.TestCase):
         self.tmp_dir,
         ds_iter,
         save_dtype=save_dtype,
-        restore_dtype=restore_dtype,
-        use_gda=False)
+        restore_dtype=restore_dtype)
     return fn(checkpointer)
 
   # pylint:disable=no-value-for-parameter
@@ -279,8 +277,7 @@ class CheckpointsTest(parameterized.TestCase):
         partitioner,
         self.tmp_dir,
         ds_iter,
-        save_dtype=save_dtype,
-        use_gda=False)
+        save_dtype=save_dtype)
     return fn(checkpointer)
 
   def test_get_parameter_infos(self):
@@ -296,8 +293,8 @@ class CheckpointsTest(parameterized.TestCase):
         step=np.int32(42))
     # host 3 of a 4x4 with mesh 'model' dim == 16
     partitioner = self.get_partitioner(3, 4, 16)
-    checkpointer = checkpoints.Checkpointer(
-        train_state, partitioner, self.tmp_dir, use_gda=False)
+    checkpointer = checkpoints.Checkpointer(train_state, partitioner,
+                                            self.tmp_dir)
 
     expected_parameter_infos = {
         'state': {
@@ -385,8 +382,8 @@ class CheckpointsTest(parameterized.TestCase):
         })
     # host 3 of a 4x4 with mesh 'model' dim == 16
     partitioner = self.get_partitioner(3, 4, 16)
-    checkpointer = checkpoints.Checkpointer(
-        train_state, partitioner, self.tmp_dir, use_gda=False)
+    checkpointer = checkpoints.Checkpointer(train_state, partitioner,
+                                            self.tmp_dir)
     kernel_state_info = (
         checkpointer._get_parameter_infos()['state']['param_states']['kernel'])
     self.assertIsNone(kernel_state_info)
@@ -827,11 +824,7 @@ class CheckpointsTest(parameterized.TestCase):
     no_partitions_partitioner = self.get_partitioner(0, 1, 1)
     train_state = self.train_state
     checkpointer = checkpoints.Checkpointer(
-        train_state,
-        no_partitions_partitioner,
-        self.tmp_dir,
-        keep=2,
-        use_gda=False)
+        train_state, no_partitions_partitioner, self.tmp_dir, keep=2)
 
     checkpointer.save(update_train_state_step(train_state, 42))
     self.assertSequenceEqual(checkpointer.all_steps(), [42])
@@ -855,11 +848,7 @@ class CheckpointsTest(parameterized.TestCase):
     no_partitions_partitioner = self.get_partitioner(0, 1, 1)
     train_state = self.train_state
     checkpointer = checkpoints.Checkpointer(
-        train_state,
-        no_partitions_partitioner,
-        self.tmp_dir,
-        keep=1,
-        use_gda=False)
+        train_state, no_partitions_partitioner, self.tmp_dir, keep=1)
 
     checkpointer.save(update_train_state_step(train_state, 42))
     self.assertSequenceEqual(checkpointer.all_steps(), [42])
@@ -890,8 +879,7 @@ class CheckpointsTest(parameterized.TestCase):
         self.tmp_dir,
         dataset_iterator=dataset_iterator,
         keep=2,
-        keep_dataset_checkpoints=1,
-        use_gda=False)
+        keep_dataset_checkpoints=1)
 
     checkpointer.save(update_train_state_step(train_state, 42))
     self.assertSequenceEqual(checkpointer.all_steps(), [42])
@@ -926,8 +914,7 @@ class CheckpointsTest(parameterized.TestCase):
         self.tmp_dir,
         dataset_iterator=dataset_iterator,
         keep=1,
-        keep_dataset_checkpoints=1,
-        use_gda=False)
+        keep_dataset_checkpoints=1)
 
     checkpointer.save(update_train_state_step(train_state, 42))
     self.assertSequenceEqual(checkpointer.all_steps(), [42])
@@ -963,8 +950,7 @@ class CheckpointsTest(parameterized.TestCase):
         keep=2,
         metric_name_to_monitor='train/accuracy',
         metric_mode='max',
-        keep_checkpoints_without_metrics=False,
-        use_gda=False)
+        keep_checkpoints_without_metrics=False)
 
     # Test that without a valid set of metrics deletion falls back to oldest
     # step (since keep_checkpoints_without_metrics is set to False).
@@ -1012,8 +998,7 @@ class CheckpointsTest(parameterized.TestCase):
         keep=2,
         metric_name_to_monitor='train/accuracy',
         metric_mode='max',
-        keep_checkpoints_without_metrics=False,
-        use_gda=False)
+        keep_checkpoints_without_metrics=False)
 
     summary_writer = tensorboard.SummaryWriter(
         os.path.join(self.tmp_dir, 'train'))
@@ -1059,8 +1044,7 @@ class CheckpointsTest(parameterized.TestCase):
         self.tmp_dir,
         keep=1,
         metric_name_to_monitor='train/accuracy',
-        metric_mode='max',
-        use_gda=False)
+        metric_mode='max')
 
     # Pre-create metrics for only some of the steps.
     summary_writer = tensorboard.SummaryWriter(
@@ -1098,11 +1082,7 @@ class CheckpointsTest(parameterized.TestCase):
 
     # First, create a checkpointer that saves all checkpoints.
     checkpointer = checkpoints.Checkpointer(
-        train_state,
-        no_partitions_partitioner,
-        self.tmp_dir,
-        keep=None,
-        use_gda=False)
+        train_state, no_partitions_partitioner, self.tmp_dir, keep=None)
 
     # Create a series of checkpoints. Create many checkpoints to stress test
     # event collection (some methods employ lossy/sampling collection).
@@ -1127,8 +1107,7 @@ class CheckpointsTest(parameterized.TestCase):
         self.tmp_dir,
         keep=2,
         metric_name_to_monitor='train/accuracy',
-        metric_mode='max',
-        use_gda=False)
+        metric_mode='max')
 
     # Verify that pre-existing metrics are read and the appropriate checkpoints
     # are deleted.
@@ -1147,8 +1126,7 @@ class CheckpointsTest(parameterized.TestCase):
         metric_name_to_monitor='train/accuracy',
         metric_mode='max',
         keep_checkpoints_without_metrics=False,
-        force_keep_period=3,
-        use_gda=False)
+        force_keep_period=3)
 
     summary_writer = tensorboard.SummaryWriter(
         os.path.join(self.tmp_dir, 'train'))
@@ -1183,8 +1161,7 @@ class CheckpointsTest(parameterized.TestCase):
         self.tmp_dir,
         keep=1,
         metric_name_to_monitor='train/accuracy',
-        metric_mode='max',
-        use_gda=False)
+        metric_mode='max')
 
     # Pre-create metrics for only some of the steps.
     summary_writer = tensorboard.SummaryWriter(
@@ -1390,10 +1367,8 @@ class CheckpointsTest(parameterized.TestCase):
         partitioner=partitioner)
 
     restored = list(
-        train_state_initializer.from_checkpoints([
-            utils.RestoreCheckpointConfig(
-                mode='specific', path=path, use_gda=False)
-        ]))
+        train_state_initializer.from_checkpoints(
+            [utils.RestoreCheckpointConfig(mode='specific', path=path)]))
     self.assertLen(restored, 1)
     return restored[0]
 
@@ -1750,8 +1725,8 @@ class CheckpointsTest(parameterized.TestCase):
       return FlaxOptimTrainState.create(model.optimizer_def, initial_variables)
 
     train_state = jax.eval_shape(initialize_params_fn, jax.random.PRNGKey(0))
-    checkpointer = checkpoints.Checkpointer(
-        train_state, partitioner, self.tmp_dir, use_gda=False)
+    checkpointer = checkpoints.Checkpointer(train_state, partitioner,
+                                            self.tmp_dir)
     _ = checkpointer.convert_from_tf_checkpoint(checkpoint_path)
 
   def test_load_matched(self):

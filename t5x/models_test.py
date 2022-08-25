@@ -471,8 +471,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         'decoder_target_tokens': decoder_target_tokens
     }
 
-    partitioner = partitioning.PjitPartitioner(
-        num_partitions=1, use_cpu_pjit=True)
+    partitioner = partitioning.PjitPartitioner(num_partitions=1)
 
     model = test_utils.get_t5_test_model()
 

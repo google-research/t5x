@@ -35,7 +35,6 @@ import re
 import subprocess
 import time
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
-import warnings
 
 from absl import logging
 import clu.data
@@ -443,7 +442,7 @@ class Checkpointer(object):
       keep: Optional[int] = None,
       save_dtype: jnp.dtype = np.float32,
       restore_dtype: Optional[jnp.dtype] = None,
-      use_gda: Optional[bool] = True,
+      use_gda: Optional[bool] = False,
       keep_dataset_checkpoints: Optional[int] = None):
     """Checkpointer constructor.
 
@@ -468,10 +467,6 @@ class Checkpointer(object):
         keep. If more than this number of data iterators exist after a save, the
         oldest ones will be automatically deleted to save space.
     """
-    if not use_gda:
-      warnings.warn(
-          '`use_gda=False` is deprecated and will be removed on Oct-01-22.'
-          ' Please ensure that your workflow can use GDA.', DeprecationWarning)
     self._train_state = train_state
     self._partitioner = partitioner
     self.checkpoints_dir = checkpoints_dir
@@ -498,10 +493,9 @@ class Checkpointer(object):
 
     asyncio.set_event_loop(asyncio.new_event_loop())
 
-  def _get_state_dict_for_save(
-      self,
-      state_dict: Dict[str, Any],
-      lazy_load: bool = True) -> MutableMapping[str, Any]:
+  def _get_state_dict_for_save(self,
+                               state_dict: Dict[str, Any],
+                               lazy_load: bool = True) -> Mapping[str, Any]:
     """Gets the optimizer state dict."""
 
     def _lazy_load_device_array(arr):
@@ -544,7 +538,7 @@ class Checkpointer(object):
             local_chunk_info=None,
             axes=None)
 
-      if isinstance(arr, gda_lib.GlobalDeviceArray):
+      if self._use_gda and isinstance(arr, gda_lib.GlobalDeviceArray):
         local_chunk_info = None
         metadata = gda_serialization._get_metadata(arr)  # pylint: disable=protected-access
         del metadata['dtype']
@@ -771,8 +765,7 @@ class Checkpointer(object):
         return maybe_arr
 
       # Only write each chunk of a parameter from one host
-      if isinstance(maybe_arr, gda_lib.GlobalDeviceArray
-                   ) or param_info.local_chunk_info.replica_id == 0:
+      if self._use_gda or param_info.local_chunk_info.replica_id == 0:
         arr = maybe_arr
 
         # Wait until memory is available.
@@ -817,7 +810,7 @@ class Checkpointer(object):
               'dtype': jnp.dtype(arr.dtype).name,  # dtype before cast
           }
 
-        if isinstance(arr, gda_lib.GlobalDeviceArray):
+        if self._use_gda:
           await gda_serialization.async_serialize(arr, tmp_ts_spec_dict)
         else:
           t = await ts.open(
@@ -1063,26 +1056,14 @@ class Checkpointer(object):
     if self._use_gda:
       mesh = self._partitioner.mesh
       axes = param_info.axes
-
-    async def get_fn():
-      nonlocal mesh
-      nonlocal axes
-      arr = await _read_ts(
-          param_info,
-          maybe_ts_spec,
-          ckpt_path=ckpt_path,
-          restore_dtype=restore_dtype,
-          mesh=mesh,
-          axes=axes)
-      if self._use_gda and isinstance(arr, (np.ndarray, jnp.ndarray)):
-        if axes is None:
-          axes = PartitionSpec(None,)
-        if restore_dtype is not None:
-          arr = arr.astype(restore_dtype)
-        arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
-                                                      lambda idx: arr[idx])
-      return arr
-
+    get_fn = functools.partial(
+        _read_ts,
+        param_info,
+        maybe_ts_spec,
+        ckpt_path=ckpt_path,
+        restore_dtype=restore_dtype,
+        mesh=mesh,
+        axes=axes)
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
 
@@ -1132,32 +1113,23 @@ class Checkpointer(object):
         lazy_parameters=False,
         strict=strict,
         translator=translator)
-    full_state_dict = dict(full_state_dict)
 
     def _partition_parameter(maybe_arr: Any, param_info: _ParameterInfo):
       if isinstance(maybe_arr, np.ndarray) and param_info:
         arr = maybe_arr
-        if self._use_gda:
-          to_gda = self._partitioner.partition(
-              lambda x: x,
-              in_axis_resources=None,
-              out_axis_resources=param_info.axes)
-          return to_gda(arr)
-        else:
-          if param_info.shape is not None and arr.shape != param_info.shape:
-            raise ValueError(
-                f'Shape of `{param_info.name}` in checkpoint {arr.shape} does '
-                f'not match expected {param_info.shape}.')
-          if param_info.local_chunk_info:
-            arr = arr[param_info.local_chunk_info.slice]
-          return arr
+        if param_info.shape is not None and arr.shape != param_info.shape:
+          raise ValueError(
+              f'Shape of `{param_info.name}` in checkpoint {arr.shape} does '
+              f'not match expected {param_info.shape}.')
+        if param_info.local_chunk_info:
+          arr = arr[param_info.local_chunk_info.slice]
+        return arr
       return maybe_arr
 
-    if self.restore_dtype is not None:
-      full_state_dict['target'] = _cast(full_state_dict['target'],
-                                        self.restore_dtype)
     state_dict = jax.tree_util.tree_map(_partition_parameter, full_state_dict,
                                         self._parameter_infos)
+    if self.restore_dtype is not None:
+      state_dict['target'] = _cast(state_dict['target'], self.restore_dtype)
 
     return self._restore_train_state(state_dict)
 
