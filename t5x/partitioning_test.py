@@ -268,6 +268,22 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
     self.assertEqual(new_rules[:len(default_rules)], default_rules)
     self.assertEqual(new_rules[len(default_rules):], list(custom_rules))
 
+  def test_update_logical_axis_rules(self):
+    updated = partitioning.update_logical_axis_rules((
+        ('a', None),
+        ('b', 'model'),
+        ('c', 'data'),
+    ), (
+        ('a', 'model'),
+        ('d', None),
+        ('c', None),
+    ))
+    self.assertEqual(updated, (
+        ('a', 'model'),
+        ('b', 'model'),
+        ('c', None),
+        ('d', None),
+    ))
 
 if __name__ == '__main__':
   absltest.main()

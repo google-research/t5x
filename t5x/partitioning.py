@@ -560,6 +560,26 @@ def standard_logical_axis_rules(
   return rules
 
 
+def update_logical_axis_rules(rules: LogicalAxisRules,
+                              updates: LogicalAxisRules) -> LogicalAxisRules:
+  """Utility function to override an existing logical axis rule.
+
+  This is convenient if we want to reuse logical axis rules defined in some
+  other library.
+
+  Args:
+    rules: The logical axis rules to be updated.
+    updates: The rules to be updated.
+
+  Returns:
+    Updated logical axis rules.
+  """
+  # For Python 3.7+, dict preserves insertion order.
+  rules = dict(rules)
+  rules.update(updates)
+  return tuple(rules.items())
+
+
 # NB: This needs to be top-level for the jax compilation cache.
 def _id_fn(x, ix):
   """Identity function for copying parameters to the devices, sharded."""
