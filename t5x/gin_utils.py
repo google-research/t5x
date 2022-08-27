@@ -106,7 +106,7 @@ def run(main):
   """Wrapper for app.run that rewrites gin args before parsing."""
   app.run(
       main,
-      flags_parser=lambda a: app.parse_flags_with_usage(rewrite_gin_args(a)))
+      flags_parser=lambda a: app.parse_flags_with_usage(rewrite_gin_args(a)))  # pytype: disable=wrong-arg-types
 
 
 # ====================== Configurable Utility Functions ======================
