@@ -232,7 +232,7 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
         num_shards=num_shards,
         is_first_host_in_replica_set=(replica_id == 0))
 
-  def get_logical_axes(
+  def get_logical_axes(  # pytype: disable=signature-mismatch  # overriding-parameter-type-checks
       self, train_state: Union[FlaxOptimTrainState, InferenceState]
   ) -> Union[FlaxOptimTrainState, InferenceState]:
     """Returns a copy of TrainState with Optional[AxisNames] as leaves.
