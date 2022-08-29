@@ -25,8 +25,8 @@ The pjit function is pinned to use available TPU Metadata backend, for getting
 a proper lowering under TPU mesh.
 
 """
-import os
 
+import os
 from typing import Iterator, Optional
 
 import jax
@@ -37,17 +37,19 @@ from t5x import models
 from t5x import partitioning
 from t5x import trainer as trainer_lib
 from t5x import utils
-
 import tensorflow as tf
 
 
-def precompile(*,
-               model: models.BaseTransformerModel,
-               train_dataset_cfg: utils.DatasetConfig,
-               partitioner: partitioning.BasePartitioner,
-               model_dir: str,
-               random_seed: Optional[int],
-               get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset):
+
+def precompile(
+    *,
+    model: models.BaseTransformerModel,
+    train_dataset_cfg: utils.DatasetConfig,
+    partitioner: partitioning.BasePartitioner,
+    model_dir: str,
+    random_seed: Optional[int],
+    get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
+):
   """Compiles and dump the HLO to model dir, with HLO text dumps."""
   rng = random.PRNGKey(random_seed or 42)
   _, trainer_rng = random.split(rng, 2)
@@ -118,6 +120,7 @@ def precompile(*,
   # pytype: disable=attribute-error
   lowered = partitioned_step.lower(train_state_shape, batch)
   # pytype: enable=attribute-error
+
 
   # TODO(hthu): Make this a proper library without writing files by default.
   tf.io.gfile.makedirs(model_dir)
