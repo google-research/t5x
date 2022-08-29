@@ -395,6 +395,9 @@ def infer(
   """
   logging.info('Process ID: %d', jax.process_index())
 
+  # TODO(b/234480674): GDA not supported for infer.
+  restore_checkpoint_cfg.use_gda = False
+
   # Only allow `shard_id` 0 to write config summary, since the config summary
   # does NOT depend on `shard_id`.
   if shard_id == 0:
