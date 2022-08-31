@@ -1,0 +1,21 @@
+from __gin__ import dynamic_registration
+
+from t5x import export_lib
+from t5x import partitioning
+
+include 't5x/configs/runs/export.gin'
+
+
+MIXTURE_OR_TASK_NAME = %gin.REQUIRED
+
+export_lib.save:
+  create_preprocessor_fn = @export_lib.create_preprocessor_from_task
+  mixture_or_task_name = %MIXTURE_OR_TASK_NAME
+  output_features = None
+
+export_lib.create_preprocessor_from_task:
+  model = %MODEL
+  task_feature_lengths = %TASK_FEATURE_LENGTHS
+  task_name = %MIXTURE_OR_TASK_NAME
+  serialized_examples = True
+  run_precache = False
