@@ -41,6 +41,8 @@ import tensorflow as tf
 
 
 
+
+
 def precompile(
     *,
     model: models.BaseTransformerModel,
@@ -121,7 +123,6 @@ def precompile(
   lowered = partitioned_step.lower(train_state_shape, batch)
   # pytype: enable=attribute-error
 
-
   # TODO(hthu): Make this a proper library without writing files by default.
   tf.io.gfile.makedirs(model_dir)
   with tf.io.gfile.GFile(
@@ -133,3 +134,4 @@ def precompile(
     f.write(compiled.compiler_ir()[0].as_serialized_hlo_module_proto())
   with tf.io.gfile.GFile(os.path.join(model_dir, 'assignment'), 'wb') as f:
     np.save(f, partitioner.mesh.device_ids)
+
