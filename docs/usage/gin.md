@@ -185,7 +185,7 @@ binding these constructors.
 ```py
 # Load model with overrides.
 include 't5x/examples/t5/t5_1_1/large.gin'
-models.EncoderDecoderModel.predict_batch_with_aux.beam_size = 2
+models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 1
 ```
 
 Although we could define `MODEL = model.EncoderDecoderModel()` here, we prefer
