@@ -158,7 +158,7 @@ def compute_weighted_cross_entropy(
 
 @enum.unique
 class SpecialLossNormalizingFactor(enum.Enum):
-  """Specially calcualted loss_normalizing_factors, that are not a constant.
+  """Specially calculated loss_normalizing_factors, that are not a constant.
 
   Attributes:
     NUM_REAL_TARGET_TOKENS: Whether to divide the loss by the number of real
