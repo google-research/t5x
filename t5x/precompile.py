@@ -27,7 +27,7 @@ a proper lowering under TPU mesh.
 """
 
 import os
-from typing import Iterator, Optional
+from typing import Iterator, Mapping, Optional
 
 import jax
 from jax import random
@@ -76,13 +76,15 @@ def precompile(
                             model.FEATURE_CONVERTER_CLS)
 
   # Need to use full batch size.
+  element_spec = train_ds.element_spec
+  if not isinstance(element_spec, Mapping):
+    raise ValueError('T5X requires training examples to be dictionaries but '
+                     f'got type {type(element_spec)}.')
   input_shapes = {
       k: (data_layout.batch_size, *v.shape[1:])
-      for k, v in train_ds.element_spec.items()
+      for k, v in element_spec.items()
   }
-  input_types = {
-      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
-  }
+  input_types = {k: v.dtype.as_numpy_dtype() for k, v in element_spec}
 
   checkpointable_train_iter = iter(train_ds)
   train_iter: Iterator[trainer_lib.BatchType] = map(
