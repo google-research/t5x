@@ -1,0 +1,13 @@
+# Test config to exercise train.py, very similar to test_train_t5_tiny.gin,
+# except this only does evaluation, no training.
+
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+
+include 't5x/examples/t5/t5_1_1/examples/test_train_t5_tiny.gin'
+
+train_script.train:
+  run_eval_before_training = True
+  eval_period = 0
+  total_steps = 0
