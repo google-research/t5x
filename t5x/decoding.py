@@ -14,6 +14,7 @@
 
 """Fast decoding routines for inference from a trained model."""
 import functools
+import inspect
 
 from typing import Any, Callable, Mapping, Optional, Tuple, Union
 import flax
@@ -23,6 +24,7 @@ from jax import lax
 from jax import random
 import jax.numpy as jnp
 import numpy as np
+import typing_extensions
 
 PyTreeDef = type(jax.tree_util.tree_structure(None))
 
@@ -90,6 +92,31 @@ class SamplingLoopState:
   log_prob: jnp.ndarray
 
 
+class LogitCallbackFnCallable(typing_extensions.Protocol):
+  """Logit callback function call signature."""
+
+  def __call__(self,
+               logits: jnp.ndarray,
+               state: SamplingLoopState,
+               arg: Optional[jnp.ndarray] = None) -> jnp.ndarray:
+    """Function that modifies the logits before each temperature sampling step.
+
+    The function should take arguments (logits, state) and it should return the
+    modified logits. See `decoding_test.py` for an example usage.
+
+    Args:
+      logits: array: [batch_size, vocab] int32 logits for the current decoding
+        step.
+      state: SamplingLoopState: The current loop state.
+      arg: array: an optional argument useful when passed dynamically to provide
+        context from the request to the callback.
+
+    Returns:
+      logits: array: [batch_size, vocab] int32 modified logits.
+    """
+    ...
+
+
 _dynamic_update_vector_slice_in_dim = jax.vmap(
     lax.dynamic_update_slice_in_dim, in_axes=(0, 0, 0, None))
 
@@ -116,8 +143,8 @@ def temperature_sample(
     rescale_log_probs: bool = True,
     state_callback_fn: Optional[Callable[[SamplingLoopState],
                                          SamplingLoopState]] = None,
-    logit_callback_fn: Optional[Callable[[jnp.ndarray, SamplingLoopState],
-                                         jnp.ndarray]] = None
+    logit_callback_arg: Optional[jnp.ndarray] = None,
+    logit_callback_fn: Optional[LogitCallbackFnCallable] = None
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Temperature sampling for language model generation.
 
@@ -317,6 +344,9 @@ def temperature_sample(
       the accelerator or on the host using host callback. The function should
       take a SamplingLoopState as argument, and it returns the updated state.
       See `decoding_test.py` for an example usage.
+    logit_callback_arg: array: an optional argument that will be passed to
+      logit_callback_fn. This is useful when passed dynamically to provide
+      context from the request to the callback.
     logit_callback_fn: Function that modifies the logits before each temperature
       sampling step. The function should take arguments (logits, state) and it
       should return the modified logits. See `decoding_test.py` for an example
@@ -367,6 +397,7 @@ def temperature_sample(
       max_decode_steps=max_decode_steps,
       rescale_log_probs=rescale_log_probs,
       state_callback_fn=state_callback_fn,
+      logit_callback_arg=logit_callback_arg,
       logit_callback_fn=logit_callback_fn)
 
   batch_size = inputs.shape[0]
@@ -401,9 +432,8 @@ def _temperature_sample_single_trial(
     rescale_log_probs: bool = True,
     state_callback_fn: Optional[Callable[[SamplingLoopState],
                                          SamplingLoopState]] = None,
-    logit_callback_fn: Optional[Callable[[jnp.ndarray, SamplingLoopState],
-                                         jnp.ndarray]] = None
-) -> jnp.ndarray:
+    logit_callback_arg: Optional[jnp.ndarray] = None,
+    logit_callback_fn: Optional[LogitCallbackFnCallable] = None) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
   # We can check the values of topp and topk only if they are not dynamic.
@@ -505,7 +535,11 @@ def _temperature_sample_single_trial(
     # Sample next token from logits.
 
     if logit_callback_fn is not None:
-      logits = logit_callback_fn(logits, state)
+      logit_callback_sig = inspect.signature(logit_callback_fn)
+      if len(logit_callback_sig.parameters) == 3:
+        logits = logit_callback_fn(logits, state, logit_callback_arg)
+      else:
+        logits = logit_callback_fn(logits, state)
 
     def sample_logits_with_nonzero_temperature(logits):
       scaled_logits = logits / jnp.maximum(temperature, MIN_TEMPERATURE)

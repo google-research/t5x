@@ -15,6 +15,7 @@
 """Tests for t5x.decoding."""
 
 import functools
+import inspect
 from typing import Mapping, Tuple
 from unittest import mock
 
@@ -196,6 +197,40 @@ class DecodeTest(parameterized.TestCase):
 
     expected = [[5, 6, 7, 2, 2], [8, 9, 3, 3, 3]]
     np.testing.assert_array_equal(expected, sampled_sequences)
+
+  def test_temperature_sample_with_logit_callback_arg(self):
+
+    def token_to_logits(decoding_state: decoding.DecodingState):  # pylint: disable=unused-argument
+      # uniform distribution over targets from model
+      logits = np.array([[-1e7, -1e7, -1e7, -1e7], [-1e7, -1e7, -1e7, -1e7]],
+                        dtype=np.float32)
+      return logits, {}
+
+    def logit_callback_fn(logits, state, arg):  # pylint: disable=unused-argument
+      pass
+
+    mock_logit_callback_fn = mock.Mock()
+    mock_logit_callback_fn.__signature__ = inspect.signature(logit_callback_fn)
+    mock_logit_callback_fn.return_value = np.array(
+        [[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]], dtype=np.float32)
+
+    # batch element 0 has length 3 prefix and element 1 has length 2.
+    inputs = np.array([[0, 5, 6, 7, 0], [0, 8, 9, 0, 0]], dtype=np.int32)
+    expected_logit_callback_arg = np.array([1, 2, 3, 4, 5], dtype=np.int32)
+    sampled_sequences, _ = decoding._temperature_sample_single_trial(
+        inputs, {},
+        token_to_logits,
+        EOS_ID,
+        jax.random.PRNGKey(0),
+        topk=0,
+        temperature=0.0,
+        logit_callback_arg=expected_logit_callback_arg,
+        logit_callback_fn=mock_logit_callback_fn)
+
+    expected = [[5, 6, 7, 2, 2], [8, 9, 3, 3, 3]]
+    np.testing.assert_array_equal(expected, sampled_sequences)
+    mock_logit_callback_fn.assert_called_once_with(mock.ANY, mock.ANY,
+                                                   expected_logit_callback_arg)
 
   def test_temperature_sample_prefix_ending_with_eos_early_stop(self):
     batch, max_decode_len = 2, 7
