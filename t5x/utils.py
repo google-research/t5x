@@ -1060,9 +1060,11 @@ def _remove_padding(all_inferences, all_indices):
   return all_inferences, all_indices
 
 
-def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
+def get_infer_fn(infer_step: InferStepCallable,
+                 batch_size: int,
                  train_state_axes: train_state_lib.TrainState,
-                 partitioner: partitioning.BasePartitioner) -> InferFnCallable:
+                 partitioner: partitioning.BasePartitioner,
+                 return_batched: bool = False) -> InferFnCallable:
   """Get prediction function for the SeqIO evaluator.
 
   The returned prediction function should take in an enumerated dataset, make
@@ -1089,6 +1091,9 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     batch_size: the number of examples in the global infer batch.
     train_state_axes: Partitioning info for the train state object.
     partitioner: partitioner to use.
+    return_batched: If true, the returned predict_fn function returns result and
+    indices as single tensors with padding, rather than splitting them per each
+    each input example.
 
   Returns:
     predict_fn: a callable which takes in the enumerated infer dataset and an
@@ -1191,12 +1196,16 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       all_indices.append(batch_indices)
 
     logging.info('Inference of all batches done.')
+
     all_inferences = batched_results
 
     # List[B * shard_count, ...] -> [B * shard_count * batch_count, ...]
     all_inferences = jax.tree_map(lambda *args: np.concatenate(args),
                                   *all_inferences)
     all_indices = np.concatenate(all_indices)
+
+    if return_batched:
+      return all_inferences, all_indices
 
     all_inferences, all_indices = _remove_padding(all_inferences, all_indices)
 
