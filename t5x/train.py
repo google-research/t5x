@@ -33,6 +33,7 @@ from clu import metric_writers
 import clu.data
 import jax
 from jax import random
+from jax import tree_util
 from jax.experimental import multihost_utils
 from jax.experimental.global_device_array import GlobalDeviceArray
 import jax.numpy as jnp
@@ -245,25 +246,17 @@ def train(
 
   _verify_matching_vocabs(train_dataset_cfg)
 
-  train_ds = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
-                            model.FEATURE_CONVERTER_CLS)
-  checkpoint_dataset = False
-  if isinstance(train_ds, tf.data.Dataset):
-    train_iter = clu.data.TfDatasetIterator(train_ds)
-    checkpoint_dataset = True
-  elif isinstance(train_ds, clu.data.DatasetIterator):
-    train_iter = train_ds
-  else:
+  train_iter = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
+                              model.FEATURE_CONVERTER_CLS)
+  if isinstance(train_iter, tf.data.Dataset):
+    train_iter = clu.data.TfDatasetIterator(train_iter)
+  elif not isinstance(train_iter, clu.data.DatasetIterator):
     raise ValueError(
-        f'get_dataset_fn returned unsupported type {type(train_ds)}.')
+        f'get_dataset_fn returned unsupported type {type(train_iter)}.')
 
-  input_shapes = {
-      k: (data_layout.batch_size, *v.shape[1:])
-      for k, v in train_iter.element_spec.items()
-  }
-  input_types = {
-      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
-  }
+  input_shapes = tree_util.tree_map(
+      lambda x: (data_layout.batch_size, *x.shape[1:]), train_iter.element_spec)
+  input_types = tree_util.tree_map(lambda x: x.dtype, train_iter.element_spec)
 
   if use_gda:
     train_iter = utils.GDADatasetIterator(train_iter, partitioner, input_shapes)
@@ -336,14 +329,12 @@ def train(
       restore_cfgs)
   if len(restore_paths) > 1:
     raise ValueError('Multiple restore paths not permitted in training.')
-  checkpointable_train_iter = (
-      train_iter.iterator if checkpoint_dataset else None)
   checkpoint_manager = utils.LegacyCheckpointManager(
       save_cfg=checkpoint_cfg.save,
       restore_cfg=valid_restore_cfg,
       train_state_shape=train_state_initializer.global_train_state_shape,
       partitioner=partitioner,
-      ds_iter=checkpointable_train_iter,
+      ds_iter=train_iter,
       model_dir=model_dir,
       use_gda=use_gda)
 
@@ -537,22 +528,22 @@ def train(
   logging.info('Compiling train loop.')
   logging.flush()
 
-  def _as_gda(arr):
-    return GlobalDeviceArray.from_callback(arr.shape, partitioner.mesh,
+  def _as_gda(spec):
+    dummy = np.ones((data_layout.batch_size, *spec.shape[1:]), spec.dtype)
+    return GlobalDeviceArray.from_callback(dummy.shape, partitioner.mesh,
                                            partitioner.data_partition_spec,
-                                           lambda idx: arr[idx])
+                                           lambda idx: dummy[idx])
 
+  # Construct dummy batch for compiling the model.
   if use_gda:
-    dummy_batch = {
-        k: np.ones((data_layout.batch_size, *v.shape[1:]), v.dtype)
-        for k, v in train_iter.element_spec.items()
-    }
-    dummy_batch = jax.tree_map(_as_gda, dummy_batch)
+    dummy_batch = jax.tree_map(_as_gda, train_iter.element_spec)
   else:
-    dummy_batch = {
-        k: np.ones(v.shape, v.dtype)
-        for k, v in train_iter.element_spec.items()
-    }
+    dummy_batch = jax.tree_map(lambda x: np.ones(x.shape, x.dtype),
+                               train_iter.element_spec)
+  if not isinstance(dummy_batch, Mapping):
+    raise ValueError('Training loop expects batches to have type '
+                     f'Mapping[str, np.ndarray] but got {type(dummy_batch)}.')
+
   trainer.compile_train(dummy_batch)
 
   # Main Loop over "epochs".
