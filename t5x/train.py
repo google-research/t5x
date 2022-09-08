@@ -136,7 +136,10 @@ def train(
     model_dir: Path of directory to store checkpoints and metric summaries.
     total_steps: The step number to stop training after. The number of actual
       steps trained in this run will be this number minus the starting step from
-      the checkpoint.
+      the checkpoint. If this is set to the starting step from the checkpoint,
+      the model will not be compiled for training and training will not be run.
+      This can be used in conjunction with `run_eval_before_training` to only
+      evaluate a model.
     eval_steps: The number of batches to process for each train-eval loop.
     eval_period: The number of train steps between each evaluation (both
       train-eval and infer-eval).
@@ -509,12 +512,27 @@ def train(
   # ----------------------------------------------------------------------------
   logging.info('Starting training loop.')
 
+  def _cleanup() -> None:
+    """Ensures everything has been closed upon completion."""
+    trainer.close()
+    if evaluator:
+      evaluator.close()
+    multihost_utils.sync_global_devices('complete')
+    logging.info('Finished.')
+
   first_step = host_step
 
   if total_steps < first_step:
     raise ValueError(
         f'Unexpected total_steps ({total_steps}) < checkpoint step '
         f' ({first_step}).')
+  elif total_steps == first_step:
+    logging.warning(
+        'Total training steps and checkpoint step were both %d, so no training '
+        'will be done. If you are only doing evaluation, this is expected. '
+        'Stopping now.', total_steps)
+    _cleanup()
+    return host_step, trainer.train_state
 
   logging.info('Starting main loop over steps %d-%d', first_step, total_steps)
 
@@ -623,11 +641,7 @@ def train(
       _run_inference_eval()
 
   # Wait until computations are done before exiting
-  logging.info('Finished.')
-  trainer.close()
-  if evaluator:
-    evaluator.close()
-  multihost_utils.sync_global_devices('complete')
+  _cleanup()
 
   return host_step, trainer.train_state
 
