@@ -782,6 +782,7 @@ def save(
     write_warmup_example_fn=write_warmup_examples,
     mixture_or_task_name: Optional[str] = None,
     validation_examples: Optional[List[Any]] = None,
+    native_lowering: bool = False,
     decode_outputs: Optional[bool] = None,
 ):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
@@ -818,6 +819,8 @@ def save(
     validation_examples: Optional list of validation examples. If proveded, they
       will be used to validate the latency and numeric accuracy of the TPU
       saved model.
+    native_lowering: for experimental purposes only -- if True,
+      don't convert Jax fns to TF fns.
     decode_outputs: Optional bool. If provided, determines whether to decode
       the output with the tokenizer, or to leave the output as is.
   """
@@ -890,7 +893,9 @@ def save(
   else:
     polymorphic_shapes_inputs = None
   model_tf_fn = jax2tf.convert(
-      model_fn, polymorphic_shapes=[None, polymorphic_shapes_inputs])
+      model_fn,
+      polymorphic_shapes=[None, polymorphic_shapes_inputs],
+      experimental_native_lowering=native_lowering)
 
   logging.info('Loading parameters from checkpoint...')
   params = load_params_from_checkpoint(
@@ -929,6 +934,7 @@ def save(
       signatures=signatures,
       options=options,
   )
+
 
 
   if warmup_examples:
