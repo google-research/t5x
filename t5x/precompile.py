@@ -76,9 +76,13 @@ def precompile(
                             model.FEATURE_CONVERTER_CLS)
 
   # Need to use full batch size.
-  input_shapes = jax.tree_map(lambda x: (data_layout.batch_size, *x.shape[1:]),
-                              train_ds.element_spec)
-  input_types = jax.tree_map(lambda x: x.dtype, train_ds.element_spec)
+  input_shapes = {
+      k: (data_layout.batch_size, *v.shape[1:])
+      for k, v in train_ds.element_spec.items()
+  }
+  input_types = {
+      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
+  }
 
   checkpointable_train_iter = iter(train_ds)
   train_iter: Iterator[trainer_lib.BatchType] = map(
