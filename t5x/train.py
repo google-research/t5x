@@ -33,7 +33,6 @@ from clu import metric_writers
 import clu.data
 import jax
 from jax import random
-from jax import tree_util
 from jax.experimental import multihost_utils
 from jax.experimental.global_device_array import GlobalDeviceArray
 import jax.numpy as jnp
@@ -257,9 +256,9 @@ def train(
     raise ValueError(
         f'get_dataset_fn returned unsupported type {type(train_iter)}.')
 
-  input_shapes = tree_util.tree_map(
-      lambda x: (data_layout.batch_size, *x.shape[1:]), train_iter.element_spec)
-  input_types = tree_util.tree_map(lambda x: x.dtype, train_iter.element_spec)
+  input_shapes = jax.tree_map(lambda x: (data_layout.batch_size, *x.shape[1:]),
+                              train_iter.element_spec)
+  input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
 
   if use_gda:
     train_iter = utils.GDADatasetIterator(train_iter, partitioner, input_shapes)
@@ -562,6 +561,7 @@ def train(
     raise ValueError('Training loop expects batches to have type '
                      f'Mapping[str, np.ndarray] but got {type(dummy_batch)}.')
 
+  assert isinstance(dummy_batch, Mapping)
   trainer.compile_train(dummy_batch)
 
   # Main Loop over "epochs".
