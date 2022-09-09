@@ -27,8 +27,9 @@ a proper lowering under TPU mesh.
 """
 
 import os
-from typing import Iterator, Optional
+from typing import Optional
 
+import clu.data
 import jax
 from jax import random
 import numpy as np
@@ -72,21 +73,21 @@ def precompile(
 
   _verify_matching_vocabs(train_dataset_cfg)
 
-  train_ds = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
-                            model.FEATURE_CONVERTER_CLS)
+  train_iter = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
+                              model.FEATURE_CONVERTER_CLS)
+  if isinstance(train_iter, tf.data.Dataset):
+    train_iter = clu.data.TfDatasetIterator(train_iter)
+  elif not isinstance(train_iter, clu.data.DatasetIterator):
+    raise ValueError(
+        f'get_dataset_fn returned unsupported type {type(train_iter)}.')
 
   # Need to use full batch size.
-  input_shapes = {
-      k: (data_layout.batch_size, *v.shape[1:])
-      for k, v in train_ds.element_spec.items()
-  }
-  input_types = {
-      k: v.dtype.as_numpy_dtype() for k, v in train_ds.element_spec.items()
-  }
+  input_shapes = jax.tree_map(lambda x: (data_layout.batch_size, *x.shape[1:]),
+                              train_iter.element_spec)
+  input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
 
-  checkpointable_train_iter = iter(train_ds)
-  train_iter: Iterator[trainer_lib.BatchType] = map(
-      lambda x: jax.tree_map(np.array, x), checkpointable_train_iter)
+  # Do we actually need a real batch here or could we create a dummy batch from
+  # ggthe element_spec?
   batch = next(train_iter)
 
   # Compiling does not care about loading real weights.
