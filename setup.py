@@ -58,8 +58,7 @@ setuptools.setup(
         'orbax',
         'seqio-nightly',
         't5',
-        # TODO(adarob): Remove version restriction once tensorflow-text updated.
-        'tensorflow < 2.10',
+        'tensorflow',
         'tensorstore >= 0.1.20',
     ],
     extras_require={
