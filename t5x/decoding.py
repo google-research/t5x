@@ -24,6 +24,8 @@ from jax import random
 import jax.numpy as jnp
 import numpy as np
 
+from t5x import binary_search
+
 PyTreeDef = type(jax.tree_util.tree_structure(None))
 
 # Constants
@@ -510,25 +512,12 @@ def _temperature_sample_single_trial(
     def sample_logits_with_nonzero_temperature(logits):
       scaled_logits = logits / jnp.maximum(temperature, MIN_TEMPERATURE)
       if topk:
-        # Get top-k logits and their indices, sample within these top-k tokens.
-        topk_logits, _ = lax.top_k(scaled_logits, topk)
-        cutoff_logit = topk_logits[:, -1, None]
-        scaled_logits = jnp.where(scaled_logits < cutoff_logit,
-                                  jnp.full_like(scaled_logits, NEG_INF),
-                                  scaled_logits)
+        scaled_logits = binary_search.topk_mask(scaled_logits, topk, NEG_INF)
 
       # When topp is dynamic, we always use it since we cannot check
       # non-zeroness (but it will have no effect if topp is 0.0).
       if _is_tracer(topp) or topp:
-        logits_sorted = jnp.sort(
-            scaled_logits, axis=-1)[:, ::-1]  # sort descending
-        sorted_cum_probs = jnp.cumsum(
-            jax.nn.softmax(logits_sorted, axis=-1), axis=-1)
-        cutoff_index = jnp.sum(sorted_cum_probs < topp, axis=-1, keepdims=True)
-        cutoff_logit = jnp.take_along_axis(logits_sorted, cutoff_index, axis=-1)
-        scaled_logits = jnp.where(scaled_logits < cutoff_logit,
-                                  jnp.full_like(scaled_logits, NEG_INF),
-                                  scaled_logits)
+        scaled_logits = binary_search.topp_mask(scaled_logits, topp, NEG_INF)
 
       # [batch]
       next_token = random.categorical(rng1, scaled_logits).astype(jnp.int32)
