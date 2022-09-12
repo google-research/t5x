@@ -529,9 +529,9 @@ class GDADatasetIterator(clu.data.DatasetIterator):
     self._global_shapes = global_shapes
     self._partitioner = partitioner
 
-  def get_next(self):
+  def __next__(self):
     return _create_gda(self._partitioner, self._global_shapes,
-                       self._iterator.get_next())
+                       next(self._iterator))
 
   def reset(self):
     return self._iterator.reset()
@@ -543,8 +543,8 @@ class GDADatasetIterator(clu.data.DatasetIterator):
   def save(self, filename):
     return self._iterator.save(filename)
 
-  def load(self, filename):
-    return self._iterator.load(filename)
+  def restore(self, filename):
+    return self._iterator.restore(filename)
 
   @property
   def iterator(self):
