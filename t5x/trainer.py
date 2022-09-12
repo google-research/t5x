@@ -232,9 +232,11 @@ class _AsyncTimer(object):
         jax.block_until_ready(block_on)
       except RuntimeError as e:
         # If the buffer no longer exists, we assume it was completed.
-        if (str(e) !=
-            "INVALID_ARGUMENT: BlockHostUntilReady() called on deleted or "
-            "donated buffer"):
+        buffer_deleted_message = ("INVALID_ARGUMENT: BlockHostUntilReady() "
+                                  "called on deleted or donated buffer")
+        gda_buffer_deleted_message = ("INVALID_ARGUMENT: GetReadyFuture() "
+                                      "called on deleted or donated buffer")
+        if str(e) not in (buffer_deleted_message, gda_buffer_deleted_message):
           raise
       return time.time()
 

@@ -1510,7 +1510,10 @@ async def _read_ts(param_info: _ParameterInfo,
   # If saved as a numpy array, but a partitioned read is requested, return a
   # slice of the array for that host. Otherwise, return the whole thing.
   if isinstance(maybe_tspec, np.ndarray) and param_info:
-    if param_info.local_chunk_info:
+    if mesh is not None and axes is not None:
+      # Using GDA, return global array without selecting local chunk
+      return maybe_tspec
+    elif param_info.local_chunk_info:
       arr = maybe_tspec
       return arr[param_info.local_chunk_info.slice]
     else:
