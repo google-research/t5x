@@ -252,7 +252,7 @@ def train(
                               model.FEATURE_CONVERTER_CLS)
   if isinstance(train_iter, tf.data.Dataset):
     train_iter = clu.data.TfDatasetIterator(train_iter)
-  elif not isinstance(train_iter, clu.data.DatasetIterator):
+  elif not isinstance(train_iter, clu.data.dataset_iterator.DatasetIterator):
     raise ValueError(
         f'get_dataset_fn returned unsupported type {type(train_iter)}.')
 
