@@ -425,20 +425,20 @@ class DatasetConfig:
 
 def _get_index_mappings(device_to_idxs):
   """Get device and host to index set mappings for GDA construction."""
-  idx_to_devices = collections.defaultdict(set)
-  host_to_idx_set = collections.defaultdict(set)
+  idx_to_devices = collections.defaultdict(list)
+  host_to_idxs = collections.defaultdict(list)
   for d, idx in device_to_idxs.items():
-    host_to_idx_set[d.process_index].add(gda_lib._hashed_index(idx))  # pylint: disable=protected-access
-    idx_to_devices[gda_lib._hashed_index(idx)].add(d)  # pylint: disable=protected-access
+    host_to_idxs[d.process_index].append(gda_lib._hashed_index(idx))  # pylint: disable=protected-access
+    idx_to_devices[gda_lib._hashed_index(idx)].append(d)  # pylint: disable=protected-access
 
-  assert jax.process_index() in host_to_idx_set
-  for h1, set1 in host_to_idx_set.items():
-    for h2, set2 in host_to_idx_set.items():
+  assert jax.process_index() in host_to_idxs
+  for h1, list1 in host_to_idxs.items():
+    for h2, list2 in host_to_idxs.items():
       if h1 == h2:
         continue
-      assert not (set1 & set2) or set1 == set2
+      assert not (set(list1) & set(list2)) or set(list1) == set(list2)
 
-  return host_to_idx_set, idx_to_devices
+  return host_to_idxs, idx_to_devices
 
 
 def _create_gda(partitioner: partitioning.BasePartitioner,
@@ -481,7 +481,7 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
     # Mapping of host to a set of unique index slices for that host.
     # Mapping of index slice to a list of devices onto which the slice should be
     # placed.
-    host_to_idx_set, idx_to_devices = _get_index_mappings(device_to_idxs)
+    host_to_idxs, idx_to_devices = _get_index_mappings(device_to_idxs)
 
     shard_length = gda_lib.get_shard_shape(global_shape, global_mesh, axes)[0]
     num_shards = len(x) // shard_length
@@ -495,8 +495,8 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
     # Construct mapping of device to index in the split local array.
     device_to_split_array_idx = {}
     i = 0
-    for _, idx_set in host_to_idx_set.items():
-      for idx in idx_set:
+    for _, idxs in host_to_idxs.items():
+      for idx in idxs:
         for d in idx_to_devices[idx]:
           device_to_split_array_idx[d] = i % len(local_array_shards)
         i += 1
@@ -511,7 +511,8 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
   device_buffers = jax.tree_map(_put_to_devices, host_arrays, global_shapes)
 
   def _gda(dbs, global_shape):
-    return GlobalDeviceArray(global_shape, global_mesh, axes, dbs)
+    result = GlobalDeviceArray(global_shape, global_mesh, axes, dbs)
+    return result
 
   return jax.tree_map(
       _gda,
