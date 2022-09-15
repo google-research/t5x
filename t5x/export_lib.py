@@ -37,8 +37,8 @@ from t5x import utils
 import tensorflow as tf  # type: ignore
 import typing_extensions
 
-from tensorflow_servings.apis import predict_pb2
-from tensorflow_servings.apis import prediction_log_pb2
+from tensorflow_serving.apis import predict_pb2
+from tensorflow_serving.apis import prediction_log_pb2
 
 
 PyTreeDef = type(jax.tree_structure(None))
