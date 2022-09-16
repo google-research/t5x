@@ -184,7 +184,8 @@ We outline a few common error patterns that we have encountered.
     infer_eval job, it may be that even train_eval is too slow. In these
     situations, we suggest adding the metrics from train_eval into the
     `metrics_fn` argument of the SeqIO task and have them be computed in the
-    auxiliary job as well.
+    auxiliary job as well. To do this with teacher forcing, you will have to
+    use `train.py` instead of `eval.py`.
 
 +   **Using `CHECKPOINT_PATH` rather `INITIAL_CHECKPOINT_PATH`.** For legacy
     reasons, the auxiliary job uses the macro `INITIAL_CHECKPOINT_PATH` rather
