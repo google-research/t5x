@@ -242,7 +242,10 @@ def write_inferences_to_file(
 
   def _json_compat(value):
     if isinstance(value, bytes):
-      return value.decode('utf-8')
+      try:
+        return value.decode('utf-8')
+      except UnicodeDecodeError:
+        return ''
     elif isinstance(value, (jnp.bfloat16, jnp.floating)):
       return float(value)
     elif isinstance(value, jnp.integer):
