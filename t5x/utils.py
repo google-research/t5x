@@ -24,7 +24,6 @@ import inspect
 import os
 import re
 import time
-import typing
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
 import warnings
 
@@ -1024,15 +1023,18 @@ class InferStepWithRngCallable(typing_extensions.Protocol):
   def __call__(self,
                params: Mapping[str, Any],
                batch: Mapping[str, jnp.ndarray],
-               rng: jnp.ndarray = None) -> PyTreeDef:
+               rng: jnp.ndarray = None,
+               decoder_params: Optional[Mapping[str, Any]] = None) -> PyTreeDef:
     """Runs an inference step returning a prediction or score."""
     ...
 
 
 class InferStepWithoutRngCallable(typing_extensions.Protocol):
 
-  def __call__(self, params: Mapping[str, Any],
-               batch: Mapping[str, jnp.ndarray]) -> PyTreeDef:
+  def __call__(self,
+               params: Mapping[str, Any],
+               batch: Mapping[str, jnp.ndarray],
+               decoder_params: Optional[Mapping[str, Any]] = None) -> PyTreeDef:
     """Runs an inference step returning a prediction or score."""
     ...
 
@@ -1051,7 +1053,8 @@ class InferFnCallable(typing_extensions.Protocol):
       self,
       ds: tf.data.Dataset,
       train_state: train_state_lib.TrainState,
-      rng: Optional[jnp.ndarray] = None
+      rng: Optional[jnp.ndarray] = None,
+      decoder_params: Optional[Mapping[str, Any]] = None
   ) -> Union[_InferFnResult, _InferFnWithAuxResult]:
     """Runs inference on the dataset."""
     ...
@@ -1109,19 +1112,25 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       optimizer and runs the prediction.
   """
 
-  def infer_step_with_indices(params, batch, rng, indices):
+  def infer_step_with_indices(params, batch, rng, indices, decoder_params):
+    args = [params, batch]
+    kwargs = {}
+    params = inspect.signature(infer_step).parameters
     if 'rng' in inspect.signature(infer_step).parameters:
-      res = typing.cast(InferStepWithRngCallable, infer_step)(params, batch,
-                                                              rng)
-    else:
-      res = typing.cast(InferStepWithoutRngCallable, infer_step)(params, batch)
+      args.append(rng)
+
+    if 'decoder_params' in inspect.signature(infer_step).parameters:
+      kwargs['decoder_params'] = decoder_params
+
+    res = infer_step(*args, **kwargs)
+
     return indices, res
 
   partitioned_infer_step = partitioner.partition(
       infer_step_with_indices,
       in_axis_resources=(train_state_axes.params,
                          partitioner.data_partition_spec, None,
-                         partitioner.data_partition_spec),
+                         partitioner.data_partition_spec, None),
       out_axis_resources=(None, None))
 
   data_layout = partitioner.get_data_layout(batch_size)
@@ -1132,7 +1141,8 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
 
   def infer_fn(ds: tf.data.Dataset,
                train_state: train_state_lib.TrainState,
-               rng: Optional[jnp.ndarray] = None):
+               rng: Optional[jnp.ndarray] = None,
+               decoder_params: Optional[Mapping[str, Any]] = None):
     ds_shapes = jax.tree_map(lambda x: jnp.array(x.shape), ds.element_spec)
     multihost_assert_equal(
         ds_shapes, 'Dataset element shapes do not agree across hosts. '
@@ -1182,7 +1192,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       # partitioned_infer_step executes infer_step on sharded batched data, and
       # returns de-sharded batched indices and result replicated on all hosts.
       batch_indices, batch_result = partitioned_infer_step(
-          train_state.params, infer_batch, step_rng, index)
+          train_state.params, infer_batch, step_rng, index, decoder_params)
       logging.info('Inference of batch %s done.', index)
 
       # Issue asynchronous copy request which serves as prefetching to the host.
