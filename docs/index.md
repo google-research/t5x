@@ -8,7 +8,8 @@ configurable, self-service training, evaluation, and inference of sequence
 models (starting with language) at many scales.
 
 It is essentially a new and improved implementation of the
-[T5 codebase](https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.md) (based on Mesh TensorFlow) in JAX and Flax.
+[T5 codebase](https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.md) (based on Mesh TensorFlow) in JAX and Flax. To learn
+more, see the [T5X Paper](https://arxiv.org/abs/2203.17189).
 
 ## Getting Started
 
