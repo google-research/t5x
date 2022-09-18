@@ -151,7 +151,7 @@ def evaluate(
   if fallback_init_rng is not None:
     fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
   for train_state in train_state_initializer.from_checkpoints(
-      [restore_checkpoint_cfg], init_rng=fallback_init_rng):
+      [restore_checkpoint_cfg], init_rng=jax.random.PRNGKey(17)):
 
     # Compile the model only once.
     if not predict_fn:
@@ -229,6 +229,7 @@ if __name__ == '__main__':
       'TensorFlow Datasets that are not available in the public TFDS GCS '
       'bucket. Note that this flag overrides the `tfds_data_dir` attribute of '
       'all `Task`s.')
+
 
 
   def main(argv: Sequence[str]):
