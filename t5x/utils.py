@@ -750,7 +750,7 @@ def get_fallback_state(restore_cfg: RestoreCheckpointConfig,
   if restore_cfg is None:
     return
   if restore_cfg.fallback_to_scratch:
-    if not restore_cfg.state_transformation_fns:
+    if restore_cfg.state_transformation_fns is None:
       raise ValueError('`state_transformation_fns` must be provided with '
                        '`fallback_to_scratch`')
     if init_rng is None:
