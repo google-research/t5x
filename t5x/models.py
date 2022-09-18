@@ -767,7 +767,8 @@ class DecoderOnlyModel(BaseTransformerModel):
   def score_batch(self,
                   params: PyTreeDef,
                   batch: Mapping[str, jnp.ndarray],
-                  return_intermediates: bool = False) -> jnp.ndarray:
+                  return_intermediates: bool = False,
+                  num_top_logits_to_return: int = 0) -> jnp.ndarray:
     """Compute log likelihood score on a batch."""
 
     decoder_target_tokens = batch['decoder_target_tokens']
@@ -793,6 +794,15 @@ class DecoderOnlyModel(BaseTransformerModel):
       # Note that the values are singleton tuples. This is because values inside
       # `intermediates` should be tuples tracking all instantiations of a value.
       # These values each have just one instantiation, hence singletons.
+
+      if num_top_logits_to_return > 0:
+        # Pre-normalize the logits with log to get the log_probabilities.
+        logits_sum = jax.scipy.special.logsumexp(logits, axis=-1, keepdims=True)
+        log_softmax = logits - logits_sum
+        top_k_log_probs, top_k_idx = jax.lax.top_k(log_softmax,
+                                                   num_top_logits_to_return)
+        intermediates['decoder']['top_k_log_probs'] = top_k_log_probs
+        intermediates['decoder']['top_k_idx'] = top_k_idx
     else:
       logits = self._compute_logits(
           params=params, batch=batch, dropout_rng=None)
