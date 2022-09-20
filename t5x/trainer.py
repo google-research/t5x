@@ -24,7 +24,7 @@ import os
 import threading
 import time
 from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple, Union#, Protocol
-from t5x.typing_extensions import Protocol
+from typing_extensions import Protocol
 
 from absl import logging
 import cached_property
