@@ -25,7 +25,7 @@ import os
 import re
 import time
 import typing
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union#, Protocol
 from t5x.typing_extensions import Protocol
 import warnings
 
