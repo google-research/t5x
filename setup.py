@@ -45,22 +45,7 @@ setuptools.setup(
         '': ['**/*.gin'],  # not all subdirectories may have __init__.py.
     },
     scripts=[],
-    install_requires=[
-        'absl-py',
-        'cached_property',
-        # TODO(adarob): Replace with 'clu' once >0.0.6 is released.
-        'clu',
-        'flax @ git+https://github.com/google/flax#egg=flax',
-        'gin-config',
-        f'jax >= {_jax_version}',
-        f'jaxlib >= {_jaxlib_version}',
-        'numpy',
-        'orbax',
-        'seqio-nightly',
-        't5',
-        'tensorflow',
-        'tensorstore >= 0.1.20',
-    ],
+    install_requires=[],
     extras_require={
         'gcp': [
             'gevent', 'google-api-python-client', 'google-compute-engine',
