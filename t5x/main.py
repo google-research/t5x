@@ -56,6 +56,7 @@ class RunMode(enum.Enum):
   EVAL = 'eval'
   INFER = 'infer'
   PRECOMPILE = 'precompile'
+  EXPORT = 'export'
 
 
 _GIN_FILE = flags.DEFINE_multi_string(
@@ -108,6 +109,7 @@ _ATTR_BY_RUN_MODE = {
     RunMode.EVAL: 'evaluate',
     RunMode.INFER: 'infer',
     RunMode.PRECOMPILE: 'precompile',
+    RunMode.EXPORT: 'save',
 }
 
 
