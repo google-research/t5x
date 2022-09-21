@@ -14,7 +14,7 @@
 
 """T5.1.1 Transformer model."""
 
-from typing import Any, Sequence
+from typing import Any, Optional, Sequence
 
 from flax import linen as nn
 from flax import struct
@@ -41,12 +41,15 @@ class T5Config:
   logits_via_embedding: bool = False
   # Whether to accumulate attention logits in float32 regardless of dtype.
   float32_attention_logits: bool = False
+  share_layers: bool = False
 
 
 class EncoderLayer(nn.Module):
   """Transformer encoder layer."""
   config: T5Config
   relative_embedding: nn.Module
+  shared_attention: Optional[nn.Module] = None
+  shared_mlp: Optional[nn.Module] = None
 
   @nn.compact
   def __call__(self, inputs, encoder_mask=None, deterministic=False):
@@ -62,14 +65,14 @@ class EncoderLayer(nn.Module):
         dtype=cfg.dtype, name='pre_attention_layer_norm')(
             inputs)
     # [batch, length, emb_dim] -> [batch, length, emb_dim]
-    x = layers.MultiHeadDotProductAttention(
+    attention = self.shared_attention or layers.MultiHeadDotProductAttention(
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
         head_dim=cfg.head_dim,
         dropout_rate=cfg.dropout_rate,
         float32_logits=cfg.float32_attention_logits,
-        name='attention')(
-            x, x, encoder_mask, encoder_bias, deterministic=deterministic)
+        name='attention')
+    x = attention(x, x, encoder_mask, encoder_bias, deterministic=deterministic)
     x = nn.Dropout(
         rate=cfg.dropout_rate, broadcast_dims=(-2,))(
             x, deterministic=deterministic)
@@ -78,13 +81,14 @@ class EncoderLayer(nn.Module):
     # MLP block.
     y = layers.LayerNorm(dtype=cfg.dtype, name='pre_mlp_layer_norm')(x)
     # [batch, length, emb_dim] -> [batch, length, emb_dim]
-    y = layers.MlpBlock(
+    mlp = self.shared_mlp or layers.MlpBlock(
         intermediate_dim=cfg.mlp_dim,
         activations=cfg.mlp_activations,
         intermediate_dropout_rate=cfg.dropout_rate,
         dtype=cfg.dtype,
         name='mlp',
-    )(y, deterministic=deterministic)
+    )
+    y = mlp(y, deterministic=deterministic)
     y = nn.Dropout(
         rate=cfg.dropout_rate, broadcast_dims=(-2,))(
             y, deterministic=deterministic)
@@ -97,6 +101,8 @@ class DecoderLayer(nn.Module):
   """Transformer decoder layer that attends to the encoder."""
   config: T5Config
   relative_embedding: nn.Module
+  shared_attention: Optional[nn.Module] = None
+  shared_mlp: Optional[nn.Module] = None
 
   @nn.compact
   def __call__(self,
@@ -119,19 +125,20 @@ class DecoderLayer(nn.Module):
             inputs)
 
     # Self-attention block
-    x = layers.MultiHeadDotProductAttention(
+    attention = self.shared_attention or layers.MultiHeadDotProductAttention(
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
         head_dim=cfg.head_dim,
         dropout_rate=cfg.dropout_rate,
         float32_logits=cfg.float32_attention_logits,
-        name='self_attention')(
-            x,
-            x,
-            decoder_mask,
-            decoder_bias,
-            deterministic=deterministic,
-            decode=decode)
+        name='self_attention')
+    x = attention(
+        x,
+        x,
+        decoder_mask,
+        decoder_bias,
+        deterministic=deterministic,
+        decode=decode)
     x = nn.Dropout(
         rate=cfg.dropout_rate, broadcast_dims=(-2,))(
             x, deterministic=deterministic)
@@ -156,13 +163,14 @@ class DecoderLayer(nn.Module):
 
     # MLP block.
     z = layers.LayerNorm(dtype=cfg.dtype, name='pre_mlp_layer_norm')(y)
-    z = layers.MlpBlock(
+    mlp = self.shared_mlp or layers.MlpBlock(
         intermediate_dim=cfg.mlp_dim,
         activations=cfg.mlp_activations,
         intermediate_dropout_rate=cfg.dropout_rate,
         dtype=cfg.dtype,
         name='mlp',
-    )(z, deterministic=deterministic)
+    )
+    z = mlp(z, deterministic=deterministic)
     z = nn.Dropout(
         rate=cfg.dropout_rate, broadcast_dims=(-2,))(
             z, deterministic=deterministic)
@@ -175,6 +183,8 @@ class Encoder(nn.Module):
   """A stack of encoder layers."""
   config: T5Config
   shared_embedding: nn.Module
+  shared_attentions: Sequence[nn.Module]
+  shared_mlps: Sequence[nn.Module]
 
   @nn.compact
   def __call__(self,
@@ -202,8 +212,13 @@ class Encoder(nn.Module):
     for lyr in range(cfg.num_encoder_layers):
       # [batch, length, emb_dim] -> [batch, length, emb_dim]
       x = EncoderLayer(
-          config=cfg, relative_embedding=rel_emb,
-          name=f'layers_{lyr}')(x, encoder_mask, deterministic)
+          config=cfg,
+          relative_embedding=rel_emb,
+          name=f'layers_{lyr}',
+          shared_attention=self.shared_attentions[lyr]
+          if cfg.share_layers else None,
+          shared_mlp=self.shared_mlps[lyr] if cfg.share_layers else None)(
+              x, encoder_mask, deterministic)
 
     x = layers.LayerNorm(dtype=cfg.dtype, name='encoder_norm')(x)
     return nn.Dropout(rate=cfg.dropout_rate)(x, deterministic=deterministic)
@@ -213,6 +228,8 @@ class Decoder(nn.Module):
   """A stack of decoder layers as a part of an encoder-decoder architecture."""
   config: T5Config
   shared_embedding: nn.Module
+  shared_attentions: Optional[Sequence[nn.Module]] = None
+  shared_mlps: Optional[Sequence[nn.Module]] = None
 
   @nn.compact
   def __call__(self,
@@ -245,7 +262,12 @@ class Decoder(nn.Module):
     for lyr in range(cfg.num_decoder_layers):
       # [batch, length, emb_dim] -> [batch, length, emb_dim]
       y = DecoderLayer(
-          config=cfg, relative_embedding=rel_emb, name=f'layers_{lyr}')(
+          config=cfg,
+          relative_embedding=rel_emb,
+          name=f'layers_{lyr}',
+          shared_attention=self.shared_attentions[lyr]
+          if cfg.share_layers else None,
+          shared_mlp=self.shared_mlps[lyr] if cfg.share_layers else None)(
               y,
               encoded,
               decoder_mask=decoder_mask,
@@ -290,8 +312,41 @@ class Transformer(nn.Module):
         one_hot=True,
         name='token_embedder')
 
-    self.encoder = Encoder(config=cfg, shared_embedding=self.shared_embedding)
-    self.decoder = Decoder(config=cfg, shared_embedding=self.shared_embedding)
+    if cfg.share_layers:
+      assert cfg.num_encoder_layers == cfg.num_decoder_layers
+      # pylint:disable=g-complex-comprehension
+      self.shared_attentions = [
+          layers.MultiHeadDotProductAttention(
+              num_heads=cfg.num_heads,
+              dtype=cfg.dtype,
+              head_dim=cfg.head_dim,
+              dropout_rate=cfg.dropout_rate,
+              float32_logits=cfg.float32_attention_logits,
+              name=f'attention_{lyr}') for lyr in range(cfg.num_decoder_layers)
+      ]
+      self.shared_mlps = [
+          layers.MlpBlock(
+              intermediate_dim=cfg.mlp_dim,
+              activations=cfg.mlp_activations,
+              intermediate_dropout_rate=cfg.dropout_rate,
+              dtype=cfg.dtype,
+              name=f'mlp_{lyr}') for lyr in range(cfg.num_decoder_layers)
+      ]
+      # pylint:enable=g-complex-comprehension
+    else:
+      self.shared_attentions = None
+      self.shared_mlps = None
+
+    self.encoder = Encoder(
+        config=cfg,
+        shared_embedding=self.shared_embedding,
+        shared_attentions=self.shared_attentions,
+        shared_mlps=self.shared_mlps)
+    self.decoder = Decoder(
+        config=cfg,
+        shared_embedding=self.shared_embedding,
+        shared_attentions=self.shared_attentions,
+        shared_mlps=self.shared_mlps)
 
   def encode(self,
              encoder_input_tokens,
