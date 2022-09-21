@@ -1,0 +1,21 @@
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5.data import mixtures
+from t5x import models
+from t5x import partitioning
+from t5x import utils
+
+include "t5x/examples/t5/byt5/small.gin"
+include "t5x/configs/runs/finetune.gin"
+
+MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
+TASK_FEATURE_LENGTHS = {"inputs": 256, "targets": 256}
+TRAIN_STEPS = 1_020_000  # 1000000 pre-trained steps + 20000 fine-tuning steps.
+DROPOUT_RATE = 0.0
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/byt5_small/checkpoint_1000000"
+# `LOSS_NORMALIZING_FACTOR`: When fine-tuning a model that was pre-trained
+# using Mesh Tensorflow (e.g. the public T5 / mT5 / ByT5 models), this should be
+# set to `pretraining batch_size` * `target_token_length`. For T5 and T5.1.1:
+# `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
+LOSS_NORMALIZING_FACTOR = 193_536
