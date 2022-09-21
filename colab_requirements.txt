@@ -1,0 +1,8 @@
+absl-py
+cached_property
+clu
+gin-config
+orbax
+seqio-nightly
+t5
+tensorstore

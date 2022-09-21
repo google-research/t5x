@@ -1,0 +1,13 @@
+absl-py
+cached_property
+clu
+flax @ git+https://github.com/google/flax#egg=flax
+gin-config
+jax >= 0.2.27
+jaxlib >= 0.1.76
+numpy
+orbax
+seqio-nightly
+t5
+tensorflow
+tensorstore >= 0.1.20
