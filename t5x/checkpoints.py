@@ -479,6 +479,9 @@ class Checkpointer(object):
     self._original_dataset_iterator = dataset_iterator
     if isinstance(dataset_iterator, tf.data.Iterator):
       dataset_iterator = _TfDataCheckpointer(dataset_iterator)
+    elif isinstance(dataset_iterator,
+                    clu.data.dataset_iterator.TfDatasetIterator):
+      assert dataset_iterator.checkpoint
     self._dataset_iterator = dataset_iterator
     self._use_gda = use_gda
     if self._use_gda:
