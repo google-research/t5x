@@ -37,7 +37,6 @@ os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
 import jax
-from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
 import seqio
@@ -620,8 +619,7 @@ def infer(
             chunk_ckpt_path=chunk_ckpt_path)
 
       # Wait for checkpoint to be written before continuing.
-      multihost_utils.sync_global_devices(
-          f'{task.name}:checkpoint_chunk{chunk:05}')
+      utils.sync_global_devices(f'{task.name}:checkpoint_chunk{chunk:05}')
 
     logging.info("Finished inference for task '%s'.", task.name)
 
@@ -640,7 +638,7 @@ def infer(
         f.write('')
 
     # Wait for host 0 to finish writing before exiting.
-    multihost_utils.sync_global_devices(f'{task.name}:complete')
+    utils.sync_global_devices(f'{task.name}:complete')
 
   for task in seqio.get_subtasks(task_or_mixture):
     logging.info("Starting inference for task '%s'", task.name)

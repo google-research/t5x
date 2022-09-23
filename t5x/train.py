@@ -516,7 +516,7 @@ def train(
     trainer.close()
     if evaluator:
       evaluator.close()
-    multihost_utils.sync_global_devices('complete')
+    utils.sync_global_devices('complete')
     logging.info('Finished.')
 
   first_step = host_step

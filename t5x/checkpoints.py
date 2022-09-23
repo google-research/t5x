@@ -199,6 +199,12 @@ def _get_local_data(x):
     return x
 
 
+def _sync_global_devices(name: str) -> None:
+  """Sync across all hosts/devices."""
+  # Internal mock TPU handling
+  multihost_utils.sync_global_devices(name)
+
+
 def get_checkpoint_dir(checkpoints_dir: str, step: int) -> str:
   """Returns path to a checkpoint dir given a parent directory and step."""
   return os.path.join(checkpoints_dir, f'checkpoint_{step}')
@@ -687,7 +693,7 @@ class Checkpointer(object):
     if jax.process_index() == 0:
       gfile.makedirs(tmp_dir)
     # Block all hosts until directory is ready.
-    multihost_utils.sync_global_devices(f'checkpointer:make_dir:{tmp_dir}')
+    _sync_global_devices(f'checkpointer:make_dir:{tmp_dir}')
 
     written_state_dict = self._write_state_to_tensorstore(
         tmp_dir, train_state, concurrent_gb, state_transformation_fns)
@@ -705,8 +711,7 @@ class Checkpointer(object):
         raise e
 
     # Block until complete on all hosts.
-    multihost_utils.sync_global_devices(
-        f'checkpointer:tensorstore_write_complete:{tmp_dir}')
+    _sync_global_devices(f'checkpointer:tensorstore_write_complete:{tmp_dir}')
 
     if jax.process_index() == 0:
       written_state_dict = jax.tree_util.tree_map(_get_local_data,
@@ -734,8 +739,7 @@ class Checkpointer(object):
       self._remove_old_dataset_checkpoints()
 
     # Block until complete on all hosts.
-    multihost_utils.sync_global_devices(
-        f'checkpointer:write_complete:{final_dir}')
+    _sync_global_devices(f'checkpointer:write_complete:{final_dir}')
 
   def _write_state_to_tensorstore(
       self,
@@ -866,8 +870,7 @@ class Checkpointer(object):
     written_state_dict = _run_future_tree(future_written_state)
 
     # Block until complete on all hosts.
-    multihost_utils.sync_global_devices(
-        f'checkpointer:ts_write_complete:{ckpt_dir}')
+    _sync_global_devices(f'checkpointer:ts_write_complete:{ckpt_dir}')
 
     return written_state_dict
 
@@ -1841,7 +1844,7 @@ class NonAtomicCheckpointer(orbax.checkpoint.Checkpointer):
     logging.info('Saving item to %s.', tmp_directory)
 
     self._handler.save(tmp_directory, item, *args, **kwargs)
-    multihost_utils.sync_global_devices('Checkpointer:write')
+    _sync_global_devices('Checkpointer:write')
 
 
 class CheckpointManager(orbax.checkpoint.CheckpointManager):
@@ -2064,5 +2067,5 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
                        check=True)
       else:
         gfile.rename(tmp_directory, final_directory)
-    multihost_utils.sync_global_devices('CheckpointManager:atomic_save')
+    _sync_global_devices('CheckpointManager:atomic_save')
     super()._add_checkpoint_info(step, metrics)
