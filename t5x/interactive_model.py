@@ -298,7 +298,7 @@ class InteractiveModel(abc.ABC):
         train_dataset, task_feature_lengths=self._task_feature_lengths)
     train_dataset = train_dataset.padded_batch(
         self._batch_size, drop_remainder=True)
-    train_iter = clu.data.TfDatasetIterator(train_dataset)
+    train_iter = clu.data.TfDatasetIterator(train_dataset, checkpoint=True)
 
     # --------------------------------------------------------------------------
     # Take 1 train step.
