@@ -1552,10 +1552,10 @@ async def _read_ts(param_info: _ParameterInfo,
   if ('dtype' in tmp_ts_spec_dict and tmp_ts_spec_dict['dtype']
       == 'uint16') or ('dtype' in tmp_ts_spec_dict['metadata'] and
                        tmp_ts_spec_dict['metadata']['dtype'] == '<u2'):
-    raise ValueError(
-        f'Found unsupported uint16 type in Tensorstore spec: {tmp_ts_spec_dict}. '
-        'Please use t5x/google/scripts/convert_uint16_checkpoint.py '
-        'to update saved types to bfloat16.')
+    error_message = (
+        'Found unsupported uint16 type in Tensorstore spec: '
+        f'{tmp_ts_spec_dict}. Please update saved types to bfloat16.')
+    raise ValueError(error_message)
 
   if restore_dtype is not None:
     tmp_ts_spec_dict = {
