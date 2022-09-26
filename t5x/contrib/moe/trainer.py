@@ -50,7 +50,7 @@ class MoeTrainer(trainer.Trainer):
       rng: Rng,
       learning_rate_fn: LearningRateCallable,
       num_microbatches: Optional[int],
-      num_experts: int,
+      num_expert_partitions: int,
       sharded_match_fn: Optional[Callable[
           [str], bool]] = training_utils.match_fn(r'.*expert.*'),
       weight_metrics_computer: Optional[trainer.WeightMetricsComputer] = None):
@@ -69,8 +69,8 @@ class MoeTrainer(trainer.Trainer):
       learning_rate_fn: returns the learning rate given the current step.
       num_microbatches: the number of microbatches to use, or None for direct
         training.
-      num_experts: Global number of experts. Used to scale sharded parameter
-        gradients.
+      num_expert_partitions: Size of expert parallel submesh. Used to scale
+        sharded parameter gradients.
       sharded_match_fn: Filter function for distinguishing sharded (MoE)
         parameters from replicated parameters. Used to identify the sharded
         parameter gradients that need to be rescaled under pjit training.
@@ -90,7 +90,7 @@ class MoeTrainer(trainer.Trainer):
         num_microbatches=num_microbatches,
         weight_metrics_computer=weight_metrics_computer)
 
-    self._num_experts = num_experts
+    self._num_expert_partitions = num_expert_partitions
     self._sharded_match_fn = sharded_match_fn
     self.data_partition_spec = partitioner.data_partition_spec
 
@@ -118,7 +118,9 @@ class MoeTrainer(trainer.Trainer):
 
       # Only difference between this train step and regular T5X train step:
       scaled_grads = training_utils.scale_sharded_grads(
-          grad_accum, self._sharded_match_fn, scale_factor=self._num_experts)
+          grad_accum,
+          self._sharded_match_fn,
+          scale_factor=self._num_expert_partitions)
 
       new_train_state, metrics = trainer.apply_grads(
           train_state,

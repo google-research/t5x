@@ -251,7 +251,7 @@ def train(
   train_iter = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
                               model.FEATURE_CONVERTER_CLS)
   if isinstance(train_iter, tf.data.Dataset):
-    train_iter = clu.data.TfDatasetIterator(train_iter)
+    train_iter = clu.data.TfDatasetIterator(train_iter, checkpoint=True)
   elif not isinstance(train_iter, clu.data.dataset_iterator.DatasetIterator):
     raise ValueError(
         f'get_dataset_fn returned unsupported type {type(train_iter)}.')
@@ -516,7 +516,7 @@ def train(
     trainer.close()
     if evaluator:
       evaluator.close()
-    multihost_utils.sync_global_devices('complete')
+    utils.sync_global_devices('complete')
     logging.info('Finished.')
 
   first_step = host_step

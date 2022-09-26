@@ -555,6 +555,18 @@ class GDADatasetIterator(clu.data.dataset_iterator.DatasetIterator):
         self._iterator, clu.data.TfDatasetIterator) else self._iterator
 
 
+def sync_global_devices(name: str) -> None:
+  """Creates a barrier with given name across all hosts/devices."""
+  # Internal mock TPU handling
+  multihost_utils.sync_global_devices(name)
+
+
+def multihost_assert_equal(input_tree, fail_message: str = ''):
+  """Verifies that all the hosts have the same tree of values."""
+  # Internal mock TPU handling
+  multihost_utils.assert_equal(input_tree, fail_message)
+
+
 #------------------------------------------------------------------------------
 # Fast *nondeterministic* hardware RNG for faster Dropout
 #------------------------------------------------------------------------------
@@ -1123,7 +1135,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
                train_state: train_state_lib.TrainState,
                rng: Optional[jnp.ndarray] = None):
     ds_shapes = jax.tree_map(lambda x: jnp.array(x.shape), ds.element_spec)
-    multihost_utils.assert_equal(
+    multihost_assert_equal(
         ds_shapes, 'Dataset element shapes do not agree across hosts. '
         'This could be an indication that the dataset is nondeterministic.')
     try:
@@ -1151,7 +1163,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     # Shard the infer dataset across replica sets.
     sharded_ds = ds.shard(num_shards, shard_id).batch(
         per_shard_batch_size, drop_remainder=True)
-    multihost_utils.assert_equal(
+    multihost_assert_equal(
         jnp.array(len(sharded_ds)),
         'Dataset lengths do not agree across hosts.')
 
@@ -1369,10 +1381,11 @@ def get_dataset_inner(cfg: DatasetConfig,
   """Internal fn to load a dataset from SeqIO based on a `DatasetConfig`."""
   batch_size = cfg.batch_size // shard_info.num_shards
   if seed is not None:
-    multihost_utils.assert_equal(
-        np.array(seed),
-        f'`seed` is not same across hosts; {jax.process_index} has a seed of '
-        f'{seed}')
+    if not str(jax.devices()[0]).startswith('MOCK_TPU'):
+      multihost_assert_equal(
+          np.array(seed),
+          f'`seed` is not same across hosts; {jax.process_index} has a seed of '
+          f'{seed}')
     logging.info(
         "Initializing dataset for task '%s' with a replica batch size of %d and "
         'a seed of %d', cfg.mixture_or_task_name, batch_size, seed)

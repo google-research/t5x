@@ -30,7 +30,6 @@ os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
 import jax
-from jax.experimental import multihost_utils
 import seqio
 from t5x import gin_utils
 from t5x import models
@@ -191,7 +190,7 @@ def evaluate(
             rng=jax.random.PRNGKey(0)))
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
-    multihost_utils.sync_global_devices(f'step_{host_step}:complete')
+    utils.sync_global_devices(f'step_{host_step}:complete')
 
   logging.info('Finished.')
 

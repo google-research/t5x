@@ -298,7 +298,7 @@ class InteractiveModel(abc.ABC):
         train_dataset, task_feature_lengths=self._task_feature_lengths)
     train_dataset = train_dataset.padded_batch(
         self._batch_size, drop_remainder=True)
-    train_iter = clu.data.TfDatasetIterator(train_dataset)
+    train_iter = clu.data.TfDatasetIterator(train_dataset, checkpoint=True)
 
     # --------------------------------------------------------------------------
     # Take 1 train step.
@@ -331,7 +331,7 @@ class InteractiveModel(abc.ABC):
         self._save_checkpoint_cfg.state_transformation_fns)
 
     # Wait until computations are done before exiting
-    multihost_utils.sync_global_devices("complete")
+    utils.sync_global_devices("complete")
     self._train_state = self._trainer.train_state
 
   def infer_with_preprocessors(
@@ -516,7 +516,7 @@ class InteractiveModel(abc.ABC):
 
     all_metrics = compute_metrics_fn()
     # Wait until computations are done before continuing.
-    multihost_utils.sync_global_devices("Completed.")
+    utils.sync_global_devices("Completed.")
     return all_metrics
 
   def evaluate(

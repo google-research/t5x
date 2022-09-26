@@ -2,8 +2,7 @@
 #
 # See t5x/contrib/moe/configs/runs/pretrain.gin for instructions.
 #
-# You must also include bindings for MODEL and NUM_EXPERTS (typically set by the
-# model gin config).
+# You must also include bindings for MODEL.
 #
 # Required to be set:
 #
@@ -13,6 +12,9 @@
 # - TRAIN_STEPS
 # - INITIAL_CHECKPOINT_PATH
 # - MODEL_DIR
+#
+# You can also specify the upper bound for the size of the expert parallel
+# submesh by overriding NUM_EXPERT_PARTITIONS, which defaults to NUM_EXPERTS.
 
 from __gin__ import dynamic_registration
 
