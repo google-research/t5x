@@ -396,8 +396,10 @@ def default_mesh(num_partitions: int,
         mps = (1, 1, 16, 1)
       elif bounds[0] >= 8:
         mps = (8, 2, 1, 1)
-      else:
+      elif bounds[0] >= 4:
         mps = (4, 4, 1, 1)
+      else:
+        mps = (2, 2, 4, 1)
 
   if mps is None:
     raise ValueError('No default mesh for this configuration: specify '
