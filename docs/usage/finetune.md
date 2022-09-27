@@ -34,7 +34,7 @@ model checkpoints and Gin config files) are available in the
 
 For the example run, you will use the T5 1.1 Small model. The Gin file for this
 model is located at
-[`/t5x/examples/t5/t5_1_1/small.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin),
+[`/t5x/examples/t5/t5_1_1/small.gin`](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/small.gin),
 and the checkpoint is located at
 [`gs://t5-data/pretrained_models/t5x/t5_1_1_small`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/t5_1_1_small).
 
@@ -89,7 +89,7 @@ reading the [T5X Gin Primer](gin.md) is recommended.
 
 T5X provides a Gin file that configures the T5X trainer for fine-tuning (located
 at
-[`t5x/configs/runs/finetune.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin)),
+[`t5x/configs/runs/finetune.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/finetune.gin)),
 and expects a few params from you. These params can be specified in a separate
 Gin file, or via commandline flags. Following are the required params:
 
@@ -118,9 +118,9 @@ Gin file, or via commandline flags. Following are the required params:
     T5 and T5.1.1: `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
 
 In addition to the above params, you will need to include
-[`finetune.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin)
+[`finetune.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/finetune.gin)
 and the Gin file for the pre-trained model, which for the example run is
-[`t5_1_1/small.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin).
+[`t5_1_1/small.gin`](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/small.gin).
 
 ```gin
 include 't5x/configs/runs/finetune.gin'
@@ -150,7 +150,7 @@ LOSS_NORMALIZING_FACTOR = 233472
 ```
 
 See
-[`t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin)
+[`t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin`](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin)
 for this example.
 
 
@@ -233,10 +233,10 @@ be useful, especially when customizing your fine-tuning job.
 ### `train`, `train_eval` and `infer_eval` {.no-toc}
 
 A
-[`DatasetConfig`](https://github.com/google-research/t5x/tree/main/t5x/utils.py?l=113&rcl=375475889)
+[`DatasetConfig`](https://github.com/google-research/t5x/blob/main/t5x/utils.py?l=113&rcl=375475889)
 object is used to configure loading SeqIO Tasks/Mixtures for training and eval.
 If you take a closer look at
-[`runs/finetune.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin),
+[`runs/finetune.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/finetune.gin),
 you will see that there are three `DatasetConfig` objects defined and passed to
 the train function: `train_dataset_cfg`, `train_eval_dataset_cfg`,
 `infer_eval_dataset_cfg`. Here's a brief description of these configs:
@@ -246,9 +246,9 @@ the train function: `train_dataset_cfg`, `train_eval_dataset_cfg`,
 +   `train_eval`: This configures the Task/Mixture that is used to compute
     training metrics on the eval split, e.g. perplexity. These metrics are
     defined in the
-    [`Model`](https://github.com/google-research/t5x/tree/main/t5x/models.py;l=257-267;rcl=394045248)
+    [`Model`](https://github.com/google-research/t5x/blob/main/t5x/models.py;l=257-267;rcl=394045248)
     class and the eval fn is located
-    [here](https://github.com/google-research/t5x/tree/main/t5x/trainer.py;l=257;rcl=398487394).
+    [here](https://github.com/google-research/t5x/blob/main/t5x/trainer.py;l=257;rcl=398487394).
 +   `infer_eval`: This configures the Task/Mixture that is used to compute
     metrics on inferred model outputs (e.g., comparing decoded model outputs and
     targets). These metrics are defined in the SeqIO Task/Mixture and the eval

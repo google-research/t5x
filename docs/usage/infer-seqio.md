@@ -34,7 +34,7 @@ SeqIO Task will be used:
 +   Model checkpoint -
     [`cbqa/small_ssm_nq/model.ckpt-1110000`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/cbqa/small_ssm_nq/)
 +   Model Gin file -
-    [`models/t5_1_1_small.gin`](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
+    [`models/t5_1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
 
 If you would like to fine-tune your model before inference, please follow the
 [fine-tuning](finetune) tutorial, and continue to Step 2.
@@ -81,7 +81,7 @@ After choosing the model and SeqIO Task/Mixture for your run, the next step is
 to configure your run using Gin. If you're not familiar with Gin, reading the
 [T5X Gin Primer](gin.md) is recommended. T5X provides a Gin file that configures
 the T5X inference job (located at
-[`runs/infer.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/infer.gin)) to
+[`runs/infer.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/infer.gin)) to
 run inference on SeqIO Task/Mixtures, and expects a few params from you. These
 params can be specified in a separate Gin file, or via commandline flags.
 Following are the required params:
@@ -96,7 +96,7 @@ Following are the required params:
     Task or Mixture. For the example run, set this to
     `'google_research.t5_closed_book_qa.t5_cbqa.tasks'`.
     Note that this module must be included as a dependency in the T5X inference
-    [binary](https://github.com/google-research/t5x/tree/main/t5x/BUILD;l=74;rcl=398627055). Most
+    [binary](https://github.com/google-research/t5x/blob/main/t5x/BUILD;l=74;rcl=398627055). Most
     common Task modules, including `t5_closed_book_qa`, are already included. If
     your module is not included, see the
     [Advanced Topics section](#custom-t5x-binaries) at the end of this tutorial
@@ -112,9 +112,9 @@ Following are the required params:
     the next step.
 
 In addition to the above params, you will need to import
-[`infer.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/infer.gin) and the
+[`infer.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/infer.gin) and the
 Gin file for the model, which for the example run is
-[`t5_1_1_small.gin`](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
+[`t5_1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
 
 ```gin
 include 'runs/infer.gin'
@@ -143,10 +143,10 @@ TASK_FEATURE_LENGTHS = {'inputs': 38, 'targets': 18}
 ```
 
 See
-[`t5_1_1_small_cbqa_natural_questions.gin`](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/examples/inference/t5_1_1_small_cbqa_natural_questions.gin)
+[`t5_1_1_small_cbqa_natural_questions.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/examples/inference/t5_1_1_small_cbqa_natural_questions.gin)
 for this example. Make sure that your Gin file is linked as a data dependency to
 the T5X inference
-[binary](https://github.com/google-research/t5x/tree/main/t5x/BUILD;l=74;rcl=398627055). If your
+[binary](https://github.com/google-research/t5x/blob/main/t5x/BUILD;l=74;rcl=398627055). If your
 Gin file is not included, see the
 [Advanced Topics section](#custom-t5x-binaries) at the end of this tutorial for
 instructions to add it, or skip writing a Gin file and pass the above params as
@@ -205,11 +205,11 @@ output json files will not match (order is guaranteed to match for `num_shards =
 
 You can control dataset checkpointing frequency by overriding the
 `infer.checkpoint_period` in
-[runs/infer.gin](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/infer.gin),
+[runs/infer.gin](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/infer.gin),
 which is set to `100` by default. This means that the dataset is checkpointed
 after running inferences on `checkpoint_period` batches (batches, not examples;
 you can control batch size by overriding `utils.DatasetConfig.batch_size` in
-[runs/infer.gin](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/infer.gin), it
+[runs/infer.gin](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/infer.gin), it
 is set to `32` by default).
 
 ### Changing Length and Decoding Strategy {#decoding-strategies .no-toc}

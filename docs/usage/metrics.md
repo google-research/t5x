@@ -75,7 +75,7 @@ In addition to CLU provided metrics like Average and Accuracy, T5X provides a
 few specialized metrics, like TimeRate and AveragePerStep. A full list of CLU
 metrics is provided at
 [clu/metrics.py](https://github.com/google/CommonLoopUtils/tree/main/clu/metrics.py) while T5X metrics
-are listed in [t5x/metrics.py](https://github.com/google-research/t5x/tree/main/t5x/metrics.py). We
+are listed in [t5x/metrics.py](https://github.com/google-research/t5x/blob/main/t5x/metrics.py). We
 will elaborate on specialized metrics like TimeRate and AveragePerStep
 [below](#special-t5x-metrics).
 
@@ -118,7 +118,7 @@ mapping can be easily obtained by calling `metric.compute_value()`.
 to the console, TF summary files, XManager, and others. See
 [source](https://github.com/google/CommonLoopUtils/tree/main/clu/metric_writers/) for full details. By
 default, the T5X
-[`MetricsManager`](https://github.com/google-research/t5x/tree/main/t5x/trainer.py?q=symbol:%5CbMetricsManager%5Cb)
+[`MetricsManager`](https://github.com/google-research/t5x/blob/main/t5x/trainer.py?q=symbol:%5CbMetricsManager%5Cb)
 logs metrics to
 [TensorBoard](https://github.com/google/CommonLoopUtils/tree/main/clu/metric_writers/summary_writer.py),
 [XManager](https://github.com/google/CommonLoopUtils/tree/main/clu/metric_writers/google/xm_measurement_writer.py),
@@ -212,7 +212,7 @@ migration towards new-style metrics in T5X. Please help us clean it up!
 
 A few metrics are somewhat more complicated to use, largely due to limitations
 of the T5X training library. Metrics can be found at
-[`t5x/metrics.py`](https://github.com/google-research/t5x/tree/main/t5x/metrics.py).
+[`t5x/metrics.py`](https://github.com/google-research/t5x/blob/main/t5x/metrics.py).
 
 #### `AveragePerStep`
 
@@ -231,7 +231,7 @@ For example, we need to initialize `z_loss` and `steps_per_second` as follows:
 ```
 
 Then, before summarization
-[`set_step_metrics_num_steps(metrics, num_steps)`](https://github.com/google-research/t5x/tree/main/t5x/metrics.py;l=222)
+[`set_step_metrics_num_steps(metrics, num_steps)`](https://github.com/google-research/t5x/blob/main/t5x/metrics.py;l=222)
 is called automatically to set the number of steps for relevant metrics.
 
 #### `TimeRate`
@@ -248,7 +248,7 @@ For example, we can initialize a `seqs_per_second` metric as follows:
 ```
 
 Before summarization,
-[`set_time_rate_metrics_duration(metrics, duration)`](https://github.com/google-research/t5x/tree/main/t5x/metrics.py;l=209)
+[`set_time_rate_metrics_duration(metrics, duration)`](https://github.com/google-research/t5x/blob/main/t5x/metrics.py;l=209)
 is called automatically called to set the duration of time-related metrics.
 
 #### `StepsPerTime`
@@ -261,6 +261,6 @@ metric such as `steps_per_second`.
 ```
 
 NOTE: Unless you are also overriding
-[Trainer](https://github.com/google-research/t5x/tree/main/t5x/trainer.py;l=314), you likely only
+[Trainer](https://github.com/google-research/t5x/blob/main/t5x/trainer.py;l=314), you likely only
 need to worry about initializing metrics correctly, and not about making later
 adjustments for duration and number of microbatches.

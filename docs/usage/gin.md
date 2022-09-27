@@ -39,7 +39,7 @@ unintended side effects.
 ### An Example
 
 Let's look at the `evaluate` call signature from
-[eval.py](https://github.com/google-research/t5x/tree/main/t5x/eval.py) as an example:
+[eval.py](https://github.com/google-research/t5x/blob/main/t5x/eval.py) as an example:
 
 ```py
 def evaluate(*,
@@ -171,8 +171,8 @@ we pass the value of the `MODEL` macro (to be defined later). For `output_dir`
 we pass a string path. For `dataset_cfg`, `restore_checkpoint_cfg`, and
 `partitioner`, we pass instantiations of `DatasetConfig`,
 `RestoreCheckpointConfig`, and `PjitPartitioner`, which are defined in
-[utils.py](https://github.com/google-research/t5x/tree/main/t5x/utils.py) and
-[partitioning.py](https://github.com/google-research/t5x/tree/main/t5x/partitioning.py)
+[utils.py](https://github.com/google-research/t5x/blob/main/t5x/utils.py) and
+[partitioning.py](https://github.com/google-research/t5x/blob/main/t5x/partitioning.py)
 respectively. The '@' prefix tells gin that the following is a configured
 function or class, and the '()' suffix signifies that it should be called (in
 the cases of class, this means calling the constructor). If we wanted to pass in
@@ -195,9 +195,9 @@ file are read and override any conflicting ones defined so far in this file.
 It's equivalent to copy and pasting the contents of the included file at this
 location in the config. If you want to see how the model itself is instantiated,
 you can refer to
-[t5_1_1/large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/large.gin)
+[t5_1_1/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/large.gin)
 (which simply overrides a few values from
-[t5_1_1/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/base.gin)).
+[t5_1_1/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/base.gin)).
 
 The final line of this block shows an example of how you can modify the default
 arguments of the `EncoderDecoderModel` instance referenced by `%MODEL`, in this
@@ -243,7 +243,7 @@ What happens if you need to use a class or function multiple times but with
 different bound values?
 
 A clear example of this is in the top-level `train` function (in
-[train.py](https://github.com/google-research/t5x/tree/main/t5x/train.py)). The call signature
+[train.py](https://github.com/google-research/t5x/blob/main/t5x/train.py)). The call signature
 includes 3 different instances of `utils.DatasetConfig`: one for the train
 dataset, one for the "train-eval" dataset (used for evaluation with teacher
 forcing), and one for the "infer-eval" dataset (used for evaluation with
@@ -324,13 +324,13 @@ An example where you may need multiple files is with the `train` script.
 
 You can first specify which model you want to train by supplying a gin file
 containing its definition, for example:
-[t5_1_1/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin).
+[t5_1_1/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/small.gin).
 
 You may then specify a run config that supplies some of the common defaults. For
 example, if you are doing pretraining you can use
-[runs/pretrain.gin](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/pretrain.gin),
+[runs/pretrain.gin](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/pretrain.gin),
 and if you are doing finetuning, you can use
-[runs/finetune.gin](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin).
+[runs/finetune.gin](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/finetune.gin).
 
 We can apply these two files with the following command:
 
@@ -349,7 +349,7 @@ ValueError: MODEL_DIR/macro.value set to `%gin.REQUIRED` but not subsequently ov
 
 This is because the config still includes some `gin.REQUIRED` macros that you'll
 need to override with the details of your run. At the top of
-[runs/finetune.gin](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/finetune.gin)
+[runs/finetune.gin](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/finetune.gin)
 you'll see the list of required overrides, which we will populate for finetuning
 on WMT in the updated launch command here:
 
@@ -374,7 +374,7 @@ inference evaluation you may add `--gin.train.infer_eval_dataset_cfg=None`.
 At the beginning of the primer, we saw a fully-specified run config. We can do
 something similar with the previous example to create a self-contained run
 configuration.
-[t5_1_1/examples/base_wmt_finetune.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin)
+[t5_1_1/examples/base_wmt_finetune.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin)
 is just such an example that allows you to exactly duplicate the previous launch
 command simply by calling:
 

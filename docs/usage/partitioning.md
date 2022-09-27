@@ -426,8 +426,8 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 [flaxformer]: https://github.com/google/flaxformer/tree/main/flaxformer/architectures/t5/
 [lan]: https://github.com/google/flax/tree/main/flax/linen/partitioning.py
 [megatron]: https://arxiv.org/abs/1909.08053
-[minimal]: https://github.com/google-research/t5x/tree/main/t5x/examples/
+[minimal]: https://github.com/google-research/t5x/blob/main/t5x/examples/
 [optimus]: https://arxiv.org/abs/2104.05343
-[param_with_axes]: https://github.com/google-research/t5x/tree/main/t5x/examples/t5/layers.py;rcl=427300354;l=462
+[param_with_axes]: https://github.com/google-research/t5x/blob/main/t5x/examples/t5/layers.py;rcl=427300354;l=462
 [pjit]: https://github.com/google/jax/tree/main/jax/experimental/pjit.py
-[standard-rules]: https://github.com/google-research/t5x/tree/main/t5x/partitioning.py?l=438&rcl=421294093
+[standard-rules]: https://github.com/google-research/t5x/blob/main/t5x/partitioning.py?l=438&rcl=421294093

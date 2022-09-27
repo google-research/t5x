@@ -4,7 +4,7 @@
 This page outlines the decoding functions that T5X provides out-of-the-box and
 how custom decoding functions can be used for a Transformer model, i.e., an
 instance of
-[`BaseTransformerModel`](https://github.com/google-research/t5x/tree/main/t5x/models.py?q=symbol:%5CbBaseTransformerModel%5Cb).
+[`BaseTransformerModel`](https://github.com/google-research/t5x/blob/main/t5x/models.py?q=symbol:%5CbBaseTransformerModel%5Cb).
 Here we refer to decoding as a process of generating a sequence of items from a
 fixed alphabet (e.g., generating token ids from the vocabulary).
 
@@ -21,7 +21,7 @@ requires rewriting the method.
 
 If a desired decoding process can follow `DecodeFnCallable`, it can be
 registered as a private attribute of a
-[`BaseTransformerModel`](https://github.com/google-research/t5x/tree/main/t5x/models.py?q=symbol:%5CbBaseTransformerModel%5Cb)
+[`BaseTransformerModel`](https://github.com/google-research/t5x/blob/main/t5x/models.py?q=symbol:%5CbBaseTransformerModel%5Cb)
 by passing it as a `decode_fn` argument to its constructor.
 
 ### Decoding function call signature
@@ -58,22 +58,22 @@ these, we provide `**kwargs`.
 
 Another usage of `**kwargs` is calling `decoding_fn` multiple times without
 recompiling the model. This pattern is used in
-[Prediction Service](https://github.com/google-research/t5x/tree/main/t5x/google/prediction_service/README.md).
+[Prediction Service](https://github.com/google-research/t5x/blob/main/t5x/google/prediction_service/README.md).
 For a compiled model, different values of `alpha` can be passed e.g.,
 `decoder_params = {"alpha": 0.7}` where `decoder_params` is the argument to
 `predict_batch_with_aux`. It is unpacked and passed to `beam_search` function.
 Note that the Prediction Service uses
-[`predict_batch_with_aux`](https://github.com/google-research/t5x/tree/main/t5x/models.py?q=func:%5Cbpredict_batch_with_aux%5Cb),
+[`predict_batch_with_aux`](https://github.com/google-research/t5x/blob/main/t5x/models.py?q=func:%5Cbpredict_batch_with_aux%5Cb),
 which is one of the two public methods. This method is useful if auxiliary
 outputs (e.g., scores of the predictions) are to be returned. The other method
 is
-[`predict_batch`](https://github.com/google-research/t5x/tree/main/t5x/models.py?q=func:%5Cbpredict_batch%5Cb),
+[`predict_batch`](https://github.com/google-research/t5x/blob/main/t5x/models.py?q=func:%5Cbpredict_batch%5Cb),
 which simply returns the predictions.
 
 ### Beam search
 
 The following lines can be added to a gin file in order to use
-[beam search](https://github.com/google-research/t5x/tree/main/t5x/decoding.py;l=881;rcl=446762159)
+[beam search](https://github.com/google-research/t5x/blob/main/t5x/decoding.py;l=881;rcl=446762159)
 as a decoding function for an encoder-decoder model.
 
 ```gin
@@ -121,7 +121,7 @@ implictly determined length information unless it is passed by
 
 ### Temperature sampling
 
-[Temperature sampling](https://github.com/google-research/t5x/tree/main/t5x/decoding.py;l=37;rcl=446762159)
+[Temperature sampling](https://github.com/google-research/t5x/blob/main/t5x/decoding.py;l=37;rcl=446762159)
 can be used for multiple decoding strategies. The following lines configures
 temperature sampling as a `decode_fn`.
 
@@ -190,9 +190,9 @@ Note that only one of `topk` or `topp` can be used.
 If `DecodeFnCallable` is not flexible enough for your custom decoding function,
 you can subclass the model class and override `predict_batch_with_aux` method.
 While the model class can be any instance of
-[`BaseTransformerModel`](https://github.com/google-research/t5x/tree/main/t5x/models.py?q=symbol:%5CbBaseTransformerModel%5Cb),
+[`BaseTransformerModel`](https://github.com/google-research/t5x/blob/main/t5x/models.py?q=symbol:%5CbBaseTransformerModel%5Cb),
 we recommend that you subclass the existing models such as
-[`EncoderDecoderModel`](https://github.com/google-research/t5x/tree/main/t5x/models.py?q=symbol:%5CbEncoderDecoderModel%5Cb)
+[`EncoderDecoderModel`](https://github.com/google-research/t5x/blob/main/t5x/models.py?q=symbol:%5CbEncoderDecoderModel%5Cb)
 and only override `predict_batch_with_aux` method.
 
 `predict_batch_with_aux` method also has a required call signature, but it is

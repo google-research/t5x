@@ -38,7 +38,7 @@ SeqIO Task will be used:
 +   Model checkpoint -
     [`cbqa/small_ssm_nq/model.ckpt-1110000`](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/cbqa/small_ssm_nq/)
 +   Model Gin file -
-    [`t5x/configs/models/t5_1_1_small.gin`](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
+    [`t5x/configs/models/t5_1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
 
 If you would like to fine-tune your model before evaluation, please follow the
 [fine-tuning](finetune) tutorial, and continue to Step 2.
@@ -83,7 +83,7 @@ to configure your run using Gin. If you're not familiar with Gin, reading the
 [T5X Gin Primer](gin.md) is recommended.
 
 T5X provides a Gin file that configures the T5X eval job (located at
-[`t5x/configs/runs/eval.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/eval.gin)),
+[`t5x/configs/runs/eval.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/eval.gin)),
 and expects a few params from you. These params can be specified in a separate
 Gin file, or via commandline flags. Following are the required params:
 
@@ -100,9 +100,9 @@ Gin file, or via commandline flags. Following are the required params:
     the next step.
 
 In addition to the above params, you will need to import
-[`eval.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/eval.gin) and the
+[`eval.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/eval.gin) and the
 Gin file for the model, which for the example run is
-[`t5_1_1_small.gin`](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
+[`t5_1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
 
 ```gin
 include 'runs/eval.gin'
@@ -124,9 +124,9 @@ google_research.t5_closed_book_qa.t5_cbqa.tasks`
 since it is where 'glue_v002_proportional' is registered.
 
 If you choose a module that is not included as a dependency in the T5X trainer
-[binary](https://github.com/google-research/t5x/tree/main/t5x/BUILD;l=76;rcl=398627055), or if you
+[binary](https://github.com/google-research/t5x/blob/main/t5x/BUILD;l=76;rcl=398627055), or if you
 have defined your gin config file in a location other than the
-[T5X config directory](https://github.com/google-research/t5x/tree/main/t5x/configs/), you will
+[T5X config directory](https://github.com/google-research/t5x/blob/main/t5x/configs/), you will
 need to follow the instructions in the
 [Advanced Topics section](#custom-t5x-binaries) to link in the custom gin file
 and/or task definition.
@@ -150,7 +150,7 @@ MIXTURE_OR_TASK_NAME = 'natural_questions_open'
 ```
 
 See
-[`t5_1_1_small_cbqa_natural_questions.gin`](https://github.com/google-research/t5x/tree/main/t5x/google/examples/flaxformer_t5/configs/examples/eval/t5_1_1_small_cbqa_natural_questions.gin)
+[`t5_1_1_small_cbqa_natural_questions.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/examples/eval/t5_1_1_small_cbqa_natural_questions.gin)
 for this example.
 
 In this example, we run the evaluation on one checkpoint. It is common to
@@ -178,7 +178,7 @@ paths should contain all Gin files used or included in your experiment.
 
 
 You can have a look inside
-[`eval.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/eval.gin) to see
+[`eval.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/eval.gin) to see
 other useful parameters that it is possible to pass in, including dataset split,
 batch size, and random seed.
 

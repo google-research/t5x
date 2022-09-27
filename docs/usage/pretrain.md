@@ -29,25 +29,25 @@ in T5X. Following is a list of these models and their Gin locations.
 
 Model                                 | Gin File Location
 ------------------------------------- | -----------------
-T5 Small                              | [t5_1_0/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/small.gin)
-T5 Base                               | [t5_1_0/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/base.gin)
-T5 Large                              | [t5_1_0/large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/large.gin)
-T5 3B                                 | [t5_1_0/3B.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/3B.gin)
-T5 11B                                | [t5_1_0/11B.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_0/11B.gin)
-T5 1.1 Small                          | [t5_1_1/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin)
-T5 1.1 Base                           | [t5_1_1/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/base.gin)
-T5 1.1 Large                          | [t5_1_1/large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/large.gin)
-T5 1.1 XL                             | [t5_1_1/xl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/xl.gin)
-T5 1.1 XXL                            | [t5_1_1/xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/xxl.gin)
-MT5 Small                             | [mt5/small.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/small.gin)
-MT5 Base                              | [mt5/base.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/base.gin)
-MT5 Large                             | [mt5/large.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/large.gin)
-MT5 XL                                | [mt5/xl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/xl.gin)
-MT5 XXL                               | [mt5/xxl.gin](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/mt5/xxl.gin)
+T5 Small                              | [t5_1_0/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_0/small.gin)
+T5 Base                               | [t5_1_0/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_0/base.gin)
+T5 Large                              | [t5_1_0/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_0/large.gin)
+T5 3B                                 | [t5_1_0/3B.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_0/3B.gin)
+T5 11B                                | [t5_1_0/11B.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_0/11B.gin)
+T5 1.1 Small                          | [t5_1_1/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/small.gin)
+T5 1.1 Base                           | [t5_1_1/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/base.gin)
+T5 1.1 Large                          | [t5_1_1/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/large.gin)
+T5 1.1 XL                             | [t5_1_1/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/xl.gin)
+T5 1.1 XXL                            | [t5_1_1/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/xxl.gin)
+MT5 Small                             | [mt5/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/small.gin)
+MT5 Base                              | [mt5/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/base.gin)
+MT5 Large                             | [mt5/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/large.gin)
+MT5 XL                                | [mt5/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xl.gin)
+MT5 XXL                               | [mt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xxl.gin)
 
 For the example run, you will use the T5 1.1 Small model. The Gin file for this
 model is located at
-[`/t5x/examples/t5/t5_1_1/1_1_small.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin).
+[`/t5x/examples/t5/t5_1_1/1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/small.gin).
 
 ## Step 2: Choose a SeqIO Task/Mixture
 
@@ -85,7 +85,7 @@ reading the [T5X Gin Primer](gin.md) is recommended.
 
 T5X provides a Gin file that configures the T5X trainer for pretraining (located
 at
-[`runs/pretrain.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/pretrain.gin)),
+[`runs/pretrain.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/pretrain.gin)),
 and expects a few params from you. These params can be specified in a separate
 Gin file, or via commandline flags. Following are the required params:
 
@@ -104,9 +104,9 @@ Gin file, or via commandline flags. Following are the required params:
     the next step.
 
 In addition to the above params, you will need to import
-[`pretrain.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/pretrain.gin)
+[`pretrain.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/pretrain.gin)
 and the Gin file for the pretrained model, which for the example run is
-[`t5_1_1/small.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/small.gin).
+[`t5_1_1/small.gin`](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/small.gin).
 
 ```gin
 include 't5x/configs/runs/pretrain.gin'
@@ -123,7 +123,7 @@ You will also need to import the Python module(s) that register SeqIO Tasks and
 Mixtures used in your run. For the example run, we add `import t5.data.mixtures`
 since it is where 'glue_v002_proportional' is registered. Note that this module
 must also be included as a dependency in the T5X trainer
-[binary](https://github.com/google-research/t5x/tree/main/t5x/BUILD;l=74;rcl=398627055). Most
+[binary](https://github.com/google-research/t5x/blob/main/t5x/BUILD;l=74;rcl=398627055). Most
 common Task/Mixture modules, such as this one, are already included. If your
 module is not included, see the [Advanced Topics section](#custom-t5x-binaries)
 at the end of this tutorial for instructions to add it.
@@ -145,7 +145,7 @@ BATCH_SIZE = 256
 ```
 
 See
-[`t5x/examples/t5/t5_1_1/examples/small_c4_pretrain.gin`](https://github.com/google-research/t5x/tree/main/t5x/examples/t5/t5_1_1/examples/small_c4_pretrain.gin)
+[`t5x/examples/t5/t5_1_1/examples/small_c4_pretrain.gin`](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/examples/small_c4_pretrain.gin)
 for this example.
 
 
@@ -184,10 +184,10 @@ be useful, especially when customizing your pretraining job.
 ### `train`, `train_eval` {#train-eval .no-toc}
 
 A
-[`DatasetConfig`](https://github.com/google-research/t5x/tree/main/t5x/utils.py?l=113&rcl=375475889)
+[`DatasetConfig`](https://github.com/google-research/t5x/blob/main/t5x/utils.py?l=113&rcl=375475889)
 object is used to configure loading SeqIO Tasks/Mixtures for training and eval.
 If you take a closer look at
-[`runs/pretrain.gin`](https://github.com/google-research/t5x/tree/main/t5x/configs/runs/pretrain.gin),
+[`runs/pretrain.gin`](https://github.com/google-research/t5x/blob/main/t5x/configs/runs/pretrain.gin),
 you will see that there are two `DatasetConfig` objects defined and passed to
 the train function: `train_dataset_cfg` and `train_eval_dataset_cfg`. Here's a
 brief description of these configs:
@@ -197,9 +197,9 @@ brief description of these configs:
 +   `train_eval`: This configures the Task/Mixture that is used to compute
     training metrics on the eval split, e.g. perplexity. These metrics are
     defined in the
-    [`Model`](https://github.com/google-research/t5x/tree/main/t5x/models.py;l=257-266;rcl=394045248)
+    [`Model`](https://github.com/google-research/t5x/blob/main/t5x/models.py;l=257-266;rcl=394045248)
     class and the eval fn is located
-    [here](https://github.com/google-research/t5x/tree/main/t5x/trainer.py?l=212&rcl=371778063).
+    [here](https://github.com/google-research/t5x/blob/main/t5x/trainer.py?l=212&rcl=371778063).
 
 ### Deterministic training {.no-toc}
 
