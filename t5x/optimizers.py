@@ -310,7 +310,7 @@ class OptaxStatePartitionRules:
       return cls._RULES[type(x)](x, params_axes)
 
     flattened_axes = [derive_fn(x) for x in flattened_state]
-    derived_axes = jax.tree_unflatten(tree_def, flattened_axes)
+    derived_axes = jax.tree_util.tree_unflatten(tree_def, flattened_axes)
     return derived_axes
 
 

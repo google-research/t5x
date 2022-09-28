@@ -41,7 +41,7 @@ from tensorflow_serving.apis import predict_pb2
 from tensorflow_serving.apis import prediction_log_pb2
 
 
-PyTreeDef = type(jax.tree_structure(None))
+PyTreeDef = type(jax.tree_util.tree_structure(None))
 ConfigDict = ml_collections.ConfigDict
 PreprocessorFn = Callable[..., Mapping[str, tf.Tensor]]
 WarmupExamples = List[Union[Union[str, bytes], List[int]]]

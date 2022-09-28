@@ -162,7 +162,7 @@ def _run_future_tree(future_tree):
   # TODO(adarob): Use asyncio.run in py3.7+.
   loop = asyncio.get_event_loop()
   leaves = loop.run_until_complete(asyncio.gather(*future_leaves))
-  return jax.tree_unflatten(treedef, leaves)
+  return jax.tree_util.tree_unflatten(treedef, leaves)
 
 
 def all_steps(checkpoints_dir: str) -> Sequence[int]:

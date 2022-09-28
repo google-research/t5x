@@ -1243,7 +1243,8 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     # and convert leaf np.arrays into lists.
     all_inferences, struct = jax.tree_flatten(all_inferences)
     all_inferences = map(
-        functools.partial(jax.tree_unflatten, struct), zip(*all_inferences))
+        functools.partial(jax.tree_util.tree_unflatten, struct),
+        zip(*all_inferences))
     indices_and_outputs = list(zip(all_indices, all_inferences))
     indices_and_outputs = jax.tree_map(lambda x: np.array(x).tolist(),
                                        indices_and_outputs)
