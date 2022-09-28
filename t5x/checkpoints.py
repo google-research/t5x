@@ -2015,7 +2015,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         dtype = self._restore_dtype
       if param_info.mesh_axes is None:
         return orbax.checkpoint.RestoreArgs(
-            as_gda=False, dtype=dtype, lazy=lazy_parameters)
+            as_jax_array=False, dtype=dtype, lazy=lazy_parameters)
       return orbax.checkpoint.RestoreArgs(
           mesh=self._partitioner.mesh,
           mesh_axes=param_info.mesh_axes,
@@ -2032,7 +2032,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     if self._should_write_dataset_ckpt:
       items[_DATASET_KEY] = self._dataset_iterator
     restore_args = {
-        _VERSION_KEY: orbax.checkpoint.RestoreArgs(as_gda=False),
+        _VERSION_KEY: orbax.checkpoint.RestoreArgs(as_jax_array=False),
         _OPTIMIZER_KEY: restore_args,
     }
     restore_kwargs = {
