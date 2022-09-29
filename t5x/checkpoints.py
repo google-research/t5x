@@ -511,7 +511,7 @@ class Checkpointer(object):
     """Gets the optimizer state dict."""
 
     def _lazy_load_device_array(arr):
-      if isinstance(arr, jax.xla.DeviceArray):
+      if isinstance(arr, jax.Array):
         return LazyThreadPoolArray(arr.shape, arr.dtype, lambda: np.array(arr))
       return arr
 
