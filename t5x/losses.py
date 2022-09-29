@@ -24,7 +24,7 @@ import numpy as np
 
 @jax.custom_vjp
 def cross_entropy_with_logits(logits: jnp.ndarray, targets: jnp.ndarray,
-                              z_loss: float) -> jnp.ndarray:
+                              z_loss: float) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Computes cross entropy loss with stable custom gradient.
 
   Computes a stabilized-gradient version of:
@@ -61,8 +61,9 @@ def _cross_entropy_with_logits_fwd(
     logits: jnp.ndarray,
     targets: jnp.ndarray,
     z_loss: float = 0.0
-) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp
-                              .ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray],
+           Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray,
+                 jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
   """Forward-mode of `cross_entropy_with_logits`."""
   max_logit = logits.max(axis=-1, keepdims=True)
   shifted = logits - max_logit
