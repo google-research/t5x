@@ -1587,7 +1587,9 @@ def override_params_axes_names(
 
 def get_local_data(x):
   """Get local buffer for input data."""
-  if isinstance(x, GlobalDeviceArray):
+  if jax.config.jax_array and isinstance(x, jax.Array):
+    return x.addressable_data(0)
+  elif isinstance(x, GlobalDeviceArray):
     val = x.local_data(0)
     return val
   elif isinstance(x, pxla.ShardedDeviceArray):
