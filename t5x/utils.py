@@ -25,7 +25,7 @@ import os
 import re
 import time
 import typing
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union, Protocol
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
 import warnings
 
 from absl import logging
@@ -63,7 +63,7 @@ Shape = Tuple[int, ...]
 TensorBoardLogger = seqio.TensorBoardLogger
 
 
-class EvaluatorConstructor(Protocol):
+class EvaluatorConstructor(typing_extensions.Protocol):
   """A function that returns an Evaluator.
 
   This protocol represents the actual callsite for the seqio.Evaluator c'tor
