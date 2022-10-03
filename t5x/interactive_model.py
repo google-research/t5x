@@ -649,7 +649,7 @@ class InteractiveModel(abc.ABC):
           preprocessors=preprocessors)
       scores = [score for example, score in scores]
 
-    return self._compute_metrics(targets, predictions, aux_values, scores,
+    return self._compute_metrics(targets, predictions, aux_values, scores,  # pytype: disable=wrong-arg-types  # mapping-is-not-sequence
                                  predict_metric_fns,
                                  predict_with_aux_metric_fns, score_metric_fns)
 
@@ -717,13 +717,13 @@ class InteractiveModel(abc.ABC):
         # Run on all batches for inference/evaluation.
         if predict_batches:
           for predict_batch in predict_batches:
-            predictions, _ = self.predict_with_aux(predict_batch)
+            predictions, _ = self.predict_with_aux(predict_batch)  # pytype: disable=wrong-arg-types  # mapping-is-not-sequence
         if score_batches:
           for score_batch in score_batches:
-            scores = self.score(score_batch)
+            scores = self.score(score_batch)  # pytype: disable=wrong-arg-types  # mapping-is-not-sequence
         if eval_batches:
           for eval_batch in eval_batches:
-            metrics = self.evaluate(eval_batch, metrics_fns)
+            metrics = self.evaluate(eval_batch, metrics_fns)  # pytype: disable=wrong-arg-types  # mapping-is-not-sequence
     return predictions, scores, metrics
 
 
