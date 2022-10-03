@@ -312,6 +312,41 @@ class FlaxOptimTrainStateTest(absltest.TestCase):
             }
         }))
 
+  def test_as_logical_axes_with_flax_mutables_without_mutables_axes(self):
+    model_variables = flax.core.freeze({
+        'params': {
+            'dense': {
+                'bias': np.zeros(4),
+                'kernel': np.zeros((2, 4))
+            }
+        },
+        'params_axes': {
+            'dense': {
+                'bias_axes': AxisMetadata(names=('embed',)),
+                'kernel_axes': AxisMetadata(names=('vocab', 'embed')),
+            }
+        },
+        'some_variable_without_axes_defined': {
+            'dense': {
+                'kernel': np.zeros(4),
+            }
+        },
+    })
+    optmizer_def = adafactor.Adafactor(
+        0.42,
+        logical_factor_rules={
+            'vocab': FactorDim.COLUMN,
+            'embed': FactorDim.ROW
+        })
+    state = train_state_lib.FlaxOptimTrainState.create(optmizer_def,
+                                                       model_variables)
+    self.assertIsNone(state.flax_mutables_axes)  # Not provided so must be None.
+    axes_state = state.as_logical_axes()
+    self.assertIsNone(axes_state.params_axes)
+    self.assertIsNone(axes_state.flax_mutables_axes)
+    jax.tree_map(np.testing.assert_array_equal, axes_state.flax_mutables,
+                 flax.core.freeze({}))
+
   def test_to_state_dict(self):
     model_variables = flax.core.freeze({
         'params': {
