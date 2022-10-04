@@ -313,16 +313,20 @@ class TrainerTest(parameterized.TestCase):
     self.dataset = tf.data.Dataset.range(6).map(mapfn).batch(
         2, drop_remainder=True)
 
-    self.test_trainer = trainer_lib.Trainer(
-        mock.create_autospec(models_lib.BaseModel, instance=True),
-        self.init_train_state,
-        partitioning.PjitPartitioner(num_partitions=1),
-        eval_names=['task1', 'task2'],
-        summary_dir=model_dir,
-        train_state_axes=train_state_axes,
-        rng=np.ones(2, np.uint32),
-        learning_rate_fn=lambda step: 2 * step,
-        num_microbatches=None)
+    with mock.patch(
+        'time.time',
+        side_effect=[0]  # trainer init
+    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+      self.test_trainer = trainer_lib.Trainer(
+          mock.create_autospec(models_lib.BaseModel, instance=True),
+          self.init_train_state,
+          partitioning.PjitPartitioner(num_partitions=1),
+          eval_names=['task1', 'task2'],
+          summary_dir=model_dir,
+          train_state_axes=train_state_axes,
+          rng=np.ones(2, np.uint32),
+          learning_rate_fn=lambda step: 2 * step,
+          num_microbatches=None)
 
   def tearDown(self) -> None:
     self.test_trainer.close()
@@ -349,7 +353,7 @@ class TrainerTest(parameterized.TestCase):
     num_steps = 2
     with mock.patch(
         'time.time',
-        side_effect=[1, 5]  # start_time, end_time
+        side_effect=[1, 5, 6]  # start_time, uptime logged, end_time
     ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
       trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
 
@@ -362,6 +366,8 @@ class TrainerTest(parameterized.TestCase):
     }
     # (0 + 2) / 2 = 1
     expected_metrics['learning_rate'] = 1
+    # 5.0 - 0.0
+    expected_metrics['timing/uptime'] = 5.0
     # 0+1+2+3 = 6
     expected_train_state = jax.tree_map(lambda x: np.array(x + 6),
                                         self.init_train_state)
@@ -372,7 +378,7 @@ class TrainerTest(parameterized.TestCase):
                  expected_train_state)
     # Expected step is 6 since we increment it along with the other optimizer
     # values.
-    steps = [2, 2, 2]
+    steps = [2, 2, 2, 2]
     if precompile:
       steps = [0] + steps
       expected_metrics['timing/compilation_seconds'] = 1

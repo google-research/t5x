@@ -195,11 +195,14 @@ class WeightMetricsComputer(object):
         "weight_gradient_norm":
             metrics_lib.AveragePerStep.from_model_output(grad_norm)
     })
+    weight_update = jax.tree_util.tree_map(jnp.subtract, new_train_state.params,
+                                           old_train_state.params)
+    metrics.update(self._make_rms_metrics("weight_update_rms", weight_update))
+    weight_update_by_weight = jax.tree_util.tree_map(jnp.divide, weight_update,
+                                                     old_train_state.params)
     metrics.update(
-        self._make_rms_metrics(
-            "weight_update_rms",
-            jax.tree_util.tree_map(jnp.subtract, new_train_state.params,
-                                   old_train_state.params)))
+        self._make_rms_metrics("weight_update_divided_by_weight_rms",
+                               weight_update_by_weight))
     metrics.update(self._make_max_metrics("weight_max", new_train_state.params))
 
     return metrics
@@ -435,6 +438,9 @@ class BaseTrainer(abc.ABC):
 
     self.stop_training = False
 
+    # Time since the trainer was made, this will record the "uptime" of the job.
+    self._trainer_init_time = time.time()
+
     # The training metrics combine metrics added by the Model (e.g., loss and
     # accuracy) and Trainer (e.g., learning rate).
     self.train_metrics_manager = MetricsManager(
@@ -500,6 +506,10 @@ class BaseTrainer(abc.ABC):
             metrics = metrics_update
 
       self.train_state = train_state
+
+    if metrics is not None:
+      metrics["timing/uptime"] = clu.metrics.LastValue.from_model_output(
+          jnp.asarray([time.time() - self._trainer_init_time]))
 
     return self.train_metrics_manager.write_metrics_summary(
         metrics, start_step + num_steps, num_steps)
