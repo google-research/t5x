@@ -287,24 +287,41 @@ class BaseTransformerModel(BaseModel):
         label_smoothing=self._label_smoothing,
         z_loss=self._z_loss,
         loss_normalizing_factor=loss_normalizing_factor)
+    inputs_mask = None
+    if 'encoder_input_tokens' in batch:
+      inputs_mask = batch['encoder_input_tokens'] != 0
     metrics = self._compute_metrics(
         logits=logits,
         targets=batch['decoder_target_tokens'],
-        mask=weights,
+        mask={
+            'targets': weights,
+            'inputs': inputs_mask
+        },
         loss=loss,
-        z_loss=z_loss)
+        z_loss=z_loss,
+        segment_ids={
+            k[:-len('_segment_ids')]: v
+            for k, v in batch.items()
+            if k.endswith('_segment_ids')
+        })
     return loss, metrics
 
   def _compute_metrics(
       self,
       logits: jnp.ndarray,
       targets: jnp.ndarray,
-      mask: jnp.ndarray,
+      mask: Mapping[str, jnp.ndarray],
       loss: jnp.ndarray,
       z_loss: Optional[jnp.ndarray] = None,
+      segment_ids: Optional[Mapping[str, jnp.ndarray]] = None,
   ) -> MetricsMap:
     return compute_base_metrics(
-        logits=logits, targets=targets, mask=mask, loss=loss, z_loss=z_loss)
+        logits=logits,
+        targets=targets,
+        mask=mask,
+        loss=loss,
+        z_loss=z_loss,
+        segment_ids=segment_ids)
 
 
 class EncoderDecoderModel(BaseTransformerModel):
@@ -1116,20 +1133,22 @@ def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray,
 def compute_base_metrics(
     logits: jnp.ndarray,
     targets: jnp.ndarray,
-    mask: jnp.ndarray,
+    mask: Mapping[str, jnp.ndarray],
     loss: jnp.ndarray,
     z_loss: Optional[jnp.ndarray] = None,
+    segment_ids: Optional[Mapping[str, jnp.ndarray]] = None,
 ) -> MetricsMap:
   """Compute summary metrics.
 
   Args:
    logits: [batch, length, num_classes] float array.
    targets: categorical targets [batch, length] int array of categories.
-   mask: None or array of shape [batch, length]. Note: must consist of boolean
-     values (float-valued weights not supported).
+   mask: None or dict of array of shape [batch, length], key represents feature
+     name and values are boolean ndarrays (float-valued weights not supported).
    loss: loss (float)
    z_loss: z_loss (float)
-
+   segment_ids: Optional dictionary of feature and value is the segment ids used
+     for packing, i.e. [batch, length] arrays.
   Returns:
     Dict of metrics.
   """
@@ -1140,7 +1159,10 @@ def compute_base_metrics(
   # Note: apply mask again even though mask has already been applied to loss.
   # This is needed to divide by mask sum, but should not affect correctness of
   # the numerator.
-  nonpadding_tokens = jnp.sum(mask) if mask is not None else targets.size
+  # TODO(afrozm): Might be fine to nuke this since we're computing these much
+  # better below.
+  nonpadding_tokens = (
+      jnp.sum(mask['targets']) if mask is not None else targets.size)
   metrics = {
       'accuracy':
           clu_metrics.Accuracy.from_model_output(
@@ -1181,6 +1203,24 @@ def compute_base_metrics(
         'cross_ent_loss_per_all_target_tokens':
             clu_metrics.Average(total=jnp.sum(loss - z_loss), count=num_tokens)
     })
+  if segment_ids is not None:
+    for feature, feature_segment_ids in segment_ids.items():
+      # Since this is [B, L] with the segment ids in axis = 1.
+      num_examples = jnp.sum(jnp.max(feature_segment_ids, axis=1))
+      metrics[f'effective_batch_size/{feature}'] = metrics_lib.AveragePerStep(
+          total=num_examples)
+  if mask is not None:
+    total_tokens = 0
+    total_non_padding_tokens = 0
+    for feature, feature_mask in mask.items():
+      feature_size = feature_mask.size
+      feature_non_padding = jnp.sum(feature_mask)
+      total_tokens += feature_size
+      total_non_padding_tokens += feature_non_padding
+      metrics[f'non_padding_fraction/{feature}'] = clu_metrics.Average(
+          total=feature_non_padding, count=feature_size)
+    metrics['non_padding_fraction/overall'] = clu_metrics.Average(
+        total=total_non_padding_tokens, count=total_tokens)
   return metrics
 
 
