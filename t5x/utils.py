@@ -441,7 +441,7 @@ def _get_index_mappings(device_to_idxs):
   return host_to_idxs, idx_to_devices
 
 
-def _create_gda(partitioner: partitioning.BasePartitioner,
+def _create_gda(global_mesh: partitioning.Mesh, axes: PartitionSpec,
                 global_shapes: PyTreeDef, host_arrays: PyTreeDef) -> PyTreeDef:
   """Create GDA from input arrays.
 
@@ -460,7 +460,8 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
   first two devices (replicated) and the second on the following two devices.
 
   Args:
-    partitioner: Partitioner object containing mesh and mesh_axes
+    global_mesh: Device mesh included data dimension.
+    axes: partition specs of resultant GDA.
     global_shapes: PyTree matching host_arrays specifying global shape of each
       array.
     host_arrays: PyTree of LOCAL arrays (not global) that should be converted to
@@ -469,8 +470,6 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
   Returns:
     PyTree matching host_arrays of GDA.
   """
-  global_mesh = partitioner.mesh
-  axes = partitioner.data_partition_spec
   local_devices = global_mesh.local_devices
   local_device_count = jax.local_device_count()
 
@@ -532,8 +531,9 @@ class GDADatasetIterator(clu.data.dataset_iterator.DatasetIterator):
     self._partitioner = partitioner
 
   def __next__(self):
-    return _create_gda(self._partitioner, self._global_shapes,
-                       next(self._iterator))
+    return _create_gda(self._partitioner.mesh,
+                       self._partitioner.data_partition_spec,
+                       self._global_shapes, next(self._iterator))
 
   def reset(self):
     return self._iterator.reset()
