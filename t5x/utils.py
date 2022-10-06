@@ -425,18 +425,25 @@ class DatasetConfig:
 
 def _get_index_mappings(device_to_idxs):
   """Get device and host to index set mappings for GDA construction."""
-  idx_to_devices = collections.defaultdict(list)
   host_to_idxs = collections.defaultdict(list)
+  idx_to_devices = collections.defaultdict(list)
   for d, idx in device_to_idxs.items():
-    host_to_idxs[d.process_index].append(gda_lib._hashed_index(idx))  # pylint: disable=protected-access
-    idx_to_devices[gda_lib._hashed_index(idx)].append(d)  # pylint: disable=protected-access
+    hashed_idx = gda_lib._hashed_index(idx)  # pylint: disable=protected-access
+    # Only need one copy of each idx, since they are unique. Need to maintain
+    # original ordering though.
+    if hashed_idx not in host_to_idxs[d.process_index]:
+      host_to_idxs[d.process_index].append(hashed_idx)
+    # Index may correspond to multiple devices.
+    idx_to_devices[hashed_idx].append(d)
 
   assert jax.process_index() in host_to_idxs
-  for h1, list1 in host_to_idxs.items():
-    for h2, list2 in host_to_idxs.items():
+  for h1, idxs1 in host_to_idxs.items():
+    for idx in idxs1:
+      assert idx in idx_to_devices
+    for h2, idxs2 in host_to_idxs.items():
       if h1 == h2:
         continue
-      assert not (set(list1) & set(list2)) or set(list1) == set(list2)
+      assert not (set(idxs1) & set(idxs2)) or set(idxs1) == set(idxs2)
 
   return host_to_idxs, idx_to_devices
 
@@ -495,14 +502,15 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
     # Construct mapping of device to index in the split local array.
     device_to_split_array_idx = {}
     i = 0
-    for _, idxs in host_to_idxs.items():
-      for idx in idxs:
-        for d in idx_to_devices[idx]:
-          device_to_split_array_idx[d] = i % len(local_array_shards)
-        i += 1
+    for idx in host_to_idxs[jax.process_index()]:
+      assert idx in idx_to_devices
+      for d in idx_to_devices[idx]:
+        device_to_split_array_idx[d] = i % len(local_array_shards)
+      i += 1
 
     device_buffers = []
     for d in local_devices:
+      assert d in device_to_split_array_idx
       i = device_to_split_array_idx[d]
       device_buffers.append(jax.device_put(local_array_shards[i], d))
 
