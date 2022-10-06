@@ -1150,7 +1150,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       dataset_remainder = original_ds_length % batch_size  # pytype:disable=wrong-arg-types
       logging.info('length of dataset = %s', len(ds))
     except TypeError as e:
-      if str(e) == 'dataset length is unknown.':
+      if str(e).endswith('dataset length is unknown.'):
         logging.warning(
             'The following error is likely due to the use of TensorFlow v1 in '
             'your dataset pipeline. Verify you are not importing from '
