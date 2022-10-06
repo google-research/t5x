@@ -1573,8 +1573,8 @@ async def _read_ts(param_info: _ParameterInfo,
     arr = await t.read()
   else:
     # if provided, read as GDA
-    arr = await gda_serialization.async_deserialize(mesh, axes,
-                                                    tmp_ts_spec_dict)
+    arr = await gda_serialization.async_deserialize(
+        jax.sharding.MeshPspecSharding(mesh, axes), tmp_ts_spec_dict)
   return arr
 
 
