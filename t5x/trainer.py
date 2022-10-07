@@ -478,8 +478,7 @@ class BaseTrainer(abc.ABC):
       self._train_state = train_state
 
   def train(self,
-            batch_iter: Union[Iterator[BatchType],
-                              clu.data.dataset_iterator.DatasetIterator],
+            batch_iter: Union[Iterator[BatchType], clu.data.DatasetIterator],
             num_steps: int,
             start_step: Optional[int] = None) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""

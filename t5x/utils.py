@@ -303,9 +303,8 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
                restore_cfg: RestoreCheckpointConfig,
                train_state_shape: train_state_lib.TrainState,
                partitioner: partitioning.BasePartitioner,
-               ds_iter: Optional[
-                   Union[tf.data.Iterator,
-                         clu.data.dataset_iterator.DatasetIterator]] = None,
+               ds_iter: Optional[Union[tf.data.Iterator,
+                                       clu.data.DatasetIterator]] = None,
                model_dir: Optional[str] = None,
                use_gda: Optional[bool] = False):
     if save_cfg is not None:
@@ -529,10 +528,10 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
       is_leaf=lambda x: isinstance(x, (list, tuple)))
 
 
-class GDADatasetIterator(clu.data.dataset_iterator.DatasetIterator):
+class GDADatasetIterator(clu.data.DatasetIterator):
   """A wrapper iterator that returns GDA when the next element is requested."""
 
-  def __init__(self, iterator: clu.data.dataset_iterator.DatasetIterator,
+  def __init__(self, iterator: clu.data.DatasetIterator,
                partitioner: partitioning.BasePartitioner,
                global_shapes: PyTreeDef):
     self._iterator = iterator
@@ -1425,7 +1424,7 @@ class GetDatasetCallable(typing_extensions.Protocol):
       feature_converter_cls: Callable[..., seqio.FeatureConverter],
       num_epochs: Optional[int] = None,
       continue_from_last_checkpoint: bool = True
-  ) -> Union[clu.data.dataset_iterator.DatasetIterator, tf.data.Dataset]:
+  ) -> Union[clu.data.DatasetIterator, tf.data.Dataset]:
     ...
 
 
