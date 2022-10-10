@@ -398,20 +398,6 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
                   labels=meta_labels.astype(jnp.int32),
                   mask=weights),
       }
-      # BEGIN GOOGLE-INTRENAL
-      meta_metrics.update({
-          f'meta_F1_pos/layer_{i+1}':
-              F1ScorePos.from_model_output(
-                  logits=meta_logits,
-                  labels=meta_labels.astype(jnp.int32),
-                  mask=weights.ravel()),
-          f'meta_F1_neg/layer_{i+1}':
-              F1ScoreNeg.from_model_output(
-                  logits=meta_logits,
-                  labels=meta_labels.astype(jnp.int32),
-                  mask=weights.ravel()),
-      })
-      # END GOOGLE-INTRENAL
       meta_metrics.update({
           'meta_accuracy/multiclass':
               clu_metrics.Accuracy.from_model_output(
@@ -928,7 +914,6 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
     else:
       decoder_prompt_inputs = jnp.zeros_like(batch['decoder_input_tokens'])
 
-    # TODO(hwchung): rename the returned value names to more generic ones.
     # Using the above-defined single-step decoder function, run a
     # beam search over possible sequences given input encoding.
     # decodes: [batch, num_decodes, max_decode_len + 1]
@@ -945,7 +930,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         cache_offset=1 if scanned else 0,
         **decoder_params)
 
-    # @TODO(talschuster) make the decode func return a general dict.
+    # TODO(talschuster) make the decode func return a general dict.
     if self.apply_early_inference:
       scores, exits, confidences = scores
     else:
