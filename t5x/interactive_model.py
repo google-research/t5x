@@ -649,9 +649,14 @@ class InteractiveModel(abc.ABC):
           preprocessors=preprocessors)
       scores = [score for example, score in scores]
 
-    return self._compute_metrics(targets, predictions, aux_values, scores,  # pytype: disable=wrong-arg-types  # mapping-is-not-sequence
-                                 predict_metric_fns,
-                                 predict_with_aux_metric_fns, score_metric_fns)
+    return self._compute_metrics(
+        targets,
+        predictions,
+        aux_values,
+        scores,  # pytype: disable=wrong-arg-types  # mapping-is-not-sequence
+        predict_metric_fns,
+        predict_with_aux_metric_fns,
+        score_metric_fns)
 
   def train_loop(
       self,
@@ -933,3 +938,60 @@ def get_batches_from_seqio(
                      "Task/Mixture.")
 
   return all_batches
+
+
+def get_seqio_task_from_examples(
+    task_name: str,
+    interactive_model: InteractiveModel,
+    examples: Sequence[Union[str, dict[str, str]]],
+    preprocessors: Sequence[Callable[..., tf.data.Dataset]],
+    metric_fns: Optional[Sequence[
+        seqio.dataset_providers.MetricFnCallable]] = None,
+    add_to_registry: bool = True) -> seqio.Task:
+  """Registers and returns a SeqIO task from the provided inputs.
+
+  This function will be used to graduate people to the T5X/SeqIO-based
+  train/infer/eval scripts.
+
+  Args:
+    task_name: the name of the SeqIO task to be created and registered.
+    interactive_model: an instance of the InteractiveModel.
+    examples: a single batch of examples that should be transformed into a
+      tf.data.Dataset. The examples can either take the form of a string (ex: a
+      single input for inference), or a dictionary mapping "input"/"target" to a
+      string containing that element.
+    preprocessors: an optional list of functions that receive a tf.data.Dataset
+      and return a tf.data.Dataset. These will be executed sequentially and the
+      final dataset must include features matching `self._features`.
+    metric_fns: list(callable), an optional list of metric functions with a
+      signature that matches one of three possible forms: - (targets, scores) -
+      Note that `scores` refers to the score the model assigned the target
+      sequence, given the input. - (targets, predictions) - (targets,
+      predictions, aux_values) - Note that `aux_values` refers to a dictionary
+      of auxiliary values that the model assigned to each sequence.
+    add_to_registry: if True, will register the new task.
+
+  Returns:
+    A SeqIO task.
+  """
+
+  def dataset_fn(split, shuffle_files):
+    del split, shuffle_files
+    return get_dataset_from_natural_text_examples(
+        examples,
+        preprocessors=[],
+        task_feature_lengths=interactive_model._task_feature_lengths,  # pylint: disable=protected-access
+        features={})
+
+  data_source = seqio.FunctionDataSource(
+      dataset_fn=dataset_fn, splits=["train", "validation"])
+
+  if add_to_registry:
+    seqio.TaskRegistry.add(
+        task_name,
+        data_source,
+        preprocessors=preprocessors,
+        output_features=interactive_model._features,  # pylint: disable=protected-access
+        metric_fns=metric_fns)
+
+  return seqio.get_mixture_or_task(task_name)
