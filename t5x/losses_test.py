@@ -127,9 +127,49 @@ class SpecialLossNormalizingFactorTest(absltest.TestCase):
     np.testing.assert_allclose(output_lnf, 2.0, rtol=1e-3)
     np.testing.assert_allclose(
         output_loss_weights,
+        jnp.asarray([[0.5 / 3.75, 1.0 / 3.75, 0.25 / 3.75, 2.0 / 3.75, 0.0],
+                     [1.0 / 2.0, 1.0 / 2.0, 0.0, 0.0, 0.0]], jnp.float32),
+        rtol=1e-3)
+
+  def test_sum_weights_per_segment(self):
+    weights = jnp.asarray(
+        [[0.5, 1.0, 0.25, 2.0, 1.5], [1.0, 2.0, 3.0, 4.0, 5.0]], jnp.float32)
+    positions = jnp.asarray([[0, 1, 2, 0, 0], [0, 0, 1, 0, 0]])
+    segment_ids = jnp.asarray([[1, 1, 1, 2, 3], [1, 2, 2, 3, 0]])
+
+    norm_vec = losses._sum_weights_per_segment(positions, segment_ids, weights)
+
+    np.testing.assert_allclose(
+        norm_vec,
+        jnp.asarray([[1.75, 1.75, 1.75, 2.0, 1.5], [1.0, 5.0, 5.0, 4.0, 0.0]],
+                    jnp.float32),
+        rtol=1e-3)
+
+  def test_average_per_sequence_with_weights_with_packing(self):
+    batch = {
+        'decoder_target_tokens':
+            jnp.asarray([[1, 2, 3, 4, 5], [5, 6, 7, 8, 0]], jnp.int32),
+        'decoder_loss_weights':
+            jnp.asarray([[0.5, 1.0, 0.25, 2.0, 1.5], [1.0, 2.0, 3.0, 4.0, 5.0]],
+                        jnp.float32),
+        'decoder_positions':
+            jnp.asarray([[0, 1, 2, 0, 0], [0, 0, 1, 0, 0]]),
+        'decoder_segment_ids':
+            jnp.asarray([[1, 1, 1, 2, 3], [1, 2, 2, 3, 0]])
+    }
+
+    (output_lnf,
+     output_loss_weights) = losses.get_loss_normalizing_factor_and_weights(
+         loss_normalizing_factor=losses.SpecialLossNormalizingFactor
+         .AVERAGE_PER_SEQUENCE,
+         batch=batch)
+
+    np.testing.assert_allclose(output_lnf, 6.0, rtol=1e-3)
+    np.testing.assert_allclose(
+        output_loss_weights,
         jnp.asarray(
-            [[0.1333, 0.2666, 0.0666, 0.5333, 0.0], [0.5, 0.5, 0.0, 0.0, 0.0]],
-            jnp.float32),
+            [[0.5 / 1.75, 1.0 / 1.75, 0.25 / 1.75, 2.0 / 2.0, 1.5 / 1.5],
+             [1.0 / 1.0, 2.0 / 5.0, 3.0 / 5.0, 4.0 / 4.0, 0.0]], jnp.float32),
         rtol=1e-3)
 
 if __name__ == '__main__':

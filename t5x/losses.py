@@ -204,6 +204,38 @@ def convert_special_loss_normalizing_factor_to_enum(
       'Could not convert string \"%s\" to SpecialLossNormalizingFactor' % x)
 
 
+@jax.vmap
+def _sum_weights_per_segment(positions: jnp.ndarray, segment_ids: jnp.ndarray,
+                             weights: jnp.ndarray) -> jnp.ndarray:
+  """Sums weights per packed segment to produce a normalizing vector."""
+
+  # NB: Assumes padding only occurs at the end of a sequence.
+
+  def _repeat_last_nonnegative(xs, reverse=False):
+
+    def fn(prev, x):
+      y = jnp.where(x == 0, prev, x)
+      return y, y
+
+    return jax.lax.scan(fn, jnp.zeros_like(xs[0]), xs, reverse=reverse)[1]
+
+  # Compute final positions per sequence.
+  start_positions = positions == 0
+  final_positions = jnp.concatenate([start_positions[1:], jnp.ones(1)])
+  # Clear padded positions.
+  final_positions *= segment_ids != 0
+  # Compute cumulative weights, clearing all but final position per sequence.
+  final_cumulative_weights = final_positions * jnp.cumsum(weights)
+  # Subtract sequences' final weights from cumulative weights of following ones.
+  final_total_weights = jnp.concatenate([
+      final_cumulative_weights[0:1],
+      jnp.diff(_repeat_last_nonnegative(final_cumulative_weights))
+  ])
+  # Copy final sequence weight to all positions in sequence.
+  normalizer = _repeat_last_nonnegative(final_total_weights, reverse=True)
+  return normalizer
+
+
 def get_loss_normalizing_factor_and_weights(
     loss_normalizing_factor: Optional[Union[float, int, str,
                                             SpecialLossNormalizingFactor]],
@@ -256,7 +288,15 @@ def get_loss_normalizing_factor_and_weights(
     output_normalizing_factor = np.prod(batch['decoder_target_tokens'].shape)
   elif (loss_normalizing_factor ==
         SpecialLossNormalizingFactor.AVERAGE_PER_SEQUENCE):
-    loss_weights /= jnp.sum(loss_weights, axis=-1, keepdims=True) + 1e-3
+    if 'decoder_segment_ids' in batch:  # is packed
+      norm_vec = _sum_weights_per_segment(batch['decoder_positions'],
+                                          batch['decoder_segment_ids'],
+                                          loss_weights)
+    else:
+      norm_vec = jnp.sum(loss_weights, axis=-1, keepdims=True)
+    # Handle divide-by-zero.
+    loss_weights = jnp.nan_to_num(
+        loss_weights / norm_vec, nan=0, posinf=0, neginf=0)
     output_normalizing_factor = jnp.sum(loss_weights)
   else:
     raise ValueError('Unsupported value of loss_normalizing_factor: %s' %
