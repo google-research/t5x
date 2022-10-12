@@ -1,0 +1,43 @@
+# Mixture of Experts defaults for precompile mode in main.py.
+#
+# You must also include a binding for MODEL.
+#
+# Required to be set:
+#
+# - NUM_MODEL_PARTITIONS or MODEL_PARALLEL_SUBMESH (only specify one)
+# - MIXTURE_OR_TASK_NAME
+# - TASK_FEATURE_LENGTHS
+# - TRAIN_STEPS
+# - MODEL_DIR: # automatically set when using xm_launch
+#
+# Commonly overridden options (see also t5x/configs/runs/precompile.gin):
+#
+# - USE_CACHED_TASKS
+# - BATCH_SIZE
+#
+# You can also specify the upper bound for the size of the expert parallel
+# submesh by overriding NUM_EXPERT_PARTITIONS, which defaults to NUM_EXPERTS.
+
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5x.contrib.moe import partitioning as moe_partitioning
+
+include 't5x/configs/runs/precompile.gin'
+
+# One of these should be overridden.
+NUM_MODEL_PARTITIONS = None
+MODEL_PARALLEL_SUBMESH = None
+
+# Override to decrease the number of expert partitions. This is only an upper
+# bound. Must be <= NUM_EXPERTS. Fewer expert partitions places more experts on
+# the same device, requiring more expert replicas and greater memory overhead,
+# but will reduce all-to-all communication costs.
+NUM_EXPERT_PARTITIONS = %NUM_EXPERTS
+
+# We use the MoE partitioner.
+train_script.precompile.partitioner = @moe_partitioning.MoePjitPartitioner()
+moe_partitioning.MoePjitPartitioner:
+  num_expert_partitions = %NUM_EXPERT_PARTITIONS
+  num_partitions = %NUM_MODEL_PARTITIONS
+  model_parallel_submesh = %MODEL_PARALLEL_SUBMESH
