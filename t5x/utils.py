@@ -403,7 +403,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
 @dataclasses.dataclass
 class DatasetConfig:
   """Configuration for loading a dataset from a SeqIO Task or Mixture."""
-  mixture_or_task_name: str
+  mixture_or_task_name: Union[str, seqio.Task, seqio.Mixture]
   task_feature_lengths: Mapping[str, int]
   split: str
   batch_size: int  # Number of examples per batch.
@@ -421,6 +421,12 @@ class DatasetConfig:
   use_memory_cache: bool = True
   # Whether to trim output features from tasks.
   trim_output_features: bool = True
+  mixture_or_task: Optional[Union[seqio.Task, seqio.Mixture]] = None
+
+  def __post_init__(self):
+    if not isinstance(self.mixture_or_task_name, seqio.DatasetProviderBase):
+      self.mixture_or_task = seqio.get_mixture_or_task(
+          self.mixture_or_task_name)
 
 
 def _get_index_mappings(device_to_idxs):
@@ -1313,8 +1319,7 @@ def get_vocabulary(
         DeprecationWarning)
     import_module(cfg.module)
 
-  provider = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
-  features = provider.output_features
+  features = cfg.mixture_or_task.output_features
 
   if 'inputs' in features and 'targets' in features:
     return (features['inputs'].vocabulary, features['targets'].vocabulary)
@@ -1396,10 +1401,10 @@ def get_dataset_inner(cfg: DatasetConfig,
           f'{seed}')
     logging.info(
         "Initializing dataset for task '%s' with a replica batch size of %d and "
-        'a seed of %d', cfg.mixture_or_task_name, batch_size, seed)
+        'a seed of %d', cfg.mixture_or_task.name, batch_size, seed)
 
   ds = seqio.get_dataset(
-      mixture_or_task_name=cfg.mixture_or_task_name,
+      mixture_or_task_name=cfg.mixture_or_task,
       task_feature_lengths=cfg.task_feature_lengths,
       dataset_split=cfg.split,
       shuffle=cfg.shuffle,
@@ -1450,7 +1455,6 @@ def get_training_eval_datasets(
     start_step: int = 0,
 ) -> Mapping[str, tf.data.Dataset]:
   """Returns a mapping from eval task name to its dataset."""
-  mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
   datasets = {}
   get_dataset_fn = get_dataset
   if deterministic:
@@ -1472,14 +1476,13 @@ def get_training_eval_datasets(
         cfg.batch_size // num_shards,
         drop_remainder=True).take(eval_steps).cache()
 
-  for task in seqio.get_subtasks(mixture_or_task):
+  for task in seqio.get_subtasks(cfg.mixture_or_task):
     if cfg.split not in task.splits:
       logging.info("Task %s has no '%s' split; skipping training evaluation.",
                    task.name, cfg.split)
       continue
     logging.info('Loading task %s for training evaluation.', task.name)
-    task_cfg = dataclasses.replace(
-        cfg, mixture_or_task_name=task.name, batch_size=1)
+    task_cfg = dataclasses.replace(cfg, mixture_or_task_name=task, batch_size=1)
     # We set `num_epochs` to be finite to avoid infinite loops on shards that
     # have input examples that are all filtered.
     datasets[task.name] = _repeat_shard_batch_take_cache(
@@ -1491,8 +1494,8 @@ def get_training_eval_datasets(
             num_epochs=eval_steps * cfg.batch_size,
             continue_from_last_checkpoint=False))
 
-  if isinstance(mixture_or_task, seqio.Mixture):
-    datasets[mixture_or_task.name] = _repeat_shard_batch_take_cache(
+  if isinstance(cfg.mixture_or_task, seqio.Mixture):
+    datasets[cfg.mixture_or_task.name] = _repeat_shard_batch_take_cache(
         get_dataset_fn(
             dataclasses.replace(cfg, batch_size=1),
             shard_id=0,

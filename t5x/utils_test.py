@@ -18,6 +18,7 @@ import dataclasses
 import os
 import re
 from typing import Optional
+import unittest
 
 from absl import flags
 from absl.testing import absltest
@@ -218,7 +219,6 @@ class UtilsTest(parameterized.TestCase):
         batch_size=4,
         shuffle=False,
         seed=None)
-
     # Single shard.
     ds = utils.get_training_eval_datasets(
         cfg,
@@ -228,7 +228,7 @@ class UtilsTest(parameterized.TestCase):
         feature_converter_cls=mock_fc_cls)
 
     mock_get_dataset.assert_called_once_with(
-        dataclasses.replace(cfg, batch_size=1),
+        dataclasses.replace(cfg, mixture_or_task_name=task, batch_size=1),
         shard_id=0,
         num_shards=1,
         feature_converter_cls=mock_fc_cls,
@@ -254,7 +254,7 @@ class UtilsTest(parameterized.TestCase):
     # Call the underlying function loading all shards since the fn shards at the
     # example level.
     mock_get_dataset.assert_called_once_with(
-        dataclasses.replace(cfg, batch_size=1),
+        dataclasses.replace(cfg, mixture_or_task_name=task, batch_size=1),
         shard_id=0,
         num_shards=1,
         feature_converter_cls=mock_fc_cls,
@@ -280,7 +280,7 @@ class UtilsTest(parameterized.TestCase):
     # Call the underlying function loading all shards since the fn shards at the
     # example level.
     mock_get_dataset.assert_called_once_with(
-        dataclasses.replace(cfg, batch_size=1),
+        dataclasses.replace(cfg, mixture_or_task_name=task, batch_size=1),
         shard_id=0,
         num_shards=1,
         feature_converter_cls=mock_fc_cls,
@@ -338,34 +338,17 @@ class UtilsTest(parameterized.TestCase):
         eval_steps=3,
         feature_converter_cls=seqio.FeatureConverter)
 
-    expected_calls = [
-        mock.call(
-            dataclasses.replace(
-                cfg, mixture_or_task_name="mock_task1", batch_size=1),
-            shard_id=0,
-            num_shards=1,
-            feature_converter_cls=seqio.FeatureConverter,
-            continue_from_last_checkpoint=False,
-            num_epochs=12),
-        mock.call(
-            dataclasses.replace(
-                cfg, mixture_or_task_name="mock_task2", batch_size=1),
-            shard_id=0,
-            num_shards=1,
-            feature_converter_cls=seqio.FeatureConverter,
-            continue_from_last_checkpoint=False,
-            num_epochs=12),
-        mock.call(
-            dataclasses.replace(
-                cfg, mixture_or_task_name="mock_mix", batch_size=1),
-            shard_id=0,
-            num_shards=1,
-            feature_converter_cls=seqio.FeatureConverter,
-            continue_from_last_checkpoint=False,
-            num_epochs=12)
-    ]
+    expected_calls = []
+    for task in seqio.get_subtasks(cfg.mixture_or_task):
+      expected_calls.append(
+          mock.call(
+              dataclasses.replace(cfg, mixture_or_task_name=task, batch_size=1),
+              shard_id=0,
+              num_shards=1,
+              feature_converter_cls=seqio.FeatureConverter,
+              continue_from_last_checkpoint=False,
+              num_epochs=12))
     mock_get_dataset.assert_has_calls(expected_calls)
-
     self.assertSameElements(res.keys(),
                             ["mock_task1", "mock_task2", "mock_mix"])
     for ds in res.values():
