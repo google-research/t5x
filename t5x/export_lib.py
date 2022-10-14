@@ -215,6 +215,9 @@ def create_inference_function(
     inference_mode: str,
     partitioner: Optional[partitioning.BasePartitioner],
     train_state_initializer: Optional[utils.TrainStateInitializer],
+    enable_jax2tf: bool,
+    polymorphic_shapes_inputs: Optional[Any] = None,
+    native_lowering: bool = False,
 ) -> Callable[[Mapping[str, Any], Any], Tuple[Any, ...]]:
   """Fetches a model and returns the inference function based on inference_mode."""
   if partitioner and train_state_initializer:
@@ -240,6 +243,14 @@ def create_inference_function(
 
     predict_batch_with_aux = maybe_partition(predict_batch_with_aux)
 
+    if enable_jax2tf:
+      # jax2tf must be called directly with the pjitted function with no wrapper
+      # functions as required by jax2tf's native lowering.
+      predict_batch_with_aux = jax2tf.convert(
+          predict_batch_with_aux,
+          polymorphic_shapes=[None, polymorphic_shapes_inputs],
+          experimental_native_lowering=native_lowering)
+
     def inference_fn(params: Mapping[str, Any],
                      batch: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
       result = predict_batch_with_aux(frozen_dict.freeze(params), batch)
@@ -251,6 +262,12 @@ def create_inference_function(
 
     score_batch = model.score_batch
     score_batch = maybe_partition(score_batch)
+
+    if enable_jax2tf:
+      score_batch = jax2tf.convert(
+          score_batch,
+          polymorphic_shapes=[None, polymorphic_shapes_inputs],
+          experimental_native_lowering=native_lowering)
 
     def inference_fn(params: Mapping[str, Any],
                      batch: Mapping[str, jnp.ndarray]) -> Tuple[Any]:
@@ -861,12 +878,6 @@ def save(
     train_state_initializer = None
     convert_to_tpu_args = {}
 
-  model_fn = create_inference_function(
-      model=model,
-      train_state_initializer=train_state_initializer,
-      partitioner=partitioner,
-      inference_mode=inference_mode)
-
   if mixture_or_task_name is not None and output_features is not None:
     raise ValueError('Only one of mixture_or_task_name and output_features may '
                      'be non empty.')
@@ -904,10 +915,15 @@ def save(
     polymorphic_shapes_inputs = jax.tree_map(lambda _: 'b, ...', features)
   else:
     polymorphic_shapes_inputs = None
-  model_tf_fn = jax2tf.convert(
-      model_fn,
-      polymorphic_shapes=[None, polymorphic_shapes_inputs],
-      experimental_native_lowering=native_lowering)
+
+  model_tf_fn = create_inference_function(
+      model=model,
+      train_state_initializer=train_state_initializer,
+      partitioner=partitioner,
+      inference_mode=inference_mode,
+      enable_jax2tf=True,
+      polymorphic_shapes_inputs=polymorphic_shapes_inputs,
+      native_lowering=native_lowering)
 
   logging.info('Loading parameters from checkpoint...')
   params = load_params_from_checkpoint(
