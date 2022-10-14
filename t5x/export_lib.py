@@ -184,15 +184,23 @@ def get_train_state_initializer(
     partitioner: partitioning.BasePartitioner,
     task_feature_lengths: Mapping[str, int],
     batch_size: Optional[int],
+    trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
 ) -> utils.TrainStateInitializer:
   """Creates an TrainStateInitializer based on the model and partitioning."""
   data_layout = partitioner.get_data_layout(batch_size)
   p_batch_size = data_layout.batch_size
   feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)
-  input_shapes = {
-      k: (p_batch_size, l) for k, l in
-      feature_converter.get_model_feature_lengths(task_feature_lengths).items()
-  }
+  model_feature_lengths = feature_converter.get_model_feature_lengths(
+      task_feature_lengths)
+  input_shapes = {}
+  for k, l in model_feature_lengths.items():
+    input_shapes[k] = (p_batch_size, l)
+    if feature_converter.MODEL_FEATURES[k].rank > 1:
+      if k not in trailing_shapes:
+        raise ValueError('Must set the trailing shape--`...?` in '
+                         '`(batch_size, seqlen, ...?)`--for higher rank '
+                         f'feature {k}')
+      input_shapes[k] += trailing_shapes[k]
   return utils.TrainStateInitializer(
       optimizer_def=None,
       init_fn=model.get_initial_variables,
@@ -784,6 +792,7 @@ def save(
     validation_examples: Optional[List[Any]] = None,
     native_lowering: bool = False,
     decode_outputs: Optional[bool] = None,
+    trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
 ):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
@@ -823,6 +832,9 @@ def save(
       don't convert Jax fns to TF fns.
     decode_outputs: Optional bool. If provided, determines whether to decode
       the output with the tokenizer, or to leave the output as is.
+    trailing_shapes: Optional mapping of model feature name to trailing shape,
+      the `...?` in `(batch_size, seqlen, ...?)`, which is needed to initialize
+      the model correctly.
   """
   if not os.path.basename(output_dir).isdigit():
     raise ValueError('output_dir must be in the form ${BASE}/${VERSION}, where '
@@ -834,7 +846,7 @@ def save(
   logging.info('Creating inference function...')
   if partitioner:
     train_state_initializer = get_train_state_initializer(
-        model, partitioner, task_feature_lengths, batch_size)
+        model, partitioner, task_feature_lengths, batch_size, trailing_shapes)
     # Log the variable shapes information.
     utils.log_model_info(None, train_state_initializer.global_train_state_shape,
                          partitioner)
