@@ -247,7 +247,7 @@ def assert_equal(a, b):
   if not isinstance(a, GlobalDeviceArray):
     np.testing.assert_array_equal(a, b)
   else:
-    for s1, s2 in zip(a.local_shards, b.local_shards):
+    for s1, s2 in zip(a.addressable_shards, b.addressable_shards):
       np.testing.assert_array_equal(s1.data, s2.data)
 
 

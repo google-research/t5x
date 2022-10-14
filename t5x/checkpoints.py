@@ -195,7 +195,7 @@ def latest_step(checkpoints_dir: str) -> Optional[int]:
 
 def _get_local_data(x):
   if isinstance(x, gda_lib.GlobalDeviceArray):
-    return x.local_data(0)
+    return x.addressable_data(0)
   else:
     return x
 
@@ -788,7 +788,7 @@ class Checkpointer(object):
         if isinstance(arr, gda_lib.GlobalDeviceArray):
           n_bytes = sum([
               shard.data.nbytes
-              for shard in arr.local_shards
+              for shard in arr.addressable_shards
               if shard.replica_id == 0
           ])
         else:
