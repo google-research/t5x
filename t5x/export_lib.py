@@ -243,7 +243,7 @@ def create_inference_function(
     def inference_fn(params: Mapping[str, Any],
                      batch: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
       result = predict_batch_with_aux(frozen_dict.freeze(params), batch)
-      values, _ = jax.tree_flatten(result)
+      values, _ = jax.tree_util.tree_flatten(result)
       assert len(values) == 2, values
       return tuple(values)
 
@@ -255,7 +255,7 @@ def create_inference_function(
     def inference_fn(params: Mapping[str, Any],
                      batch: Mapping[str, jnp.ndarray]) -> Tuple[Any]:
       result = score_batch(frozen_dict.freeze(params), batch)
-      values, _ = jax.tree_flatten(result)
+      values, _ = jax.tree_util.tree_flatten(result)
       assert len(values) == 1
       return tuple(values)
 

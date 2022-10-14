@@ -56,8 +56,8 @@ def _assert_numpy_allclose(a, b, atol=None, rtol=None):
 
 
 def check_eq(xs, ys, atol=None, rtol=None):
-  xs_leaves, xs_tree = jax.tree_flatten(xs)
-  ys_leaves, ys_tree = jax.tree_flatten(ys)
+  xs_leaves, xs_tree = jax.tree_util.tree_flatten(xs)
+  ys_leaves, ys_tree = jax.tree_util.tree_flatten(ys)
   assert xs_tree == ys_tree, f"Tree shapes don't match. \n{xs_tree}\n{ys_tree}"
   assert jax.tree_util.tree_all(
       jax.tree_map(lambda x, y: np.array(x).shape == np.array(y).shape,

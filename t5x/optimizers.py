@@ -298,7 +298,7 @@ class OptaxStatePartitionRules:
   def derive_optax_logical_axes(cls, optax_state, params_axes):
     """Derived logical axes for optax state."""
     # Flatten the optax state but do not go into the registered states.
-    flattened_state, tree_def = jax.tree_flatten(
+    flattened_state, tree_def = jax.tree_util.tree_flatten(
         optax_state, is_leaf=cls._is_optax_state)
 
     def derive_fn(x):

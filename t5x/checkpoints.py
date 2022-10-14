@@ -158,7 +158,7 @@ orbax.checkpoint.utils.register_ts_spec_for_serialization()
 
 def _run_future_tree(future_tree):
   """Block until all futures are resolved on this host."""
-  future_leaves, treedef = jax.tree_flatten(future_tree)
+  future_leaves, treedef = jax.tree_util.tree_flatten(future_tree)
 
   # TODO(adarob): Use asyncio.run in py3.7+.
   loop = asyncio.get_event_loop()
