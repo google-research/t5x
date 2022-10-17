@@ -546,12 +546,12 @@ def infer(
       with gfile.GFile(chunk_path + '.COMPLETED', 'w') as f:
         f.write('')
       write_time = time.time() - write_tick
+      num_examples = len(inferences[0])
       logging.info('Writing completed in %02f seconds (%02f examples/sec).',
-                   write_time,
-                   len(inferences) / write_time)
+                   write_time, num_examples / write_time)
       update_measurement_series('writing_total_sec', chunk, write_time)
       update_measurement_series('writing_examples_per_sec', chunk,
-                                len(inferences) / write_time)
+                                num_examples / write_time)
 
       if chunk_ckpt_path:
         # Canonicalize checkpoint.
@@ -584,17 +584,18 @@ def infer(
         continue
 
       logging.info('Running inference on %d batches.', checkpoint_period)
-      inferences = _extract_tokens_and_aux_values(
-          infer_fn(model_ds.enumerate(), rng=chunk_rng))
+      infer_result = infer_fn(model_ds.enumerate(), rng=chunk_rng)
+      inferences: Tuple[Sequence[Any], Mapping[str, Any]] = (
+          _extract_tokens_and_aux_values(infer_result))
+      num_examples = len(inferences[0])
 
       if jax.process_index() == 0:
         chunk_time = time.time() - chunk_tick
         logging.info('chunk completed in %02f seconds (%02f examples/sec).',
-                     chunk_time,
-                     len(inferences) / chunk_time)
+                     chunk_time, num_examples / chunk_time)
         update_measurement_series('inference_total_sec', chunk, chunk_time)
         update_measurement_series('inference_examples_per_sec', chunk,
-                                  len(inferences) / chunk_time)
+                                  num_examples / chunk_time)
 
         chunk_ckpt_path = None
         if checkpoint_ds_iter:
