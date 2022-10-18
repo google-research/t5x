@@ -386,7 +386,10 @@ def create_preprocessor(
       else:
         t = text
       if output_features[k].add_eos:
-        t = tf.concat([t, [vocab.eos_id]], axis=0)
+        # The following matches the default behavior of the prediction server,
+        # which uses seqio.preprocessors.append_eos_after_trim, implemented at:
+        # https://github.com/google/seqio/tree/main/seqio/preprocessors.py;l=250;rcl=480228505
+        t = tf.concat([t[:length - 1], [vocab.eos_id]], axis=0)
       t = t[:length]
       t = tf.pad(t, [[0, length - tf.shape(t)[0]]])
       t.set_shape([length])
@@ -447,7 +450,7 @@ def create_dual_encoder_preprocessor(
       else:
         t = text
       if output_features[k].add_eos:
-        t = tf.concat([t, [vocab.eos_id]], axis=0)
+        t = tf.concat([t[:length - 1], [vocab.eos_id]], axis=0)
       t = t[:length]
       t = tf.pad(t, [[0, length - tf.shape(t)[0]]])
       t.set_shape([length])
