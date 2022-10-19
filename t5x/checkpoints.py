@@ -1843,14 +1843,13 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
     """
     result = super().structure(directory)
 
-    def update_tensorstore_spec(leaf):
+    def tensorstore_spec_to_name(leaf):
       if isinstance(leaf, ts.Spec):
         leaf = leaf.to_json()
-        _update_ts_path_from_relative_to_absolute(os.fspath(directory), leaf)
-        leaf = ts.Spec(leaf)
+        leaf = epath.Path(leaf['kvstore']['path']).name
       return leaf
 
-    return jax.tree_map(update_tensorstore_spec, result)
+    return jax.tree_map(tensorstore_spec_to_name, result)
 
 
 class NonAtomicCheckpointer(orbax.checkpoint.Checkpointer):
