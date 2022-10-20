@@ -1425,7 +1425,7 @@ def get_dataset_inner(cfg: DatasetConfig,
         "Initializing dataset for task '%s' with a replica batch size of %d and "
         'a seed of %d', cfg.mixture_or_task_name, batch_size, seed)
 
-  ds = seqio.get_dataset(
+  return seqio.get_dataset(
       mixture_or_task_name=cfg.mixture_or_task_name,
       task_feature_lengths=cfg.task_feature_lengths,
       dataset_split=cfg.split,
@@ -1436,9 +1436,8 @@ def get_dataset_inner(cfg: DatasetConfig,
       shard_info=shard_info,
       use_cached=cfg.use_cached,
       seed=seed,
-      trim_output_features=cfg.trim_output_features)
-  ds = ds.batch(batch_size, drop_remainder=True)
-  return ds
+      trim_output_features=cfg.trim_output_features,
+      batch_size=batch_size)
 
 
 class GetDatasetCallable(typing_extensions.Protocol):
