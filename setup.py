@@ -55,7 +55,7 @@ setuptools.setup(
         f'jaxlib >= {_jaxlib_version}',
         'numpy',
         'orbax @ git+https://github.com/google/orbax#egg=orbax',
-        'seqio-nightly',
+        'seqio @ git+https://github.com/google/seqio#egg=seqio',
         't5',
         'tensorflow-cpu',
         'tensorstore >= 0.1.20',
