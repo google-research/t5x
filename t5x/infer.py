@@ -355,7 +355,10 @@ def infer(
     fallback_init_rng: Optional[int] = None,
     merge_fn: MergeFn = merge_chunks_to_file,
     summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
-):
+    verify_matching_vocabs_fn: Optional[
+        Callable[[utils.DatasetConfig, models.BaseTransformerModel],
+                 None]] = utils.verify_matching_vocabs,
+    output_vocab_feature_name: str = 'targets'):
   """Infer function.
 
   Args:
@@ -391,6 +394,10 @@ def infer(
     summarize_config_fn: A function that takes in the model directory, an
       optional SummaryWriter, and the step number, and writes a summary of the
       configuration. SummaryWriter will be None in most cases.
+    verify_matching_vocabs_fn: Function to validate whether the task vocabulary
+      matches the model vocabulary. Should raise an exception on error.
+    output_vocab_feature_name: The name of the feature corresponding to the
+      output vocabulary.
   """
   logging.info('Process ID: %d', jax.process_index())
 
@@ -409,13 +416,8 @@ def infer(
 
   # Remove double-slashes in directory path to avoid inconsistencies.
   output_dir = re.sub(r'(?<!gs:)([\/]{2,})', '/', output_dir)
-  ds_vocabs = utils.get_vocabulary(dataset_cfg)
-  if (ds_vocabs[0] != model.input_vocabulary or
-      ds_vocabs[1] != model.output_vocabulary):
-    raise ValueError(
-        'Model and Task vocabularies do not match.\n'
-        f'Task Input: {ds_vocabs[0]}, Model Input: {model.input_vocabulary}\n'
-        f'Task Output: {ds_vocabs[1]}, Model Output: {model.output_vocabulary}')
+  if verify_matching_vocabs_fn is not None:
+    verify_matching_vocabs_fn(dataset_cfg, model)
 
   batch_size = dataset_cfg.batch_size
 
@@ -541,8 +543,8 @@ def infer(
                                            chunk_ckpt_path: Optional[str]):
       write_tick = time.time()
       logging.info('Writing chunk %d results to %s', chunk, chunk_path)
-      write_fn(chunk_path, inferences, task_ds, mode,
-               task.output_features['targets'].vocabulary)
+      vocabulary = task.output_features[output_vocab_feature_name].vocabulary
+      write_fn(chunk_path, inferences, task_ds, mode, vocabulary)
       with gfile.GFile(chunk_path + '.COMPLETED', 'w') as f:
         f.write('')
       write_time = time.time() - write_tick

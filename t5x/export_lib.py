@@ -813,7 +813,7 @@ def save(
     native_lowering: bool = False,
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
-):
+    output_vocab_feature_name: Optional[str] = 'targets'):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
   Args:
@@ -855,6 +855,9 @@ def save(
     trailing_shapes: Optional mapping of model feature name to trailing shape,
       the `...?` in `(batch_size, seqlen, ...?)`, which is needed to initialize
       the model correctly.
+    output_vocab_feature_name: The vocabulary feature which maps decoded ids
+      to plain text. For standard T5X models this will always be 'targets', but
+      may be different or empty for other models.
   """
   if not os.path.basename(output_dir).isdigit():
     raise ValueError('output_dir must be in the form ${BASE}/${VERSION}, where '
@@ -889,7 +892,12 @@ def save(
     output_features = seqio.get_mixture_or_task(
         mixture_or_task_name).output_features
   # Get the preprocessor and postprocessor.
-  output_vocab = output_features['targets'].vocabulary
+
+  # Non-vanilla seq-to-seq/decoder-only models can have a different
+  # vocabulary feature or not use a vocabulary feature at all.
+  output_vocab = None
+  if output_vocab_feature_name:
+    output_vocab = output_features[output_vocab_feature_name].vocabulary
 
   # Handle the new and old create_preprocessor_fn signatures, for backwards
   # compatibility.
@@ -945,7 +953,7 @@ def save(
       params=frozen_dict.unfreeze(params),
       batch_size=batch_size,
   )
-
+  print('input_signature', input_signature)
   signatures = {
       tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
           module.__call__.get_concrete_function(*input_signature)

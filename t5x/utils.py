@@ -1344,6 +1344,33 @@ def get_vocabulary(
   return (first_vocab, first_vocab)
 
 
+def verify_matching_vocabs(cfg: DatasetConfig, model: Any):
+  """Verify whether the task vocab matches the model vocab.
+
+  The seqio Task and the Model both define their vocabularies
+  separately, but these vocabularies must match or else the training/inference
+  results will not be sensible. This functions validates that they do match,
+  under the assumption that this is a standard Encoder-only, Decoder-only,
+  or Encoder-decoder model.
+
+  Args:
+    cfg: The DatasetConfig of the training/inference task.
+    model: A BaseTransformerModel model with input_vocabulary and
+      output_vocabulary attributes.
+
+  Raises:
+    ValueError: If the task vocabulary does not match the model vocabulary.
+  """
+  ds_vocabs = get_vocabulary(cfg)
+  if (ds_vocabs[0] != model.input_vocabulary or
+      ds_vocabs[1] != model.output_vocabulary):
+    raise ValueError(f'Model and Task vocabularies do not match:\n'
+                     f'  task={cfg.mixture_or_task_name}\n'
+                     f'  ds_vocabs=({ds_vocabs[0]}, {ds_vocabs[1]})\n'
+                     f'  model.input_vocabulary={model.input_vocabulary}\n'
+                     f'  model.output_vocabulary={model.output_vocabulary}\n')
+
+
 
 
 def get_dataset(cfg: DatasetConfig,

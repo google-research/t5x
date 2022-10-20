@@ -27,9 +27,10 @@ a proper lowering under TPU mesh.
 """
 
 import os
-from typing import Optional
+from typing import Callable, Optional
 
 import clu.data
+
 import jax
 from jax import random
 import numpy as np
@@ -50,6 +51,9 @@ def precompile(
     model_dir: str,
     random_seed: Optional[int],
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
+    verify_matching_vocabs_fn: Optional[
+        Callable[[utils.DatasetConfig, models.BaseTransformerModel],
+                 None]] = utils.verify_matching_vocabs,
 ):
   """Compiles and dump the HLO to model dir, with HLO text dumps."""
   rng = random.PRNGKey(random_seed or 42)
@@ -61,17 +65,8 @@ def precompile(
   ds_shard_id = data_layout.shard_id
   num_ds_shards = data_layout.num_shards
 
-  def _verify_matching_vocabs(cfg: utils.DatasetConfig):
-    ds_vocabs = utils.get_vocabulary(cfg)
-    if (ds_vocabs[0] != model.input_vocabulary or
-        ds_vocabs[1] != model.output_vocabulary):
-      raise ValueError(f'Model and Task vocabularies do not match:\n'
-                       f'  task={cfg.mixture_or_task_name}\n'
-                       f'  ds_vocabs=({ds_vocabs[0]}, {ds_vocabs[1]})\n'
-                       f'  model.input_vocabulary={model.input_vocabulary}\n'
-                       f'  model.output_vocabulary={model.output_vocabulary}\n')
-
-  _verify_matching_vocabs(train_dataset_cfg)
+  if verify_matching_vocabs_fn is not None:
+    verify_matching_vocabs_fn(train_dataset_cfg, model)
 
   train_iter = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
                               model.FEATURE_CONVERTER_CLS)
