@@ -195,7 +195,10 @@ def latest_step(checkpoints_dir: str) -> Optional[int]:
 
 def _get_local_data(x):
   if isinstance(x, gda_lib.GlobalDeviceArray):
-    return x.addressable_data(0)
+    if hasattr(x, 'addressable_data'):
+      return x.addressable_data(0)
+    else:
+      return x.local_data(0)
   else:
     return x
 

@@ -1196,8 +1196,13 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       # Issue asynchronous copy request which serves as prefetching to the host.
       def _copy_to_host_async(x):
         if isinstance(x, GlobalDeviceArray):
-          x.addressable_data(0).copy_to_host_async()  # GDA is fully replicated
-          return x.addressable_data(0)
+          if hasattr(x, 'addressable_data'):
+            # GDA is fully replicated
+            x.addressable_data(0).copy_to_host_async()
+            return x.addressable_data(0)
+          else:
+            x.local_data(0).copy_to_host_async()  # GDA is fully replicated
+            return x.local_data(0)
         else:
           x.copy_to_host_async()
           return x
@@ -1624,7 +1629,10 @@ def get_local_data(x):
   if jax.config.jax_array and isinstance(x, jax.Array):
     return x.addressable_data(0)
   elif isinstance(x, GlobalDeviceArray):
-    val = x.addressable_data(0)
+    if hasattr(x, 'addressable_data'):
+      val = x.addressable_data(0)
+    else:
+      val = x.local_data(0)
     return val
   elif isinstance(x, pxla.ShardedDeviceArray):
     val = x.device_buffers[0]
