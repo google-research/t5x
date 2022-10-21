@@ -1,0 +1,17 @@
+include 't5x/configs/runs/pretrain.gin'
+
+USE_CACHED_TASKS = False
+
+utils.SaveCheckpointConfig:
+  period = 6000
+  dtype = 'float32'
+  keep = 2  # keep 2 checkpoints
+  save_dataset = True  # checkpoint dataset state
+
+# This scheduler is made with adam in mind. Use the scheduler from pretrain.gin if using adafactor
+utils.create_learning_rate_scheduler:
+  factors = 'linear_decay'
+  base_learning_rate = 0.0001
+  warmup_steps = 10000  # 10k to keep consistent with T5/MTF defaults.
+  min_learning_rate = 0.00001
+  decay_factor = 9.0909e-7

@@ -43,7 +43,13 @@ from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x import utils
 import typing_extensions
+import gc
 
+# Python GC disable flag increases performance but may cause CPU OOM
+DISABLE_GC = False
+
+if DISABLE_GC:
+    gc.disable()
 
 Array = Union[np.ndarray, jnp.ndarray]
 BatchSpec = Mapping[str, jax.ShapeDtypeStruct]
@@ -483,6 +489,9 @@ class BaseTrainer(abc.ABC):
             num_steps: int,
             start_step: Optional[int] = None) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""
+    if not DISABLE_GC:
+        gc.collect()
+
     metrics = None
     # Use pre-compiled step, if available.
     train_step_fn = self._compiled_train_step or self._partitioned_train_step
@@ -510,6 +519,9 @@ class BaseTrainer(abc.ABC):
     if metrics is not None:
       metrics["timing/uptime"] = clu.metrics.LastValue.from_model_output(
           jnp.asarray([time.time() - self._trainer_init_time]))
+
+    if not DISABLE_GC:
+        gc.collect()
 
     return self.train_metrics_manager.write_metrics_summary(
         metrics, start_step + num_steps, num_steps)
