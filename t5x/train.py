@@ -451,8 +451,8 @@ def train(
   # ----------------------------------------------------------------------------
   # Setup Eval Utility Functions
   # ----------------------------------------------------------------------------
-  def _run_training_eval(first_run: bool = False):
-    if first_run:
+  def _run_training_eval(calls_cnt: int):
+    if calls_cnt == 1:
       logging.info('Compiling training eval loop.')
       trainer.compile_eval({
           task: utils.get_zeros_batch_like_dataset(ds)
@@ -468,7 +468,7 @@ def train(
                                         actions, trainer.train_state,
                                         eval_summaries)
 
-  def _run_inference_eval():
+  def _run_inference_eval(calls_cnt: int):
     """Run prediction based inference eval."""
     if evaluator is None:
       return
@@ -493,19 +493,24 @@ def train(
       trainer.stop_training = run_actions(trainer_lib.ActionMode.INFER_EVAL,
                                           actions, trainer.train_state,
                                           all_metrics_done)
-    train_metrics.write_scalar('timing/evaluate_seconds',
+    metric_name = 'compile_and_evaluate' if calls_cnt == 1 else 'evaluate'
+    train_metrics.write_scalar(f'timing/{metric_name}_seconds',
                                time.time() - evaluate_tick, host_step)
 
   # Optionally run teacher-forcing training eval and SeqIO inference-base eval
   # before training. Useful for testing how much a model knows before any
   # finetuning.
+  training_evals = 0
+  inference_evals = 0
   if run_eval_before_training:
     if train_eval_datasets:
       logging.info('Running training eval before training.')
-      _run_training_eval(first_run=True)
+      training_evals += 1
+      _run_training_eval(training_evals)
     if evaluator is not None:
       logging.info('Running inference eval before training.')
-      _run_inference_eval()
+      inference_evals += 1
+      _run_inference_eval(inference_evals)
 
   # Save checkpoints before the training loop starts.
   if checkpoint_period:
@@ -640,12 +645,13 @@ def train(
     # Training Evaluation (i.e., with teacher forcing).
     if is_eval_epoch and train_eval_datasets:
       # Maybe less if final step < period.
-      first_run = step_offset // eval_period <= 1
-      _run_training_eval(first_run and not run_eval_before_training)
+      training_evals += 1
+      _run_training_eval(training_evals)
 
     # Inference Evaluation (i.e., with decoding or scoring).
     if evaluator is not None:
-      _run_inference_eval()
+      inference_evals += 1
+      _run_inference_eval(inference_evals)
 
   # Wait until computations are done before exiting
   _cleanup()
