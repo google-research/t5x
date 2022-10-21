@@ -209,7 +209,7 @@ Switch Transformer C 2048 Experts (1.6T) | [switch_c.gin](https://github.com/goo
 #### Flan-T5 Checkpoints
 
 These are the checkpoints released as part of the paper [Scaling
-Instruction-Finetuned Language Models](TODO hwchung: add arxiv URL). They were
+Instruction-Finetuned Language Models](https://arxiv.org/abs/2210.11416). They were
 initialized from the [T5 1.1 LM-Adapted](#t5-11-lm-adapted-checkpoints) and instruction-finetuned.
 
 They significantly outperform the LM-adapted checkpoints. For example,
@@ -219,8 +219,7 @@ Hard](https://arxiv.org/abs/2210.09261) a
 set of challenging BigBench benchmark.
 
 Unlike the vanilla T5 checkpoints, these can be directly used for
-few-shot prompting as well as standard finetuning. See [Chung et al. 2022](TODO
-hwchung: add arxiv URL) for details.
+few-shot prompting as well as standard finetuning. See [Chung et al. 2022](https://arxiv.org/abs/2210.11416) for details.
 
 Model                | Gin File Location                                                                                                   | Checkpoint Location
 -------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
