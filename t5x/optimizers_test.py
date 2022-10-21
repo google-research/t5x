@@ -287,7 +287,7 @@ class OptaxWrapperTest(chex.TestCase):
     chex.assert_tree_all_finite(train_state.params)
     for _ in range(2):
       trainer_instance.train(ds_iter, 1)
-      chex.assert_tree_all_finite(train_state.params)
+      chex.assert_tree_all_finite(trainer_instance.train_state.params)
 
     # check save/restore structural equality
     restored_instance = trainer_instance.train_state.restore_state(
