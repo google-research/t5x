@@ -33,7 +33,7 @@ Note: Convergence (as shown in log) was not necessarily done with the hardware t
 
 (More perf improvements coming soon!)
 
-Other hyperparameters are specified in the associated pile `gin` files in the `examples/t5/t5_1_1/examples` directory.
+Other hyperparameters are specified in the associated pile `gin` files in the `examples/gpu_t5/t5_1_1/examples` directory.
 
 ## Pretraining run commands
 

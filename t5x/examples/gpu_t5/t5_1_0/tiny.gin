@@ -1,0 +1,13 @@
+# T5.1.1 tiny model.
+
+include 't5x/examples/t5/t5_1_1/base.gin'  # imports vocab, optimizer and model.
+
+# ------------------- Network specification overrides --------------------------
+network.Transformer.config = @network.T5Config()
+network.T5Config:
+  emb_dim = 8
+  num_heads = 4
+  num_encoder_layers = 2
+  num_decoder_layers = 2
+  head_dim = 3
+  mlp_dim = 16

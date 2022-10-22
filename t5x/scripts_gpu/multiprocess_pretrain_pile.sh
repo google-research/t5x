@@ -50,7 +50,7 @@ case $BENCHMARK_MODE in
     rm -rf "${MODEL_DIR}/*"
     echo BENCHMARKING
     python3 ${T5X_DIR}/t5x/train.py \
-      --gin_file="t5x/examples/t5/t5_1_1/examples/${T5_SIZE}_pile_pretrain.gin" \
+      --gin_file="t5x/examples/gpu_t5/t5_1_1/examples/${T5_SIZE}_pile_pretrain.gin" \
       --gin.MODEL_DIR=\"${MODEL_DIR}\" \
       --gin.TRAIN_STEPS=${STEP_CT}\
       --gin.network.T5Config.dtype=\"${PREC}\" \
@@ -70,7 +70,7 @@ case $BENCHMARK_MODE in
   *)
     echo TRAINING
     python3 ${T5X_DIR}/t5x/train.py \
-    --gin_file="t5x/examples/t5/t5_1_1/examples/${T5_SIZE}_pile_pretrain.gin" \
+    --gin_file="t5x/examples/gpu_t5/t5_1_1/examples/${T5_SIZE}_pile_pretrain.gin" \
     --gin.MODEL_DIR=\"${MODEL_DIR}\" \
     --gin.network.T5Config.dtype=\"${PREC}\" \
     --tfds_data_dir=${TFDS_DATA_DIR} \

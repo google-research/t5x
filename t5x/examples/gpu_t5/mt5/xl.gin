@@ -1,0 +1,13 @@
+# mT5 XL model.
+
+include 't5x/examples/t5/mt5/base.gin'  # imports vocab, optimizer and model.
+
+# ------------------- Network specification overrides --------------------------
+network.Transformer.config = @network.T5Config()
+network.T5Config:
+  emb_dim = 2048
+  num_heads = 32
+  num_encoder_layers = 24
+  num_decoder_layers = 24
+  head_dim = 64
+  mlp_dim = 5120

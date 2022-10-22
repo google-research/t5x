@@ -1,0 +1,13 @@
+# ByT5 Large model.
+
+include 't5x/examples/t5/byt5/base.gin'  # imports vocab, optimizer and model.
+
+# ------------------- Network specification overrides --------------------------
+network.Transformer.config = @network.T5Config()
+network.T5Config:
+  emb_dim = 1536
+  num_heads = 16
+  num_encoder_layers = 36
+  num_decoder_layers = 12
+  head_dim = 64
+  mlp_dim = 3840
