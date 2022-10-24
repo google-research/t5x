@@ -1210,7 +1210,7 @@ def compute_base_metrics(
     total_tokens = 0
     total_non_padding_tokens = 0
     for feature, feature_segment_ids in segment_ids.items():
-      if feature_segment_ids is None:
+      if feature_segment_ids is None or feature_segment_ids.shape[1] == 0:
         continue
       # Since this is [B, L] with the segment ids in axis = 1.
       num_examples = jnp.sum(jnp.max(feature_segment_ids, axis=1))
