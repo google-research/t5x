@@ -1,0 +1,47 @@
+# Mixture of Experts model defaults for single_core_export.py.
+#
+# You must also include bindings for MODEL.
+#
+# Required to be set:
+#
+# - NUM_MODEL_PARTITIONS or MODEL_PARALLEL_SUBMESH (only specify one)
+# - TASK_FEATURE_LENGTHS
+# - CHECKPOINT_PATH
+# - INFER_OUTPUT_DIR
+#
+# Commonly overridden options (see also t5x/configs/runs/export.gin):
+#
+# warmup_examples: Optional[List[str]] = None
+# jit_compile: bool = False
+
+from __gin__ import dynamic_registration
+
+from t5x import export_lib
+from t5x.contrib.moe import models
+from t5x.contrib.moe import partitioning as moe_partitioning
+
+include 't5x/configs/runs/export.gin'
+
+
+# Only one of these should be specified.
+NUM_MODEL_PARTITIONS = None
+MODEL_PARALLEL_SUBMESH = None
+
+# Fix the number of expert partitions to 1; i.e. all devices hold copies of all
+# experts. For multi-core export, we can increase this to partition experts
+# across available devices.
+NUM_EXPERT_PARTITIONS = 1
+
+# We use the MoE partitioner.
+export_lib.save.partitioner = @moe_partitioning.MoePjitPartitioner()
+
+moe_partitioning.MoePjitPartitioner:
+  num_expert_partitions = %NUM_EXPERT_PARTITIONS
+  num_partitions = %NUM_MODEL_PARTITIONS
+  model_parallel_submesh = %MODEL_PARALLEL_SUBMESH
+  params_on_devices = True
+
+# And the MoE encoder-decoder model.
+models.MoeEncoderDecoderModel.predict_batch_with_aux:
+  num_decodes = %BEAM_SIZE
+  return_all_decodes = True
