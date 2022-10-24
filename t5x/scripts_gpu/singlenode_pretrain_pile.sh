@@ -41,7 +41,7 @@ export XLA_FLAGS='--xla_gpu_simplify_all_fp_conversions --xla_gpu_all_reduce_com
 BSIZE=$(( NUM_GPUS * BSIZE_PER_GPU  ))
 
 rm -rf "${MODEL_DIR}/*"
-python3 ${T5X_DIR}/t5x/train.py \
+python3 -u ${T5X_DIR}/t5x/train.py \
   --gin_file="t5x/examples/gpu_t5/t5_1_1/examples/${T5_SIZE}_pile_pretrain.gin" \
   --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --gin.network.T5Config.dtype=\"${PREC}\" \

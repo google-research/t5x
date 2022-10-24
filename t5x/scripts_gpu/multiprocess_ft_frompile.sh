@@ -67,7 +67,7 @@ esac
 # Global batch size
 BSIZE=$(( NUM_GPUS * BSIZE_PER_GPU * SLURM_JOB_NUM_NODES ))
 
-python3 ${T5X_DIR}/t5x/train.py \
+python3 -u ${T5X_DIR}/t5x/train.py \
   --gin_file="t5x/examples/gpu_t5/t5_1_1/examples/${T5_SIZE}_${FT_TASK}_finetune_adam.gin" \
   --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --gin.network.T5Config.dtype=\"${PREC}\" \
