@@ -1,6 +1,6 @@
 # mT5 XXL model.
 
-include 't5x/examples/t5/mt5/base.gin'  # imports vocab, optimizer and model.
+include 't5x/examples/gpu_t5/mt5/base.gin'  # imports vocab, optimizer and model.
 
 # ------------------- Network specification overrides --------------------------
 network.Transformer.config = @network.T5Config()

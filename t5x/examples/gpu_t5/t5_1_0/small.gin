@@ -1,6 +1,6 @@
 # T5.1.1 Small model.
 
-include 't5x/examples/t5/t5_1_0/base.gin'  # imports vocab, optimizer and model.
+include 't5x/examples/gpu_t5/t5_1_0/base.gin'  # imports vocab, optimizer and model.
 
 # ------------------- Network specification overrides --------------------------
 network.Transformer.config = @network.T5Config()
