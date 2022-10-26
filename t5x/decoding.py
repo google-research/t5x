@@ -100,6 +100,7 @@ def _is_tracer(value: Any):
   return isinstance(value, jax.core.Tracer)
 
 
+#
 def temperature_sample(
     inputs: jnp.ndarray,
     cache: Mapping[str, jnp.ndarray],
