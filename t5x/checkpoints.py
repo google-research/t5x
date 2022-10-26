@@ -1992,7 +1992,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       if param_info.name.split('.')[0] == 'target':
         dtype = self._save_dtype
       return orbax.checkpoint.SaveArgs(
-          use_flax=param_info.mesh_axes is None, dtype=dtype)
+          aggregate=param_info.mesh_axes is None, dtype=dtype)
 
     save_args = jax.tree_util.tree_map(_save_args, param_infos)
 
@@ -2001,7 +2001,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         _OPTIMIZER_KEY: state_dict,
     }
     save_args = {
-        _VERSION_KEY: orbax.checkpoint.SaveArgs(use_flax=True),
+        _VERSION_KEY: orbax.checkpoint.SaveArgs(aggregate=True),
         _OPTIMIZER_KEY: save_args,
     }
     items = {_STATE_KEY: state_dict}
@@ -2066,9 +2066,8 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       if param_info.name.split('.')[0] == 'target':
         dtype = self._restore_dtype
       if param_info.mesh_axes is None:
-        return orbax.checkpoint.RestoreArgs(
-            as_jax_array=False, dtype=dtype, lazy=lazy_parameters)
-      return orbax.checkpoint.RestoreArgs(
+        return orbax.checkpoint.RestoreArgs(dtype=dtype, lazy=lazy_parameters)
+      return orbax.checkpoint.ArrayRestoreArgs(
           mesh=self._partitioner.mesh,
           mesh_axes=param_info.mesh_axes,
           dtype=dtype,
@@ -2084,7 +2083,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     if self._should_write_dataset_ckpt:
       items[_DATASET_KEY] = self._dataset_iterator
     restore_args = {
-        _VERSION_KEY: orbax.checkpoint.RestoreArgs(as_jax_array=False),
+        _VERSION_KEY: orbax.checkpoint.RestoreArgs(),
         _OPTIMIZER_KEY: restore_args,
     }
     restore_kwargs = {
