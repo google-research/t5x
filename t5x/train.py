@@ -40,6 +40,7 @@ import jax.numpy as jnp
 import numpy as np
 import seqio
 from t5x import checkpoints
+from t5x import eval as eval_lib
 from t5x import models
 from t5x import partitioning
 from t5x import train_state as train_state_lib
@@ -396,38 +397,16 @@ def train(
   # Init evaluator to set up cached datasets
   evaluator = None
   if infer_eval_dataset_cfg is not None:
-    _verify_matching_vocabs(infer_eval_dataset_cfg)
-    evaluator = inference_evaluator_cls(
-        log_dir=os.path.join(model_dir, 'inference_eval'),
-        mixture_or_task_name=infer_eval_dataset_cfg.mixture_or_task_name,
-        feature_converter=model.FEATURE_CONVERTER_CLS(pack=False),
-        eval_split=infer_eval_dataset_cfg.split,
-        use_cached=infer_eval_dataset_cfg.use_cached,
-        seed=infer_eval_dataset_cfg.seed,
-        sequence_length=infer_eval_dataset_cfg.task_feature_lengths,
-        use_memory_cache=infer_eval_dataset_cfg.use_memory_cache)
+    evaluator = eval_lib.InferenceEvaluator(
+        infer_eval_dataset_cfg=infer_eval_dataset_cfg,
+        inference_evaluator_cls=inference_evaluator_cls,
+        model=model,
+        partitioner=partitioner,
+        log_dir=model_dir,
+        verify_matching_vocabs_fn=verify_matching_vocabs_fn)
     if not evaluator.eval_tasks:
       # Skip evaluaton.
       evaluator = None
-
-  if evaluator is not None:
-    predict_fn = utils.get_infer_fn(
-        infer_step=model.predict_batch,
-        batch_size=infer_eval_dataset_cfg.batch_size,
-        train_state_axes=train_state_axes,
-        partitioner=partitioner)
-
-    predict_with_aux_fn = utils.get_infer_fn(
-        infer_step=model.predict_batch_with_aux,
-        batch_size=infer_eval_dataset_cfg.batch_size,
-        train_state_axes=train_state_axes,
-        partitioner=partitioner)
-
-    score_fn = utils.get_infer_fn(
-        infer_step=model.score_batch,
-        batch_size=infer_eval_dataset_cfg.batch_size,
-        train_state_axes=train_state_axes,
-        partitioner=partitioner)
 
   if actions is None:
     actions = {}
@@ -474,19 +453,7 @@ def train(
       return
     logging.info('Running inference evaluation.')
     evaluate_tick = time.time()
-    all_metrics, _ = evaluator.evaluate(
-        compute_metrics=jax.process_index() == 0,
-        step=host_step,
-        predict_fn=functools.partial(
-            predict_fn,
-            train_state=trainer.train_state,
-            rng=jax.random.PRNGKey(0)),
-        score_fn=functools.partial(score_fn, train_state=trainer.train_state),
-        predict_with_aux_fn=functools.partial(
-            predict_with_aux_fn,
-            train_state=trainer.train_state,
-            rng=jax.random.PRNGKey(0)),
-    )
+    all_metrics = evaluator.evaluate(trainer.train_state, train_state_axes)
     if not concurrent_metrics:
       # Ensure metrics are finished being computed.
       all_metrics_done = all_metrics.result() or {}
