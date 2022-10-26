@@ -611,7 +611,7 @@ def train(
       _run_training_eval(first_run and not run_eval_before_training)
 
     # Inference Evaluation (i.e., with decoding or scoring).
-    if evaluator is not None:
+    if is_eval_epoch and evaluator is not None:
       _run_inference_eval()
 
   # Wait until computations are done before exiting
