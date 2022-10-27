@@ -36,8 +36,9 @@ Model             | Use Case
 These are the checkpoints used in the paper [Exploring the Limits of Transfer
 Learning with a Unified Text-to-Text
 Transformer](https://arxiv.org/abs/1910.10683). They are encoder-decoder models
-trained on [C4](https://www.tensorflow.org/datasets/catalog/c4) with a denoising
-objective.
+pre-trained on [C4](https://www.tensorflow.org/datasets/catalog/c4) with a "span
+corruption" denoising objective, in addition to a mixture of downstream tasks
+including: GLUE, SuperGLUE, CNN/Daily Mail, SQuAD, and WMT.
 
 **Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
 
