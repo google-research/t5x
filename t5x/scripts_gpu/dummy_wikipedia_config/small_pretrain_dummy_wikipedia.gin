@@ -28,9 +28,9 @@ import t5.data.mixtures
 import dummy_wikipedia_seqio
 
 MIXTURE_OR_TASK_NAME = "wikipedia_dummy"
-TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 114}
+TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 128}
 TRAIN_STEPS = 100
-DROPOUT_RATE = 0.0
+DROPOUT_RATE = 0.1
 BATCH_SIZE = 256
 USE_CACHED_TASKS=False
 
