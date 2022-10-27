@@ -105,6 +105,7 @@ class ExportableModule(tf.Module):
       num_batch_threads: int = 8,
       max_enqueued_batches: int = 64,
       batch_timeout_micros: int = 1000_000,
+      allowed_batch_sizes: Optional[Sequence[int]] = None,
       jit_compile: bool = True,
       use_batch_function: bool = False,
       use_gpu: bool = False,
@@ -147,22 +148,33 @@ class ExportableModule(tf.Module):
     self._num_batch_threads = num_batch_threads
     self._max_enqueued_batches = max_enqueued_batches
     self._batch_timeout_micros = batch_timeout_micros
+    self._allowed_batch_sizes = allowed_batch_sizes
     self._use_batch_function = use_batch_function
 
   @functools.partial(tf.function, autograph=False, jit_compile=False)
   def __call__(self, *input_batches) -> Tuple[Any, Any]:
-    if self._use_batch_function:
-      if self._batch_size is None:
-        raise ValueError('Need a batch_size when using batch_function.')
-      batch_wrapper = tf.nondifferentiable_batch_function(
-          num_batch_threads=self._num_batch_threads,
-          max_enqueued_batches=self._max_enqueued_batches,
-          max_batch_size=self._batch_size,
-          batch_timeout_micros=self._batch_timeout_micros,
-          allowed_batch_sizes=[self._batch_size])
-      return batch_wrapper(self._call)(*input_batches)
-    else:
+    if not self._use_batch_function:
       return self._call(*input_batches)
+
+    if self._allowed_batch_sizes:
+      if self._batch_size is not None:
+        raise ValueError('allowed_batch_size requires polymorphic batch size')
+      max_batch_size = max(self._allowed_batch_sizes)
+      allowed_batch_sizes = self._allowed_batch_sizes
+    elif self._batch_size is not None:
+      max_batch_size = self._batch_size
+      allowed_batch_sizes = [self._batch_size]
+    else:
+      raise ValueError(
+          'Need to set either batch_size or allowed_batch_size when '
+          'using batch_function.')
+    batch_wrapper = tf.nondifferentiable_batch_function(
+        num_batch_threads=self._num_batch_threads,
+        max_enqueued_batches=self._max_enqueued_batches,
+        max_batch_size=max_batch_size,
+        batch_timeout_micros=self._batch_timeout_micros,
+        allowed_batch_sizes=allowed_batch_sizes)
+    return batch_wrapper(self._call)(*input_batches)
 
   def _call(self, *input_batches):
     features = self._preproc_tf_fn(*input_batches)
