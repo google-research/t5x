@@ -35,7 +35,6 @@ import flax.core
 from flax.core import scope as flax_scope
 from flax.linen import partitioning as flax_partitioning
 import jax
-from jax import pxla
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
 from jax.experimental.global_device_array import GlobalDeviceArray
@@ -61,6 +60,7 @@ Shape = Tuple[int, ...]
 
 # TODO(adarob): Remove namespace mapping after client gin files are updated.
 TensorBoardLogger = seqio.TensorBoardLogger
+get_local_data = checkpoints.get_local_data
 
 
 class EvaluatorConstructor(typing_extensions.Protocol):
@@ -450,7 +450,7 @@ def _get_index_mappings(device_to_idxs):
 
 def _create_gda(partitioner: partitioning.BasePartitioner,
                 global_shapes: PyTreeDef, host_arrays: PyTreeDef) -> PyTreeDef:
-  """Create GDA from input arrays.
+  """Create GDA or jax.Array from input arrays.
 
   Example:
 
@@ -519,8 +519,11 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
   device_buffers = jax.tree_map(_put_to_devices, host_arrays, global_shapes)
 
   def _gda(dbs, global_shape):
-    result = GlobalDeviceArray(global_shape, global_mesh, axes, dbs)
-    return result
+    if jax.config.jax_array:
+      return jax.make_array_from_single_device_arrays(
+          global_shape, jax.sharding.MeshPspecSharding(global_mesh, axes), dbs)
+    else:
+      return GlobalDeviceArray(global_shape, global_mesh, axes, dbs)
 
   return jax.tree_map(
       _gda,
@@ -1189,11 +1192,21 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
       # [B, ...] -> [B * shard_count, ...]
       # partitioned_infer_step executes infer_step on sharded batched data, and
       # returns de-sharded batched indices and result replicated on all hosts.
-      batch_indices, batch_result = partitioned_infer_step(
-          train_state.params, infer_batch, step_rng, index)
-      logging.info('Inference of batch %s done.', index)
 
-      # Issue asynchronous copy request which serves as prefetching to the host.
+      if jax.config.jax_array:
+        inputs = multihost_utils.host_local_array_to_global_array(
+            (infer_batch, step_rng, index), partitioner.mesh,
+            (partitioner.data_partition_spec, None,
+             partitioner.data_partition_spec))
+        batch_indices, batch_result = partitioned_infer_step(
+            train_state.params, *inputs)
+        batch_indices, batch_result = multihost_utils.global_array_to_host_local_array(
+            (batch_indices, batch_result), partitioner.mesh, (None, None))
+      else:
+        batch_indices, batch_result = partitioned_infer_step(
+            train_state.params, infer_batch, step_rng, index)
+        logging.info('Inference of batch %s done.', index)
+
       def _copy_to_host_async(x):
         if isinstance(x, GlobalDeviceArray):
           if hasattr(x, 'addressable_data'):
@@ -1622,22 +1635,3 @@ def override_params_axes_names(
   return flax.core.freeze(model_variables)
 
 
-
-
-def get_local_data(x):
-  """Get local buffer for input data."""
-  if jax.config.jax_array and isinstance(x, jax.Array):
-    return x.addressable_data(0)
-  elif isinstance(x, GlobalDeviceArray):
-    if hasattr(x, 'addressable_data'):
-      val = x.addressable_data(0)
-    else:
-      val = x.local_data(0)
-    return val
-  elif isinstance(x, pxla.ShardedDeviceArray):
-    val = x.device_buffers[0]
-    if val.aval is None:
-      val.aval = jax.ShapedArray(val.shape, val.dtype)
-    return val
-  else:
-    return x

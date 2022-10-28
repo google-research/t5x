@@ -43,6 +43,7 @@ from etils import epath
 from flax import serialization
 from flax import traverse_util
 import jax
+from jax import pxla
 import jax.config
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
@@ -193,12 +194,19 @@ def latest_step(checkpoints_dir: str) -> Optional[int]:
   return steps[-1]
 
 
-def _get_local_data(x):
-  if isinstance(x, gda_lib.GlobalDeviceArray):
-    if hasattr(x, 'addressable_data'):
-      return x.addressable_data(0)
-    else:
-      return x.local_data(0)
+def get_local_data(x):
+  """Get local buffer for input data."""
+  if jax.config.jax_array and isinstance(
+      x, jax.Array) and not isinstance(x, jax.core.Tracer):
+    return x.addressable_data(0)
+  elif isinstance(x, gda_lib.GlobalDeviceArray):
+    val = x.addressable_data(0)
+    return val
+  elif isinstance(x, pxla.ShardedDeviceArray):
+    val = x.device_buffers[0]
+    if val.aval is None:
+      val.aval = jax.ShapedArray(val.shape, val.dtype)
+    return val
   else:
     return x
 
@@ -520,7 +528,13 @@ class Checkpointer(object):
 
     def _lazy_load_device_array(arr):
       if isinstance(arr, jax.Array):
-        return LazyThreadPoolArray(arr.shape, arr.dtype, lambda: np.array(arr))
+        if jax.config.jax_array:
+          if len(arr.sharding.device_set) == 1:
+            return LazyThreadPoolArray(arr.shape, arr.dtype,
+                                       lambda: np.array(arr))
+        else:
+          return LazyThreadPoolArray(arr.shape, arr.dtype,
+                                     lambda: np.array(arr))
       return arr
 
     if lazy_load:
@@ -680,7 +694,7 @@ class Checkpointer(object):
     """
     step = train_state.step
     step = step.get() if isinstance(step, LazyArray) else step
-    step = _get_local_data(step)
+    step = get_local_data(step)
     # Integer, to avoid side effects in the checkpoint path.
     step = int(step)
 
@@ -722,7 +736,7 @@ class Checkpointer(object):
     _sync_global_devices(f'checkpointer:tensorstore_write_complete:{tmp_dir}')
 
     if jax.process_index() == 0:
-      written_state_dict = jax.tree_util.tree_map(_get_local_data,
+      written_state_dict = jax.tree_util.tree_map(get_local_data,
                                                   written_state_dict)
 
       # Write msgpack file in host 0 only
@@ -783,12 +797,13 @@ class Checkpointer(object):
         return maybe_arr
 
       # Only write each chunk of a parameter from one host
-      if isinstance(maybe_arr, gda_lib.GlobalDeviceArray
-                   ) or param_info.local_chunk_info.replica_id == 0:
+      if isinstance(maybe_arr,
+                    (gda_lib.GlobalDeviceArray,
+                     jax.Array)) or param_info.local_chunk_info.replica_id == 0:
         arr = maybe_arr
 
         # Wait until memory is available.
-        if isinstance(arr, gda_lib.GlobalDeviceArray):
+        if isinstance(arr, (gda_lib.GlobalDeviceArray, jax.Array)):
           n_bytes = sum([
               shard.data.nbytes
               for shard in arr.addressable_shards
@@ -806,7 +821,7 @@ class Checkpointer(object):
         if isinstance(maybe_arr, LazyArray):
           arr = await arr.get_async()
         elif not isinstance(arr, np.ndarray) and not isinstance(
-            arr, gda_lib.GlobalDeviceArray):
+            arr, (gda_lib.GlobalDeviceArray, jax.Array)):
           # Cast jax.DeviceArray to np.ndarray.
           arr = np.array(maybe_arr, dtype=maybe_arr.dtype)
 
@@ -829,7 +844,7 @@ class Checkpointer(object):
               'dtype': jnp.dtype(arr.dtype).name,  # dtype before cast
           }
 
-        if isinstance(arr, gda_lib.GlobalDeviceArray):
+        if isinstance(arr, (gda_lib.GlobalDeviceArray, jax.Array)):
           await gda_serialization.async_serialize(arr, tmp_ts_spec_dict)
         else:
           t = await ts.open(
@@ -1085,13 +1100,22 @@ class Checkpointer(object):
           restore_dtype=restore_dtype,
           mesh=mesh,
           axes=axes)
-      if self._use_gda and isinstance(arr, (np.ndarray, jnp.ndarray)):
+      is_sharded_jax_array = isinstance(
+          arr, jax.Array) and not arr.is_fully_addressable
+      if self._use_gda and isinstance(
+          arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
+        logging.info(arr)
         if axes is None:
           axes = PartitionSpec(None,)
         if restore_dtype is not None:
           arr = arr.astype(restore_dtype)
-        arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
-                                                      lambda idx: arr[idx])
+        if jax.config.jax_array:
+          arr = jax.make_array_from_callback(
+              arr.shape, jax.sharding.MeshPspecSharding(mesh, axes),
+              lambda idx: arr[idx])
+        else:
+          arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
+                                                        lambda idx: arr[idx])
       return arr
 
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
@@ -1976,7 +2000,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     """
     step = train_state.step
     step = step.get() if isinstance(step, LazyArray) else step
-    step = _get_local_data(step)
+    step = get_local_data(step)
     # Integer, to avoid side effects in the checkpoint path.
     step = int(step)
 
