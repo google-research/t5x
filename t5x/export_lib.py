@@ -288,6 +288,16 @@ def create_inference_function(
       assert len(values) == 1
       return tuple(values)
 
+  elif hasattr(model, inference_mode):
+    inference_fn = getattr(model, inference_mode)
+    inference_fn = maybe_partition(inference_fn)
+
+    if enable_jax2tf:
+      inference_fn = jax2tf.convert(
+          inference_fn,
+          polymorphic_shapes=[None, polymorphic_shapes_inputs],
+          experimental_native_lowering=native_lowering)
+
   else:
     raise ValueError(f'Unknown inference_mode "{inference_mode}"')
 
