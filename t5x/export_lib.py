@@ -941,11 +941,23 @@ def save(
   # The model_fn takes two arguments, the params and the inputs. The inputs are
   # a pytree of arrays with the first dimension being the batch dimension.
   if batch_size is None:
-    fake_inputs = tf.constant([[0]]) if tokenized_inputs else tf.constant([''])
-    features = preprocessor(fake_inputs)
+
+    def _gen_dummy_tensor(ts: tf.TensorSpec):
+      shape = ts.shape.as_list()
+      if not all(shape[1:]):
+        raise ValueError(
+            'Only supports polymorphic batch size at leading dimenstion, got '
+            f'{ts} in the input signature.')
+      if shape and shape[0] is None:
+        shape[0] = 1
+      return tf.zeros(shape, ts.dtype)
+
+    fake_inputs = jax.tree_util.tree_map(_gen_dummy_tensor, input_signature)
+    features = preprocessor(*fake_inputs)
 
     # All the features have a leading batch dimension.
-    polymorphic_shapes_inputs = jax.tree_map(lambda _: 'b, ...', features)
+    polymorphic_shapes_inputs = jax.tree_util.tree_map(lambda _: 'b, ...',
+                                                       features)
   else:
     polymorphic_shapes_inputs = None
 
