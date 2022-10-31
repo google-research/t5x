@@ -40,7 +40,8 @@ pre-trained on [C4](https://www.tensorflow.org/datasets/catalog/c4) with a "span
 corruption" denoising objective, in addition to a mixture of downstream tasks
 including: GLUE, SuperGLUE, CNN/Daily Mail, SQuAD, and WMT.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model    | Gin File Location                                                              | Checkpoint Location
 -------- | ------------------------------------------------------------------------------ | -------------------
@@ -69,7 +70,8 @@ For English-language, sequence-to-sequence-style tasks (ones where the goal is
 to map from an input text sequence to a target sequence) these are usually the
 best models to fine-tune.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model        | Gin File Location                                                                  | Checkpoint Location
 ------------ | ---------------------------------------------------------------------------------- | -------------------
@@ -88,7 +90,8 @@ ability of the model to be used for
 [prompt tuning](https://arxiv.org/abs/2104.08691). These checkpoints were also
 used within the BigScience [T0](https://arxiv.org/abs/2110.08207) project.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model                | Gin File Location                                                                                                   | Checkpoint Location
 -------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
@@ -108,7 +111,8 @@ They are encoder-decoder models trained on
 with a denoising objective. These are the best checkpoints to fine-tune for
 non-English sequence-to-sequence tasks.
 
-**Vocabulary:** [mc4.250000.100extra](gs://t5-data/vocabs/mc4.250000.100extra)
+**Vocabulary:**
+[mc4.250000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/mc4.250000.100extra)
 
 Model     | Gin File Location                                                            | Checkpoint Location
 --------- | ---------------------------------------------------------------------------- | -------------------
@@ -154,7 +158,8 @@ The checkpoints below use local attention, which uses a sliding window to reduce
 training time from quadratic (with regards to input length) to linear. These are
 the recommended checkpoints to use for faster training/inference time.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model                        | Gin File Location                                                                                                                     | Checkpoint Location
 ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------
@@ -168,7 +173,8 @@ tokens at each encoder layer to allow tokens to interact with each other at
 longer distances. These are the recommended checkpoints to use for increased
 performance on long input sequence tasks.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model        | Gin File Location                                                                                                                                                | Checkpoint Location
 ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------
@@ -189,7 +195,8 @@ the MoeTrainer and the MoePjitPartitioner. For example, for fine-tuning, use the
 These are the checkpoints from the
 [Switch Transformer model](https://arxiv.org/abs/2101.03961).
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model                                    | Gin File Location                                                                                            | Checkpoint Location
 ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------
