@@ -119,6 +119,7 @@ def train(
     train_state_initializer_cls: Type[
         utils.TrainStateInitializer] = utils.TrainStateInitializer,
     use_gda: bool = True,
+    use_jax_array: bool = False,
     verify_matching_vocabs_fn: Optional[
         Callable[[utils.DatasetConfig, models.BaseTransformerModel],
                  None]] = utils.verify_matching_vocabs,
@@ -178,6 +179,8 @@ def train(
     train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
       initializing partitioned TrainState from checkpoints or scratch.
     use_gda: if True, uses GlobalDeviceArray. Experimental feature.
+    use_jax_array: if True, uses jax.Array if use_gda is also True. Experimental
+      feature.
     verify_matching_vocabs_fn: Function to validate whether the task vocabulary
       matches the model vocabulary. Should raise an exception on error.
 
@@ -193,7 +196,13 @@ def train(
     warnings.warn(
         '`use_gda=False` is deprecated and will be removed on Feb-01-23.'
         ' Please ensure that your workflow can use GDA.', DeprecationWarning)
-  jax.config.update('jax_parallel_functions_output_gda', use_gda)
+  if use_jax_array and not use_gda:
+    raise ValueError('Invalid configuration of `use_gda` and `use_jax_array`.')
+  if use_gda:
+    if use_jax_array:
+      jax.config.update('jax_array', True)
+    else:
+      jax.config.update('jax_parallel_functions_output_gda', True)
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.

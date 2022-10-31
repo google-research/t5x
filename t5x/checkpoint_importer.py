@@ -45,8 +45,8 @@ class LazyThreadPoolArray(LazyArray):
   # Uses a global threadpool to enable asynchronous loading.
   executor = thread.ThreadPoolExecutor()
 
-  def get_async(self) -> asyncio.Future:
-    return asyncio.wrap_future(self.executor.submit(self.get))
+  async def get_async(self):
+    return await asyncio.wrap_future(self.executor.submit(self.get))
 
   def get(self) -> np.ndarray:
     arr = self._get_fn()
@@ -72,7 +72,7 @@ class LazyAwaitableArray(LazyArray):
     class.
   """
 
-  def get_async(self) -> asyncio.Future:
+  async def get_async(self):
 
     async def _get_and_cast():
       # Pytype has a false positive here, where it treats our _get_fn (_read_ts
@@ -84,7 +84,7 @@ class LazyAwaitableArray(LazyArray):
         arr = arr.astype(self.dtype)
       return arr
 
-    return asyncio.ensure_future(_get_and_cast())
+    return await _get_and_cast()
 
   def get(self) -> np.ndarray:
     loop = asyncio.get_event_loop()
