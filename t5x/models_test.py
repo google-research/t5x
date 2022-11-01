@@ -58,6 +58,18 @@ class ModelsTest(parameterized.TestCase):
     # The expected output is the original sequences.
     np.testing.assert_array_equal(actual, sequences)
 
+  def test_count_packed_examples(self):
+    segment_ids_1 = np.array([[1, 1, 2, 2, 0, 0], [1, 1, 1, 1, 1, 1]])
+    actual_1 = models.count_packed_examples(segment_ids_1)
+    # `actual_1` is DeviceArray(3, dtype=int32).
+    np.testing.assert_array_equal(actual_1, [3])
+
+    segment_ids_2 = np.array([[1, 1, 3, 3, 0, 0], [2, 2, 2, 2, 2, 2],
+                              [2, 7, 7, 7, 7, 0]])
+    actual_2 = models.count_packed_examples(segment_ids_2)
+    # `actual_2` is DeviceArray(5, dtype=int32).
+    np.testing.assert_array_equal(actual_2, [5])
+
 
 BATCH_SIZE, ENCODER_LEN, MAX_DECODE_LEN, EMBED_DIM = 2, 3, 4, 5
 

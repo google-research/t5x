@@ -1135,6 +1135,40 @@ def compute_metrics(logits: jnp.ndarray, targets: jnp.ndarray,
   return metrics
 
 
+def count_packed_examples(segment_ids: jnp.ndarray) -> int:
+  """Return the number of packed examples.
+
+  After packing, each row of segment_ids contains the ids of packed examples.
+  For some model inputs, some features could have some examples but not others.
+  For example, two tasks in a multimodal setup could be: (1). text -> text, and
+  (2). image -> text. Examples from (1) will be missing image input feature and
+  examples from (2) will be missing text input feature.
+
+  To count the packed examples, we count the unique ids in segment_ids excluding
+  0s (because of padding). It can be implemented by counting the number of
+  non-zero values in the first discrete difference along axis=1, plus the number
+  of rows in segment_ids, and minus the number of padded examples.
+
+  Example:
+    [[1, 1, 3, 3, 0, 0],
+     [2, 2, 2, 2, 2, 2],
+     [2, 7, 7, 7, 7, 0]] has 5 packed examples.
+
+  Args:
+    segment_ids: [B, L] array.
+
+  Returns:
+    Scalar count.
+  """
+
+  # If there is padding, it's at the end and the id is always 0.
+  num_padded_examples = jnp.sum(segment_ids[:, -1] == 0)
+  # Get the first discrete different along axis=1.
+  first_diff = jnp.diff(segment_ids, n=1, axis=1)
+  # count = #(non-0 diff) + #(row) - #(padded ex).
+  return jnp.sum(first_diff != 0) + segment_ids.shape[0] - num_padded_examples
+
+
 def compute_base_metrics(
     logits: jnp.ndarray,
     targets: jnp.ndarray,
@@ -1213,7 +1247,7 @@ def compute_base_metrics(
       if feature_segment_ids is None or feature_segment_ids.shape[1] == 0:
         continue
       # Since this is [B, L] with the segment ids in axis = 1.
-      num_examples = jnp.sum(jnp.max(feature_segment_ids, axis=1))
+      num_examples = count_packed_examples(feature_segment_ids)
       metrics[f'effective_batch_size/{feature}'] = metrics_lib.AveragePerStep(
           total=num_examples)
       # 0s is padding
