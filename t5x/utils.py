@@ -28,6 +28,7 @@ import typing
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
 import warnings
 
+from absl import flags
 from absl import logging
 import clu.data
 from flax import traverse_util
@@ -51,6 +52,8 @@ import tensorflow as tf
 from tensorflow.io import gfile
 import typing_extensions
 
+
+FLAGS = flags.FLAGS
 
 Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
 PyTreeDef = type(jax.tree_util.tree_structure(None))
@@ -1414,14 +1417,14 @@ def get_dataset(cfg: DatasetConfig,
         f'Batch size ({cfg.batch_size}) must be divisible by number of '
         f'shards ({num_shards}).')
 
+  seed = cfg.seed
+
 
   shard_info = seqio.ShardInfo(index=shard_id, num_shards=num_shards)
 
-  if cfg.seed is None:
+  if seed is None:
     # Use a shared timestamp across devices as the seed.
     seed = multihost_utils.broadcast_one_to_all(np.int32(time.time()))
-  else:
-    seed = cfg.seed
 
   return get_dataset_inner(cfg, shard_info, feature_converter_cls, seed,
                            num_epochs)
