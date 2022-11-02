@@ -483,6 +483,10 @@ class BaseTrainer(abc.ABC):
             num_steps: int,
             start_step: Optional[int] = None) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""
+    import jax
+    server = jax.profiler.start_server(9999)
+    profile_start_step = 20
+    profile_steps = 5
     metrics = None
     # Use pre-compiled step, if available.
     train_step_fn = self._compiled_train_step or self._partitioned_train_step
@@ -497,6 +501,10 @@ class BaseTrainer(abc.ABC):
       for step_num in range(start_step, start_step + num_steps):
         logging.log_every_n_seconds(logging.INFO, "Training: step %d", 10,
                                     step_num)
+        if step_num == profile_start_step :
+            jax.profiler.start_trace(f"/home/sivaibhav/profile-log")
+        if step_num == profile_start_step + profile_steps:
+            jax.profiler.stop_trace()
         with jax.profiler.StepTraceAnnotation("train", step_num=step_num):
           batch = next(batch_iter)
           train_state, metrics_update = train_step_fn(train_state, batch)
