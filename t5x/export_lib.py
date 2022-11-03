@@ -288,6 +288,24 @@ def create_inference_function(
       assert len(values) == 1
       return tuple(values)
 
+  elif inference_mode == 'encode':
+
+    encoded_batch = getattr(model, '_encode_batch')
+
+    if enable_jax2tf:
+      encoded_batch = jax2tf.convert(
+          encoded_batch,
+          polymorphic_shapes=[None, polymorphic_shapes_inputs],
+          experimental_native_lowering=native_lowering)
+
+    def inference_fn(params: Mapping[str, Any],
+                     batch: Mapping[str, jnp.ndarray]) -> Tuple[Any]:
+      result = encoded_batch(frozen_dict.freeze(params), batch)
+      values, _ = jax.tree_util.tree_flatten(result)
+
+      assert len(values) == 1
+      return tuple(values)
+
   elif hasattr(model, inference_mode):
     inference_fn = getattr(model, inference_mode)
     inference_fn = maybe_partition(inference_fn)
