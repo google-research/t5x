@@ -27,6 +27,7 @@ from flax.linen import partitioning as flax_partitioning
 import jax
 from jax import numpy as jnp
 from jax import random
+from jax.experimental import multihost_utils
 from jax.experimental import PartitionSpec
 from jax.experimental.maps import Mesh
 from jax.experimental.mesh_utils import create_hybrid_device_mesh
@@ -705,6 +706,9 @@ class BasePartitioner(metaclass=abc.ABCMeta):
         in_axis_resources=(train_state_axes, None),
         out_axis_resources=(train_state_axes, None),
         donate_argnums=(0,))
+    if jax.config.jax_array:
+      train_state = multihost_utils.host_local_array_to_global_array(
+          train_state, self.mesh, train_state_axes)
     train_state, _ = p_id_fn(train_state, jnp.ones((), dtype=jnp.uint32))
     return train_state
 
