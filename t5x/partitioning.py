@@ -683,9 +683,9 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     replica_id = self._local_chunker.get_local_chunk_info(
         (batch_size,), [self._data_axis]).replica_id
     return DataLayout(
-        batch_size=batch_size,
-        shard_id=self._local_chunker.chunk_ids[self._data_axis],
-        num_shards=num_shards,
+        batch_size=int(batch_size),
+        shard_id=int(self._local_chunker.chunk_ids[self._data_axis]),
+        num_shards=int(num_shards),
         is_first_host_in_replica_set=(replica_id == 0))
 
   def get_local_chunk_info(
