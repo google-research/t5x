@@ -1104,7 +1104,6 @@ class Checkpointer(object):
           arr, jax.Array) and not arr.is_fully_addressable
       if self._use_gda and isinstance(
           arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
-        logging.info(arr)
         if axes is None:
           axes = PartitionSpec(None,)
         if restore_dtype is not None:
