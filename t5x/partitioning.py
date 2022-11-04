@@ -32,6 +32,7 @@ from jax.experimental import PartitionSpec
 from jax.experimental.maps import Mesh
 from jax.experimental.mesh_utils import create_hybrid_device_mesh
 from jax.experimental.pjit import pjit as jax_pjit
+from jax.interpreters import pxla
 import numpy as np
 from t5x import train_state as train_state_lib
 
@@ -732,8 +733,8 @@ class BasePartitioner(metaclass=abc.ABCMeta):
   def partition(
       self,
       fn: Callable,  # pylint: disable=g-bare-generic
-      in_axis_resources,
-      out_axis_resources,
+      in_axis_resources=pxla._UNSPECIFIED,  # pylint: disable=protected-access
+      out_axis_resources=pxla._UNSPECIFIED,  # pylint: disable=protected-access
       static_argnums: Union[int, Sequence[int]] = (),
       donate_argnums: Union[int, Sequence[int]] = ()
   ) -> PartitionedCallable:
@@ -904,8 +905,8 @@ class PjitPartitioner(BasePjitPartitioner):
   def partition(
       self,
       fn: Callable,  # pylint: disable=g-bare-generic
-      in_axis_resources,
-      out_axis_resources,
+      in_axis_resources=pxla._UNSPECIFIED,  # pylint: disable=protected-access
+      out_axis_resources=pxla._UNSPECIFIED,  # pylint: disable=protected-access
       static_argnums: Union[int, Sequence[int]] = (),
       donate_argnums: Union[int, Sequence[int]] = ()
   ) -> PjittedFnWithContext:

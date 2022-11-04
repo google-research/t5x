@@ -21,6 +21,7 @@ import cached_property
 from flax import core as flax_core
 import jax
 from jax.experimental.maps import Mesh
+from jax.interpreters import pxla
 import numpy as np
 from t5x import adafactor
 from t5x import optimizers
@@ -285,8 +286,8 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
   def partition(
       self,
       fn: Callable,  # pylint: disable=g-bare-generic
-      in_axis_resources: Pytree,
-      out_axis_resources: Pytree,
+      in_axis_resources: Pytree = pxla._UNSPECIFIED,  # pylint: disable=protected-access
+      out_axis_resources: Pytree = pxla._UNSPECIFIED,  # pylint: disable=protected-access
       static_argnums: Union[int, Sequence[int]] = (),
       donate_argnums: Union[int, Sequence[int]] = ()
   ) -> base_partitioning.PjittedFnWithContext:
