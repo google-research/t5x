@@ -408,7 +408,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
 @dataclasses.dataclass
 class DatasetConfig:
   """Configuration for loading a dataset from a SeqIO Task or Mixture."""
-  mixture_or_task_name: str
+  mixture_or_task_name: Union[str, seqio.Task, seqio.Mixture]
   task_feature_lengths: Mapping[str, int]
   split: str
   batch_size: int  # Number of examples per batch.
@@ -1329,6 +1329,11 @@ def get_vocabulary(
     ValueError: if inputs and targets are not both present and vocabularies
       are different.
   """
+  if isinstance(cfg.mixture_or_task_name, seqio.DatasetProviderBase):
+    mixture_or_task = cfg.mixture_or_task_name
+  else:
+    mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
+
   if cfg.module:
     warnings.warn(
         'The use of `DatasetConfig.module` and `MIXTURE_OR_TASK_MODULE` is '
@@ -1336,8 +1341,7 @@ def get_vocabulary(
         DeprecationWarning)
     import_module(cfg.module)
 
-  provider = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
-  features = provider.output_features
+  features = mixture_or_task.output_features
 
   if 'inputs' in features and 'targets' in features:
     return (features['inputs'].vocabulary, features['targets'].vocabulary)
@@ -1438,6 +1442,10 @@ def get_dataset_inner(cfg: DatasetConfig,
                       num_epochs: Optional[int] = None):
   """Internal fn to load a dataset from SeqIO based on a `DatasetConfig`."""
   batch_size = cfg.batch_size // shard_info.num_shards
+  if isinstance(cfg.mixture_or_task_name, seqio.DatasetProviderBase):
+    mixture_or_task = cfg.mixture_or_task_name
+  else:
+    mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
   if seed is not None:
     if not str(jax.devices()[0]).startswith('MOCK_TPU'):
       multihost_assert_equal(
@@ -1446,7 +1454,7 @@ def get_dataset_inner(cfg: DatasetConfig,
           f'{seed}')
     logging.info(
         "Initializing dataset for task '%s' with a replica batch size of %d and "
-        'a seed of %d', cfg.mixture_or_task_name, batch_size, seed)
+        'a seed of %d', mixture_or_task.name, batch_size, seed)
 
   return seqio.get_dataset(
       mixture_or_task_name=cfg.mixture_or_task_name,
@@ -1499,7 +1507,10 @@ def get_training_eval_datasets(
     start_step: int = 0,
 ) -> Mapping[str, tf.data.Dataset]:
   """Returns a mapping from eval task name to its dataset."""
-  mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
+  if isinstance(cfg.mixture_or_task_name, seqio.DatasetProviderBase):
+    mixture_or_task = cfg.mixture_or_task_name
+  else:
+    mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
   datasets = {}
   get_dataset_fn = get_dataset
   if deterministic:
