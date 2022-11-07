@@ -497,11 +497,10 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         input_shapes=input_shapes,
         partitioner=partitioner)
     train_state_axes = train_state_initializer.train_state_axes
-    train_state = train_state_initializer.from_scratch(jax.random.PRNGKey(0))
 
     trainer = trainer_lib.Trainer(
         model,
-        train_state=train_state,
+        train_state=train_state_initializer.from_scratch(jax.random.PRNGKey(0)),
         partitioner=partitioner,
         eval_names=[],
         summary_dir=None,
