@@ -511,7 +511,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         num_microbatches=1)
 
     trainer.train(ds_iter, 1)
-    logging.info('optimizer after first step %s', train_state.params)
+    logging.info('optimizer after first step %s', trainer.train_state.params)
 
 
   @parameterized.parameters(
