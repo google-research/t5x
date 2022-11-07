@@ -125,8 +125,9 @@ class ExportableModule(tf.Module):
         flat_param_vars = flat_params(params)
     else:
       flat_param_vars = flat_params(params)
-    self._variables = flat_param_vars.values()
-    self._param_vars = flax.traverse_util.unflatten_dict(flat_param_vars)
+    self._variables = list(flat_param_vars.values())
+    param_vars = frozen_dict.freeze(
+        flax.traverse_util.unflatten_dict(flat_param_vars))
     self._preproc_tf_fn = preproc_tf_fn
     self._postproc_tf_fn = postproc_tf_fn
 
@@ -141,7 +142,7 @@ class ExportableModule(tf.Module):
     # Note: jit_compile=True also instructs the TPU inference converter v2 to
     # wrap this function with `TPUPartitionedCall`.
     self._model_tf_fn = tf.function(
-        lambda x: model_tf_fn(self._param_vars, x),
+        lambda x: model_tf_fn(param_vars, x),
         autograph=False,
         jit_compile=jit_compile)
     self._batch_size = batch_size
@@ -180,11 +181,6 @@ class ExportableModule(tf.Module):
     features = self._preproc_tf_fn(*input_batches)
     model_output = self._model_tf_fn(features)
     return self._postproc_tf_fn(model_output)
-
-  @property
-  def variables(self):
-    """OVERRIDE. Sequence of variables owned by this module."""
-    return self._variables
 
   @property
   def tpu_func(self):
@@ -265,7 +261,7 @@ def create_inference_function(
 
     def inference_fn(params: Mapping[str, Any],
                      batch: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
-      result = predict_batch_with_aux(frozen_dict.freeze(params), batch)
+      result = predict_batch_with_aux(params, batch)
       values, _ = jax.tree_util.tree_flatten(result)
       assert len(values) == 2, values
       return tuple(values)
@@ -283,7 +279,7 @@ def create_inference_function(
 
     def inference_fn(params: Mapping[str, Any],
                      batch: Mapping[str, jnp.ndarray]) -> Tuple[Any]:
-      result = score_batch(frozen_dict.freeze(params), batch)
+      result = score_batch(params, batch)
       values, _ = jax.tree_util.tree_flatten(result)
       assert len(values) == 1
       return tuple(values)
@@ -984,10 +980,9 @@ def save(
       preproc_tf_fn=preprocessor,
       model_tf_fn=model_tf_fn,
       postproc_tf_fn=postprocessor,
-      params=frozen_dict.unfreeze(params),
+      params=params,
       batch_size=batch_size,
   )
-  print('input_signature', input_signature)
   signatures = {
       tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
           module.__call__.get_concrete_function(*input_signature)
