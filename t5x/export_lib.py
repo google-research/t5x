@@ -29,6 +29,7 @@ from jax.experimental import jax2tf  # type: ignore[import]
 from jax.experimental.global_device_array import GlobalDeviceArray as GDA
 import jax.numpy as jnp
 import ml_collections
+import numpy as np
 import seqio
 from t5x import checkpoints
 from t5x import models
@@ -77,19 +78,18 @@ class CreatePostprocessorFn(typing_extensions.Protocol):
     ...
 
 
-def maybe_convert_gda_to_array(v):
-  """Convert `v` to a np.ndarray if it is a GlobalDeviceArray.
+def convert_buffer_to_ndarray(v):
+  """Convert `v` to a np.ndarray.
 
   Args:
     v: the value to be converted. Can be sharded or fully replicated.
 
   Returns:
-    A np.ndarray that represents the full array value of `v` if `v` is a
-      GlobalDeviceArray. Otherwise returns `v`.
+    A np.ndarray that represents the full array value of `v`.
   """
   if isinstance(v, GDA):
     return jax.experimental.multihost_utils.process_allgather(v)
-  return v
+  return np.asarray(v)
 
 
 class ExportableModule(tf.Module):
@@ -116,7 +116,7 @@ class ExportableModule(tf.Module):
       flat_param_vars = {}
       for k, v in flax.traverse_util.flatten_dict(params).items():
         flat_param_vars[k] = tf.Variable(
-            maybe_convert_gda_to_array(v), trainable=False, name='__'.join(k))
+            convert_buffer_to_ndarray(v), trainable=False, name='__'.join(k))
       return flat_param_vars
 
     if use_gpu:
@@ -308,7 +308,6 @@ def load_params_from_checkpoint(
   if train_state_initializer is not None:
     train_state = train_state_initializer.from_checkpoint(
         [restore_checkpoint_cfg])
-    logging.info('train_state.params:\n%s', train_state.params)  # pytype:disable=attribute-error
     return train_state.params  # pytype:disable=attribute-error
   else:
     if restore_checkpoint_cfg.mode != 'specific':
