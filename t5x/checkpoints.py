@@ -1886,11 +1886,11 @@ class NonAtomicCheckpointer(orbax.checkpoint.Checkpointer):
   """
 
   def save(self,
-           directory: Union[str, epath.Path],
+           directory: epath.PathLike,
            item: Any,
            *args,
            force: bool = False,
-           tmp_directory: Optional[Union[str, epath.Path]] = None,
+           tmp_directory: Optional[epath.PathLike] = None,
            **kwargs):
     """Saves the given item to the provided directory.
 
@@ -1940,7 +1940,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     self._dataset_iterator = dataset_iterator
     self._save_dtype = save_dtype
     self._restore_dtype = restore_dtype
-    self._tmp_directory: Optional[Union[str, epath.Path]] = None
+    self._tmp_directory: Optional[epath.PathLike] = None
 
     data_layout = partitioner.get_data_layout()
     dataset_ckpt_name = (
