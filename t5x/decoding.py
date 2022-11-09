@@ -963,17 +963,20 @@ def beam_init(batch_size: int,
 # Beam search routine:
 
 
-def beam_search(inputs: jnp.ndarray,
-                cache: Mapping[str, jnp.ndarray],
-                tokens_to_logits: Callable[[DecodingState],
-                                           Tuple[jnp.ndarray,
-                                                 Mapping[str, jnp.ndarray]]],
-                eos_id: int,
-                num_decodes: int = 4,
-                alpha: float = 0.6,
-                max_decode_len: Optional[int] = None,
-                decode_rng: Optional[jnp.ndarray] = None,
-                cache_offset: int = 0) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def beam_search(
+    inputs: jnp.ndarray,
+    cache: Mapping[str, jnp.ndarray],
+    tokens_to_logits: Callable[[DecodingState],
+                               Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]],
+    eos_id: int,
+    num_decodes: int = 4,
+    alpha: float = 0.6,
+    max_decode_len: Optional[int] = None,
+    decode_rng: Optional[jnp.ndarray] = None,
+    cache_offset: int = 0,
+    logit_callback_fn: Optional[Callable[[jnp.ndarray, DecodingState],
+                                         jnp.ndarray]] = None
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Beam search for transformer machine translation.
 
   If `inputs` has non-zero entries, those values are not modified, i.e.,
@@ -993,6 +996,10 @@ def beam_search(inputs: jnp.ndarray,
       None, it uses `inputs.shape[1]` as `max_decode_len`.
     decode_rng: Unused decoder RNG seed.
     cache_offset: axis offset for cache, arising from scanned layers.
+    logit_callback_fn: Function that modifies the flat logits after
+      log normalization. The function should take arguments (flat_logits, state)
+      and return the modified flat logits. See `decoding_test.py` for an example
+      usage.
 
   Returns:
      Tuple of:
@@ -1073,6 +1080,18 @@ def beam_search(inputs: jnp.ndarray,
 
     # Gather log probabilities from logits
     candidate_log_probs = jax.nn.log_softmax(logits)
+
+    # This is applied after normalization to be more flexible. For example,
+    # applying conditional token masking pre-normalization can affect the
+    # output distribution. The user can still call log_softmax within the
+    # callback if a proper probability distribution is required.
+    if logit_callback_fn:
+      flat_candidate_log_probs = flatten_beam_dim(candidate_log_probs)
+      flat_modified_log_probs = logit_callback_fn(flat_candidate_log_probs,
+                                                  decoding_state)
+      candidate_log_probs = unflatten_beam_dim(flat_modified_log_probs,
+                                               batch_size, beam_size)
+
     # Add new logprobs to existing prefix logprobs.
     # --> [batch, beam, vocab]
     log_probs = (
