@@ -739,13 +739,19 @@ class DecoderOnlyModel(BaseTransformerModel):
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray] = None,
-      mutable: flax_scope.CollectionFilter = False) -> jnp.ndarray:
+      mutable: flax_scope.CollectionFilter = False,
+      other_variables: Optional[PyTreeDef] = None) -> jnp.ndarray:
     """Computes logits via a forward pass of `self.module`."""
     rngs = {'dropout': dropout_rng} if dropout_rng is not None else None
     decoder_causal_attention = self._get_decoder_causal_attention(batch)
+    if other_variables is None:
+      other_variables = {}
 
     return self.module.apply(
-        {'params': params},
+        {
+            'params': params,
+            **other_variables
+        },
         batch['decoder_input_tokens'],
         batch['decoder_target_tokens'],
         decoder_segment_ids=batch.get('decoder_segment_ids', None),
