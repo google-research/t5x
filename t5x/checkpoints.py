@@ -161,9 +161,10 @@ def _run_future_tree(future_tree):
   """Block until all futures are resolved on this host."""
   future_leaves, treedef = jax.tree_util.tree_flatten(future_tree)
 
-  # TODO(adarob): Use asyncio.run in py3.7+.
-  loop = asyncio.get_event_loop()
-  leaves = loop.run_until_complete(asyncio.gather(*future_leaves))
+  async def run():
+    return await asyncio.gather(*future_leaves)
+
+  leaves = asyncio.run(run())
   return jax.tree_util.tree_unflatten(treedef, leaves)
 
 
@@ -772,7 +773,6 @@ class Checkpointer(object):
   ) -> Mapping[str, Any]:
     """Writes extracted state from train state to Tensorstore."""
     concurrent_bytes = concurrent_gb * 10**9
-    bytes_cv = _BytesConditionVariable(concurrent_bytes)
 
     async def _write_array(maybe_arr: Any,
                            param_info: Optional[_ParameterInfo],
@@ -790,6 +790,8 @@ class Checkpointer(object):
       Returns:
         Tensorstore spec corresponding to the written array.
       """
+      bytes_cv = _BytesConditionVariable(concurrent_bytes)
+
       if param_info is None or param_info.ts_spec is None:
         # Write to the msgpack file on host 0.
         if isinstance(maybe_arr, LazyArray):

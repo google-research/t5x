@@ -14,22 +14,69 @@
 
 """T5 Checkpoint Importer."""
 
+import abc
 import asyncio
 from concurrent.futures import thread
 import re
-from typing import Any, Callable, Mapping, MutableMapping, Optional, Union
+from typing import Any, Callable, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 from flax import traverse_util
 import jax
 from jax import numpy as jnp
+from jax.experimental.global_device_array import GlobalDeviceArray
 import numpy as np
-import orbax.checkpoint
+from orbax.checkpoint import lazy_utils
 import tensorflow as tf
 import tensorstore as ts
 
-# TODO(b/233659813): Cleanup clients depending on t5x.checkpoint_importer for
-# LazyArray. Reconcile divergence in subclass implementation when possible.
-LazyArray = orbax.checkpoint.lazy_array.LazyArray
+ArrayType = Union[np.ndarray, jnp.ndarray, GlobalDeviceArray, jax.Array]
+ScalarOrArrayType = Union[int, float, ArrayType]
+
+
+class LazyArray(lazy_utils.LazyValue, metaclass=abc.ABCMeta):
+  """Lazily and asynchronously loads an array.
+
+  LazyArray behaves in the same way as a `numpy` or `jax.numpy` array
+  while instantiating lazily. All properties, including shape, dtype, and nbytes
+  are created when the LazyArray is created, but no data is materialized until
+  `get` or `get_async` are called. Data is materialized using a specified
+  `get_fn`.
+
+  This class can be used to implement lazy restoration in checkpointing APIs,
+  where the data is only read from disk when explicitly needed by the user.
+  """
+
+  def __init__(self, shape: Sequence[int], dtype: jnp.dtype,
+               get_fn: Callable[[], Any]):
+    self._shape = tuple(shape) if shape is not None else shape
+    self._dtype = jnp.dtype(dtype) if dtype is not None else dtype
+    self._get_fn = get_fn
+
+  @property
+  def shape(self) -> Tuple[int, ...]:
+    return self._shape
+
+  @property
+  def dtype(self) -> jnp.dtype:
+    return self._dtype
+
+  @property
+  def nbytes(self) -> int:
+    return np.prod(self._shape) * self._dtype.itemsize
+
+  def astype(self, dtype: np.dtype) -> 'LazyArray':
+    return type(self)(self._shape, dtype, self._get_fn)  # pytype: disable=not-instantiable
+
+  @abc.abstractmethod
+  async def get_async(self) -> ScalarOrArrayType:
+    raise NotImplementedError
+
+  @abc.abstractmethod
+  def get(self) -> ScalarOrArrayType:
+    raise NotImplementedError
+
+  def __repr__(self):
+    return f'{type(self).__name__}(shape={self.shape}, dtype={self.dtype})'
 
 
 # TODO(brianlester): The choice between using a `LazyTreadPoolArray` or a
@@ -48,7 +95,7 @@ class LazyThreadPoolArray(LazyArray):
   async def get_async(self):
     return await asyncio.wrap_future(self.executor.submit(self.get))
 
-  def get(self) -> np.ndarray:
+  def get(self) -> ScalarOrArrayType:
     arr = self._get_fn()
     if arr.dtype != self.dtype:
       arr = arr.astype(self.dtype)
@@ -86,9 +133,8 @@ class LazyAwaitableArray(LazyArray):
 
     return await _get_and_cast()
 
-  def get(self) -> np.ndarray:
-    loop = asyncio.get_event_loop()
-    return loop.run_until_complete(self.get_async())
+  def get(self) -> ScalarOrArrayType:
+    return asyncio.run(self.get_async())
 
   @classmethod
   def from_tensor_store_spec(
