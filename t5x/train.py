@@ -20,7 +20,7 @@ import functools
 import math
 import os
 import time
-from typing import Callable, Mapping, Optional, Sequence, Tuple, Type
+from typing import Callable, Mapping, Union, Optional, Sequence, Tuple, Type
 import warnings
 
 # Set Linen to add profiling information when constructing Modules.
@@ -89,6 +89,130 @@ def run_actions(
       stop_training |= action.run(train_state, metrics_by_task=metrics_by_task)
   # Broadcast result from host 0 to others.
   return bool(multihost_utils.broadcast_one_to_all(jnp.array(stop_training)))
+
+
+def load_train_state(
+    checkpoint_cfg: utils.CheckpointConfig,
+    model: models.BaseTransformerModel,
+    model_dir: str,
+    batch_size: int,
+    partitioner: partitioning.BasePartitioner,
+    train_iter: clu.data.dataset_iterator.DatasetIterator,
+    rng: jax.random.KeyArray,
+    train_state_initializer_cls: Type[
+        utils.TrainStateInitializer] = utils.TrainStateInitializer,
+    use_gda: bool = True
+) -> Tuple[Union[train_state_lib.TrainState,
+                 Sequence[train_state_lib.TrainState]],
+           train_state_lib.TrainState, utils.LegacyCheckpointManager, float]:
+  """Train function.
+
+  Args:
+    checkpoint_cfg: Specification for saving and restoring model parameters and
+      dataset state to/from checkpoints.
+    model: The model object to use for training.
+    model_dir: Path of directory to store checkpoints and metric summaries.
+    batch_size: Model's batch size
+    partitioner: Partitioner for model parameters and data across devices.
+    train_iter: training dataset iterator.
+    rng: jax random key array for operations needing it.
+    train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
+      initializing partitioned TrainState from checkpoints or scratch.
+    use_gda: if True, uses GlobalDeviceArray. Experimental feature.
+
+  Returns:
+    The tuple of (train_state, train_state_axes, checkpoint_manager, check
+  """
+  # The manner in which parameters are initialized follows this order of
+  # preference:
+  #  1. From a T5X checkpoint in `model_dir`, if one exists.
+  #  2. From a T5X or TF checkpoint specified by `cfg.path`, if set.
+  #  3. From scratch using `init_fn`.
+
+  # 1. From a T5X checkpoint in `model_dir`, if one exists.
+  if checkpoint_cfg.restore is not None:
+    state_transforms_for_restore = [
+        functools.partial(fn, is_resuming=True)
+        for fn in checkpoint_cfg.restore.state_transformation_fns
+    ]
+  else:
+    state_transforms_for_restore = []
+  restore_cfgs = [
+      utils.RestoreCheckpointConfig(
+          path=model_dir,
+          mode='latest',
+          dtype=checkpoint_cfg.save.dtype if checkpoint_cfg.save else 'float32',
+          checkpointer_cls=checkpoint_cfg.save.checkpointer_cls
+          if checkpoint_cfg.save else checkpoints.Checkpointer,
+          # Restore dataset state if it is being saved.
+          restore_dataset=(checkpoint_cfg.save and
+                           checkpoint_cfg.save.save_dataset),
+          state_transformation_fns=state_transforms_for_restore)
+  ]
+  # 2. From a checkpoint specified by `checkpoint_cfg.restore.path`, if set.
+  if checkpoint_cfg.restore:
+    if checkpoint_cfg.restore.mode == 'all':
+      raise ValueError(
+          "Restore checkpoint mode 'all' is not supported in training.")
+
+    # TODO(dhgarrette): Split "restore" behavior into separate configurations
+    #     for the initial restoration for a new run, vs resuming a stopped run.
+    if isinstance(checkpoint_cfg.restore.path, str):
+      restore_cfgs.append(checkpoint_cfg.restore)
+    elif not checkpoint_cfg.restore.path:
+      # `path` is an empty (non-`str`) sequence, so there is nothing to restore.
+      pass
+    else:
+      raise ValueError(
+          'Restore checkpoint config may only have a single path in training.')
+
+  data_layout = partitioner.get_data_layout(batch_size)
+  input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
+  input_shapes = jax.tree_map(lambda x: (data_layout.batch_size, *x.shape[1:]),
+                              train_iter.element_spec)
+
+  init_or_restore_tick = time.time()
+  train_state_initializer = train_state_initializer_cls(
+      optimizer_def=model.optimizer_def,
+      init_fn=model.get_initial_variables,
+      input_shapes=input_shapes,
+      input_types=input_types,
+      partitioner=partitioner)
+
+  # May be None, empty
+  valid_restore_cfg, restore_paths = utils.get_first_valid_restore_config_and_paths(
+      restore_cfgs)
+  if len(restore_paths) > 1:
+    raise ValueError('Multiple restore paths not permitted in training.')
+  checkpoint_manager = utils.LegacyCheckpointManager(
+      save_cfg=checkpoint_cfg.save,
+      restore_cfg=valid_restore_cfg,
+      train_state_shape=train_state_initializer.global_train_state_shape,
+      partitioner=partitioner,
+      ds_iter=train_iter,
+      model_dir=model_dir,
+      use_gda=use_gda)
+
+  train_state = checkpoint_manager.restore(
+      restore_paths, valid_restore_cfg,
+      utils.get_fallback_state(
+          valid_restore_cfg,
+          lambda rng: train_state_initializer.from_scratch(rng).state_dict(),
+          rng))
+
+  # 3. If no checkpoint to restore, init from scratch.
+  train_state = train_state or train_state_initializer.from_scratch(rng)
+  train_state_axes = train_state_initializer.train_state_axes
+  init_or_restore_secs = time.time() - init_or_restore_tick
+  logging.info('Initialize/restore complete (%.2f seconds).',
+               init_or_restore_secs)
+
+  # Log the variable shapes information and write to a file.
+  log_file = os.path.join(model_dir, 'model-info.txt')
+  utils.log_model_info(log_file,
+                       train_state_initializer.global_train_state_shape,
+                       partitioner)
+  return train_state, train_state_axes, checkpoint_manager, init_or_restore_secs
 
 
 def train(
@@ -275,7 +399,6 @@ def train(
 
   input_shapes = jax.tree_map(lambda x: (data_layout.batch_size, *x.shape[1:]),
                               train_iter.element_spec)
-  input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
 
   if use_gda:
     train_iter = utils.GDADatasetIterator(train_iter, partitioner, input_shapes)
@@ -292,90 +415,10 @@ def train(
   else:
     train_eval_datasets = {}
 
-  # The manner in which parameters are initialized follows this order of
-  # preference:
-  #  1. From a T5X checkpoint in `model_dir`, if one exists.
-  #  2. From a T5X or TF checkpoint specified by `cfg.path`, if set.
-  #  3. From scratch using `init_fn`.
-
-  # 1. From a T5X checkpoint in `model_dir`, if one exists.
-  if checkpoint_cfg.restore is not None:
-    state_transforms_for_restore = [
-        functools.partial(fn, is_resuming=True)
-        for fn in checkpoint_cfg.restore.state_transformation_fns
-    ]
-  else:
-    state_transforms_for_restore = []
-  restore_cfgs = [
-      utils.RestoreCheckpointConfig(
-          path=model_dir,
-          mode='latest',
-          dtype=checkpoint_cfg.save.dtype if checkpoint_cfg.save else 'float32',
-          checkpointer_cls=checkpoint_cfg.save.checkpointer_cls
-          if checkpoint_cfg.save else checkpoints.Checkpointer,
-          # Restore dataset state if it is being saved.
-          restore_dataset=(checkpoint_cfg.save and
-                           checkpoint_cfg.save.save_dataset),
-          state_transformation_fns=state_transforms_for_restore)
-  ]
-  # 2. From a checkpoint specified by `checkpoint_cfg.restore.path`, if set.
-  if checkpoint_cfg.restore:
-    if checkpoint_cfg.restore.mode == 'all':
-      raise ValueError(
-          "Restore checkpoint mode 'all' is not supported in training.")
-
-    # TODO(dhgarrette): Split "restore" behavior into separate configurations
-    #     for the initial restoration for a new run, vs resuming a stopped run.
-    if isinstance(checkpoint_cfg.restore.path, str):
-      restore_cfgs.append(checkpoint_cfg.restore)
-    elif not checkpoint_cfg.restore.path:
-      # `path` is an empty (non-`str`) sequence, so there is nothing to restore.
-      pass
-    else:
-      raise ValueError(
-          'Restore checkpoint config may only have a single path in training.')
-
-  init_or_restore_tick = time.time()
-  train_state_initializer = train_state_initializer_cls(
-      optimizer_def=model.optimizer_def,
-      init_fn=model.get_initial_variables,
-      input_shapes=input_shapes,
-      input_types=input_types,
-      partitioner=partitioner)
-
-  # May be None, empty
-  valid_restore_cfg, restore_paths = utils.get_first_valid_restore_config_and_paths(
-      restore_cfgs)
-  if len(restore_paths) > 1:
-    raise ValueError('Multiple restore paths not permitted in training.')
-  checkpoint_manager = utils.LegacyCheckpointManager(
-      save_cfg=checkpoint_cfg.save,
-      restore_cfg=valid_restore_cfg,
-      train_state_shape=train_state_initializer.global_train_state_shape,
-      partitioner=partitioner,
-      ds_iter=train_iter,
-      model_dir=model_dir,
-      use_gda=use_gda)
-
-  train_state = checkpoint_manager.restore(
-      restore_paths, valid_restore_cfg,
-      utils.get_fallback_state(
-          valid_restore_cfg,
-          lambda rng: train_state_initializer.from_scratch(rng).state_dict(),
-          init_rng))
-
-  # 3. If no checkpoint to restore, init from scratch.
-  train_state = train_state or train_state_initializer.from_scratch(init_rng)
-  train_state_axes = train_state_initializer.train_state_axes
-  init_or_restore_secs = time.time() - init_or_restore_tick
-  logging.info('Initialize/restore complete (%.2f seconds).',
-               init_or_restore_secs)
-
-  # Log the variable shapes information and write to a file.
-  log_file = os.path.join(model_dir, 'model-info.txt')
-  utils.log_model_info(log_file,
-                       train_state_initializer.global_train_state_shape,
-                       partitioner)
+  train_state, train_state_axes, checkpoint_manager, init_or_restore_secs = (
+      load_train_state(checkpoint_cfg, model, model_dir,
+                       train_dataset_cfg.batch_size, partitioner, train_iter,
+                       init_rng, train_state_initializer_cls, use_gda))
 
   # Restore step from last checkpoint or set to 0 if training from scratch.
   host_step = int(utils.get_local_data(train_state.step))  # pytype: disable=attribute-error
