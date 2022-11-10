@@ -17,6 +17,7 @@ r"""Script to pretrain or finetune in JAX using a SeqIO pipeline.
 """
 
 import functools
+import gc
 import math
 import os
 import time
@@ -123,6 +124,7 @@ def train(
     verify_matching_vocabs_fn: Optional[
         Callable[[utils.DatasetConfig, models.BaseTransformerModel],
                  None]] = utils.verify_matching_vocabs,
+    gc_period: int = 0,
 ) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
@@ -183,6 +185,8 @@ def train(
       feature.
     verify_matching_vocabs_fn: Function to validate whether the task vocabulary
       matches the model vocabulary. Should raise an exception on error.
+    gc_period: The number of train steps between runs of the garbage collector.
+      If 0, the garbage collector will run at the normal frequency.
 
   Returns:
     The tuple of (last_step, last_train_state).
@@ -211,16 +215,19 @@ def train(
   eval_enabled = (train_eval_dataset_cfg or infer_eval_dataset_cfg)
   eval_period = eval_period if eval_enabled else 0
   checkpoint_period = checkpoint_cfg.save.period if checkpoint_cfg.save else 0
-  if eval_period or checkpoint_period:
-    steps_per_epoch = min(eval_period or np.inf, checkpoint_period or np.inf)
+  if eval_period or checkpoint_period or gc_period:
+    steps_per_epoch = min(eval_period or np.inf, checkpoint_period or np.inf,
+                          gc_period or np.inf)
   else:
     steps_per_epoch = total_steps
   stats_period = stats_period or steps_per_epoch
   if (eval_period and eval_period % steps_per_epoch or
-      checkpoint_period and checkpoint_period % steps_per_epoch):
+      checkpoint_period and checkpoint_period % steps_per_epoch or
+      gc_period and gc_period % steps_per_epoch):
     raise ValueError(
-        f'Checkpoint period ({checkpoint_period}) must evenly divide eval '
-        f'period ({eval_period}), or vice-versa.')
+        f'Checkpoint period ({checkpoint_period}), eval '
+        f'period ({eval_period}), and GC period ({gc_period}) must all be '
+        f'multiples of eachother.')
 
   if use_hardware_rng or random_seed is None:
     logging.info(
@@ -489,6 +496,11 @@ def train(
     checkpoint_manager.save(trainer.train_state,
                             checkpoint_cfg.save.state_transformation_fns)
 
+  # If we take manual control of the garbage collector, we need to disable it
+  # before starting training.
+  if gc_period:
+    gc.disable()
+
   # ----------------------------------------------------------------------------
   # Main training loop
   # ----------------------------------------------------------------------------
@@ -597,6 +609,9 @@ def train(
 
     step_offset = host_step - first_step
 
+    if gc_period and (final_epoch or step_offset % gc_period == 0):
+      gc.collect()
+
     # Maybe save a checkpoint.
     if checkpoint_period and (final_epoch or
                               step_offset % checkpoint_period == 0):
@@ -625,6 +640,11 @@ def train(
 
   # Wait until computations are done before exiting
   _cleanup()
+
+  if gc_period:
+    # Reenable garbage collection to avoid affecting future code executed in
+    # the same interpreter.
+    gc.enable()
 
   return host_step, trainer.train_state
 
