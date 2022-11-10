@@ -49,6 +49,7 @@ setuptools.setup(
         'absl-py',
         'cached_property',
         'clu @ git+https://github.com/google/CommonLoopUtils#egg=clu',
+        'editdistance',
         'flax @ git+https://github.com/google/flax#egg=flax',
         'gin-config',
         f'jax >= {_jax_version}',
