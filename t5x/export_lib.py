@@ -13,11 +13,13 @@
 # limitations under the License.
 
 """Functions for exporting a T5X model."""
+import dataclasses
 import functools
 
 import inspect
 import os
 import os.path
+import typing
 from typing import Any, Callable, List, Mapping, Optional, Sequence, Tuple, Type, Union
 
 from absl import logging
@@ -42,7 +44,7 @@ from tensorflow_serving.apis import predict_pb2
 from tensorflow_serving.apis import prediction_log_pb2
 
 
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTreeDef = jax.tree_util.PyTreeDef
 ConfigDict = ml_collections.ConfigDict
 PreprocessorFn = Callable[..., Mapping[str, tf.Tensor]]
 WarmupExamples = List[Union[Union[str, bytes], List[int]]]
@@ -217,21 +219,48 @@ def get_train_state_initializer(
   )
 
 
+@dataclasses.dataclass
+class CustomInferenceMode:
+  # The name of the model function which can be fetched from
+  # getattr(model, model_fn_name).
+  model_fn_name: str
+  # Fetch useful output from the raw output of the model function.
+  fetch_output: Optional[Callable[[PyTreeDef], PyTreeDef]] = None
+
+
+def flatten(compute_outputs: PyTreeDef,
+            assert_output_len=None) -> Tuple[jnp.ndarray, ...]:
+  values, _ = jax.tree_util.tree_flatten(compute_outputs)
+  if assert_output_len is not None:
+    assert len(values) == assert_output_len
+  return tuple(values)
+
+
+_BUILTIN_INFERENCE_MODES = {
+    'predict':
+        CustomInferenceMode('predict_batch_with_aux',
+                            functools.partial(flatten, assert_output_len=2)),
+    'score':
+        CustomInferenceMode('score_batch',
+                            functools.partial(flatten, assert_output_len=1)),
+}
+
+
 def create_inference_function(
     *,
     model: models.BaseTransformerModel,
-    inference_mode: str,
+    inference_mode: Union[str, CustomInferenceMode],
     partitioner: Optional[partitioning.BasePartitioner],
     train_state_initializer: Optional[utils.TrainStateInitializer],
     enable_jax2tf: bool,
     polymorphic_shapes_inputs: Optional[Any] = None,
     native_lowering: bool = False,
-) -> Callable[[Mapping[str, Any], Any], Tuple[Any, ...]]:
+) -> Callable[[Mapping[str, Any], Any], PyTreeDef]:
   """Fetches a model and returns the inference function based on inference_mode."""
   if partitioner and train_state_initializer:
     maybe_partition = lambda fn: partitioner.partition(  # pylint:disable=g-long-lambda
         fn,
-        # TODO((b/121310741): Re-enable pytype.
+        # TODO(b/121310741): Re-enable pytype.
         # pytype:disable=wrong-arg-types
         in_axis_resources=(train_state_initializer.train_state_axes.params,
                            partitioning.PartitionSpec('data',)),
@@ -242,60 +271,31 @@ def create_inference_function(
   else:
     maybe_partition = lambda fn: fn
 
-  if inference_mode == 'predict':
+  if not isinstance(inference_mode, CustomInferenceMode):
+    if inference_mode in _BUILTIN_INFERENCE_MODES:
+      inference_mode = _BUILTIN_INFERENCE_MODES[inference_mode]
+    else:
+      raise ValueError(
+          '`inference_mode` must be a string in '
+          f'{list(_BUILTIN_INFERENCE_MODES.keys())} or a `CustomInferenceMode`. '
+          f'Got inference_mode={inference_mode}.')
 
-    def predict_batch_with_aux(
-        params: Mapping[str, Any],
-        batch: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
-      return model.predict_batch_with_aux(params, batch)
+  inference_mode = typing.cast(CustomInferenceMode, inference_mode)
 
-    predict_batch_with_aux = maybe_partition(predict_batch_with_aux)
+  model_fn = getattr(model, inference_mode.model_fn_name)
+  model_fn = maybe_partition(model_fn)
+  if enable_jax2tf:
+    model_fn = jax2tf.convert(
+        model_fn,
+        polymorphic_shapes=[None, polymorphic_shapes_inputs],
+        experimental_native_lowering=native_lowering)
 
-    if enable_jax2tf:
-      # jax2tf must be called directly with the pjitted function with no wrapper
-      # functions as required by jax2tf's native lowering.
-      predict_batch_with_aux = jax2tf.convert(
-          predict_batch_with_aux,
-          polymorphic_shapes=[None, polymorphic_shapes_inputs],
-          experimental_native_lowering=native_lowering)
-
-    def inference_fn(params: Mapping[str, Any],
-                     batch: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
-      result = predict_batch_with_aux(params, batch)
-      values, _ = jax.tree_util.tree_flatten(result)
-      assert len(values) == 2, values
-      return tuple(values)
-
-  elif inference_mode == 'score':
-
-    score_batch = model.score_batch
-    score_batch = maybe_partition(score_batch)
-
-    if enable_jax2tf:
-      score_batch = jax2tf.convert(
-          score_batch,
-          polymorphic_shapes=[None, polymorphic_shapes_inputs],
-          experimental_native_lowering=native_lowering)
-
-    def inference_fn(params: Mapping[str, Any],
-                     batch: Mapping[str, jnp.ndarray]) -> Tuple[Any]:
-      result = score_batch(params, batch)
-      values, _ = jax.tree_util.tree_flatten(result)
-      assert len(values) == 1
-      return tuple(values)
-
-  elif hasattr(model, inference_mode):
-    inference_fn = getattr(model, inference_mode)
-    inference_fn = maybe_partition(inference_fn)
-
-    if enable_jax2tf:
-      inference_fn = jax2tf.convert(
-          inference_fn,
-          polymorphic_shapes=[None, polymorphic_shapes_inputs],
-          experimental_native_lowering=native_lowering)
-
-  else:
-    raise ValueError(f'Unknown inference_mode "{inference_mode}"')
+  def inference_fn(params: Mapping[str, Any],
+                   batch: Mapping[str, jnp.ndarray]) -> PyTreeDef:
+    outputs = model_fn(params, batch)
+    if inference_mode.fetch_output:
+      outputs = inference_mode.fetch_output(outputs)
+    return outputs
 
   return inference_fn
 
@@ -745,7 +745,7 @@ def create_postprocessor(
 
   Args:
     vocab: The vocab to use to decode.
-    inference_mode: 'predict' or 'score'.
+    inference_mode: 'predict', 'score' or a CustomInferenceMode instance.
     decode_outputs: whether to decode output tokens.
     output_feature_names: A list of names to name the output for the savedmodel.
       e.g., ['output_a', 'output_b'] will tag the savedmodel output to obtain
@@ -835,7 +835,7 @@ def save(
 
   Args:
     model:
-    inference_mode: "predict" or "score"
+    inference_mode: "predict", "score" or a CustomInferenceMode instance.
     restore_checkpoint_cfg: Configuration for restoring model from checkpoint.
     exportable_module_cls: A configured implementation of ExportableModule.
     create_preprocessor_fn: Configurable func. to create the PreprocessorFn.
