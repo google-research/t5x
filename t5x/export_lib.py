@@ -69,12 +69,21 @@ CreatePreprocessorFnOld = Callable[
 CreatePreprocessorFn = Union[CreatePreprocessorFnOld, CreatePreprocessorFnNew]
 
 
+@dataclasses.dataclass
+class CustomInferenceMode:
+  # The name of the model function which can be fetched from
+  # getattr(model, model_fn_name).
+  model_fn_name: str
+  # Fetch useful output from the raw output of the model function.
+  fetch_output: Optional[Callable[[PyTreeDef], PyTreeDef]] = None
+
+
 class CreatePostprocessorFn(typing_extensions.Protocol):
 
   def __call__(
       self,
       vocab: seqio.Vocabulary,
-      inference_mode: str,
+      inference_mode: Union[str, CustomInferenceMode],
       decode_outputs: bool = True,
       output_feature_names: Optional[List[str]] = None) -> PostprocessorFn:
     ...
@@ -217,15 +226,6 @@ def get_train_state_initializer(
       input_shapes=input_shapes,
       partitioner=partitioner,
   )
-
-
-@dataclasses.dataclass
-class CustomInferenceMode:
-  # The name of the model function which can be fetched from
-  # getattr(model, model_fn_name).
-  model_fn_name: str
-  # Fetch useful output from the raw output of the model function.
-  fetch_output: Optional[Callable[[PyTreeDef], PyTreeDef]] = None
 
 
 def flatten(compute_outputs: PyTreeDef,
@@ -738,7 +738,7 @@ def _maybe_name_outputs(
 
 def create_postprocessor(
     vocab: seqio.Vocabulary,
-    inference_mode: str,
+    inference_mode: Union[str, CustomInferenceMode],
     decode_outputs: bool = True,
     output_feature_names: Optional[List[str]] = None) -> PostprocessorFn:
   """Creates a TF postprocessor function.
