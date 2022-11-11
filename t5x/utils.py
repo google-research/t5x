@@ -1171,7 +1171,7 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
           'Padding infer dataset with %d examples for even per-replica shards.',
           dataset_pad_amt)
       # Pad with the first example using an index of -1 so seqio will ignore.
-      pad_ds = ds.take(1).map(lambda i, x: (np.int64(-1), x)).repeat(
+      pad_ds = ds.take(1).map(lambda i, x: (np.int64(-1), x)).cache().repeat(
           dataset_pad_amt)
       ds = ds.concatenate(pad_ds)
 
