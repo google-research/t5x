@@ -1638,5 +1638,3 @@ def override_params_axes_names(
   model_variables['params_axes'] = traverse_util.unflatten_dict(
       flat_params_axes)
   return flax.core.freeze(model_variables)
-
-

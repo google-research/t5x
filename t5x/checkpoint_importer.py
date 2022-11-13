@@ -24,12 +24,14 @@ from flax import traverse_util
 import jax
 from jax import numpy as jnp
 from jax.experimental.global_device_array import GlobalDeviceArray
+from jax._src.device_array import DeviceArray
+
 import numpy as np
 from orbax.checkpoint import lazy_utils
 import tensorflow as tf
 import tensorstore as ts
 
-ArrayType = Union[np.ndarray, jnp.ndarray, GlobalDeviceArray, jax.Array]
+ArrayType = Union[np.ndarray, jnp.ndarray, GlobalDeviceArray, DeviceArray]
 ScalarOrArrayType = Union[int, float, ArrayType]
 
 
