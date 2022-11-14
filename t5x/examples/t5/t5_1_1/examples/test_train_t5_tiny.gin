@@ -44,6 +44,7 @@ train_script.train:
   random_seed = 0
   eval_steps = 2
   actions={'TRAIN_EVAL': [@trainer.TerminateOnNanAction()]}
+  stats_period=1000
 
 trainer.TerminateOnNanAction:
   task = %MIXTURE_OR_TASK_NAME
