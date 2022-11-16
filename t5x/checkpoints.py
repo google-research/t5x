@@ -1112,7 +1112,7 @@ class Checkpointer(object):
           arr = arr.astype(restore_dtype)
         if jax.config.jax_array:
           arr = jax.make_array_from_callback(
-              arr.shape, jax.sharding.MeshPspecSharding(mesh, axes),
+              arr.shape, jax.sharding.NamedSharding(mesh, axes),
               lambda idx: arr[idx])
         else:
           arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
@@ -1607,7 +1607,7 @@ async def _read_ts(param_info: _ParameterInfo,
   else:
     # if provided, read as GDA
     arr = await gda_serialization.async_deserialize(
-        jax.sharding.MeshPspecSharding(mesh, axes), tmp_ts_spec_dict)
+        jax.sharding.NamedSharding(mesh, axes), tmp_ts_spec_dict)
   return arr
 
 
