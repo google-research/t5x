@@ -46,6 +46,7 @@ from tensorflow_serving.apis import prediction_log_pb2
 
 PyTreeDef = jax.tree_util.PyTreeDef
 ConfigDict = ml_collections.ConfigDict
+DecoderParamsSpec = Sequence[Tuple[str, tf.DType, Sequence[int]]]
 PreprocessorFn = Callable[..., Mapping[str, tf.Tensor]]
 WarmupExamples = List[Union[Union[str, bytes], List[int]]]
 PostprocessorFn = Callable[[Tuple[Any, Any]], Union[Tuple[Any, Any],
@@ -282,7 +283,26 @@ def create_inference_function(
 
   inference_mode = typing.cast(CustomInferenceMode, inference_mode)
 
-  model_fn = getattr(model, inference_mode.model_fn_name)
+  if inference_mode.model_fn_name == 'predict_batch_with_aux':
+    # Extract `decoder_params` passed by the preprocessor. Decoder params are
+    # supported only for `predict_batch_with_aux`.
+    #
+    # TODO(b/256173604): Make the following Gin-configurable.
+
+    def model_fn(params: Mapping[str, Any],
+                 inputs: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
+      batch = dict(inputs)
+      kwargs = {}
+      try:
+        kwargs['decoder_params'] = batch.pop('decoder_params')
+      except KeyError:
+        pass
+      # pytype: disable=wrong-keyword-args
+      return model.predict_batch_with_aux(params, batch, **kwargs)
+      # pytype: enable=wrong-keyword-args
+  else:
+    model_fn = getattr(model, inference_mode.model_fn_name)
+
   model_fn = maybe_partition(model_fn)
   if enable_jax2tf:
     model_fn = jax2tf.convert(
@@ -722,6 +742,72 @@ def create_preprocessor_from_task(
           batch_size, task_feature_lengths, tokenized_inputs, input_tensor_name)
 
 
+def create_preprocessor_with_decoder_params(
+    batch_size: Optional[int],
+    output_features: Mapping[str, seqio.Feature],  # unused
+    task_feature_lengths: Mapping[str, int],
+    tokenized_inputs: bool,
+    *,
+    create_preprocessor_fn: CreatePreprocessorFn,
+    decoder_params_spec: DecoderParamsSpec,
+) -> Tuple[PreprocessorFn, Sequence[tf.TensorSpec]]:
+  """Creates a preprocessor and adds decoder params as inputs.
+
+  Args:
+    batch_size: See `save`.
+    output_features: See `save`.
+    task_feature_lengths: See `save`.
+    tokenized_inputs: See `save`.
+    create_preprocessor_fn: A function that creates a preprocessor to be
+      wrapped.
+    decoder_params_spec: A sequence of `(name, dtype, per_example_shape)` for
+      decoder params to be exposed as inputs. The decoder must be able to accept
+      the listed decoder params on a per-example basis, i.e., the shape of each
+      decoder param will be [batch_size, *per_example_shape]. Decoder params are
+      appended to the inputs in the specified order.
+
+  Returns:
+    A preprocessor that calls `create_preprocessor_fn(...)` with additional
+    inputs representing decoder params and adds the specified `decoder_params`
+    as a new feature.
+  """
+
+  # TODO(marcrasi): Delete after migrating clients.
+  if 'batch_size' in inspect.signature(create_preprocessor_fn).parameters:
+    # New signature.
+    preprocessor, input_signature = create_preprocessor_fn(
+        batch_size, output_features, task_feature_lengths,
+        tokenized_inputs)  # type: ignore
+  else:
+    # Old signature.
+    preprocessor = create_preprocessor_fn(output_features, task_feature_lengths,
+                                          tokenized_inputs)  # type: ignore
+    input_signature = create_single_tensor_input_signature(
+        batch_size, task_feature_lengths, tokenized_inputs)
+
+  def wrapped(*args: tf.Tensor) -> Mapping[str, tf.Tensor]:
+    # Splice the args into inputs and decoder params.
+    num_decoder_params = len(decoder_params_spec)
+    decoder_params_values = args[-num_decoder_params:]
+    inputs = args[:-num_decoder_params]
+
+    features = dict(preprocessor(*inputs))
+
+    # Add decoder params as additional features. They are removed from the
+    # features dict in `create_inference_function`.
+    decoder_params = {}
+    for (name, _, _), value in zip(decoder_params_spec, decoder_params_values):
+      decoder_params[name] = value
+    features['decoder_params'] = decoder_params
+
+    return features
+
+  input_signature = tuple(input_signature) + tuple(
+      tf.TensorSpec((batch_size,) + tuple(per_example_shape), dtype, name=name)
+      for name, dtype, per_example_shape in decoder_params_spec)
+  return wrapped, input_signature
+
+
 def _maybe_name_outputs(
     feature_values: Tuple[Any, ...], feature_names: Optional[List[str]]
 ) -> Union[Tuple[Any, ...], Mapping[str, Any]]:
@@ -781,11 +867,14 @@ def create_postprocessor(
 
 
 
-def write_warmup_examples(text_batch: WarmupExamples,
-                          output_dir: str,
-                          model_name: str,
-                          *,
-                          input_tensor_name: str = 'text_batch'):
+def write_warmup_examples(
+    text_batch: WarmupExamples,
+    output_dir: str,
+    model_name: str,
+    *,
+    input_tensor_name: str = 'text_batch',
+    decoder_params_spec: Optional[DecoderParamsSpec] = None,
+):
   """Adds a single batch of Predict warmup data."""
   logging.info('Writing warmup data...')
   request = predict_pb2.PredictRequest()
@@ -797,6 +886,11 @@ def write_warmup_examples(text_batch: WarmupExamples,
     dtype = tf.int32
   request.inputs[input_tensor_name].CopyFrom(
       tf.make_tensor_proto(text_batch, dtype=dtype))
+  if decoder_params_spec is not None:
+    for name, dtype, per_example_shape in decoder_params_spec:
+      request.inputs[name].CopyFrom(
+          tf.make_tensor_proto(
+              tf.zeros((len(text_batch),) + tuple(per_example_shape), dtype)))
   assets_extra = os.path.join(output_dir, 'assets.extra')
   tf.io.gfile.makedirs(assets_extra)
   warmup_output = os.path.join(assets_extra, 'tf_serving_warmup_requests')
