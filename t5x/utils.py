@@ -526,7 +526,7 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
   def _gda(dbs, global_shape):
     if jax.config.jax_array:
       return jax.make_array_from_single_device_arrays(
-          global_shape, jax.sharding.MeshPspecSharding(global_mesh, axes), dbs)
+          global_shape, jax.sharding.NamedSharding(global_mesh, axes), dbs)
     else:
       return GlobalDeviceArray(global_shape, global_mesh, axes, dbs)
 
