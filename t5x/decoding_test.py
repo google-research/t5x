@@ -567,6 +567,49 @@ class DecodeTest(parameterized.TestCase):
     np.testing.assert_array_equal(decodes, expected_output)
     np.testing.assert_array_equal(scores, [[0.]])
 
+  def test_temperature_sample_per_item_temperature(self):
+    rng0 = jax.random.PRNGKey(0)
+
+    # 4 batches of 20 sequence length.
+    batch_size = 4
+    num_decodes = 2
+    seq_length = 20
+    inputs = np.zeros((batch_size, seq_length), dtype=np.int32)
+    token_to_logits = mock.Mock()
+    token_to_logits.return_value = (
+        np.repeat(
+            np.array(
+                # First batch logits correspond to (0.3, 0, 0.1, 0.6).
+                # The rest of the batches just change the order.
+                [[-1.2, -1e7, -2.3, -0.51], [-0.51, -1.2, -1e7, -2.3],
+                 [-1.2, -1e7, -0.51, -2.3], [-1.2, -0.51, -1e7, -2.3]],
+                dtype=np.float32),
+            num_decodes,
+            axis=0),
+        {})
+
+    # temperature is applied first, so if topp is 0.63 and temperature < 0.8,
+    # it should become greedy.
+    decodes, scores = decoding.temperature_sample(
+        inputs, {},
+        token_to_logits,
+        EOS_ID,
+        rng0,
+        temperature=np.array([0.5, 0, 0.3, 0.2]),
+        topp=0.63,
+        topk=0,
+        num_decodes=num_decodes)
+
+    # Last batch item ends in 0s because 1 is EOS ID.
+    expected_output = np.array([[3] * seq_length, [0] * seq_length,
+                                [2] * seq_length, [1] + [0] * (seq_length - 1)])
+    # Expand number of decodes dimension.
+    expected_output = jnp.expand_dims(expected_output, 1)
+    expected_output = jnp.repeat(expected_output, num_decodes, axis=1)
+
+    np.testing.assert_array_equal(decodes, expected_output)
+    np.testing.assert_array_equal(scores, [[0.] * num_decodes] * batch_size)
+
   def test_dynamic_topp_max_decode_steps(self):
     rng0 = jax.random.PRNGKey(0)
     inputs = np.zeros((1, 20), dtype=np.int32)
