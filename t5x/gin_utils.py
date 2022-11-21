@@ -122,3 +122,16 @@ def sum_fn(var1=gin.REQUIRED, var2=gin.REQUIRED):
 def bool_fn(var1=gin.REQUIRED):
   """bool function to use inside gin files."""
   return bool(var1)
+
+
+@gin.configurable
+def string_split_fn(text=gin.REQUIRED,
+                    separator=gin.REQUIRED,
+                    maxsplit=-1,
+                    index=None):
+  """String split function to use inside gin files."""
+  values = text.split(separator, maxsplit)
+  if index is None:
+    return values
+  else:
+    return values[index]
