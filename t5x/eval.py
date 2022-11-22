@@ -218,7 +218,8 @@ def evaluate(
       log_dir=output_dir)
   if not evaluator.eval_tasks:
     raise ValueError(
-        f"'{dataset_cfg.mixture_or_task_name}' has no metrics for evaluation.")
+        f"'{dataset_cfg.mixture_or_task_name}' has no metrics for evaluation, "
+        "or this mixture/task doesn't have provided split.")
 
   # ----------------------------------------------------------------------------
   # T5X model loading.
