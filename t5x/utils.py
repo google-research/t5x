@@ -295,6 +295,40 @@ class LegacyCheckpointer(orbax.checkpoint.Checkpointer):
         lazy_parameters=lazy_parameters)
 
 
+def create_checkpoint_manager(
+    *,
+    save_cfg: Optional[SaveCheckpointConfig] = None,
+    restore_cfg: Optional[RestoreCheckpointConfig] = None,
+    train_state_shape: train_state_lib.TrainState,
+    partitioner: partitioning.BasePartitioner,
+    ds_iter: Optional[Union[tf.data.Iterator,
+                            clu.data.dataset_iterator.DatasetIterator]] = None,
+    model_dir: Optional[str] = None):
+  """Creates Orbax CheckpointManager."""
+  save_dtype = None
+  restore_dtype = None
+  keep = None
+  keep_dataset_checkpoints = None
+  if save_cfg is not None:
+    ds_iter = ds_iter if save_cfg.save_dataset else None
+    save_dtype = save_cfg.dtype
+    keep = save_cfg.keep
+    keep_dataset_checkpoints = save_cfg.keep_dataset_checkpoints
+  if restore_cfg is not None:
+    ds_iter = ds_iter if restore_cfg.restore_dataset else None
+    restore_dtype = restore_cfg.dtype
+  return checkpoints.CheckpointManager(
+      directory=model_dir,
+      train_state_shape=train_state_shape,
+      partitioner=partitioner,
+      # Used if save_cfg.save_dataset or restore_cfg.restore_dataset is true.
+      dataset_iterator=ds_iter,
+      save_dtype=save_dtype,
+      restore_dtype=restore_dtype,
+      keep=keep,
+      keep_dataset_checkpoints=keep_dataset_checkpoints)
+
+
 class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
   """Implementation of CheckpointManager interface for T5X.
 
@@ -403,6 +437,60 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
     if len(restored) == 1:
       restored = restored[0]
     return restored
+
+
+def restore(
+    checkpoint_manager: checkpoints.CheckpointManager,
+    paths: Sequence[str],
+    restore_cfg: RestoreCheckpointConfig,
+    fallback_state: Optional[Mapping[str, Any]] = None
+) -> Union[train_state_lib.TrainState, Sequence[train_state_lib.TrainState]]:
+  """Performs restore operation using restore_checkpointer.
+
+  Determines whether the indicated path is a Tensorflow checkpoint.
+
+  Args:
+    checkpoint_manager: Orbax CheckpointManager
+    paths: A sequence of paths to restore from.
+    restore_cfg: RestoreCheckpointConfig specifying restoration information.
+    fallback_state: a state dict of an optimizer to fall back to for loading
+      params that do not exist in the checkpoint (after applying all
+      `state_transformation_fns`), but do exist in `Checkpointer.optimizer`. The
+      union of `fallback_state` and state loaded from the checkpoint must match
+      `Checkpointer.optimizer`.
+
+  Returns:
+    The restored TrainState if only one TrainState can be restored from the
+    given paths, otherwise a sequence of TrainStates.
+  """
+  if restore_cfg is None or paths is None:
+    return None
+
+  state_transformation_fns = restore_cfg.state_transformation_fns
+  restored_checkpoints = []
+  for path in paths:
+    logging.info('Initializing parameters from specific T5X checkpoint %s',
+                 path)
+
+    from_tensorflow = gfile.exists(path + '.index')
+    if from_tensorflow and state_transformation_fns:
+      raise ValueError('Cannot initialize from a TensorFlow checkpoint using '
+                       '`state_transformation_fns`.')
+    if from_tensorflow:
+      logging.info('Initializing parameters from TensorFlow checkpoint %s',
+                   path)
+      return checkpoint_manager.restore_from_tf_checkpoint(
+          path, strict=restore_cfg.strict)
+
+    restored = checkpoint_manager.restore(
+        path=path,
+        state_transformation_fns=state_transformation_fns,
+        fallback_state=fallback_state)
+    restored_checkpoints.append(restored)
+
+  if len(restored_checkpoints) == 1:
+    restored_checkpoints = restored_checkpoints[0]
+  return restored_checkpoints
 
 
 @dataclasses.dataclass

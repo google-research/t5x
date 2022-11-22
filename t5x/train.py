@@ -121,6 +121,7 @@ def train(
         utils.TrainStateInitializer] = utils.TrainStateInitializer,
     use_gda: bool = True,
     use_jax_array: bool = False,
+    use_orbax: bool = False,
     verify_matching_vocabs_fn: Optional[
         Callable[[utils.DatasetConfig, models.BaseTransformerModel],
                  None]] = utils.verify_matching_vocabs,
@@ -183,6 +184,7 @@ def train(
     use_gda: if True, uses GlobalDeviceArray. Experimental feature.
     use_jax_array: if True, uses jax.Array if use_gda is also True. Experimental
       feature.
+    use_orbax: if True, uses Orbax for checkpointing. Experimental feature.
     verify_matching_vocabs_fn: Function to validate whether the task vocabulary
       matches the model vocabulary. Should raise an exception on error.
     gc_period: The number of train steps between runs of the garbage collector.
@@ -207,6 +209,9 @@ def train(
       jax.config.update('jax_array', True)
     else:
       jax.config.update('jax_parallel_functions_output_gda', True)
+
+  if use_orbax:
+    logging.info('Checkpointing with Orbax enabled.')
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.
@@ -355,21 +360,36 @@ def train(
       restore_cfgs)
   if len(restore_paths) > 1:
     raise ValueError('Multiple restore paths not permitted in training.')
-  checkpoint_manager = utils.LegacyCheckpointManager(
-      save_cfg=checkpoint_cfg.save,
-      restore_cfg=valid_restore_cfg,
-      train_state_shape=train_state_initializer.global_train_state_shape,
-      partitioner=partitioner,
-      ds_iter=train_iter,
-      model_dir=model_dir,
-      use_gda=use_gda)
 
-  train_state = checkpoint_manager.restore(
-      restore_paths, valid_restore_cfg,
-      utils.get_fallback_state(
-          valid_restore_cfg,
-          lambda rng: train_state_initializer.from_scratch(rng).state_dict(),
-          init_rng))
+  if use_orbax:
+    checkpoint_manager = utils.create_checkpoint_manager(
+        save_cfg=checkpoint_cfg.save,
+        restore_cfg=valid_restore_cfg,
+        train_state_shape=train_state_initializer.global_train_state_shape,
+        partitioner=partitioner,
+        ds_iter=train_iter,
+        model_dir=model_dir)
+    train_state = utils.restore(
+        checkpoint_manager, restore_paths, valid_restore_cfg,
+        utils.get_fallback_state(
+            valid_restore_cfg,
+            lambda rng: train_state_initializer.from_scratch(rng).state_dict(),
+            init_rng))
+  else:
+    checkpoint_manager = utils.LegacyCheckpointManager(
+        save_cfg=checkpoint_cfg.save,
+        restore_cfg=valid_restore_cfg,
+        train_state_shape=train_state_initializer.global_train_state_shape,
+        partitioner=partitioner,
+        ds_iter=train_iter,
+        model_dir=model_dir,
+        use_gda=use_gda)
+    train_state = checkpoint_manager.restore(
+        restore_paths, valid_restore_cfg,
+        utils.get_fallback_state(
+            valid_restore_cfg,
+            lambda rng: train_state_initializer.from_scratch(rng).state_dict(),
+            init_rng))
 
   # 3. If no checkpoint to restore, init from scratch.
   train_state = train_state or train_state_initializer.from_scratch(init_rng)
@@ -492,9 +512,15 @@ def train(
 
   # Save checkpoints before the training loop starts.
   if checkpoint_period:
-    logging.info('Saving checkpoint before the training loop starts.')
-    checkpoint_manager.save(trainer.train_state,
-                            checkpoint_cfg.save.state_transformation_fns)
+    # If not using Orbax, always save checkpoint, otherwise, only save a
+    # checkpoint if a checkpoint does not already exist for that step. This is
+    # because Orbax will error out if we try to save a checkpoint that already
+    # exists.
+    if not use_orbax or (use_orbax and trainer.train_state.step
+                         not in checkpoint_manager.all_steps()):
+      logging.info('Saving checkpoint before the training loop starts.')
+      checkpoint_manager.save(trainer.train_state,
+                              checkpoint_cfg.save.state_transformation_fns)
 
   # If we take manual control of the garbage collector, we need to disable it
   # before starting training.

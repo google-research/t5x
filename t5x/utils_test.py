@@ -530,6 +530,42 @@ class MockCheckpointer(checkpoints.Checkpointer):
     return MockTrainState(path=path, from_scratch=False)
 
 
+class MockCheckpointManager(checkpoints.CheckpointManager):
+
+  def __init__(self, *args, **kwargs):
+    pass
+
+  def restore(self, path, *args, **kwargs):
+    return MockTrainState(path=path, from_scratch=False)
+
+
+class OrbaxRestoreTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+
+    self.ckptdir = self.create_tempdir(name="primary_checkpoints")
+    steps = (2, 3)
+    self.paths = []
+    for s in steps:
+      step_dir = self.ckptdir.mkdir(f"checkpoint_{s}")
+      step_dir.create_file("checkpoint")
+      self.paths += [step_dir.full_path]
+
+  def test_orbax_restore(self):
+    # Properties of config not needed in this test.
+    restore_cfg = utils.RestoreCheckpointConfig(path=[])
+
+    manager = MockCheckpointManager()
+    restored = utils.restore(manager, [self.paths[0]], restore_cfg)
+    self.assertIsInstance(restored, MockTrainState)
+    self.assertEqual(restored.path, self.paths[0])
+
+    restored = utils.restore(manager, self.paths, restore_cfg)
+    self.assertIsInstance(restored, list)
+    self.assertSequenceEqual([state.path for state in restored], self.paths)
+
+
 class TrainStateInitializerTest(parameterized.TestCase):
 
   def setUp(self):
