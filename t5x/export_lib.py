@@ -15,8 +15,8 @@
 """Functions for exporting a T5X model."""
 import dataclasses
 import functools
-
 import inspect
+import itertools
 import os
 import os.path
 import typing
@@ -197,6 +197,10 @@ class ExportableModule(tf.Module):
   @property
   def tpu_func(self):
     return self._model_tf_fn
+
+  @property
+  def export_batch_sizes(self):
+    return self._allowed_batch_sizes or [self._batch_size]
 
 
 def get_train_state_initializer(
@@ -867,37 +871,80 @@ def create_postprocessor(
 
 
 
+def _request_for_batch(
+    text_batch: WarmupExamples,
+    model_name: str,
+    input_tensor_name: str,
+    batch_size: Optional[int],
+    decoder_params_spec: Optional[DecoderParamsSpec] = None,
+) -> predict_pb2.PredictRequest:
+  """Adds a single batch of Predict warmup data."""
+  request = predict_pb2.PredictRequest()
+  request.model_spec.name = model_name
+  request.model_spec.signature_name = (
+      tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+  if text_batch and isinstance(text_batch[0], (str, bytes)):
+    dtype = tf.string
+  else:
+    dtype = tf.int32
+  # Truncate/Pad the request to have batch_size.
+  adjusted_batch = text_batch
+  if batch_size is not None:
+    adjusted_batch = list(
+        itertools.islice(itertools.cycle(text_batch), batch_size))
+  request.inputs[input_tensor_name].CopyFrom(
+      tf.make_tensor_proto(adjusted_batch, dtype=dtype))
+  if decoder_params_spec is not None:
+    for name, dtype, per_example_shape in decoder_params_spec:
+      request.inputs[name].CopyFrom(
+          tf.make_tensor_proto(
+              tf.zeros((len(adjusted_batch),) + tuple(per_example_shape),
+                       dtype)))
+  return request
+
+
 def write_warmup_examples(
     text_batch: WarmupExamples,
     output_dir: str,
     model_name: str,
     *,
+    batch_sizes: List[Optional[int]],
     input_tensor_name: str = 'text_batch',
     decoder_params_spec: Optional[DecoderParamsSpec] = None,
 ):
-  """Adds a single batch of Predict warmup data."""
-  logging.info('Writing warmup data...')
-  request = predict_pb2.PredictRequest()
-  request.model_spec.name = model_name
-  request.model_spec.signature_name = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY
-  if text_batch and isinstance(text_batch[0], (str, bytes)):
-    dtype = tf.string
-  else:
-    dtype = tf.int32
-  request.inputs[input_tensor_name].CopyFrom(
-      tf.make_tensor_proto(text_batch, dtype=dtype))
-  if decoder_params_spec is not None:
-    for name, dtype, per_example_shape in decoder_params_spec:
-      request.inputs[name].CopyFrom(
-          tf.make_tensor_proto(
-              tf.zeros((len(text_batch),) + tuple(per_example_shape), dtype)))
+  """Writes warmup examples for all batch_sizes requested.
+
+  The text_batch is either filled to batch_size or truncated based on the
+  different batch_sizes.
+  For example, if text_batch has length 2 while requested batch_size is 4, it is
+  repeated two times. If text_batch has length 2 while requested batch_size is
+  1, it is truncated to length 1.
+
+  Args:
+    text_batch: A batch of texts used as warmup examples.
+    output_dir: The directory for writing the warmup examples to.
+    model_name: The name of the savedmodel spec.
+    batch_sizes: A list of batch sizes to warmup with. The written number of
+      tfrecords will be equal to the size of batch_sizes. The list might contain
+      None entries, and the warmup examples for the None entry won't be padded
+      or truncated.
+    input_tensor_name: The entry name of the PredictRequest inputs dict.
+    decoder_params_spec: The parameter specifciations on decoding. If present,
+      dummy data (0s) with specified shape/dtype will be written into warmup
+      examples.
+  """
   assets_extra = os.path.join(output_dir, 'assets.extra')
   tf.io.gfile.makedirs(assets_extra)
   warmup_output = os.path.join(assets_extra, 'tf_serving_warmup_requests')
   with tf.io.TFRecordWriter(warmup_output) as writer:
-    log = prediction_log_pb2.PredictionLog(
-        predict_log=prediction_log_pb2.PredictLog(request=request))
-    writer.write(log.SerializeToString())
+    for batch_size in batch_sizes:
+      logging.info('Writing warmup data for batch size: %s ...', batch_size)
+      log = prediction_log_pb2.PredictionLog(
+          predict_log=prediction_log_pb2.PredictLog(
+              request=_request_for_batch(text_batch, model_name,
+                                         input_tensor_name, batch_size,
+                                         decoder_params_spec)))
+      writer.write(log.SerializeToString())
 
 
 
@@ -1108,9 +1155,15 @@ def save(
           warmup_examples.append('')
 
     write_warmup_example_fn(
-        warmup_examples, output_dir=export_dir_cpu, model_name=model_name)
+        warmup_examples,
+        output_dir=export_dir_cpu,
+        model_name=model_name,
+        batch_sizes=module.export_batch_sizes)
     if export_tpu:
       write_warmup_example_fn(
-          warmup_examples, output_dir=output_dir, model_name=model_name)
+          warmup_examples,
+          output_dir=output_dir,
+          model_name=model_name,
+          batch_sizes=module.export_batch_sizes)
 
   # TODO(danielandor): Save the graph.pbtxt for debugging purposes.
