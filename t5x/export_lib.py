@@ -875,14 +875,14 @@ def _request_for_batch(
     text_batch: WarmupExamples,
     model_name: str,
     input_tensor_name: str,
+    signature_name: str,
     batch_size: Optional[int],
     decoder_params_spec: Optional[DecoderParamsSpec] = None,
 ) -> predict_pb2.PredictRequest:
   """Adds a single batch of Predict warmup data."""
   request = predict_pb2.PredictRequest()
   request.model_spec.name = model_name
-  request.model_spec.signature_name = (
-      tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+  request.model_spec.signature_name = signature_name
   if text_batch and isinstance(text_batch[0], (str, bytes)):
     dtype = tf.string
   else:
@@ -907,6 +907,7 @@ def write_warmup_examples(
     text_batch: WarmupExamples,
     output_dir: str,
     model_name: str,
+    signature_name: str,
     *,
     batch_sizes: List[Optional[int]],
     input_tensor_name: str = 'text_batch',
@@ -924,6 +925,7 @@ def write_warmup_examples(
     text_batch: A batch of texts used as warmup examples.
     output_dir: The directory for writing the warmup examples to.
     model_name: The name of the savedmodel spec.
+    signature_name: Optional name of the exported function.
     batch_sizes: A list of batch sizes to warmup with. The written number of
       tfrecords will be equal to the size of batch_sizes. The list might contain
       None entries, and the warmup examples for the None entry won't be padded
@@ -942,8 +944,8 @@ def write_warmup_examples(
       log = prediction_log_pb2.PredictionLog(
           predict_log=prediction_log_pb2.PredictLog(
               request=_request_for_batch(text_batch, model_name,
-                                         input_tensor_name, batch_size,
-                                         decoder_params_spec)))
+                                         input_tensor_name, signature_name,
+                                         batch_size, decoder_params_spec)))
       writer.write(log.SerializeToString())
 
 
@@ -971,7 +973,9 @@ def save(
     native_lowering: bool = False,
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
-    output_vocab_feature_name: Optional[str] = 'targets'):
+    output_vocab_feature_name: Optional[str] = 'targets',
+    signature_name: Optional[str] = tf.saved_model
+    .DEFAULT_SERVING_SIGNATURE_DEF_KEY):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
   Args:
@@ -1013,9 +1017,10 @@ def save(
     trailing_shapes: Optional mapping of model feature name to trailing shape,
       the `...?` in `(batch_size, seqlen, ...?)`, which is needed to initialize
       the model correctly.
-    output_vocab_feature_name: The vocabulary feature which maps decoded ids
-      to plain text. For standard T5X models this will always be 'targets', but
-      may be different or empty for other models.
+    output_vocab_feature_name: The vocabulary feature which maps decoded ids to
+      plain text. For standard T5X models this will always be 'targets', but may
+      be different or empty for other models.
+    signature_name: Optional name of the exported function.
   """
   if not os.path.basename(output_dir).isdigit():
     raise ValueError('output_dir must be in the form ${BASE}/${VERSION}, where '
@@ -1124,8 +1129,7 @@ def save(
       batch_size=batch_size,
   )
   signatures = {
-      tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
-          module.__call__.get_concrete_function(*input_signature)
+      signature_name: module.__call__.get_concrete_function(*input_signature)
   }
   logging.info('Saving the CPU model...')
   head, tail = os.path.split(output_dir)
@@ -1158,12 +1162,14 @@ def save(
         warmup_examples,
         output_dir=export_dir_cpu,
         model_name=model_name,
-        batch_sizes=module.export_batch_sizes)
+        batch_sizes=module.export_batch_sizes,
+        signature_name=signature_name)
     if export_tpu:
       write_warmup_example_fn(
           warmup_examples,
           output_dir=output_dir,
           model_name=model_name,
-          batch_sizes=module.export_batch_sizes)
+          batch_sizes=module.export_batch_sizes,
+          signature_name=signature_name)
 
   # TODO(danielandor): Save the graph.pbtxt for debugging purposes.
