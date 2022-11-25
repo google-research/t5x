@@ -225,8 +225,6 @@ class OptaxStatePartitionRules:
           lambda state, params_axes: optax.ScaleByTrustRatioState(),
       optax.ScaleByScheduleState:
           lambda state, params_axes: optax.ScaleByScheduleState(count=None),
-      optax.ScaleByFromageState:
-          lambda state, params_axes: optax.ScaleByFromageState(count=None),
       optax.ZeroNansState:
           lambda state, params_axes: optax.ZeroNansState(found_nan=None),
       # FactoredState
