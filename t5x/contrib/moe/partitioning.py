@@ -456,7 +456,7 @@ def override_partition_specs(resources: Pytree):
 
 def _infer_state_filter_fn(
     train_state: FlaxOptimTrainState) -> Optional[Callable[[str], bool]]:
-  """Infers relevant regex matching sharded expert model state for optimizer.
+  """Infers relevant regex matching sharded expert model state for train state.
 
   The model state generally inherits the correct partitioning specs from the
   model parameters. In such cases, no state_filter_fn is required. However,
@@ -476,19 +476,44 @@ def _infer_state_filter_fn(
     ValueError if optimizer (on train state) is not a recognized optimizer type.
   """
   optimizer = train_state._optimizer  # pylint: disable=protected-access
-  optimizer_def = optimizer.optimizer_def
+  opt_def = optimizer.optimizer_def
 
-  if isinstance(optimizer_def, optimizers.OptaxWrapper):
+  if isinstance(opt_def, optimizers.MultiOptimizer):
+    if not opt_def.sub_optimizers:
+      # No suboptimizers, so no state updates are required.
+      return None
+
+    all_same_type = all(
+        type(opt) is type(opt_def.sub_optimizers[0])
+        for opt in opt_def.sub_optimizers)
+    if not all_same_type:
+      raise ValueError('optimizers.MultiOptimizer is only supported in cases '
+                       'where all suboptimizers are of the same type.')
+
+    if isinstance(opt_def.sub_optimizers[0], adafactor.Adafactor):
+      all_same_factoring = all(opt.hyper_params.factored ==
+                               opt_def.sub_optimizers[0].hyper_params.factored
+                               for opt in opt_def.sub_optimizers)
+      if not all_same_factoring:
+        raise ValueError(
+            'If using adafactor.Adafactor as the suboptimizer in '
+            'optimizers.MultiOptimizer, all suboptimizers must be either '
+            'factored or unfactored (cannot use mixed factoring).')
+
+    # Use first suboptimizer as representative.
+    opt_def = opt_def.sub_optimizers[0]
+
+  if isinstance(opt_def, optimizers.OptaxWrapper):
     # T5X wrapped optax optimizers inherit the correct specs, so no state
     # updates will be required.
     return None
 
-  if not isinstance(optimizer_def, adafactor.Adafactor):
+  if not isinstance(opt_def, adafactor.Adafactor):
     raise ValueError('Unrecognized optimizer type. Expecting '
                      'optimizers.OptaxWrapper or adafactor.Adafactor. '
-                     f'Received: {optimizer_def}')
+                     f'Received: {opt_def}')
 
-  if optimizer_def.hyper_params.factored:
+  if opt_def.hyper_params.factored:
     # Factored kernel terms (`v_col` and `v_row`) need to be identified for
     # expert sharding.
     return training_utils.match_fn(r'.*expert.*/kernel/v_.*')
