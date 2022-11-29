@@ -53,6 +53,7 @@ setuptools.setup(
         'gin-config',
         f'jax >= {_jax_version}',
         f'jaxlib >= {_jaxlib_version}',
+        'jestimator',
         'numpy',
         'orbax @ git+https://github.com/google/orbax#egg=orbax',
         'seqio @ git+https://github.com/google/seqio#egg=seqio',
