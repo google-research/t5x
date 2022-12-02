@@ -212,6 +212,8 @@ def train(
 
   if use_orbax:
     logging.info('Checkpointing with Orbax enabled.')
+    if not use_gda:
+      raise ValueError('Must set of `use_gda` if `use_orbax` is enabled.')
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.
