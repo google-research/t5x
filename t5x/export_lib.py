@@ -117,6 +117,7 @@ class ExportableModule(tf.Module):
       num_batch_threads: int = 8,
       max_enqueued_batches: int = 64,
       batch_timeout_micros: int = 1000_000,
+      max_batch_size: Optional[int] = None,
       allowed_batch_sizes: Optional[Sequence[int]] = None,
       jit_compile: bool = True,
       use_batch_function: bool = False,
@@ -163,6 +164,7 @@ class ExportableModule(tf.Module):
     self._batch_timeout_micros = batch_timeout_micros
     self._allowed_batch_sizes = allowed_batch_sizes
     self._use_batch_function = use_batch_function
+    self._max_batch_size = max_batch_size
 
   @functools.partial(tf.function, autograph=False, jit_compile=False)
   def __call__(self, *input_batches) -> Tuple[Any, Any]:
@@ -172,10 +174,10 @@ class ExportableModule(tf.Module):
     if self._allowed_batch_sizes:
       if self._batch_size is not None:
         raise ValueError('allowed_batch_size requires polymorphic batch size')
-      max_batch_size = max(self._allowed_batch_sizes)
+      max_batch_size = self._max_batch_size or max(self._allowed_batch_sizes)
       allowed_batch_sizes = self._allowed_batch_sizes
     elif self._batch_size is not None:
-      max_batch_size = self._batch_size
+      max_batch_size = self._max_batch_size or self._batch_size
       allowed_batch_sizes = [self._batch_size]
     else:
       raise ValueError(
