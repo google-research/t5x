@@ -105,7 +105,7 @@ def train(
     total_steps: int,
     eval_steps: int,
     eval_period: int,
-    stats_period: Optional[int] = 1,
+    stats_period: Optional[int] = None,
     random_seed: Optional[int],
     use_hardware_rng: bool = False,
     summarize_config_fn: Callable[[str, metric_writers.MetricWriter, int],
