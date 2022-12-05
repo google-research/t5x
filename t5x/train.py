@@ -19,6 +19,8 @@ r"""Script to pretrain or finetune in JAX using a SeqIO pipeline.
 import functools
 import gc
 import math
+import fiddle as fdl
+from gin.google import gin_fiddle_bridge
 import os
 import time
 from typing import Callable, Mapping, Optional, Sequence, Tuple, Type
@@ -193,6 +195,9 @@ def train(
   Returns:
     The tuple of (last_step, last_train_state).
   """
+#  import pdb
+ # pdb.set_trace()
+  gin.clear_config()
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
@@ -767,14 +772,20 @@ if __name__ == '__main__':
     seqio.add_global_cache_dirs(FLAGS.seqio_additional_cache_dirs)
 
     # Create gin-configurable version of `train`.
-    train_using_gin = gin.configurable(train)
+#    train_using_gin = gin.configurable(train)
 
+#    import pdb
+#    pdb.set_trace()
     gin_utils.parse_gin_flags(
         # User-provided gin paths take precedence if relative paths conflict.
         FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
         FLAGS.gin_file,
         FLAGS.gin_bindings)
-    train_using_gin()
+    train_using_gin = fdl.build(gin_fiddle_bridge.as_config(train))
+#    import pdb
+#    pdb.set_trace()
+ #   gin.clear_config()
+    #train_using_gin()
     jax.effects_barrier()
 
 
