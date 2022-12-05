@@ -1882,7 +1882,7 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
       if isinstance(leaf, ts.Spec):
         leaf = leaf.to_json()
         leaf = epath.Path(leaf['kvstore']['path']).name
-        leaf = orbax.checkpoint.utils.aggregated_placeholder(leaf)
+        leaf = orbax.checkpoint.utils.leaf_placeholder(leaf)
       return leaf
 
     return jax.tree_map(tensorstore_spec_to_name, result)
