@@ -1269,8 +1269,8 @@ class CheckpointerConstructor(typing_extensions.Protocol):
     pass
 
 
-def _populate_metrics_for_steps(checkpoints_dir: str, metric_name: str,
-                                steps: Iterable[int]) -> Mapping[int, float]:
+def populate_metrics_for_steps(checkpoints_dir: str, metric_name: str,
+                               steps: Iterable[int]) -> Mapping[int, float]:
   """Iterate through summary event files and return metrics for `steps`."""
 
   metric_run, metric_tag = None, None
@@ -1282,7 +1282,7 @@ def _populate_metrics_for_steps(checkpoints_dir: str, metric_name: str,
     This function tries to greedily split user-provided metric_name_to_monitor
     into {run} and {tag} components. It does so by trying to match all available
     {run}/{tag} names in the provided run_keys. If successful, populates
-    self._metric_run and self._metric_tag.
+    metric_run and metric_tag.
 
     Args:
       metric_name: metric name to monitor.
@@ -1290,7 +1290,7 @@ def _populate_metrics_for_steps(checkpoints_dir: str, metric_name: str,
 
     Returns:
       Whether metric name prefix matches one of the run keys, and, as a
-      side-effect, populates self._metric_run and self._metric_tag.
+      side-effect, populates metric_run and metric_tag.
     """
     nonlocal metric_run
     nonlocal metric_tag
@@ -1452,9 +1452,9 @@ class SaveBestCheckpointer(Checkpointer):
       return
 
     # Synchronous fetch of new events for existing_steps.
-    metrics_by_step = _populate_metrics_for_steps(self.checkpoints_dir,
-                                                  self._metric_name_to_monitor,
-                                                  existing_steps)
+    metrics_by_step = populate_metrics_for_steps(self.checkpoints_dir,
+                                                 self._metric_name_to_monitor,
+                                                 existing_steps)
     logging.info('SaveBestcheckpointer: collected metrics %s', metrics_by_step)
 
     # Re-sort existing_steps by metric values while always keeping the latest
@@ -2278,7 +2278,7 @@ class BestCheckpointManager(CheckpointManager):
   def _finalize(self):
     # Populate metrics before removing old checkpoints
     if self._metric_name_to_monitor is not None:
-      step_to_metric = _populate_metrics_for_steps(
+      step_to_metric = populate_metrics_for_steps(
           os.fspath(self.directory), self._metric_name_to_monitor,
           self.all_steps())
       for info in self._checkpoints:
