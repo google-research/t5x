@@ -55,6 +55,13 @@ class InferenceType(enum.Enum):
   SCORE = 2
 
 
+class T5XScriptType(enum.Enum):
+  FINETUNING = 1
+  INFERENCE = 2
+  EVALUATION = 3
+  PRETRAINING = 4
+
+
 class InteractiveModel(abc.ABC):
   """Wrapper around T5X components to enable interactive train/infer/eval."""
 
@@ -125,8 +132,9 @@ class InteractiveModel(abc.ABC):
     # --------------------------------------------------------------------------
     # Initialize RNGs
     # --------------------------------------------------------------------------
+    self._init_random_seed = init_random_seed
     random_seed = multihost_utils.broadcast_one_to_all(
-        np.int32(init_random_seed))
+        np.int32(self._init_random_seed))
     utils.set_hardware_rng_ops()
 
     rng = random.PRNGKey(random_seed)
@@ -1027,3 +1035,94 @@ def get_seqio_task_from_examples(
         metric_fns=metric_fns)
 
   return seqio.get_mixture_or_task(task_name)
+
+
+# pylint: disable=protected-access
+def get_gin_config_from_interactive_model(interactive_model: InteractiveModel,
+                                          script_type: T5XScriptType,
+                                          task_name: str,
+                                          partitioner_config_str: str,
+                                          model_config_str: str,
+                                          train_steps: int = 1,
+                                          imports_str: str = ""):
+  """Converts an InteractiveModel instance into a Gin config string.
+
+  This function will be used to graduate people to the T5X/SeqIO-based
+  train/infer/eval scripts.
+
+  Args:
+    interactive_model: an instance of the InteractiveModel.
+    script_type: which T5X script the Gin config should function with.
+    task_name: the name of the SeqIO task to be used.
+    partitioner_config_str: a string that defines the Partitioner object in the
+      Gin config.
+    model_config_str: a string that defines the Model object in the Gin config.
+    train_steps: the number of steps to train for, only used if FINETUNING or
+      PRETRAINING is selected as the script type.
+    imports_str: if the `model_config_str` or `partitioner_config_str` relies on
+      some other files to be imported, these import statements can be included
+      in the final Gin file by adding them to this string.
+
+  Returns:
+    A string that contains the full Gin file to be used for train/infer/eval.py.
+  """
+  if script_type == T5XScriptType.FINETUNING:
+    # TODO(b/240732774): Populate this condition.
+    gin_config = ""
+  elif script_type == T5XScriptType.INFERENCE:
+    # TODO(b/240732774): Populate this condition.
+    gin_config = ""
+  elif script_type == T5XScriptType.EVALUATION:
+    # TODO(b/240732774): Populate this condition.
+    gin_config = ""
+  elif script_type == T5XScriptType.PRETRAINING:
+    restore_config_str = ""
+    if interactive_model._restore_checkpoint_cfg:
+
+      restore_config_str = f"""utils.RestoreCheckpointConfig:
+  path = '{interactive_model._restore_checkpoint_cfg.path}'
+  mode = '{interactive_model._restore_checkpoint_cfg.mode}'
+  dtype = '{interactive_model._restore_checkpoint_cfg.dtype}'"""
+    gin_config = f"""
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5x import utils
+
+include 't5x/configs/runs/pretrain.gin'
+
+{imports_str}
+
+MODEL_DIR = "{interactive_model._output_dir}"
+
+TRAIN_STEPS = {train_steps}
+MIXTURE_OR_TASK_MODULE = "t5x.interactive_model"
+MIXTURE_OR_TASK_NAME = "{task_name}"
+TASK_FEATURE_LENGTHS = {interactive_model._task_feature_lengths}
+DROPOUT_RATE = 0.0
+USE_CACHED_TASKS = False
+SHUFFLE_TRAIN_EXAMPLES = False
+BATCH_SIZE = {interactive_model._batch_size}
+
+{model_config_str}
+
+train/utils.DatasetConfig:
+  pack = False
+
+train_eval/utils.DatasetConfig:
+  pack = False
+
+{restore_config_str}
+utils.SaveCheckpointConfig:
+  period = {interactive_model._save_checkpoint_cfg.period}
+  dtype = '{interactive_model._save_checkpoint_cfg.dtype}'
+  keep = {interactive_model._save_checkpoint_cfg.keep}
+  save_dataset = {interactive_model._save_checkpoint_cfg.save_dataset}
+
+{partitioner_config_str}
+"""
+
+  return gin_config
+
+
+# pylint: enable=protected-access
