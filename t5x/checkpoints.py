@@ -47,7 +47,6 @@ from jax import pxla
 import jax.config
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
-from jax.experimental.gda_serialization import serialization as gda_serialization
 import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint
@@ -64,6 +63,13 @@ import typing_extensions
 from tensorboard.backend.event_processing import directory_watcher
 from tensorboard.backend.event_processing import event_file_loader
 from tensorboard.backend.event_processing import io_wrapper
+
+# pylint: disable=g-import-not-at-top
+try:
+  from jax.experimental.array_serialization import serialization as array_serialization
+except ImportError:
+  from jax.experimental.gda_serialization import serialization as array_serialization  # pytype: disable=import-error
+# pylint: enable=g-import-not-at-top
 
 PartitionSpec = partitioning.PartitionSpec
 PyTreeDef = type(jax.tree_util.tree_structure(None))
@@ -576,7 +582,7 @@ class Checkpointer(object):
 
       if isinstance(arr, gda_lib.GlobalDeviceArray):
         local_chunk_info = None
-        metadata = gda_serialization._get_metadata(arr)  # pylint: disable=protected-access
+        metadata = array_serialization._get_metadata(arr)  # pylint: disable=protected-access
         del metadata['dtype']
       else:
         local_chunk_info = self._partitioner.get_local_chunk_info(
@@ -848,7 +854,7 @@ class Checkpointer(object):
           }
 
         if isinstance(arr, (gda_lib.GlobalDeviceArray, jax.Array)):
-          await gda_serialization.async_serialize(arr, tmp_ts_spec_dict)
+          await array_serialization.async_serialize(arr, tmp_ts_spec_dict)
         else:
           t = await ts.open(
               tmp_ts_spec_dict,
@@ -1613,7 +1619,7 @@ async def _read_ts(param_info: _ParameterInfo,
     arr = await t.read()
   else:
     # if provided, read as GDA
-    arr = await gda_serialization.async_deserialize(
+    arr = await array_serialization.async_deserialize(
         jax.sharding.NamedSharding(mesh, axes), tmp_ts_spec_dict)
   return arr
 
