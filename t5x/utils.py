@@ -1543,11 +1543,12 @@ def get_dataset_inner(cfg: DatasetConfig,
         "Initializing dataset for task '%s' with a replica batch size of %d and "
         'a seed of %d', mixture_or_task.name, batch_size, seed)
 
+  in_memory_shuffle = cfg.shuffle
   return seqio.get_dataset(
       mixture_or_task_name=mixture_or_task,
       task_feature_lengths=cfg.task_feature_lengths,
       dataset_split=cfg.split,
-      shuffle=cfg.shuffle,
+      shuffle=in_memory_shuffle,
       num_epochs=num_epochs,
       feature_converter=feature_converter_cls(
           pack=cfg.pack, use_custom_packing_ops=cfg.use_custom_packing_ops),
