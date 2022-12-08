@@ -367,6 +367,7 @@ def train(
     return train_state_initializer.from_scratch(rng).state_dict()
 
   # Skip initialization if neither save nor restore is requested.
+  train_state = None
   if valid_restore_cfg or checkpoint_period:
     if use_orbax:
       checkpoint_manager = utils.create_checkpoint_manager(
