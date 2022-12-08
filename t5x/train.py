@@ -47,6 +47,8 @@ from t5x import trainer as trainer_lib
 from t5x import utils
 import tensorflow as tf
 
+# OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
+tf.config.experimental.set_visible_devices([], "GPU")
 
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
@@ -58,7 +60,6 @@ P = partitioning.PartitionSpec
 TRAIN_METRIC_KEY = 'train'
 # String keys that is acceptable from config.
 _ACTION_KEYS = frozenset(trainer_lib.ActionMode.__members__.keys())
-
 
 def run_actions(
     mode: trainer_lib.ActionMode, actions: trainer_lib.ActionMapType,
@@ -710,6 +711,11 @@ if __name__ == '__main__':
 
   flags.DEFINE_integer('process_index', None, help='Index of this process.')
 
+  flags.DEFINE_boolean(
+      'disable_gc',
+      False,
+      help='Disable python garbage collector. Increases perf on multi-gpu,'
+           ' but may cause CPU OOM issues.')
 
 
   def main(argv: Sequence[str]):
@@ -723,12 +729,6 @@ if __name__ == '__main__':
 
 
     if FLAGS.multiprocess_gpu:
-      if (FLAGS.coordinator_address is None or FLAGS.process_count is None or
-          FLAGS.process_index is None):
-        raise ValueError(
-            '`coordinator_address`, `process_count` and `process_index` '
-            'must be provided alongside `multiprocess_gpu`')
-
       logging.info(
           'Initializing distributed system for multi-host GPU:\n'
           '  coordinator_address: %s\n  process_count: %s\n  process_index: %s',
@@ -753,5 +753,7 @@ if __name__ == '__main__':
     train_using_gin()
     jax.effects_barrier()
 
+    if FLAGS.disable_gc:
+        trainer_lib.DISABLE_GC=True
 
   gin_utils.run(main)
