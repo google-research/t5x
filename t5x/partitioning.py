@@ -377,7 +377,8 @@ def default_mesh(num_partitions: int,
     elif num_partitions == 16:
       mps = (4, 2, 1, 2)
   # assume the use of megacore on TPU v4
-  elif device_kind == 'TPU v4' and bounds[3] == 1:
+  elif (device_kind == 'TPU v4' or
+        device_kind == 'TPU v4 lite') and bounds[3] == 1:
     if num_partitions == 1:
       mps = (1, 1, 1, 1)
     elif num_partitions == 2:
