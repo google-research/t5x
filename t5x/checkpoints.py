@@ -223,6 +223,14 @@ def get_checkpoint_dir(checkpoints_dir: str, step: int) -> str:
   return os.path.join(checkpoints_dir, f'checkpoint_{step}')
 
 
+def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
+  """Returns a step number and the parent directory."""
+  parent, checkpoint = os.path.split(checkpoints_dir)
+  if 'checkpoint_' not in checkpoint:
+    raise ValueError('Found improperly formatted checkpoint directory.')
+  return parent, int(checkpoint.replace('checkpoint_', ''))
+
+
 def _cast(target: PyTreeDef, dtype: jnp.dtype):
   """Cast arrays in target to dtype."""
 
@@ -1938,17 +1946,6 @@ class NonAtomicCheckpointer(orbax.checkpoint.Checkpointer):
     self._handler.save(tmp_directory, item, *args, **kwargs)
     _sync_global_devices('Checkpointer:write')
 
-  def restore(self,
-              directory: epath.PathLike,
-              *args,
-              item: Optional[Any] = None,
-              override_path: Optional[epath.PathLike] = None,
-              **kwargs) -> Any:
-    """See superclass documentation."""
-    if override_path is not None:
-      directory = epath.Path(override_path)
-    return super().restore(directory, *args, item=item, **kwargs)
-
 
 # TODO(b/216649487) Support tracking best checkpoints by metrics.
 class CheckpointManager(orbax.checkpoint.CheckpointManager):
@@ -2115,10 +2112,9 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     """
     if step is not None and path is not None:
       raise ValueError('Can only provide `step` or `path` but not both.')
-    override_path = None
+    directory = self.directory
     if path is not None:
-      step = -1  # dummy value, unused
-      override_path = path
+      directory, step = get_step_from_checkpoint_dir(os.fspath(path))
 
     transforms = _transforms_from_state_transformation_fns(
         state_transformation_fns)
@@ -2169,14 +2165,11 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         _STATE_KEY: {
             'restore_args': restore_args,
             'transforms': transforms,
-            'override_path': override_path,
         },
-        _DATASET_KEY: {
-            'override_path': override_path,
-        }
     }
 
-    restored = super().restore(step, items, restore_kwargs=restore_kwargs)
+    restored = super().restore(
+        step, items, restore_kwargs=restore_kwargs, directory=directory)
     state_dict = restored[_STATE_KEY]
     if self._should_write_dataset_ckpt:
       self._dataset_iterator = restored[_DATASET_KEY]
@@ -2188,13 +2181,11 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
 
     return train_state
 
-  def structure(self, override_path: Optional[str] = None) -> PyTreeDef:
+  def structure(self) -> PyTreeDef:
     """Retrieves structure from an existing checkpoint."""
     step = self.latest_step()
     if step is not None:
       ckpt_path = self._get_save_directory(step, self.directory)
-    elif override_path is not None:
-      ckpt_path = override_path
     else:
       raise ValueError(
           'No existing checkpoint; structure cannot be determined.')
