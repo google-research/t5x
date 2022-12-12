@@ -750,10 +750,11 @@ if __name__ == '__main__':
         FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
         FLAGS.gin_file,
         FLAGS.gin_bindings)
-    train_using_gin()
-    jax.effects_barrier()
 
     if FLAGS.disable_gc:
         trainer_lib.DISABLE_GC=True
+
+    train_using_gin()
+    jax.effects_barrier()
 
   gin_utils.run(main)
