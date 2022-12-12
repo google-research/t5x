@@ -2253,6 +2253,17 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     _sync_global_devices('CheckpointManager:atomic_save')
     super()._add_checkpoint_info(step, metrics)
 
+  def _cleanup_tmp_directories(self):
+    if jax.process_index() == 0:
+      files = self.directory.glob('checkpoint_*')
+      tmp_files = [
+          f for f in files
+          if not orbax.checkpoint.utils.is_checkpoint_item_finalized(f)
+      ]
+      for tmp_file in tmp_files:
+        tmp_file.rmtree()
+    multihost_utils.sync_global_devices('cleanup_tmp_dirs')
+
 
 class BestCheckpointManager(CheckpointManager):
   """Implementation of CheckpointManager interface for T5X."""
