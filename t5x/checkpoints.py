@@ -1961,6 +1961,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       restore_dtype: Optional[jnp.dtype] = None,
       keep: Optional[int] = None,
       period: Optional[int] = 1,
+      keep_dataset_checkpoints: Optional[int] = None,
       force_keep_period: Optional[int] = None,
       options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None):
     self._train_state_shape = train_state_shape
@@ -1993,9 +1994,11 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     super().__init__(
         directory=directory, checkpointers=checkpointers, options=options)
 
-  def all_steps(self) -> Sequence[int]:
+  def all_steps(self, read: bool = False) -> Sequence[int]:
     """See superclass documentation."""
-    return all_steps(os.fspath(self.directory))
+    if read:
+      return all_steps(os.fspath(self.directory))
+    return super().all_steps(read=False)
 
   def _parameter_infos(self,
                        train_state: train_state_lib.TrainState) -> PyTreeDef:
@@ -2019,9 +2022,11 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       raise ValueError(
           f'Checkpointing item {key_name} is not currently supported.')
 
-  def save(self,
-           train_state: train_state_lib.TrainState,
-           state_transformation_fns: Sequence[SaveStateTransformationFn] = ()):
+  def save(
+      self,
+      train_state: train_state_lib.TrainState,
+      state_transformation_fns: Sequence[SaveStateTransformationFn] = ()
+  ) -> bool:
     """Saves a checkpoint for the given train state.
 
     Args:
@@ -2029,6 +2034,9 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         LazyArray objects and arrays (e.g., np.ndarray, jax.DeviceArray)
       state_transformation_fns: Transformations to apply, in order, to the state
         before writing.
+
+    Returns:
+      Whether the save was performed or not.
     """
     step = train_state.step
     step = step.get() if isinstance(step, LazyArray) else step
@@ -2082,7 +2090,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         }
     }
 
-    super().save(step, items, save_kwargs=save_kwargs)
+    return super().save(step, items, save_kwargs=save_kwargs)
 
   def restore(
       self,
