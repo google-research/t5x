@@ -1960,7 +1960,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       save_dtype: Optional[jnp.dtype] = None,
       restore_dtype: Optional[jnp.dtype] = None,
       keep: Optional[int] = None,
-      keep_dataset_checkpoints: Optional[int] = None,
+      period: Optional[int] = 1,
       force_keep_period: Optional[int] = None,
       options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None):
     self._train_state_shape = train_state_shape
@@ -1988,6 +1988,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       options = orbax.checkpoint.CheckpointManagerOptions()
     if options.max_to_keep is None:
       options.max_to_keep = keep
+      options.save_interval_steps = period
       options.force_keep_period = force_keep_period
     super().__init__(
         directory=directory, checkpointers=checkpointers, options=options)
@@ -2290,3 +2291,27 @@ class BestCheckpointManager(CheckpointManager):
 
     # Remove old checkpoints.
     super()._finalize()
+
+
+class CheckpointManagerConstructor(typing_extensions.Protocol):
+  """A function that returns a checkpoints.CheckpointManager.
+
+  This type annotation allows users to partially bind args to the constructors
+  of CheckpointManager subclasses without triggering type errors.
+  """
+
+  def __call__(
+      self,
+      directory: str,
+      train_state_shape: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      dataset_iterator: Optional[tf.data.Iterator] = None,
+      save_dtype: Optional[jnp.dtype] = None,
+      restore_dtype: Optional[jnp.dtype] = None,
+      keep: Optional[int] = None,
+      period: Optional[int] = None,
+      force_keep_period: Optional[int] = None,
+      options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None
+  ) -> CheckpointManager:
+    """CheckpointManager constructor."""
+    pass

@@ -140,6 +140,8 @@ class SaveCheckpointConfig:
       dataclasses.field(default_factory=list))
   # Enable GDA in this Checkpointer.
   use_gda: bool = True
+  # CheckpointManager implementation to use.
+  checkpoint_manager_cls: checkpoints.CheckpointManagerConstructor = checkpoints.CheckpointManager
 
   def __post_init__(self):
     if self.dtype not in (None, 'float32', 'bfloat16'):
@@ -181,6 +183,8 @@ class RestoreCheckpointConfig:
       checkpoints.RestoreStateTransformationFn] = ()
   # Enable GDA in this Checkpointer.
   use_gda: bool = True
+  # CheckpointManager implementation to use.
+  checkpoint_manager_cls: checkpoints.CheckpointManagerConstructor = checkpoints.CheckpointManager
 
   def __post_init__(self):
     if self.mode not in ('specific', 'latest', 'all'):
@@ -305,28 +309,57 @@ def create_checkpoint_manager(
                             clu.data.dataset_iterator.DatasetIterator]] = None,
     model_dir: Optional[str] = None):
   """Creates Orbax CheckpointManager."""
+  if save_cfg is not None and restore_cfg is not None:
+    if save_cfg.checkpoint_manager_cls is not restore_cfg.checkpoint_manager_cls:
+      msg = (
+          'Must provide matching configurations of `checkpoint_manager_cls` in '
+          '`save_cfg` and `restore_cfg`.')
+      raise ValueError(msg)
+
+  def _get_default_args(cls):
+    signature = inspect.signature(cls.__init__)
+    return {
+        k: v.default
+        for k, v in signature.parameters.items()
+        if v.default is not inspect.Parameter.empty
+    }
+
+  def _get_checkpoint_manager_cls(cfg):
+    checkpoint_manager_cls = cfg.checkpoint_manager_cls
+    extra_kwargs = {}
+    if issubclass(cfg.checkpointer_cls, checkpoints.SaveBestCheckpointer):
+      checkpoint_manager_cls = checkpoints.BestCheckpointManager
+      extra_kwargs = _get_default_args(cfg.checkpointer_cls)
+    return checkpoint_manager_cls, extra_kwargs
+
   save_dtype = None
   restore_dtype = None
+  period = None
   keep = None
-  keep_dataset_checkpoints = None
+  should_save_restore_dataset = False
   if save_cfg is not None:
-    ds_iter = ds_iter if save_cfg.save_dataset else None
+    should_save_restore_dataset |= save_cfg.save_dataset
     save_dtype = save_cfg.dtype
     keep = save_cfg.keep
-    keep_dataset_checkpoints = save_cfg.keep_dataset_checkpoints
+    period = save_cfg.period
+    checkpoint_manager_cls, extra_kwargs = _get_checkpoint_manager_cls(save_cfg)
   if restore_cfg is not None:
-    ds_iter = ds_iter if restore_cfg.restore_dataset else None
+    should_save_restore_dataset |= restore_cfg.restore_dataset
     restore_dtype = restore_cfg.dtype
-  return checkpoints.CheckpointManager(
+    checkpoint_manager_cls, extra_kwargs = _get_checkpoint_manager_cls(
+        restore_cfg)
+  ds_iter = ds_iter if should_save_restore_dataset else None
+
+  return checkpoint_manager_cls(
       directory=model_dir,
       train_state_shape=train_state_shape,
       partitioner=partitioner,
-      # Used if save_cfg.save_dataset or restore_cfg.restore_dataset is true.
       dataset_iterator=ds_iter,
       save_dtype=save_dtype,
       restore_dtype=restore_dtype,
       keep=keep,
-      keep_dataset_checkpoints=keep_dataset_checkpoints)
+      period=period,
+      **extra_kwargs)
 
 
 class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):

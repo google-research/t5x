@@ -15,6 +15,7 @@
 """Tests for t5x.utils."""
 
 import dataclasses
+import functools
 import os
 import re
 from typing import Optional
@@ -511,6 +512,70 @@ class UtilsTest(parameterized.TestCase):
                 }
             }
         }))
+
+  def test_create_checkpoint_manager_validate(self):
+    directory = "path/to/dir"
+    path = os.path.join(directory, "checkpoint")
+    save_cfg = utils.SaveCheckpointConfig(checkpoint_manager_cls=None)
+    restore_cfg = utils.RestoreCheckpointConfig(
+        path=path, checkpoint_manager_cls=checkpoints.BestCheckpointManager)
+    with self.assertRaises(ValueError):
+      utils.create_checkpoint_manager(
+          save_cfg=save_cfg,
+          restore_cfg=restore_cfg,
+          train_state_shape=mock.Mock(),
+          partitioner=mock.Mock(),
+          model_dir=directory)
+
+  def test_create_checkpoint_manager(self):
+    directory = self.create_tempdir(name="all_checkpoints")
+    path = os.path.join(directory, "checkpoint")
+    mock_data_layout = mock.Mock(
+        shard_id=0, num_shards=1, is_first_host_in_replica_set=True)
+    mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
+    best_checkpoint_manager_cls = functools.partial(
+        checkpoints.BestCheckpointManager,
+        metric_name_to_monitor="accuracy",
+        metric_mode="min",
+        force_keep_period=10,
+        keep_checkpoints_without_metrics=False,
+    )
+    save_cfg = utils.SaveCheckpointConfig(
+        checkpoint_manager_cls=best_checkpoint_manager_cls,
+        dtype="float32",
+        keep=5,
+        period=2,
+        save_dataset=True)
+    restore_cfg = utils.RestoreCheckpointConfig(
+        path=path,
+        checkpoint_manager_cls=best_checkpoint_manager_cls,
+        dtype="bfloat16",
+        restore_dataset=False)
+
+    manager = utils.create_checkpoint_manager(
+        save_cfg=save_cfg,
+        restore_cfg=restore_cfg,
+        train_state_shape=mock.Mock(),
+        partitioner=mock_partitioner,
+        ds_iter=mock.Mock(),
+        model_dir=directory)
+
+    self.assertIsInstance(manager, checkpoints.BestCheckpointManager)
+    self.assertEqual(manager._options.max_to_keep, 5)
+    self.assertEqual(manager._options.save_interval_steps, 2)
+    self.assertEqual(manager._save_dtype, "float32")
+    self.assertEqual(manager._restore_dtype, "bfloat16")
+    self.assertTrue(manager._should_write_dataset_ckpt)
+
+    # Save best options.
+    self.assertEqual(manager._options.force_keep_period, 10)
+    self.assertEqual(manager._options.best_mode, "min")
+    self.assertFalse(manager._options.keep_checkpoints_without_metrics)
+    self.assertEqual(
+        manager._options.best_fn({
+            "accuracy": 0.8,
+            "loss": 0.1
+        }), 0.8)
 
 
 @dataclasses.dataclass
