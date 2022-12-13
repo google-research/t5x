@@ -742,6 +742,9 @@ if __name__ == '__main__':
 
     seqio.add_global_cache_dirs(FLAGS.seqio_additional_cache_dirs)
 
+    if FLAGS.disable_gc:
+        trainer_lib.DISABLE_GC=True
+
     # Create gin-configurable version of `train`.
     train_using_gin = gin.configurable(train)
 
@@ -750,10 +753,6 @@ if __name__ == '__main__':
         FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
         FLAGS.gin_file,
         FLAGS.gin_bindings)
-
-    if FLAGS.disable_gc:
-        trainer_lib.DISABLE_GC=True
-
     train_using_gin()
     jax.effects_barrier()
 
