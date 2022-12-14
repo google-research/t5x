@@ -711,12 +711,6 @@ if __name__ == '__main__':
 
   flags.DEFINE_integer('process_index', None, help='Index of this process.')
 
-  flags.DEFINE_boolean(
-      'disable_gc',
-      False,
-      help='Disable python garbage collector. Increases perf on multi-gpu,'
-           ' but may cause CPU OOM issues.')
-
 
   def main(argv: Sequence[str]):
     """Wrapper for pdb post mortems."""
@@ -741,9 +735,6 @@ if __name__ == '__main__':
       seqio.set_tfds_data_dir_override(FLAGS.tfds_data_dir)
 
     seqio.add_global_cache_dirs(FLAGS.seqio_additional_cache_dirs)
-
-    if FLAGS.disable_gc:
-        trainer_lib.DISABLE_GC=True
 
     # Create gin-configurable version of `train`.
     train_using_gin = gin.configurable(train)
