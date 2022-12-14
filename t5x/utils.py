@@ -318,10 +318,25 @@ def create_checkpoint_manager(
 
   def _get_default_args(cls):
     signature = inspect.signature(cls.__init__)
+    # Only get certain parameters needed for BestCheckpointManager
+    # configuration. These are the parameters of SaveBestCheckpointer that are
+    # not shared by regular Checkpointer. This whole approach is very hacky, but
+    # prevents us from needing to migrate every user to a new checkpoint config,
+    # which is the only alternative.
+    # Arguments aside from these should be set via CheckpointConfig, not gin.
+
+    def _is_relevant_arg(key: str):
+      return key in {
+          'metric_name_to_monitor', 'metric_mode',
+          'keep_checkpoints_without_metrics', 'force_keep_period'
+      }
+
     return {
         k: v.default
         for k, v in signature.parameters.items()
-        if v.default is not inspect.Parameter.empty
+        if v.default is not inspect.Parameter.empty and _is_relevant_arg(k)
+        # Without the filtering by name specified above, we would have duplicate
+        # parameters being passed, which would give an error.
     }
 
   def _get_checkpoint_manager_cls(cfg):
@@ -433,9 +448,10 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
   def restore(
       self,
       paths: Sequence[str],
-      restore_cfg: RestoreCheckpointConfig,
+      restore_cfg: Optional[RestoreCheckpointConfig] = None,
       fallback_state: Optional[Mapping[str, Any]] = None
-  ) -> Union[train_state_lib.TrainState, Sequence[train_state_lib.TrainState]]:
+  ) -> Optional[Union[train_state_lib.TrainState,
+                      Sequence[train_state_lib.TrainState]]]:
     """Performs restore operation using restore_checkpointer.
 
     Determines whether the indicated path is a Tensorflow checkpoint.
@@ -451,7 +467,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
 
     Returns:
       The restored TrainState if only one TrainState can be restored from the
-      given paths, otherwise a sequence of TrainStates.
+      given paths, otherwise a sequence of TrainStates. May return None.
     """
     if restore_cfg is None or paths is None:
       return None

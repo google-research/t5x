@@ -577,6 +577,50 @@ class UtilsTest(parameterized.TestCase):
             "loss": 0.1
         }), 0.8)
 
+  def test_create_checkpoint_manager_from_checkpointer(self):
+    directory = self.create_tempdir(name="all_checkpoints")
+    path = os.path.join(directory, "checkpoint")
+    mock_data_layout = mock.Mock(
+        shard_id=0, num_shards=1, is_first_host_in_replica_set=True)
+    mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
+    checkpointer_cls = checkpoints.SaveBestCheckpointer
+    save_cfg = utils.SaveCheckpointConfig(
+        checkpointer_cls=checkpointer_cls,
+        dtype="float32",
+        keep=5,
+        period=2,
+        save_dataset=True)
+    restore_cfg = utils.RestoreCheckpointConfig(
+        path=path,
+        checkpointer_cls=checkpointer_cls,
+        dtype="bfloat16",
+        restore_dataset=False)
+
+    manager = utils.create_checkpoint_manager(
+        save_cfg=save_cfg,
+        restore_cfg=restore_cfg,
+        train_state_shape=mock.Mock(),
+        partitioner=mock_partitioner,
+        ds_iter=mock.Mock(),
+        model_dir=directory)
+
+    self.assertIsInstance(manager, checkpoints.BestCheckpointManager)
+    self.assertEqual(manager._options.max_to_keep, 5)
+    self.assertEqual(manager._options.save_interval_steps, 2)
+    self.assertEqual(manager._save_dtype, "float32")
+    self.assertEqual(manager._restore_dtype, "bfloat16")
+    self.assertTrue(manager._should_write_dataset_ckpt)
+
+    # Save best options.
+    self.assertIsNone(manager._options.force_keep_period, None)
+    self.assertEqual(manager._options.best_mode, "max")
+    self.assertTrue(manager._options.keep_checkpoints_without_metrics)
+    self.assertEqual(
+        manager._options.best_fn({
+            "train/accuracy": 0.8,
+            "train/loss": 0.1
+        }), 0.8)
+
 
 @dataclasses.dataclass
 class MockTrainState:
