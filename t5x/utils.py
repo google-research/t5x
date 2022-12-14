@@ -863,8 +863,8 @@ def get_first_valid_restore_config_and_paths(
   """Returns first valid restore_cfg and the paths to restore.
 
   Args:
-    restore_cfgs: a sequence of RestoreCheckpointConfig objects, which should be
-      filtered to determine the first valid object.
+    restore_cfgs: a sequence of `RestoreCheckpointConfig` objects, which should
+      be filtered to determine the first valid object.
 
   Returns:
     Tuple of valid RestoreCheckpointConfig and a sequence of paths.
