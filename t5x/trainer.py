@@ -450,7 +450,7 @@ class BaseTrainer(abc.ABC):
 
     # The eval metrics only include metrics added by the Model.
     self.eval_metrics_managers = {  # pylint:disable=g-complex-comprehension
-        n: MetricsManager(f"training_eval/{n}", summary_dir=summary_dir)
+        n: MetricsManager(f"training_eval/{n[:113]}", summary_dir=summary_dir)
         for n in eval_names
     }
 
