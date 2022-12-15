@@ -2016,7 +2016,9 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
                           key_name: Optional[str] = None) -> epath.Path:
     """Returns the standardized path to a save directory for a single item."""
     step_dir = epath.Path(get_checkpoint_dir(os.fspath(directory), step))
-    if key_name is None or key_name == _STATE_KEY or key_name == _DATASET_KEY:
+    if (key_name is None or key_name == _STATE_KEY or
+        key_name == _DATASET_KEY or
+        key_name == orbax.checkpoint.checkpoint_manager.METRIC_ITEM_NAME):
       return step_dir
     else:
       raise ValueError(
