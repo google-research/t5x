@@ -49,6 +49,9 @@ from t5x import utils
 import tensorflow as tf
 
 
+# OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
+tf.config.experimental.set_visible_devices([], 'GPU')
+
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -762,12 +765,6 @@ if __name__ == '__main__':
 
 
     if FLAGS.multiprocess_gpu:
-      if (FLAGS.coordinator_address is None or FLAGS.process_count is None or
-          FLAGS.process_index is None):
-        raise ValueError(
-            '`coordinator_address`, `process_count` and `process_index` '
-            'must be provided alongside `multiprocess_gpu`')
-
       logging.info(
           'Initializing distributed system for multi-host GPU:\n'
           '  coordinator_address: %s\n  process_count: %s\n  process_index: %s',
