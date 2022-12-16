@@ -1558,12 +1558,15 @@ def verify_matching_vocabs(cfg: DatasetConfig, model: Any):
 
 
 
-def get_dataset(cfg: DatasetConfig,
-                shard_id: int,
-                num_shards: int,
-                feature_converter_cls: Callable[..., seqio.FeatureConverter],
-                num_epochs: Optional[int] = None,
-                continue_from_last_checkpoint: bool = False) -> tf.data.Dataset:
+def get_dataset(
+    cfg: DatasetConfig,
+    shard_id: int,
+    num_shards: int,
+    feature_converter_cls: Callable[..., seqio.FeatureConverter],
+    num_epochs: Optional[int] = None,
+    continue_from_last_checkpoint: bool = False,
+    define_mixture_or_task_fn: Optional[Callable[[str], Any]] = None
+) -> tf.data.Dataset:
   """Returns a dataset from SeqIO based on a `DatasetConfig`."""
   if continue_from_last_checkpoint:
     raise ValueError(
@@ -1664,11 +1667,17 @@ def get_training_eval_datasets(
     deterministic: bool = False,
     model_dir: Optional[str] = None,
     start_step: int = 0,
+    define_mixture_or_task_fn: Optional[Callable[[str], Any]] = None
 ) -> Mapping[str, tf.data.Dataset]:
   """Returns a mapping from eval task name to its dataset."""
   if isinstance(cfg.mixture_or_task_name, seqio.DatasetProviderBase):
     mixture_or_task = cfg.mixture_or_task_name
   else:
+    if define_mixture_or_task_fn:
+      if (cfg.mixture_or_task_name not in seqio.TaskRegistry.names()) and (
+          cfg.mixture_or_task_name not in seqio.MixtureRegistry.names()):
+        define_mixture_or_task_fn(cfg.mixture_or_task_name)
+
     mixture_or_task = seqio.get_mixture_or_task(cfg.mixture_or_task_name)
   datasets = {}
   get_dataset_fn = get_dataset

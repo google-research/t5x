@@ -279,10 +279,12 @@ def train(
     if verify_matching_vocabs_fn is not None:
       verify_matching_vocabs_fn(cfg, model)
 
-  _verify_matching_vocabs(train_dataset_cfg)
-
   train_iter = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
                               model.FEATURE_CONVERTER_CLS)
+
+  # Verify after calling get_dataset_fn to support lazily defining tasks.
+  _verify_matching_vocabs(train_dataset_cfg)
+
   train_iter = utils.prepare_train_iter(
       train_iter,
       checkpoint_cfg=checkpoint_cfg,
@@ -295,7 +297,6 @@ def train(
   input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
 
   if train_eval_dataset_cfg:
-    _verify_matching_vocabs(train_eval_dataset_cfg)
     train_eval_datasets = train_eval_get_dataset_fn(
         train_eval_dataset_cfg, ds_shard_id, num_ds_shards, eval_steps,
         model.FEATURE_CONVERTER_CLS)  # type: Mapping[str, tf.data.Dataset]
@@ -303,6 +304,7 @@ def train(
       logging.warning(
           'No train_eval datasets loaded from config `train_eval_dataset_cfg`: '
           '%s', train_eval_dataset_cfg)
+    _verify_matching_vocabs(train_eval_dataset_cfg)
   else:
     train_eval_datasets = {}
 
