@@ -116,6 +116,10 @@ the TPU VM instance unless otherwise stated.
     checkpoints. To create a GCS bucket, see these
     [instructions](https://cloud.google.com/storage/docs/creating-buckets).
 
+6.  (optional) If you prefer working with Jupyter/Cloab style environment
+    you can setup a custom Colab runtime by following steps from
+    [t5x/notebooks](t5x/notebooks/README.md).
+
 ## Example: English to German translation
 
 As a running example, we use the WMT14 En-De translation. The raw dataset is
@@ -149,6 +153,19 @@ preprocessing such as tokenization and evaluation metrics such as
 [The T5 library][t5_github] provides a number of `seqio.Task`s that were used in the
 [T5 paper][t5_paper]. In this example, we use [wmt_t2t_ende_v003](https://github.com/google-research/text-to-text-transfer-transformer/blob/d81c0bab2a41b4d5dfbe4971de32f7d67df65f31/t5/data/tasks.py#L212).
 
+Before training or fine-tuning you need to download ["wmt_t2t_translate"]
+(https://www.tensorflow.org/datasets/catalog/wmt_t2t_translate) dataset first.
+
+```sh
+# Data dir to save the processed dataset in "gs://data_dir" format.
+TFDS_DATA_DIR="..."
+
+# Make sure that dataset package is up-to-date.
+python3 -m pip install --upgrade tfds-nightly
+
+# Pre-download dataset.
+tfds build wmt_t2t_translate ${TFDS_DATA_DIR}
+```
 
 ### Training
 
@@ -157,13 +174,8 @@ To run a training job, we use the `t5x/train.py` script.
 ```sh
 # Model dir to save logs, ckpts, etc. in "gs://model_dir" format.
 MODEL_DIR="..."
-
-# Data dir to save the processed dataset in "gs://data_dir" format.
-TFDS_DATA_DIR="..."
 T5X_DIR="..."  # directory where the T5X repo is cloned.
-
-# Pre-download dataset in multi-host experiments.
-tfds build wmt_t2t_translate ${TFDS_DATA_DIR}
+TFDS_DATA_DIR="..."
 
 python3 ${T5X_DIR}/t5x/train.py \
   --gin_file="t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin" \
@@ -218,8 +230,6 @@ to authorize the Colab to access the GCS bucket and launch the TensorBoard.
 model_dir = "..."  # Copy from the TPU VM.
 %tensorboard --logdir=model_dir
 ```
-
-TODO(hwchung): Add tfds preparation instruction
 
 
 ### Fine-tuning
@@ -294,6 +304,63 @@ python3 ${T5X_DIR}/t5x/infer.py \
   --gin.INFER_OUTPUT_DIR=\"${INFER_OUTPUT_DIR}\" \
   --tfds_data_dir=${TFDS_DATA_DIR}
 ```
+
+### Exporting as TensorFlow Saved Model
+
+Pretrained model can be exported as TensorFlow Saved Model, and deployed
+to Vertex AI Prediction service using [Optimized TensorFlow Runtime]
+(https://cloud.google.com/vertex-ai/docs/predictions/optimized-tensorflow-runtime).
+Please note that exported model won't work on OSS based
+[TensorFlow Model Server](https://github.com/tensorflow/serving).
+
+```sh
+T5X_DIR="..."  # directory where the t5x is cloned, e.g., ${HOME}"/t5x".
+CHECKPOINT_PATH="..."
+
+BATCH_SIZE=None
+BEAM_SIZE=1
+
+# Use 'bfloat16' if you plan to run exported model on NVIDIA A100 or newer GPUs,
+# for other GPUs use 'float32'.
+ACTIVATION_DTYPE=bfloat16
+
+# Version numbers must be numeric. We generate one based on datetime.
+VERSION=$(date +%Y%m%d%H%M%S)
+
+NAME=t5x_base_${ACTIVATION_DTYPE}  # Model name.
+
+# Path to export model to. Note that export script is going to add _cpu suffix
+# after model name.
+OUTPUT=${CHECKPOINT_PATH}/saved_model.${NAME}/${VERSION}
+
+declare -a ARGS=(
+--gin_file=t5x/examples/t5/t5_1_1/base.gin
+--gin_file=t5x/t5x/configs/runs/export.gin
+--gin.TASK_FEATURE_LENGTHS="{'inputs': 256, 'targets': 256}"
+--gin.CHECKPOINT_PATH=\"${CHECKPOINT_PATH}\"
+--gin.MODEL_NAME=\"/ml/${USER}/t5x_base\"
+--gin.MODEL_OUTPUT_DIR=\"${OUTPUT}\"
+--gin.BEAM_SIZE=${BEAM_SIZE}
+--gin.BATCH_SIZE=${BATCH_SIZE}
+--gin.export_lib.save.partitioner=None
+--gin.export_lib.save.warmup_examples="['hello world']"
+--gin.export_lib.ExportableModule.use_batch_function=False
+--gin.export_lib.ExportableModule.use_gpu=False
+--gin.export_lib.ExportableModule.jit_compile=False
+--gin.ACTIVATION_DTYPE=\"${ACTIVATION_DTYPE}\"
+--gin.network.T5Config.dtype=\"${ACTIVATION_DTYPE}\"
+--gin.utils.RestoreCheckpointConfig.dtype=\"${ACTIVATION_DTYPE}\"
+--gin.DROPOUT_RATE=0.0
+)
+
+(python3 ${T5X_DIR}/t5x/export.py "${ARGS[@]}")
+```
+
+For detailed arguments definition refer to [export.gin]
+(t5x/configs/runs/export.gin).
+
+You can run XL and smaller models on NVIDIA A100 40GB, and XXL models on
+NVIDIA A100 80GB.
 
 ## Custom components
 

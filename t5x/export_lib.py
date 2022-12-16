@@ -1166,12 +1166,5 @@ def save(
         model_name=model_name,
         batch_sizes=module.export_batch_sizes,
         signature_name=signature_name)
-    if export_tpu:
-      write_warmup_example_fn(
-          warmup_examples,
-          output_dir=output_dir,
-          model_name=model_name,
-          batch_sizes=module.export_batch_sizes,
-          signature_name=signature_name)
 
   # TODO(danielandor): Save the graph.pbtxt for debugging purposes.
