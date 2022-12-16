@@ -37,7 +37,7 @@ SeqIO Task will be used:
     [`models/t5_1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
 
 If you would like to fine-tune your model before inference, please follow the
-[fine-tuning](finetune) tutorial, and continue to Step 2.
+[fine-tuning](finetune.md) tutorial, and continue to Step 2.
 
 ## Step 2: Choose a SeqIO Task/Mixture
 
