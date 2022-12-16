@@ -1,0 +1,29 @@
+# Sparsely upcycles a pretrained dense model.
+#
+# You must also include bindings for MODEL and NUM_EXPERTS (typically set by the
+# model gin config).
+#
+# Required to be set:
+#
+# - NUM_MODEL_PARTITIONS or MODEL_PARALLEL_SUBMESH (only specify one)
+# - MIXTURE_OR_TASK_NAME
+# - TASK_FEATURE_LENGTHS
+# - TRAIN_STEPS
+# - INITIAL_CHECKPOINT_PATH
+# - MODEL_DIR
+
+from __gin__ import dynamic_registration
+
+from t5x import utils
+from t5x.contrib.moe import checkpoints
+
+include 't5x/contrib/moe/configs/runs/continue_pretrain.gin'
+
+utils.RestoreCheckpointConfig:
+  fallback_to_scratch = True
+  checkpointer_cls = @checkpoints.UpcycleCheckpointer
+  assignment_map = (
+    (r'target(.*)mlp\/expert(.*)', r'target\1mlp\2'),  # Replace dense MLPs with sparse variants
+    (r'.*\/router\/.*', None),  # Initialize router weights from scratch
+    (r'state\/param_states.*', None),  # Initialize optimizer states from scratch
+  )
