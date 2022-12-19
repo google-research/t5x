@@ -70,7 +70,8 @@ class EncoderLayer(nn.Module):
         head_dim=cfg.head_dim,
         dropout_rate=cfg.dropout_rate,
         float32_logits=cfg.float32_attention_logits,
-        name='attention')(
+        name='attention',
+        scale_attn_logits=cfg.scale_attn_logits)(
             x, x, encoder_mask, encoder_bias, deterministic=deterministic)
     x = nn.Dropout(
         rate=cfg.dropout_rate, broadcast_dims=(-2,))(

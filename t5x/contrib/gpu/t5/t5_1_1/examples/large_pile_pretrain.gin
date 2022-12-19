@@ -1,5 +1,5 @@
 include 't5x/contrib/gpu/t5/t5_1_1/large.gin'
-include 't5x/configs/runs/pretrain_pile.gin'
+include 't5x/contrib/gpu/t5/configs/runs/pretrain_pile.gin'
 include 't5x/contrib/gpu/t5/t5_1_1/adamw_opt.gin'
 
 # Register necessary SeqIO Tasks/Mixtures

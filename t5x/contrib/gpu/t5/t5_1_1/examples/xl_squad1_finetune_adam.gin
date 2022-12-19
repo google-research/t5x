@@ -9,7 +9,7 @@ import t5x.scripts_gpu.seqio_tasks
 
 include "t5x/contrib/gpu/t5/t5_1_1/xl.gin"
 include 't5x/contrib/gpu/t5/t5_1_1/adamw_opt.gin'
-include "t5x/configs/runs/finetune_squad1.gin"
+include "t5x/contrib/gpu/t5/configs/runs/finetune_squad1.gin"
 
 MIXTURE_OR_TASK_NAME = "squad_v010_allanswers"
 TASK_FEATURE_LENGTHS = {"inputs": 956, "targets": 256}
