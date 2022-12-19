@@ -28,7 +28,7 @@ from t5.evaluation import metrics
 import tensorflow_datasets as tfds
 import sys
 
-import t5x.scripts_gpu.tfds_pile
+import t5x.contrib.gpu.scripts_gpu.tfds_pile
 
 TaskRegistry = seqio.TaskRegistry
 

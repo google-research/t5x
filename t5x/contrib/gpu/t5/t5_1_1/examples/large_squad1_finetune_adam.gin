@@ -5,7 +5,7 @@ from t5.data import mixtures
 from t5x import models
 from t5x import partitioning
 from t5x import utils
-import t5x.scripts_gpu.seqio_tasks
+import t5x.contrib.gpu.scripts_gpu.seqio_tasks
 
 include "t5x/contrib/gpu/t5/t5_1_1/large.gin"
 include 't5x/contrib/gpu/t5/t5_1_1/adamw_opt.gin'
