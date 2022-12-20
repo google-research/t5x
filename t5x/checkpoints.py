@@ -43,6 +43,7 @@ from etils import epath
 from flax import serialization
 from flax import traverse_util
 import jax
+from jax import monitoring
 from jax import pxla
 import jax.config
 from jax.experimental import global_device_array as gda_lib
@@ -81,6 +82,8 @@ VERSION = 3
 _DESIRED_CHUNK_SIZE_BYTES = 64 * 1024 * 1024
 # TODO(levskaya, adarob): how should we handle stacked/fused variables??
 _TRAIN_DS_PREFIX = 'train_ds'
+_READ_CHECKPOINT_EVENT: str = '/jax/checkpoint/read/durations_sec'
+_WRITE_CHECKPOINT_EVENT: str = '/jax/checkpoint/write/durations_sec'
 
 
 def _choose_chunk_shape(write_shape: Sequence[int],
@@ -702,6 +705,7 @@ class Checkpointer(object):
       concurrent_gb: the approximate number of gigabytes of partitionable
         parameters to process in parallel. Useful to preserve RAM.
     """
+    start_time = time.time()
     step = train_state.step
     step = step.get() if isinstance(step, LazyArray) else step
     step = get_local_data(step)
@@ -772,6 +776,11 @@ class Checkpointer(object):
 
     # Block until complete on all hosts.
     _sync_global_devices(f'checkpointer:write_complete:{final_dir}')
+
+    end_time = time.time()
+    monitoring.record_event_duration_secs(_WRITE_CHECKPOINT_EVENT,
+                                          end_time - start_time)
+    orbax.checkpoint.utils.record_saved_duration(start_time)
 
   def _write_state_to_tensorstore(
       self,
@@ -952,6 +961,7 @@ class Checkpointer(object):
       ValueError if `step` and `path` are not specified and no checkpoint is
         found in the checkpoints directory.
     """
+    start_time = time.time()
     if lazy_parameters and self._partitioner.params_on_devices:
       raise ValueError('Lazy Parameters cannot be copied to devices, please '
                        'set partitioner.params_on_devices=False.')
@@ -1058,7 +1068,13 @@ class Checkpointer(object):
       self._dataset_iterator.load(
           os.path.join(ckpt_dir, self._dataset_ckpt_name))
 
-    return self._restore_train_state(state_dict)
+    restored_train_state = self._restore_train_state(state_dict)
+
+    end_time = time.time()
+    monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
+                                          end_time - start_time)
+
+    return restored_train_state
 
   def _restore_train_state(
       self,
@@ -1171,6 +1187,7 @@ class Checkpointer(object):
       translator: Optional[checkpoint_importer.CheckpointTranslator] = None
   ) -> train_state_lib.TrainState:
     """Restore from a TensorFlow-based T5 checkpoint."""
+    start_time = time.time()
     full_state_dict = checkpoint_importer.restore_from_t5_checkpoint(
         self._train_state.state_dict(),
         path_or_dir,
@@ -1204,7 +1221,13 @@ class Checkpointer(object):
     state_dict = jax.tree_util.tree_map(_partition_parameter, full_state_dict,
                                         self._parameter_infos)
 
-    return self._restore_train_state(state_dict)
+    restored_train_state = self._restore_train_state(state_dict)
+
+    end_time = time.time()
+    monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
+                                          end_time - start_time)
+
+    return restored_train_state
 
   def convert_from_tf_checkpoint(
       self,
@@ -1713,6 +1736,7 @@ def load_t5x_checkpoint(
   Returns:
     A nested dictionary of weights and parameter states from the checkpoint.
   """
+  start_time = time.time()
   path = find_checkpoint(path, step)
   logging.info('Restoring from checkpoint: %s', path)
 
@@ -1791,6 +1815,10 @@ def load_t5x_checkpoint(
 
   if restore_dtype is not None:
     state_dict['target'] = _cast(state_dict['target'], restore_dtype)
+
+  end_time = time.time()
+  monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
+                                        end_time - start_time)
   return state_dict
 
 
@@ -2040,6 +2068,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     Returns:
       Whether the save was performed or not.
     """
+    start_time = time.time()
     step = train_state.step
     step = step.get() if isinstance(step, LazyArray) else step
     step = get_local_data(step)
@@ -2092,7 +2121,14 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         }
     }
 
-    return super().save(step, items, save_kwargs=save_kwargs)
+    saved = super().save(step, items, save_kwargs=save_kwargs)
+
+    end_time = time.time()
+    monitoring.record_event_duration_secs(_WRITE_CHECKPOINT_EVENT,
+                                          end_time - start_time)
+    orbax.checkpoint.utils.record_saved_duration(start_time)
+
+    return saved
 
   def restore(
       self,
@@ -2121,6 +2157,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     Returns:
       The restored train state.
     """
+    start_time = time.time()
     if step is not None and path is not None:
       raise ValueError('Can only provide `step` or `path` but not both.')
     directory = self.directory
@@ -2189,6 +2226,10 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
                                            [])
 
     train_state = self._train_state_shape.restore_state(state_dict)
+
+    end_time = time.time()
+    monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
+                                          end_time - start_time)
 
     return train_state
 
