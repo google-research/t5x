@@ -1687,9 +1687,12 @@ def get_training_eval_datasets(
     # file shards.
     if not isinstance(ds, tf.data.Dataset):
       raise ValueError('Only tf.data.Dataset objects supported.')
-    return ds.unbatch().repeat().shard(num_shards, shard_id).batch(
-        cfg.batch_size // num_shards,
-        drop_remainder=True).take(eval_steps).cache()
+    ds = ds.unbatch().repeat().shard(num_shards, shard_id).batch(
+        cfg.batch_size // num_shards, drop_remainder=True).take(eval_steps)
+    if cfg.use_memory_cache:
+      return ds.cache()
+    else:
+      return ds
 
   for task in seqio.get_subtasks(mixture_or_task):
     if cfg.split not in task.splits:
