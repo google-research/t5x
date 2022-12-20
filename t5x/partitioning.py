@@ -305,8 +305,7 @@ def get_mesh(model_parallel_submesh: HardwareMesh,
 
 def get_cpu_mesh() -> Mesh:
   """Trivial mesh for CPU Testing."""
-  devices = np.empty((jax.host_count(), jax.local_device_count()),
-                     dtype=np.object)
+  devices = np.empty((jax.host_count(), jax.local_device_count()), dtype=object)
   for device in jax.devices():
     devices[device.process_index, device.id % jax.local_device_count()] = device
   return Mesh(devices, ['data', 'model'])
