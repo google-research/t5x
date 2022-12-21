@@ -49,9 +49,6 @@ from t5x import utils
 import tensorflow as tf
 
 
-# OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
-tf.config.experimental.set_visible_devices([], 'GPU')
-
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -762,6 +759,9 @@ if __name__ == '__main__':
     """True main function."""
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
+
+    # OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
+    tf.config.experimental.set_visible_devices([], 'GPU')
 
 
     if FLAGS.multiprocess_gpu:
