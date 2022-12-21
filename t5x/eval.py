@@ -31,11 +31,13 @@ from absl import logging
 from clu import metric_writers
 import jax
 import seqio
+from t5x import checkpoints
 from t5x import gin_utils
 from t5x import models
 from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x import utils
+from tensorflow.io import gfile
 from typing_extensions import Protocol
 
 # Automatically search for gin files relative to the T5X package.
@@ -242,9 +244,38 @@ def evaluate(
   # Disable strictness since we are dropping the optimizer state.
   restore_checkpoint_cfg.strict = False
 
+  # Skip checkpoints that have already been evaluated.
+  eval_ckpt_path = os.path.join(
+      output_dir, f'eval.{dataset_cfg.mixture_or_task_name}.ckpt')
+  if restore_checkpoint_cfg.mode == 'all' and gfile.exists(eval_ckpt_path):
+    logging.info('Found evaluation checkpoint: %s', eval_ckpt_path)
+
+    ckpt_dirs = ([restore_checkpoint_cfg.path] if isinstance(
+        restore_checkpoint_cfg.path, str) else restore_checkpoint_cfg.path)
+    ckpt_paths = set()
+    for ckpt_dir in ckpt_dirs:
+      if not gfile.isdir(ckpt_dir):
+        raise ValueError(
+            f"Checkpoint path '{ckpt_dir}' must be a valid directory when using "
+            "restore mode 'all'.")
+      ckpt_paths.update(
+          checkpoints.get_checkpoint_dir(ckpt_dir, step)
+          for step in checkpoints.all_steps(ckpt_dir))
+
+    with gfile.GFile(eval_ckpt_path, 'r') as f:
+      evaluated_ckpt_paths = set(f.read().split())
+
+    logging.info(
+        'Skipping evaluated checkpoints:\n %s', '\n '.join(
+            sorted(
+                ckpt_paths & evaluated_ckpt_paths,
+                key=lambda x: int(x.split('_')[-1]))))
+    restore_checkpoint_cfg.mode = 'specific'
+    restore_checkpoint_cfg.path = sorted(ckpt_paths - evaluated_ckpt_paths)
+
   if fallback_init_rng is not None:
     fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
-  for train_state in train_state_initializer.from_checkpoints(
+  for train_state, ckpt_path in train_state_initializer.from_checkpoints(
       [restore_checkpoint_cfg], init_rng=fallback_init_rng):
 
     # ----------------------------------------------------------------------------
@@ -257,6 +288,8 @@ def evaluate(
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
     utils.sync_global_devices(f'step_{host_step}:complete')
+    with gfile.GFile(eval_ckpt_path, 'a') as f:
+      f.write(f'{ckpt_path}\n')
 
   logging.info('Finished.')
 

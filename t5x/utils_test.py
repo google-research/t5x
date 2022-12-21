@@ -731,8 +731,9 @@ class TrainStateInitializerTest(parameterized.TestCase):
     # multiple paths
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.paths, mode="specific", checkpointer_cls=MockCheckpointer)
-    restored = self.train_state_init.from_checkpoints([ckpt_cfg])
-    self.assertSequenceEqual(self.paths, [state.path for state in restored])
+    restored = list(self.train_state_init.from_checkpoints([ckpt_cfg]))
+    self.assertSequenceEqual(self.paths, [state.path for state, _ in restored])
+    self.assertSequenceEqual(self.paths, [path for _, path in restored])
     with self.assertRaisesRegex(ValueError, r"^Expected at most 1 checkpoint"):
       self.train_state_init.from_checkpoint([ckpt_cfg])
 
@@ -744,11 +745,13 @@ class TrainStateInitializerTest(parameterized.TestCase):
         checkpointer_cls=MockCheckpointer)
     restored = list(self.train_state_init.from_checkpoints([ckpt_cfg]))
     assert len(restored) == 1
-    self.assertEqual(self.paths[-1], restored[0].path)
-    restored = self.train_state_init.from_checkpoint([ckpt_cfg])
-    self.assertEqual(self.paths[-1], restored.path)
+    restored_state, restored_path = restored[0]
+    self.assertEqual(self.paths[-1], restored_state.path)
+    self.assertEqual(self.paths[-1], restored_path)
+    restored_state = self.train_state_init.from_checkpoint([ckpt_cfg])
+    self.assertEqual(self.paths[-1], restored_state.path)
 
-  def test_from_checkpoints_multiple_configs(self):
+  def test_from_checkpoint_multiple_configs(self):
     # uses first checkpoint with files present.
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.ckptdir.full_path,
@@ -766,7 +769,7 @@ class TrainStateInitializerTest(parameterized.TestCase):
         [ckpt_cfg, secondary_ckpt_cfg])
     self.assertEqual(self.paths[-1], restored.path)
 
-  def test_from_checkpoints_multiple_configs_one_empty(self):
+  def test_from_checkpoint_multiple_configs_one_empty(self):
     # skips empty_checkpoints directory with no checkpoints present.
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.ckptdir.full_path,

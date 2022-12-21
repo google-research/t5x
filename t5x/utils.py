@@ -1038,7 +1038,7 @@ class TrainStateInitializer:
       restore_cfgs: Sequence[RestoreCheckpointConfig],
       ds_iter: Optional[tf.data.Iterator] = None,
       init_rng: Optional[jnp.ndarray] = None,
-  ) -> Iterable[train_state_lib.TrainState]:
+  ) -> Iterable[Tuple[train_state_lib.TrainState, str]]:
     """Yields 0 or more restored partitioned Optimizers, and maybe datasets.
 
     The manner in which parameters are initialized depends on `restore_cfgs` and
@@ -1057,6 +1057,7 @@ class TrainStateInitializer:
 
     Yields:
       TrainState with initialized optimizer, with parameters copied to devices.
+      Path to restored checkpoint.
     """
 
     def _restore_path(path, cfg):
@@ -1091,7 +1092,7 @@ class TrainStateInitializer:
 
     restore_cfg, paths = get_first_valid_restore_config_and_paths(restore_cfgs)
     for path in paths:
-      yield _restore_path(path, restore_cfg)
+      yield _restore_path(path, restore_cfg), path
 
   def from_checkpoint(
       self,
@@ -1101,8 +1102,10 @@ class TrainStateInitializer:
       init_rng: Optional[jnp.ndarray] = None
   ) -> Optional[train_state_lib.TrainState]:
     """Restores (at most) 1 checkpoint using `from_checkpoints`, or dies."""
-    train_states = list(
-        self.from_checkpoints(ckpt_cfgs, ds_iter=ds_iter, init_rng=init_rng))
+    train_states = [
+        state for state, _ in self.from_checkpoints(
+            ckpt_cfgs, ds_iter=ds_iter, init_rng=init_rng)
+    ]
     if len(train_states) > 1:
       raise ValueError(
           f'Expected at most 1 checkpoint but got {len(train_states)} for '
@@ -1114,7 +1117,8 @@ class TrainStateInitializer:
       ckpt_cfgs: Sequence[RestoreCheckpointConfig],
       *,
       init_rng: Array,
-      ds_iter: Optional[tf.data.Iterator] = None) -> train_state_lib.TrainState:
+      ds_iter: Optional[tf.data.Iterator] = None
+  ) -> Optional[train_state_lib.TrainState]:
     """Initializes from checkpoint, if found, or from scratch."""
     return (self.from_checkpoint(ckpt_cfgs, ds_iter=ds_iter, init_rng=init_rng)
             or self.from_scratch(init_rng))
