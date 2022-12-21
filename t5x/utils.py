@@ -305,7 +305,8 @@ def create_checkpoint_manager(
     restore_cfg: Optional[RestoreCheckpointConfig] = None,
     train_state_shape: train_state_lib.TrainState,
     partitioner: partitioning.BasePartitioner,
-    ds_iter: Optional[Union[tf.data.Iterator, clu.data.DatasetIterator]] = None,
+    ds_iter: Optional[Union[tf.data.Iterator,
+                            clu.data.dataset_iterator.DatasetIterator]] = None,
     model_dir: Optional[str] = None):
   """Creates Orbax CheckpointManager."""
   if save_cfg is not None and restore_cfg is not None:
@@ -389,8 +390,9 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
                restore_cfg: Optional[RestoreCheckpointConfig],
                train_state_shape: train_state_lib.TrainState,
                partitioner: partitioning.BasePartitioner,
-               ds_iter: Optional[Union[tf.data.Iterator,
-                                       clu.data.DatasetIterator]] = None,
+               ds_iter: Optional[
+                   Union[tf.data.Iterator,
+                         clu.data.dataset_iterator.DatasetIterator]] = None,
                model_dir: Optional[str] = None,
                use_gda: Optional[bool] = True):
     if save_cfg is not None:
@@ -672,10 +674,10 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
       is_leaf=lambda x: isinstance(x, (list, tuple)))
 
 
-class GDADatasetIterator(clu.data.DatasetIterator):
+class GDADatasetIterator(clu.data.dataset_iterator.DatasetIterator):
   """A wrapper iterator that returns GDA when the next element is requested."""
 
-  def __init__(self, iterator: clu.data.DatasetIterator,
+  def __init__(self, iterator: clu.data.dataset_iterator.DatasetIterator,
                partitioner: partitioning.BasePartitioner,
                global_shapes: PyTreeDef):
     self._iterator = iterator
@@ -702,17 +704,20 @@ class GDADatasetIterator(clu.data.DatasetIterator):
   @property
   def iterator(self):
     return self._iterator.iterator if isinstance(
-        self._iterator, clu.data.TfDatasetIterator) else self._iterator
+        self._iterator,
+        clu.data.dataset_iterator.TfDatasetIterator) else self._iterator
 
 
-def prepare_train_iter(train_iter: Union[tf.data.Dataset,
-                                         clu.data.DatasetIterator], *,
-                       use_gda: bool, partitioner, checkpoint_cfg,
-                       data_layout) -> clu.data.PeekableDatasetIterator:
+def prepare_train_iter(
+    train_iter: Union[tf.data.Dataset,
+                      clu.data.dataset_iterator.DatasetIterator], *,
+    use_gda: bool, partitioner, checkpoint_cfg,
+    data_layout) -> clu.data.dataset_iterator.PeekableDatasetIterator:
   """Prepares the training input iterator."""
   if isinstance(train_iter, tf.data.Dataset):
-    train_iter = clu.data.TfDatasetIterator(train_iter, checkpoint=True)
-  elif not isinstance(train_iter, clu.data.DatasetIterator):
+    train_iter = clu.data.dataset_iterator.TfDatasetIterator(
+        train_iter, checkpoint=True)
+  elif not isinstance(train_iter, clu.data.dataset_iterator.DatasetIterator):
     raise ValueError(
         f'get_dataset_fn returned unsupported type {type(train_iter)}.')
 
@@ -721,7 +726,7 @@ def prepare_train_iter(train_iter: Union[tf.data.Dataset,
                               train_iter.element_spec)
   if use_gda:
     train_iter = GDADatasetIterator(train_iter, partitioner, input_shapes)
-  return clu.data.PeekableDatasetIterator(train_iter)
+  return clu.data.dataset_iterator.PeekableDatasetIterator(train_iter)
 
 
 def sync_global_devices(name: str) -> None:
@@ -1640,7 +1645,7 @@ class GetDatasetCallable(typing_extensions.Protocol):
       feature_converter_cls: Callable[..., seqio.FeatureConverter],
       num_epochs: Optional[int] = None,
       continue_from_last_checkpoint: bool = True
-  ) -> Union[clu.data.DatasetIterator, tf.data.Dataset]:
+  ) -> Union[clu.data.dataset_iterator.DatasetIterator, tf.data.Dataset]:
     ...
 
 

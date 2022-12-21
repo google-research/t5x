@@ -44,19 +44,19 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
   for more details.
   """
 
-  def __init__(
-      self,
-      train_state: train_state_lib.TrainState,
-      partitioner: partitioning.BasePartitioner,
-      checkpoints_dir: str,
-      dataset_iterator: Optional[Union[tf.data.Iterator,
-                                       clu.data.DatasetIterator]] = None,
-      *,
-      keep: Optional[int] = None,
-      save_dtype: jnp.dtype = np.float32,
-      restore_dtype: Optional[jnp.dtype] = None,
-      use_gda: Optional[bool] = False,
-      keep_dataset_checkpoints: Optional[int] = None):
+  def __init__(self,
+               train_state: train_state_lib.TrainState,
+               partitioner: partitioning.BasePartitioner,
+               checkpoints_dir: str,
+               dataset_iterator: Optional[
+                   Union[tf.data.Iterator,
+                         clu.data.dataset_iterator.DatasetIterator]] = None,
+               *,
+               keep: Optional[int] = None,
+               save_dtype: jnp.dtype = np.float32,
+               restore_dtype: Optional[jnp.dtype] = None,
+               use_gda: Optional[bool] = False,
+               keep_dataset_checkpoints: Optional[int] = None):
     """Checkpointer constructor.
 
     Args:
