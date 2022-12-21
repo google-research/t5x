@@ -30,7 +30,7 @@ import os
 import re
 from typing import Any, Callable, Iterator, Optional, Tuple, Union
 
-import clu.data.dataset_iterator
+import clu.data
 import jax
 from jax import random
 from jax.experimental import multihost_utils
@@ -338,8 +338,7 @@ class InteractiveModel(abc.ABC):
         train_dataset, task_feature_lengths=self._task_feature_lengths)
     train_dataset = train_dataset.padded_batch(
         self._batch_size, drop_remainder=True)
-    train_iter = clu.data.dataset_iterator.TfDatasetIterator(
-        train_dataset, checkpoint=True)
+    train_iter = clu.data.TfDatasetIterator(train_dataset, checkpoint=True)
 
     # --------------------------------------------------------------------------
     # Take 1 train step.

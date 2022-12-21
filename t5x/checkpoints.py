@@ -463,19 +463,19 @@ class Checkpointer(object):
       oldest ones will be automatically deleted to save space.
   """
 
-  def __init__(self,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               checkpoints_dir: str,
-               dataset_iterator: Optional[
-                   Union[tf.data.Iterator,
-                         clu.data.dataset_iterator.DatasetIterator]] = None,
-               *,
-               keep: Optional[int] = None,
-               save_dtype: jnp.dtype = np.float32,
-               restore_dtype: Optional[jnp.dtype] = None,
-               use_gda: Optional[bool] = True,
-               keep_dataset_checkpoints: Optional[int] = None):
+  def __init__(
+      self,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      checkpoints_dir: str,
+      dataset_iterator: Optional[Union[tf.data.Iterator,
+                                       clu.data.DatasetIterator]] = None,
+      *,
+      keep: Optional[int] = None,
+      save_dtype: jnp.dtype = np.float32,
+      restore_dtype: Optional[jnp.dtype] = None,
+      use_gda: Optional[bool] = True,
+      keep_dataset_checkpoints: Optional[int] = None):
     """Checkpointer constructor.
 
     Args:
@@ -514,8 +514,7 @@ class Checkpointer(object):
     self._original_dataset_iterator = dataset_iterator
     if isinstance(dataset_iterator, tf.data.Iterator):
       dataset_iterator = _TfDataCheckpointer(dataset_iterator)
-    elif isinstance(dataset_iterator,
-                    clu.data.dataset_iterator.TfDatasetIterator):
+    elif isinstance(dataset_iterator, clu.data.TfDatasetIterator):
       assert dataset_iterator._checkpoint
     self._dataset_iterator = dataset_iterator
     self._use_gda = use_gda
