@@ -649,7 +649,7 @@ def _feature_description_from_element_spec(element_spec):
               shape=v.shape[1:], dtype=v.dtype, allow_missing=True)
         else:
           raise ValueError(
-              f'Except for the first dimension, all dimentions of shape for '
+              f'Except for the first dimension, all dimensions of shape for '
               f'feature {k} need to be known but received {v.shape!s}.')
     else:
       raise ValueError(
@@ -1007,7 +1007,7 @@ def save(
       postprocessor.
     write_warmup_example_fn: a callable which writes a set of warmup examples to
       a pbtxt file for use validating a converted model.
-    mixture_or_task_name: Optioanl SeqIO task name used to get output features.
+    mixture_or_task_name: Optional SeqIO task name used to get output features.
       In order to set this output_features must be None.
     validation_examples: Optional list of validation examples. If proveded, they
       will be used to validate the latency and numeric accuracy of the TPU
@@ -1089,7 +1089,7 @@ def save(
       shape = ts.shape.as_list()
       if not all(shape[1:]):
         raise ValueError(
-            'Only supports polymorphic batch size at leading dimenstion, got '
+            'Only supports polymorphic batch size at leading dimension, got '
             f'{ts} in the input signature.')
       if shape and shape[0] is None:
         shape[0] = 1

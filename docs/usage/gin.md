@@ -6,7 +6,7 @@ based on dependency injection. While T5X does not employ gin in its core
 libraries, it is used to configure runs of the `train`, `eval`, and `infer`
 scripts. This usage is a bit different (and more limited) than how gin is
 typically applied, so this primer should be useful even for those who may be
-familiar with gin from other libaries (e.g., T5 or Mesh TensorFlow).
+familiar with gin from other libraries (e.g., T5 or Mesh TensorFlow).
 
 Nevertheless, you may still find it helpful to refer to the
 [gin documentation](https://github.com/google/gin-config/blob/main/README.md) for more background.

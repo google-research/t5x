@@ -58,10 +58,10 @@ def parse_gin_flags(gin_search_paths: Sequence[str],
   Args:
     gin_search_paths: paths that will be searched for gin files.
     gin_files: paths to gin config files to be parsed. Files will be parsed in
-      order with conflicting settings being overriden by later files. Paths may
+      order with conflicting settings being overridden by later files. Paths may
       be relative to paths in `gin_search_paths`.
     gin_bindings: individual gin bindings to be applied after the gin files are
-      parsed. Will be applied in order with conflicting settings being overriden
+      parsed. Will be applied in order with conflicting settings being overridden
       by later oens.
     skip_unknown: whether to ignore unknown bindings or raise an error (default
       behavior). Alternatively, a list of configurable names to skip if unknown.

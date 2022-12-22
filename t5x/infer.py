@@ -122,7 +122,7 @@ def create_task_from_tfexample_file(paths: Sequence[str],
       attributes like vocabulary, add_eos, etc. These attributes are used for
       preprocessing and featurizing the input text.
     task_id: Task name identifier. By default, it is set to a unique and
-      deterministic hash id. Overrideable via this argument.
+      deterministic hash id. Overridable via this argument.
 
   Returns:
     Name of the newly-registered Task. This Task has a split named 'infer' that

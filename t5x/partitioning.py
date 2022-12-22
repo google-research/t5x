@@ -861,7 +861,7 @@ class PjitPartitioner(BasePjitPartitioner):
       num_partitions: an integer that specifies the size of the model parallel
         submesh to be automatically selected for the current topology. See
         `model_parallel_submesh` for details on how this submesh is used.
-        Mutually exlusive with `model_parallel_submesh`.
+        Mutually exclusive with `model_parallel_submesh`.
       model_parallel_submesh: is a 4-tuple that specifies the `(x, y, z, c)`
         submesh model-parallel device tile, an axis of accelerator parallelism
         orthogonal to data parallelism. Array axes in a model's parameters or

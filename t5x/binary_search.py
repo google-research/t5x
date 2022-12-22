@@ -194,7 +194,7 @@ def topk_mask(x: jnp.ndarray, k: int, replace_val: jnp.ndarray) -> jnp.ndarray:
     # we transpose the reduce_axis to be the second-last dimension, to avoid
     # this inefficiency.
     #
-    # Normaly the XLA compiler would automatically perform this optimization,
+    # Normally the XLA compiler would automatically perform this optimization,
     # but it doesn't yet see through loops to do so. So we do it ourselves.
     x_for_loop = jnp.swapaxes(x_for_loop, -1, -2)
     reduce_axis = x.ndim - 2

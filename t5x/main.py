@@ -92,7 +92,7 @@ _TFDS_DATA_DIR = flags.DEFINE_string(
 
 _DRY_RUN = flags.DEFINE_bool(
     'dry_run', False,
-    'If set, does not start the function but stil loads and logs the config.')
+    'If set, does not start the function but still loads and logs the config.')
 
 
 FLAGS = flags.FLAGS
@@ -150,7 +150,7 @@ def main(argv: Sequence[str]):
 
 
   # Register function explicitly under __main__ module, to maintain backward
-  # compatability of existing '__main__' module references.
+  # compatibility of existing '__main__' module references.
   gin.register(entry_func, '__main__')
   if _GIN_SEARCH_PATHS.value != ['.']:
     logging.warning(

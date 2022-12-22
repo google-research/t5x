@@ -434,7 +434,7 @@ class Checkpointer(object):
   to their own TensorStore, with each host writing their portion to the same
   TensorStore in parallel. If a partition is written on multiple hosts, the
   partition is further sharded across these replicas to avoid additional
-  overhead. In place of the paramater, a `tensorstore.Spec` is written to the
+  overhead. In place of the parameter, a `tensorstore.Spec` is written to the
   msgpack (by host 0) as a reference to be used during restore. Note that the
   path of the array being written is relative. This makes the checkpoints
   portable. In other words, even if the checkpoint files are moved to a new
@@ -1653,7 +1653,7 @@ def fake_param_info(maybe_tspec: Any) -> Optional[_ParameterInfo]:
   """Create _ParameterInfo that results in a full read."""
   # tspec is only None for `param_states` where the associated variable
   # is not updated by any optimizers. By setting the parameter info for
-  # this to None, we can later short circut processing these subtrees
+  # this to None, we can later short circuit processing these subtrees
   # during loading.
   if maybe_tspec is None:
     return None
