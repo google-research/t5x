@@ -288,8 +288,9 @@ def evaluate(
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
     utils.sync_global_devices(f'step_{host_step}:complete')
-    with gfile.GFile(eval_ckpt_path, 'a') as f:
-      f.write(f'{ckpt_path}\n')
+    if jax.process_index() == 0:
+      with gfile.GFile(eval_ckpt_path, 'a') as f:
+        f.write(f'{ckpt_path}\n')
 
   logging.info('Finished.')
 
