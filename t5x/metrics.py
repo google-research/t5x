@@ -60,6 +60,10 @@ class Sum(clu_metrics.Metric):
   total: Scalar
 
   @classmethod
+  def empty(cls):
+    return cls(total=0)
+
+  @classmethod
   def from_model_output(cls, values: Scalar, **_) -> clu_metrics.Metric:
     """Initializes a Sum Metric from array (or singular) values.
 
@@ -92,6 +96,10 @@ class Step(clu_metrics.Metric):
   """
   steps: Optional[int] = 1
 
+  @classmethod
+  def empty(cls):
+    return cls(steps=0)
+
   def replace_steps(self, steps) -> "Step":
     return self.replace(steps=steps)
 
@@ -110,6 +118,10 @@ class AveragePerStep(Step):
   See also documentation of `Step`.
   """
   total: Optional[Scalar] = None
+
+  @classmethod
+  def empty(cls):
+    return cls(total=0, steps=0)
 
   @classmethod
   def from_model_output(cls,
@@ -155,6 +167,10 @@ class Time(clu_metrics.Metric):
   """
   duration: Optional[Scalar] = None
 
+  @classmethod
+  def empty(cls):
+    return cls(duration=None)
+
   def merge(self, other: "Time") -> "Time":
     return self
 
@@ -195,6 +211,10 @@ class TimeRate(Time):
   numerator: Optional[jnp.ndarray] = None
 
   @classmethod
+  def empty(cls):
+    return cls(numerator=0, duration=None)
+
+  @classmethod
   def from_model_output(cls, numerator: float, **_) -> clu_metrics.Metric:
     """Initializes a TimeRate Metric from a float value (the numerator).
 
@@ -231,6 +251,10 @@ class StepsPerTime(Step, Time):
 
   See also documentation of `Step`.
   """
+
+  @classmethod
+  def empty(cls):
+    return cls(steps=0, duration=None)
 
   @classmethod
   def from_model_output(cls,
