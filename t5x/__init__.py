@@ -18,6 +18,7 @@ import t5x.adafactor
 import t5x.checkpoints
 import t5x.decoding
 import t5x.gin_utils
+import t5x.infer
 import t5x.losses
 import t5x.models
 import t5x.partitioning
