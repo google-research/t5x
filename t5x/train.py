@@ -49,9 +49,6 @@ from t5x import utils
 import tensorflow as tf
 
 
-# OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
-tf.config.experimental.set_visible_devices([], 'GPU')
-
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -704,6 +701,9 @@ if __name__ == '__main__':
   # pylint: enable=g-import-not-at-top
 
   FLAGS = flags.FLAGS
+
+  # OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
+  tf.config.experimental.set_visible_devices([], 'GPU')
 
   jax.config.parse_flags_with_absl()
 
