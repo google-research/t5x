@@ -349,6 +349,38 @@ def _maybe_update_ts_from_gcs_to_file(ckpt_contents):
       _gcs_to_file_driver, ckpt_contents, is_leaf=_is_leaf)
 
 
+def _get_spec(directory: str, arr: Any, name: str,
+              metadata: Dict[str, Any]) -> ts.Spec:
+  """Get ts.Spec from array and name information."""
+
+  if directory.startswith('gs://'):
+    spec = {
+        'driver': 'zarr',
+        'dtype': jnp.dtype(arr.dtype).name,
+        'kvstore': {
+            'driver': 'gcs',
+            # We always write with a dummy bucket and dynamically update the
+            # bucket information. This makes the checkpoint files portable
+            # and not bind to the bucket that it was originally written to.
+            'bucket': 't5x-dummy-bucket',
+        },
+        'path': name.replace('/', '.'),
+        'metadata': metadata,
+    }
+  else:
+    spec = {
+        'driver': 'zarr',
+        'dtype': jnp.dtype(arr.dtype).name,
+        'kvstore': {
+            'driver': 'file',
+            'path': name.replace('/', '.')
+        },
+        'metadata': metadata,
+    }
+
+  return ts.Spec(spec)
+
+
 class _BytesConditionVariable(object):
   """Wraps a condition variable to control concurrency based on bytes."""
 
@@ -609,35 +641,12 @@ class Checkpointer(object):
             'chunks': np.array(chunk_shape),
         }
 
-      if self.checkpoints_dir.startswith('gs://'):
-        spec = {
-            'driver': 'zarr',
-            'dtype': jnp.dtype(arr.dtype).name,
-            'kvstore': {
-                'driver': 'gcs',
-                # We always write with a dummy bucket and dynamically update the
-                # bucket information. This makes the checkpoint files portable
-                # and not bind to the bucket that it was originally written to.
-                'bucket': 't5x-dummy-bucket',
-            },
-            'path': name.replace('/', '.'),
-            'metadata': metadata,
-        }
-      else:
-        spec = {
-            'driver': 'zarr',
-            'dtype': jnp.dtype(arr.dtype).name,
-            'kvstore': {
-                'driver': 'file',
-                'path': name.replace('/', '.')
-            },
-            'metadata': metadata,
-        }
+      spec = _get_spec(self.checkpoints_dir, arr, name, metadata)
 
       return _ParameterInfo(
           name,
           shape=arr.shape,
-          ts_spec=ts.Spec(spec),
+          ts_spec=spec,
           local_chunk_info=local_chunk_info,
           axes=axes)
 
@@ -1838,11 +1847,9 @@ def _transforms_from_state_transformation_fns(
     assignments = fn.keywords['assignment_map']  # pytype: disable=attribute-error
     for dest, origin in assignments:
       if origin is None:
-        result[_OPTIMIZER_KEY + '/' +
-               dest] = orbax.checkpoint.Transform(use_fallback=True)
+        result[dest] = orbax.checkpoint.Transform(use_fallback=True)
       else:
-        result[_OPTIMIZER_KEY + '/' + dest] = orbax.checkpoint.Transform(
-            original_key=_OPTIMIZER_KEY + '/' + origin)
+        result[dest] = orbax.checkpoint.Transform(original_key=origin)
   return result
 
 
@@ -1901,10 +1908,59 @@ class DatasetCheckpointHandler(orbax.checkpoint.CheckpointHandler):
 class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
   """Implementation of PyTreeCheckpointHandler that accounts for legacy checkpoints."""
 
+  async def _write_aggregate_file(self, directory: epath.Path, item: PyTreeDef,
+                                  param_infos: PyTreeDef, save_args: PyTreeDef):
+    """Writes msgpack with ts.Spec leaves.
+
+    Item written to the msgpack file must contain ts.Spec as placeholder for
+    arrays written to Tensorstore, which overrides base Orbax behavior.
+
+    Args:
+      directory: location of the checkpoint.
+      item: PyTree to serialize.
+      param_infos: PyTree of ParamInfo.
+      save_args: PyTree of SaveArgs.
+    """
+
+    def _get_leaf_for_aggregation(info, arg, arr):
+      if arg is None:
+        arg = orbax.checkpoint.SaveArgs()
+      # Param was aggregated, return value after maybe cast.
+      if arg.aggregate:
+        if arg.dtype:
+          arr = _cast(arr, arg.dtype)
+        return arr
+      elif isinstance(
+          arr, gda_lib.GlobalDeviceArray) or (isinstance(arr, jax.Array) and
+                                              jax.config.jax_array):
+        metadata = gda_serialization._get_metadata(arr)  # pylint: disable=protected-access
+        del metadata['dtype']
+      else:
+        metadata = {
+            'compressor': {
+                'id': 'gzip'
+            },
+            'shape': arr.shape,
+            'chunks': arr.shape,
+        }
+      return _get_spec(os.fspath(directory), arr, info.name, metadata)
+
+    ser_item = jax.tree_util.tree_map(_get_leaf_for_aggregation, param_infos,
+                                      save_args, item)
+
+    ser_item = {
+        _VERSION_KEY: VERSION,
+        _OPTIMIZER_KEY: ser_item,
+    }
+
+    await self._aggregate_handler.serialize(
+        directory / self._aggregate_filename, ser_item)
+
   def structure(self, directory: epath.Path) -> PyTreeDef:
     """See superclass documentation.
 
-    Modifies ts.Spec relative paths to absolute paths.
+    Leaves stored in T5X checkpoints as ts.Spec must be modified to an
+    Orbax-interpretable placeholder containing the parameter name.
 
     Args:
       directory: location of the checkpoint.
@@ -1913,6 +1969,7 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
       A structure for the checkpoint.
     """
     result = super().structure(directory)
+    result = _get_optimizer_state_dict(result, {}, [])
 
     def tensorstore_spec_to_name(leaf):
       if isinstance(leaf, ts.Spec):
@@ -2098,14 +2155,6 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     state_dict = jax.tree_util.tree_map(_gda_to_local_data, state_dict,
                                         save_args)
 
-    state_dict = {
-        _VERSION_KEY: VERSION,
-        _OPTIMIZER_KEY: state_dict,
-    }
-    save_args = {
-        _VERSION_KEY: orbax.checkpoint.SaveArgs(aggregate=True),
-        _OPTIMIZER_KEY: save_args,
-    }
     items = {_STATE_KEY: state_dict}
     if self._should_write_dataset_ckpt:
       items[_DATASET_KEY] = self._dataset_iterator
@@ -2174,8 +2223,8 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       logging.info('Using fallback_state')
       # Merge state with fallback state, replacing values present in both with
       # fallback values.
-      state_dict = state_utils.merge_state(
-          state_dict, fallback_state, overwrite=True)
+      state_dict = dict(
+          state_utils.merge_state(state_dict, fallback_state, overwrite=True))
       # Merge states to match shape, but keep original param_infos values.
       param_infos = state_utils.merge_state(param_infos, fallback_state)
 
@@ -2198,17 +2247,9 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
           lazy=lazy_parameters)
 
     restore_args = jax.tree_util.tree_map(_restore_args, param_infos)
-    state_dict = {
-        _VERSION_KEY: VERSION,
-        _OPTIMIZER_KEY: dict(state_dict),
-    }
     items = {_STATE_KEY: state_dict}
     if self._should_write_dataset_ckpt:
       items[_DATASET_KEY] = self._dataset_iterator
-    restore_args = {
-        _VERSION_KEY: orbax.checkpoint.RestoreArgs(),
-        _OPTIMIZER_KEY: restore_args,
-    }
     restore_kwargs = {
         _STATE_KEY: {
             'restore_args': restore_args,
@@ -2221,9 +2262,6 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     state_dict = restored[_STATE_KEY]
     if self._should_write_dataset_ckpt:
       self._dataset_iterator = restored[_DATASET_KEY]
-    state_dict = _get_optimizer_state_dict(state_dict,
-                                           self._train_state_shape.state_dict(),
-                                           [])
 
     train_state = self._train_state_shape.restore_state(state_dict)
 
@@ -2232,18 +2270,6 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
                                           end_time - start_time)
 
     return train_state
-
-  def structure(self) -> PyTreeDef:
-    """Retrieves structure from an existing checkpoint."""
-    step = self.latest_step()
-    if step is not None:
-      ckpt_path = self._get_save_directory(step, self.directory)
-    else:
-      raise ValueError(
-          'No existing checkpoint; structure cannot be determined.')
-    # Structure only valid for train state.
-    structure = self._checkpointers[_STATE_KEY].structure(ckpt_path)
-    return {_STATE_KEY: structure}
 
   def restore_from_tf_checkpoint(
       self,
