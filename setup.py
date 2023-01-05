@@ -27,7 +27,7 @@ from version import __version__  # pylint: disable=g-import-not-at-top
 with open('README.md') as fp:
   _LONG_DESCRIPTION = fp.read()
 
-_jax_version = '0.2.27'
+_jax_version = '0.4.0'
 _jaxlib_version = '0.1.76'
 
 setuptools.setup(
