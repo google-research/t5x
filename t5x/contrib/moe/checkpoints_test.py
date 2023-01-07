@@ -16,12 +16,14 @@
 
 import functools
 import itertools
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Tuple
 
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
+from jax import pxla
 from jax._src.lib import xla_bridge
+from jax.experimental import global_device_array as gda_lib
 import jax.numpy as jnp
 import numpy as np
 from t5x import optimizers
@@ -33,7 +35,6 @@ from t5x.contrib.moe import checkpoints
 from t5x.contrib.moe import partitioning as moe_partitioning
 import tensorflow as tf
 
-
 # Parse absl flags test_srcdir and test_tmpdir.
 jax.config.parse_flags_with_absl()
 
@@ -43,14 +44,21 @@ PartitionSpec = base_partitioning.PartitionSpec
 FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
 
 
-def make_train_state(
+def create_sharded_array(arr, global_mesh, mesh_axes) -> jax.Array:
+  """Converts numpy array into sharded JAX Array."""
+  return jax.make_array_from_callback(
+      arr.shape, jax.sharding.MeshPspecSharding(global_mesh, mesh_axes),
+      lambda idx: arr[idx])
+
+
+def make_numpy_train_state(
     *,
     step: Optional[int],
     params: Mapping[str, Any],
     param_states: Mapping[str, Any],
     flax_optimizer_def: optimizers.OptimizerDefType = optimizers.sgd(0.1)
 ) -> FlaxOptimTrainState:
-  """Helper to construct a train state for testing."""
+  """Helper to construct a NumPy train state for testing."""
   optimizer = optimizers.Optimizer(
       flax_optimizer_def,
       state=optimizers.OptimizerState(step=step, param_states=param_states),
@@ -58,15 +66,43 @@ def make_train_state(
   return FlaxOptimTrainState(optimizer)
 
 
+def make_sharded_train_state(
+    *, np_train_state: FlaxOptimTrainState, global_mesh: Optional[pxla.Mesh],
+    mesh_axes: Optional[gda_lib.MeshAxes]) -> FlaxOptimTrainState:
+  """Helper to construct a sharded train state from NumPy arrays."""
+  return jax.tree_map(
+      functools.partial(
+          create_sharded_array, global_mesh=global_mesh, mesh_axes=mesh_axes),
+      np_train_state,
+      is_leaf=lambda x: isinstance(x, np.ndarray))
+
+
+def host_count_to_layout(host_count: int) -> Tuple[int, int, int, int]:
+  """Determines the host layout from the host count."""
+  return {
+      1: (2, 2, 1, 2),
+      2: (4, 2, 1, 2),
+      4: (4, 4, 1, 2),
+      8: (4, 8, 1, 2),
+      16: (8, 8, 1, 2),
+      32: (8, 16, 1, 2)
+  }[host_count]
+
+
 class CheckpointsTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
+
+    # Sparse upcycling uses JAX Arrays.
+    jax.config.update('jax_array', True)
+
     self.num_experts = 32
 
     # The dense model is the checkpointed model that we seek to restore as a
-    # sparse model.
-    self.dense_model_train_state = make_train_state(
+    # sparse model. The dense train state does NOT need to be sharded because
+    # it is only used for saving and validation.
+    self.dense_model_train_state = make_numpy_train_state(
         step=np.int32(42),
         params={
             'mlp': {
@@ -84,7 +120,7 @@ class CheckpointsTest(parameterized.TestCase):
                 'kernel': 3 * np.arange(64, dtype=np.uint8),
             }
         })
-    self.dense_model_mesh_axes = make_train_state(
+    self.dense_model_mesh_axes = make_numpy_train_state(
         step=None,
         params={
             'mlp': {
@@ -107,7 +143,8 @@ class CheckpointsTest(parameterized.TestCase):
     # differences relative to the dense model:
     # (1) 'mlp' --> 'expert'
     # (2) 'expert' kernel has self.num_experts copies of the 'mlp' parameters.
-    self.sparse_model_train_state = make_train_state(
+    # We will need to shard this train state into a JAX Array.
+    self.sparse_model_train_state = make_numpy_train_state(
         step=np.int32(42),
         params={
             'expert': {
@@ -138,7 +175,7 @@ class CheckpointsTest(parameterized.TestCase):
         })
     # Axes are the same as the dense model axes, except that we have an
     # additional 'expert' axis for the expert kernels.
-    self.sparse_model_mesh_axes = make_train_state(
+    self.sparse_model_mesh_axes = make_numpy_train_state(
         step=None,
         params={
             'expert': {
@@ -174,15 +211,7 @@ class CheckpointsTest(parameterized.TestCase):
                       process_index_fn,
                       mesh_axes,
                       params_on_devices: bool = True):
-    host_count_to_layout = {
-        1: (2, 2, 1, 2),
-        2: (4, 2, 1, 2),
-        4: (4, 4, 1, 2),
-        8: (4, 8, 1, 2),
-        16: (8, 8, 1, 2),
-        32: (8, 16, 1, 2)
-    }
-    devices = test_utils.make_devices(*host_count_to_layout[host_count])
+    devices = test_utils.make_devices(*host_count_to_layout(host_count))
     devices_fn.return_value = devices
     local_devices = [d for d in devices if d.process_index == 0]
     local_devices_fn.return_value = local_devices
@@ -259,8 +288,9 @@ class CheckpointsTest(parameterized.TestCase):
     checkpointer = checkpoints.UpcycleCheckpointer(
         train_state,
         partitioner,
-        self.tmp_dir,
-        ds_iter,
+        checkpoints_dir=self.tmp_dir,
+        num_experts=self.num_experts,
+        dataset_iterator=ds_iter,
         save_dtype=save_dtype,
         restore_dtype=restore_dtype)
     return fn(checkpointer)
@@ -273,9 +303,14 @@ class CheckpointsTest(parameterized.TestCase):
                        expected_restore_dtype=np.float32,
                        lazy_parameters=False):
     """Verifies that UpcycleCheckpointer correctly sparsifies checkpoint."""
+    global_mesh = test_utils.create_global_mesh(
+        host_count_to_layout(host_count), ('data', 'expert', 'model'))
+
     # We want to restore into the sparse model train state.
-    params = self.sparse_model_train_state.params
-    param_states = self.sparse_model_train_state.param_states
+    sparse_model_train_state = make_sharded_train_state(
+        np_train_state=self.sparse_model_train_state,
+        global_mesh=global_mesh,
+        mesh_axes=self.sparse_model_mesh_axes)
 
     # We map params of saved (dense) model to restored (sparse) model.
     assignment_map = ((r'(.*)expert(.*)', r'\1mlp\2'), (r'(.*)attention(.*)',
@@ -291,19 +326,11 @@ class CheckpointsTest(parameterized.TestCase):
           num_partitions,
           params_on_devices=not lazy_parameters,
           mesh_axes=self.sparse_model_mesh_axes)
-      ds_shard_id = partitioner.get_data_layout().shard_id
-
-      mlp_slice = partitioner.get_local_chunk_info(
-          params['expert']['kernel'].shape, ('expert', None, 'model')).slice
-      attn_slice = partitioner.get_local_chunk_info(
-          params['attention']['kernel'].shape, (None, 'model')).slice
-      mlp_state_slice = partitioner.get_local_chunk_info(
-          param_states['expert']['kernel'].shape, ('expert', None)).slice
 
       ds_iter = iter(self.ds)
 
       actual_train_state = self.call_host_checkpointer(
-          self.sparse_model_train_state,
+          sparse_model_train_state,
           i,
           host_count,
           partitioner,
@@ -378,15 +405,31 @@ class CheckpointsTest(parameterized.TestCase):
               jax.tree_leaves(
                   jax.tree_map(lambda x: x.dtype == expected_restore_dtype,
                                actual_train_state.params))))
+
+      expected_params = sparse_model_train_state.params
+      expected_param_states = sparse_model_train_state.param_states
+
+      mlp_slice = partitioner.get_local_chunk_info(
+          expected_params['expert']['kernel'].shape,
+          ('expert', None, 'model')).slice
       np.testing.assert_equal(actual_train_state.params['expert']['kernel'],
-                              params['expert']['kernel'][mlp_slice])
-      np.testing.assert_equal(actual_train_state.params['attention']['kernel'],
-                              params['attention']['kernel'][attn_slice])
+                              expected_params['expert']['kernel'][mlp_slice])
+
+      attn_slice = partitioner.get_local_chunk_info(
+          expected_params['attention']['kernel'].shape, (None, 'model')).slice
+      np.testing.assert_equal(
+          actual_train_state.params['attention']['kernel'],
+          expected_params['attention']['kernel'][attn_slice])
+
+      mlp_state_slice = partitioner.get_local_chunk_info(
+          expected_param_states['expert']['kernel'].shape,
+          ('expert', None)).slice
       np.testing.assert_equal(
           actual_train_state.param_states['expert']['kernel'],
-          param_states['expert']['kernel'][mlp_state_slice])
+          expected_param_states['expert']['kernel'][mlp_state_slice])
 
       if checkpoint_dataset:
+        ds_shard_id = partitioner.get_data_layout().shard_id
         # The next value from the restored iterator should equal the replica
         # set id.
         self.assertEqual(next(ds_iter).numpy(), ds_shard_id)
@@ -433,7 +476,7 @@ class CheckpointsTest(parameterized.TestCase):
         for _ in range(ds_shard_id):
           next(ds_iter)
 
-        train_state = make_train_state(
+        train_state = make_numpy_train_state(
             step=step,
             # We save the dense model params.
             params={

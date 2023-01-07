@@ -3,17 +3,12 @@
 # You must also include bindings for MODEL and NUM_EXPERTS (typically set by the
 # model gin config).
 #
-# Required to be set:
-#
-# - NUM_MODEL_PARTITIONS or MODEL_PARALLEL_SUBMESH (only specify one)
-# - MIXTURE_OR_TASK_NAME
-# - TASK_FEATURE_LENGTHS
-# - TRAIN_STEPS
-# - INITIAL_CHECKPOINT_PATH
-# - MODEL_DIR
+# See t5x/contrib/moe/configs/runs/continue_pretrain.gin for other required
+# bindings.
 
 from __gin__ import dynamic_registration
 
+import __main__ as train_script
 from t5x import utils
 from t5x.contrib.moe import checkpoints
 
@@ -27,3 +22,8 @@ utils.RestoreCheckpointConfig:
     (r'.*\/router\/.*', None),  # Initialize router weights from scratch
     (r'state\/param_states.*', None),  # Initialize optimizer states from scratch
   )
+  
+checkpoints.UpcycleCheckpointer.num_experts = %NUM_EXPERTS
+
+# Upcycle using JAX arrays.
+train_script.train.use_jax_array = True
