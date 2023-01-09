@@ -571,9 +571,16 @@ def train(
 
   def _as_gda(spec):
     dummy = np.ones((data_layout.batch_size, *spec.shape[1:]), spec.dtype)
-    return GlobalDeviceArray.from_callback(dummy.shape, partitioner.mesh,
-                                           partitioner.data_partition_spec,
-                                           lambda idx: dummy[idx])
+    if jax.config.jax_array:
+      return jax.make_array_from_callback(
+          dummy.shape,
+          jax.sharding.NamedSharding(partitioner.mesh,
+                                     partitioner.data_partition_spec),
+          lambda idx: dummy[idx])
+    else:
+      return GlobalDeviceArray.from_callback(dummy.shape, partitioner.mesh,
+                                             partitioner.data_partition_spec,
+                                             lambda idx: dummy[idx])
 
   # Construct dummy batch for compiling the model.
   if use_gda:
