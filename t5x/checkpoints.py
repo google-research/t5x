@@ -381,6 +381,41 @@ def _get_spec(directory: str, arr: Any, name: str,
   return ts.Spec(spec)
 
 
+def _maybe_make_sharded_array(arr: Any,
+                              mesh: Any,
+                              axes: Optional[gda_lib.MeshAxes] = None,
+                              restore_dtype: Optional[jnp.dtype] = None,
+                              use_gda: bool = True) -> Any:
+  """Makes a sharded array from non-sharded array if necessary.
+
+  Args:
+    arr: array to maybe shard.
+    mesh: Mesh.
+    axes: mesh_axes.
+    restore_dtype: type to restore as.
+    use_gda: Whether GDA is enabled.
+
+  Returns:
+    Sharded or unsharded array.
+  """
+  is_sharded_jax_array = isinstance(arr,
+                                    jax.Array) and not arr.is_fully_addressable
+  if use_gda and isinstance(
+      arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
+    if axes is None:
+      axes = PartitionSpec(None,)
+    if restore_dtype is not None:
+      arr = arr.astype(restore_dtype)
+    if jax.config.jax_array:
+      arr = jax.make_array_from_callback(arr.shape,
+                                         jax.sharding.NamedSharding(mesh, axes),
+                                         lambda idx: arr[idx])
+    else:
+      arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
+                                                    lambda idx: arr[idx])
+  return arr
+
+
 class _BytesConditionVariable(object):
   """Wraps a condition variable to control concurrency based on bytes."""
 
@@ -1136,22 +1171,12 @@ class Checkpointer(object):
           restore_dtype=restore_dtype,
           mesh=mesh,
           axes=axes)
-      is_sharded_jax_array = isinstance(
-          arr, jax.Array) and not arr.is_fully_addressable
-      if self._use_gda and isinstance(
-          arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
-        if axes is None:
-          axes = PartitionSpec(None,)
-        if restore_dtype is not None:
-          arr = arr.astype(restore_dtype)
-        if jax.config.jax_array:
-          arr = jax.make_array_from_callback(
-              arr.shape, jax.sharding.NamedSharding(mesh, axes),
-              lambda idx: arr[idx])
-        else:
-          arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
-                                                        lambda idx: arr[idx])
-      return arr
+      return _maybe_make_sharded_array(
+          arr,
+          mesh,
+          axes=axes,
+          restore_dtype=restore_dtype,
+          use_gda=self._use_gda)
 
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
@@ -2262,6 +2287,18 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     state_dict = restored[_STATE_KEY]
     if self._should_write_dataset_ckpt:
       self._dataset_iterator = restored[_DATASET_KEY]
+
+    # After restoration, some values may still be non-sharded arrays from
+    # fallback state.
+    def _maybe_make_sharded_array_helper(arr, info):
+      return _maybe_make_sharded_array(
+          arr,
+          self._partitioner.mesh,
+          axes=info.mesh_axes,
+          restore_dtype=self._restore_dtype)
+
+    state_dict = jax.tree_util.tree_map(_maybe_make_sharded_array_helper,
+                                        state_dict, param_infos)
 
     train_state = self._train_state_shape.restore_state(state_dict)
 
