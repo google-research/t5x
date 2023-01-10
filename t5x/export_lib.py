@@ -13,11 +13,13 @@
 # limitations under the License.
 
 """Functions for exporting a T5X model."""
+import dataclasses
 import functools
-
 import inspect
+import itertools
 import os
 import os.path
+import typing
 from typing import Any, Callable, List, Mapping, Optional, Sequence, Tuple, Type, Union
 
 from absl import logging
@@ -29,6 +31,7 @@ from jax.experimental import jax2tf  # type: ignore[import]
 from jax.experimental.global_device_array import GlobalDeviceArray as GDA
 import jax.numpy as jnp
 import ml_collections
+import numpy as np
 import seqio
 from t5x import checkpoints
 from t5x import models
@@ -41,8 +44,9 @@ from tensorflow_serving.apis import predict_pb2
 from tensorflow_serving.apis import prediction_log_pb2
 
 
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTreeDef = jax.tree_util.PyTreeDef
 ConfigDict = ml_collections.ConfigDict
+DecoderParamsSpec = Sequence[Tuple[str, tf.DType, Sequence[int]]]
 PreprocessorFn = Callable[..., Mapping[str, tf.Tensor]]
 WarmupExamples = List[Union[Union[str, bytes], List[int]]]
 PostprocessorFn = Callable[[Tuple[Any, Any]], Union[Tuple[Any, Any],
@@ -66,30 +70,38 @@ CreatePreprocessorFnOld = Callable[
 CreatePreprocessorFn = Union[CreatePreprocessorFnOld, CreatePreprocessorFnNew]
 
 
+@dataclasses.dataclass
+class CustomInferenceMode:
+  # The name of the model function which can be fetched from
+  # getattr(model, model_fn_name).
+  model_fn_name: str
+  # Fetch useful output from the raw output of the model function.
+  fetch_output: Optional[Callable[[PyTreeDef], PyTreeDef]] = None
+
+
 class CreatePostprocessorFn(typing_extensions.Protocol):
 
   def __call__(
       self,
       vocab: seqio.Vocabulary,
-      inference_mode: str,
+      inference_mode: Union[str, CustomInferenceMode],
       decode_outputs: bool = True,
       output_feature_names: Optional[List[str]] = None) -> PostprocessorFn:
     ...
 
 
-def maybe_convert_gda_to_array(v):
-  """Convert `v` to a np.ndarray if it is a GlobalDeviceArray.
+def convert_buffer_to_ndarray(v):
+  """Convert `v` to a np.ndarray.
 
   Args:
     v: the value to be converted. Can be sharded or fully replicated.
 
   Returns:
-    A np.ndarray that represents the full array value of `v` if `v` is a
-      GlobalDeviceArray. Otherwise returns `v`.
+    A np.ndarray that represents the full array value of `v`.
   """
   if isinstance(v, GDA):
     return jax.experimental.multihost_utils.process_allgather(v)
-  return v
+  return np.asarray(v)
 
 
 class ExportableModule(tf.Module):
@@ -105,6 +117,8 @@ class ExportableModule(tf.Module):
       num_batch_threads: int = 8,
       max_enqueued_batches: int = 64,
       batch_timeout_micros: int = 1000_000,
+      max_batch_size: Optional[int] = None,
+      allowed_batch_sizes: Optional[Sequence[int]] = None,
       jit_compile: bool = True,
       use_batch_function: bool = False,
       use_gpu: bool = False,
@@ -115,7 +129,7 @@ class ExportableModule(tf.Module):
       flat_param_vars = {}
       for k, v in flax.traverse_util.flatten_dict(params).items():
         flat_param_vars[k] = tf.Variable(
-            maybe_convert_gda_to_array(v), trainable=False, name='__'.join(k))
+            convert_buffer_to_ndarray(v), trainable=False, name='__'.join(k))
       return flat_param_vars
 
     if use_gpu:
@@ -124,8 +138,9 @@ class ExportableModule(tf.Module):
         flat_param_vars = flat_params(params)
     else:
       flat_param_vars = flat_params(params)
-    self._variables = flat_param_vars.values()
-    self._param_vars = flax.traverse_util.unflatten_dict(flat_param_vars)
+    self._variables = list(flat_param_vars.values())
+    param_vars = frozen_dict.freeze(
+        flax.traverse_util.unflatten_dict(flat_param_vars))
     self._preproc_tf_fn = preproc_tf_fn
     self._postproc_tf_fn = postproc_tf_fn
 
@@ -140,29 +155,41 @@ class ExportableModule(tf.Module):
     # Note: jit_compile=True also instructs the TPU inference converter v2 to
     # wrap this function with `TPUPartitionedCall`.
     self._model_tf_fn = tf.function(
-        lambda x: model_tf_fn(self._param_vars, x),
+        lambda x: model_tf_fn(param_vars, x),
         autograph=False,
         jit_compile=jit_compile)
     self._batch_size = batch_size
     self._num_batch_threads = num_batch_threads
     self._max_enqueued_batches = max_enqueued_batches
     self._batch_timeout_micros = batch_timeout_micros
+    self._allowed_batch_sizes = allowed_batch_sizes
     self._use_batch_function = use_batch_function
+    self._max_batch_size = max_batch_size
 
   @functools.partial(tf.function, autograph=False, jit_compile=False)
   def __call__(self, *input_batches) -> Tuple[Any, Any]:
-    if self._use_batch_function:
-      if self._batch_size is None:
-        raise ValueError('Need a batch_size when using batch_function.')
-      batch_wrapper = tf.nondifferentiable_batch_function(
-          num_batch_threads=self._num_batch_threads,
-          max_enqueued_batches=self._max_enqueued_batches,
-          max_batch_size=self._batch_size,
-          batch_timeout_micros=self._batch_timeout_micros,
-          allowed_batch_sizes=[self._batch_size])
-      return batch_wrapper(self._call)(*input_batches)
-    else:
+    if not self._use_batch_function:
       return self._call(*input_batches)
+
+    if self._allowed_batch_sizes:
+      if self._batch_size is not None:
+        raise ValueError('allowed_batch_size requires polymorphic batch size')
+      max_batch_size = self._max_batch_size or max(self._allowed_batch_sizes)
+      allowed_batch_sizes = self._allowed_batch_sizes
+    elif self._batch_size is not None:
+      max_batch_size = self._max_batch_size or self._batch_size
+      allowed_batch_sizes = [self._batch_size]
+    else:
+      raise ValueError(
+          'Need to set either batch_size or allowed_batch_size when '
+          'using batch_function.')
+    batch_wrapper = tf.nondifferentiable_batch_function(
+        num_batch_threads=self._num_batch_threads,
+        max_enqueued_batches=self._max_enqueued_batches,
+        max_batch_size=max_batch_size,
+        batch_timeout_micros=self._batch_timeout_micros,
+        allowed_batch_sizes=allowed_batch_sizes)
+    return batch_wrapper(self._call)(*input_batches)
 
   def _call(self, *input_batches):
     features = self._preproc_tf_fn(*input_batches)
@@ -170,13 +197,12 @@ class ExportableModule(tf.Module):
     return self._postproc_tf_fn(model_output)
 
   @property
-  def variables(self):
-    """OVERRIDE. Sequence of variables owned by this module."""
-    return self._variables
-
-  @property
   def tpu_func(self):
     return self._model_tf_fn
+
+  @property
+  def export_batch_sizes(self):
+    return self._allowed_batch_sizes or [self._batch_size]
 
 
 def get_train_state_initializer(
@@ -209,21 +235,39 @@ def get_train_state_initializer(
   )
 
 
+def flatten(compute_outputs: PyTreeDef,
+            assert_output_len=None) -> Tuple[jnp.ndarray, ...]:
+  values, _ = jax.tree_util.tree_flatten(compute_outputs)
+  if assert_output_len is not None:
+    assert len(values) == assert_output_len
+  return tuple(values)
+
+
+_BUILTIN_INFERENCE_MODES = {
+    'predict':
+        CustomInferenceMode('predict_batch_with_aux',
+                            functools.partial(flatten, assert_output_len=2)),
+    'score':
+        CustomInferenceMode('score_batch',
+                            functools.partial(flatten, assert_output_len=1)),
+}
+
+
 def create_inference_function(
     *,
     model: models.BaseTransformerModel,
-    inference_mode: str,
+    inference_mode: Union[str, CustomInferenceMode],
     partitioner: Optional[partitioning.BasePartitioner],
     train_state_initializer: Optional[utils.TrainStateInitializer],
     enable_jax2tf: bool,
     polymorphic_shapes_inputs: Optional[Any] = None,
     native_lowering: bool = False,
-) -> Callable[[Mapping[str, Any], Any], Tuple[Any, ...]]:
+) -> Callable[[Mapping[str, Any], Any], PyTreeDef]:
   """Fetches a model and returns the inference function based on inference_mode."""
   if partitioner and train_state_initializer:
     maybe_partition = lambda fn: partitioner.partition(  # pylint:disable=g-long-lambda
         fn,
-        # TODO((b/121310741): Re-enable pytype.
+        # TODO(b/121310741): Re-enable pytype.
         # pytype:disable=wrong-arg-types
         in_axis_resources=(train_state_initializer.train_state_axes.params,
                            partitioning.PartitionSpec('data',)),
@@ -234,50 +278,50 @@ def create_inference_function(
   else:
     maybe_partition = lambda fn: fn
 
-  if inference_mode == 'predict':
+  if not isinstance(inference_mode, CustomInferenceMode):
+    if inference_mode in _BUILTIN_INFERENCE_MODES:
+      inference_mode = _BUILTIN_INFERENCE_MODES[inference_mode]
+    else:
+      raise ValueError(
+          '`inference_mode` must be a string in '
+          f'{list(_BUILTIN_INFERENCE_MODES.keys())} or a `CustomInferenceMode`. '
+          f'Got inference_mode={inference_mode}.')
 
-    def predict_batch_with_aux(
-        params: Mapping[str, Any],
-        batch: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
-      return model.predict_batch_with_aux(params, batch)
+  inference_mode = typing.cast(CustomInferenceMode, inference_mode)
 
-    predict_batch_with_aux = maybe_partition(predict_batch_with_aux)
+  if inference_mode.model_fn_name == 'predict_batch_with_aux':
+    # Extract `decoder_params` passed by the preprocessor. Decoder params are
+    # supported only for `predict_batch_with_aux`.
+    #
+    # TODO(b/256173604): Make the following Gin-configurable.
 
-    if enable_jax2tf:
-      # jax2tf must be called directly with the pjitted function with no wrapper
-      # functions as required by jax2tf's native lowering.
-      predict_batch_with_aux = jax2tf.convert(
-          predict_batch_with_aux,
-          polymorphic_shapes=[None, polymorphic_shapes_inputs],
-          experimental_native_lowering=native_lowering)
-
-    def inference_fn(params: Mapping[str, Any],
-                     batch: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
-      result = predict_batch_with_aux(frozen_dict.freeze(params), batch)
-      values, _ = jax.tree_util.tree_flatten(result)
-      assert len(values) == 2, values
-      return tuple(values)
-
-  elif inference_mode == 'score':
-
-    score_batch = model.score_batch
-    score_batch = maybe_partition(score_batch)
-
-    if enable_jax2tf:
-      score_batch = jax2tf.convert(
-          score_batch,
-          polymorphic_shapes=[None, polymorphic_shapes_inputs],
-          experimental_native_lowering=native_lowering)
-
-    def inference_fn(params: Mapping[str, Any],
-                     batch: Mapping[str, jnp.ndarray]) -> Tuple[Any]:
-      result = score_batch(frozen_dict.freeze(params), batch)
-      values, _ = jax.tree_util.tree_flatten(result)
-      assert len(values) == 1
-      return tuple(values)
-
+    def model_fn(params: Mapping[str, Any],
+                 inputs: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
+      batch = dict(inputs)
+      kwargs = {}
+      try:
+        kwargs['decoder_params'] = batch.pop('decoder_params')
+      except KeyError:
+        pass
+      # pytype: disable=wrong-keyword-args
+      return model.predict_batch_with_aux(params, batch, **kwargs)
+      # pytype: enable=wrong-keyword-args
   else:
-    raise ValueError(f'Unknown inference_mode "{inference_mode}"')
+    model_fn = getattr(model, inference_mode.model_fn_name)
+
+  model_fn = maybe_partition(model_fn)
+  if enable_jax2tf:
+    model_fn = jax2tf.convert(
+        model_fn,
+        polymorphic_shapes=[None, polymorphic_shapes_inputs],
+        experimental_native_lowering=native_lowering)
+
+  def inference_fn(params: Mapping[str, Any],
+                   batch: Mapping[str, jnp.ndarray]) -> PyTreeDef:
+    outputs = model_fn(params, batch)
+    if inference_mode.fetch_output:
+      outputs = inference_mode.fetch_output(outputs)
+    return outputs
 
   return inference_fn
 
@@ -290,7 +334,6 @@ def load_params_from_checkpoint(
   if train_state_initializer is not None:
     train_state = train_state_initializer.from_checkpoint(
         [restore_checkpoint_cfg])
-    logging.info('train_state.params:\n%s', train_state.params)  # pytype:disable=attribute-error
     return train_state.params  # pytype:disable=attribute-error
   else:
     if restore_checkpoint_cfg.mode != 'specific':
@@ -705,6 +748,72 @@ def create_preprocessor_from_task(
           batch_size, task_feature_lengths, tokenized_inputs, input_tensor_name)
 
 
+def create_preprocessor_with_decoder_params(
+    batch_size: Optional[int],
+    output_features: Mapping[str, seqio.Feature],  # unused
+    task_feature_lengths: Mapping[str, int],
+    tokenized_inputs: bool,
+    *,
+    create_preprocessor_fn: CreatePreprocessorFn,
+    decoder_params_spec: DecoderParamsSpec,
+) -> Tuple[PreprocessorFn, Sequence[tf.TensorSpec]]:
+  """Creates a preprocessor and adds decoder params as inputs.
+
+  Args:
+    batch_size: See `save`.
+    output_features: See `save`.
+    task_feature_lengths: See `save`.
+    tokenized_inputs: See `save`.
+    create_preprocessor_fn: A function that creates a preprocessor to be
+      wrapped.
+    decoder_params_spec: A sequence of `(name, dtype, per_example_shape)` for
+      decoder params to be exposed as inputs. The decoder must be able to accept
+      the listed decoder params on a per-example basis, i.e., the shape of each
+      decoder param will be [batch_size, *per_example_shape]. Decoder params are
+      appended to the inputs in the specified order.
+
+  Returns:
+    A preprocessor that calls `create_preprocessor_fn(...)` with additional
+    inputs representing decoder params and adds the specified `decoder_params`
+    as a new feature.
+  """
+
+  # TODO(marcrasi): Delete after migrating clients.
+  if 'batch_size' in inspect.signature(create_preprocessor_fn).parameters:
+    # New signature.
+    preprocessor, input_signature = create_preprocessor_fn(
+        batch_size, output_features, task_feature_lengths,
+        tokenized_inputs)  # type: ignore
+  else:
+    # Old signature.
+    preprocessor = create_preprocessor_fn(output_features, task_feature_lengths,
+                                          tokenized_inputs)  # type: ignore
+    input_signature = create_single_tensor_input_signature(
+        batch_size, task_feature_lengths, tokenized_inputs)
+
+  def wrapped(*args: tf.Tensor) -> Mapping[str, tf.Tensor]:
+    # Splice the args into inputs and decoder params.
+    num_decoder_params = len(decoder_params_spec)
+    decoder_params_values = args[-num_decoder_params:]
+    inputs = args[:-num_decoder_params]
+
+    features = dict(preprocessor(*inputs))
+
+    # Add decoder params as additional features. They are removed from the
+    # features dict in `create_inference_function`.
+    decoder_params = {}
+    for (name, _, _), value in zip(decoder_params_spec, decoder_params_values):
+      decoder_params[name] = value
+    features['decoder_params'] = decoder_params
+
+    return features
+
+  input_signature = tuple(input_signature) + tuple(
+      tf.TensorSpec((batch_size,) + tuple(per_example_shape), dtype, name=name)
+      for name, dtype, per_example_shape in decoder_params_spec)
+  return wrapped, input_signature
+
+
 def _maybe_name_outputs(
     feature_values: Tuple[Any, ...], feature_names: Optional[List[str]]
 ) -> Union[Tuple[Any, ...], Mapping[str, Any]]:
@@ -721,14 +830,14 @@ def _maybe_name_outputs(
 
 def create_postprocessor(
     vocab: seqio.Vocabulary,
-    inference_mode: str,
+    inference_mode: Union[str, CustomInferenceMode],
     decode_outputs: bool = True,
     output_feature_names: Optional[List[str]] = None) -> PostprocessorFn:
   """Creates a TF postprocessor function.
 
   Args:
     vocab: The vocab to use to decode.
-    inference_mode: 'predict' or 'score'.
+    inference_mode: 'predict', 'score' or a CustomInferenceMode instance.
     decode_outputs: whether to decode output tokens.
     output_feature_names: A list of names to name the output for the savedmodel.
       e.g., ['output_a', 'output_b'] will tag the savedmodel output to obtain
@@ -764,29 +873,82 @@ def create_postprocessor(
 
 
 
-def write_warmup_examples(text_batch: WarmupExamples,
-                          output_dir: str,
-                          model_name: str,
-                          *,
-                          input_tensor_name: str = 'text_batch'):
+def _request_for_batch(
+    text_batch: WarmupExamples,
+    model_name: str,
+    input_tensor_name: str,
+    signature_name: str,
+    batch_size: Optional[int],
+    decoder_params_spec: Optional[DecoderParamsSpec] = None,
+) -> predict_pb2.PredictRequest:
   """Adds a single batch of Predict warmup data."""
-  logging.info('Writing warmup data...')
   request = predict_pb2.PredictRequest()
   request.model_spec.name = model_name
-  request.model_spec.signature_name = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+  request.model_spec.signature_name = signature_name
   if text_batch and isinstance(text_batch[0], (str, bytes)):
     dtype = tf.string
   else:
     dtype = tf.int32
+  # Truncate/Pad the request to have batch_size.
+  adjusted_batch = text_batch
+  if batch_size is not None:
+    adjusted_batch = list(
+        itertools.islice(itertools.cycle(text_batch), batch_size))
   request.inputs[input_tensor_name].CopyFrom(
-      tf.make_tensor_proto(text_batch, dtype=dtype))
+      tf.make_tensor_proto(adjusted_batch, dtype=dtype))
+  if decoder_params_spec is not None:
+    for name, dtype, per_example_shape in decoder_params_spec:
+      request.inputs[name].CopyFrom(
+          tf.make_tensor_proto(
+              tf.zeros((len(adjusted_batch),) + tuple(per_example_shape),
+                       dtype)))
+  return request
+
+
+def write_warmup_examples(
+    text_batch: WarmupExamples,
+    output_dir: str,
+    model_name: str,
+    signature_name: str,
+    *,
+    batch_sizes: List[Optional[int]],
+    input_tensor_name: str = 'text_batch',
+    decoder_params_spec: Optional[DecoderParamsSpec] = None,
+):
+  """Writes warmup examples for all batch_sizes requested.
+
+  The text_batch is either filled to batch_size or truncated based on the
+  different batch_sizes.
+  For example, if text_batch has length 2 while requested batch_size is 4, it is
+  repeated two times. If text_batch has length 2 while requested batch_size is
+  1, it is truncated to length 1.
+
+  Args:
+    text_batch: A batch of texts used as warmup examples.
+    output_dir: The directory for writing the warmup examples to.
+    model_name: The name of the savedmodel spec.
+    signature_name: Optional name of the exported function.
+    batch_sizes: A list of batch sizes to warmup with. The written number of
+      tfrecords will be equal to the size of batch_sizes. The list might contain
+      None entries, and the warmup examples for the None entry won't be padded
+      or truncated.
+    input_tensor_name: The entry name of the PredictRequest inputs dict.
+    decoder_params_spec: The parameter specifciations on decoding. If present,
+      dummy data (0s) with specified shape/dtype will be written into warmup
+      examples.
+  """
   assets_extra = os.path.join(output_dir, 'assets.extra')
   tf.io.gfile.makedirs(assets_extra)
   warmup_output = os.path.join(assets_extra, 'tf_serving_warmup_requests')
   with tf.io.TFRecordWriter(warmup_output) as writer:
-    log = prediction_log_pb2.PredictionLog(
-        predict_log=prediction_log_pb2.PredictLog(request=request))
-    writer.write(log.SerializeToString())
+    for batch_size in batch_sizes:
+      logging.info('Writing warmup data for batch size: %s ...', batch_size)
+      log = prediction_log_pb2.PredictionLog(
+          predict_log=prediction_log_pb2.PredictLog(
+              request=_request_for_batch(text_batch, model_name,
+                                         input_tensor_name, signature_name,
+                                         batch_size, decoder_params_spec)))
+      writer.write(log.SerializeToString())
 
 
 
@@ -813,12 +975,14 @@ def save(
     native_lowering: bool = False,
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
-    output_vocab_feature_name: Optional[str] = 'targets'):
+    output_vocab_feature_name: Optional[str] = 'targets',
+    signature_name: Optional[str] = tf.saved_model
+    .DEFAULT_SERVING_SIGNATURE_DEF_KEY):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
   Args:
     model:
-    inference_mode: "predict" or "score"
+    inference_mode: "predict", "score" or a CustomInferenceMode instance.
     restore_checkpoint_cfg: Configuration for restoring model from checkpoint.
     exportable_module_cls: A configured implementation of ExportableModule.
     create_preprocessor_fn: Configurable func. to create the PreprocessorFn.
@@ -855,9 +1019,10 @@ def save(
     trailing_shapes: Optional mapping of model feature name to trailing shape,
       the `...?` in `(batch_size, seqlen, ...?)`, which is needed to initialize
       the model correctly.
-    output_vocab_feature_name: The vocabulary feature which maps decoded ids
-      to plain text. For standard T5X models this will always be 'targets', but
-      may be different or empty for other models.
+    output_vocab_feature_name: The vocabulary feature which maps decoded ids to
+      plain text. For standard T5X models this will always be 'targets', but may
+      be different or empty for other models.
+    signature_name: Optional name of the exported function.
   """
   if not os.path.basename(output_dir).isdigit():
     raise ValueError('output_dir must be in the form ${BASE}/${VERSION}, where '
@@ -919,11 +1084,23 @@ def save(
   # The model_fn takes two arguments, the params and the inputs. The inputs are
   # a pytree of arrays with the first dimension being the batch dimension.
   if batch_size is None:
-    fake_inputs = tf.constant([[0]]) if tokenized_inputs else tf.constant([''])
-    features = preprocessor(fake_inputs)
+
+    def _gen_dummy_tensor(ts: tf.TensorSpec):
+      shape = ts.shape.as_list()
+      if not all(shape[1:]):
+        raise ValueError(
+            'Only supports polymorphic batch size at leading dimenstion, got '
+            f'{ts} in the input signature.')
+      if shape and shape[0] is None:
+        shape[0] = 1
+      return tf.zeros(shape, ts.dtype)
+
+    fake_inputs = jax.tree_util.tree_map(_gen_dummy_tensor, input_signature)
+    features = preprocessor(*fake_inputs)
 
     # All the features have a leading batch dimension.
-    polymorphic_shapes_inputs = jax.tree_map(lambda _: 'b, ...', features)
+    polymorphic_shapes_inputs = jax.tree_util.tree_map(lambda _: 'b, ...',
+                                                       features)
   else:
     polymorphic_shapes_inputs = None
 
@@ -950,13 +1127,11 @@ def save(
       preproc_tf_fn=preprocessor,
       model_tf_fn=model_tf_fn,
       postproc_tf_fn=postprocessor,
-      params=frozen_dict.unfreeze(params),
+      params=params,
       batch_size=batch_size,
   )
-  print('input_signature', input_signature)
   signatures = {
-      tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
-          module.__call__.get_concrete_function(*input_signature)
+      signature_name: module.__call__.get_concrete_function(*input_signature)
   }
   logging.info('Saving the CPU model...')
   head, tail = os.path.split(output_dir)
@@ -986,9 +1161,10 @@ def save(
           warmup_examples.append('')
 
     write_warmup_example_fn(
-        warmup_examples, output_dir=export_dir_cpu, model_name=model_name)
-    if export_tpu:
-      write_warmup_example_fn(
-          warmup_examples, output_dir=output_dir, model_name=model_name)
+        warmup_examples,
+        output_dir=export_dir_cpu,
+        model_name=model_name,
+        batch_sizes=module.export_batch_sizes,
+        signature_name=signature_name)
 
   # TODO(danielandor): Save the graph.pbtxt for debugging purposes.

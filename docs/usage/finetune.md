@@ -221,9 +221,9 @@ In summary, the metric you actually care about most likely lives under the
 Now that you have successfully fine-tuned a pre-trained model on WMT, here are
 some topics you might want to explore next:
 
-+   [Evaluating a fine-tuned model.](eval)
-+   [Running inference on a fine-tuned model.](infer)
-+   [Training a model from scratch.](pretrain)
++   [Evaluating a fine-tuned model.](eval.md)
++   [Running inference on a fine-tuned model.](infer.md)
++   [Training a model from scratch.](pretrain.md)
 
 We also touch upon a few advanced topics related to fine-tuning below that might
 be useful, especially when customizing your fine-tuning job.

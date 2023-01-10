@@ -10,7 +10,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v2
       with:
-        python-version: '3.8.x'
+        python-version: '3.9.x'
     - name: Install dependencies
       run: |
         pip install -e .[test] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html

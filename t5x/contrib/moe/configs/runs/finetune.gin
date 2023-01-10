@@ -19,6 +19,7 @@
 #
 # Commonly overridden options (see also t5x/configs/runs/finetune.gin):
 #
+# - EXPERT_DROPOUT_RATE
 # - DROPOUT_RATE
 # - BATCH_SIZE
 # - MoeTrainer.num_microbatches
@@ -32,6 +33,8 @@ from t5x.contrib.moe import trainer as moe_trainer
 from t5x import utils
 
 include 't5x/configs/runs/finetune.gin'
+
+EXPERT_DROPOUT_RATE = %DROPOUT_RATE  # provided by t5x/configs/runs/finetune.gin
 
 # One of these should be overridden.
 NUM_MODEL_PARTITIONS = None

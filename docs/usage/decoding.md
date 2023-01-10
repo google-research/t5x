@@ -181,9 +181,8 @@ $$\sum_{i \in V^{(p)}} p_i \ge p$$
 where $$p_i$$ is the conditional dsitribution at each time step for item $$i$$.
 This is called "Nucleus sampling", which was introduced by
 [Holtzman et al. ICLR 2020](https://openreview.net/forum?id=rygGQyrFvH).
-Currently, temperature is not used if `topp` is used.
 
-Note that only one of `topk` or `topp` can be used.
+IMPORTANT: Only one of `topk` or `topp` can be used.
 
 ## Option2: subclassing a model class
 

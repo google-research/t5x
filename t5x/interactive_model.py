@@ -36,6 +36,7 @@ from jax import random
 from jax.experimental import multihost_utils
 import numpy as np
 import seqio
+from t5x import checkpoints
 from t5x import models
 from t5x import partitioning
 from t5x import trainer as trainer_lib
@@ -52,6 +53,13 @@ BatchesType = Union[Sequence[Mapping[str, str]],
 class InferenceType(enum.Enum):
   PREDICT_WITH_AUX = 1
   SCORE = 2
+
+
+class T5XScriptType(enum.Enum):
+  FINETUNING = 1
+  INFERENCE = 2
+  EVALUATION = 3
+  PRETRAINING = 4
 
 
 class InteractiveModel(abc.ABC):
@@ -124,8 +132,9 @@ class InteractiveModel(abc.ABC):
     # --------------------------------------------------------------------------
     # Initialize RNGs
     # --------------------------------------------------------------------------
+    self._init_random_seed = init_random_seed
     random_seed = multihost_utils.broadcast_one_to_all(
-        np.int32(init_random_seed))
+        np.int32(self._init_random_seed))
     utils.set_hardware_rng_ops()
 
     rng = random.PRNGKey(random_seed)
@@ -166,10 +175,13 @@ class InteractiveModel(abc.ABC):
     self._features = dict(sorted(output_features.items()))
 
     # Define restore and save checkpoints.
-    restore_checkpoint_cfg = utils.RestoreCheckpointConfig(
-        dtype=dtype, mode=restore_mode, path=checkpoint_path, use_gda=False)
+    if checkpoint_path:
+      self._restore_checkpoint_cfg = utils.RestoreCheckpointConfig(
+          dtype=dtype, mode=restore_mode, path=checkpoint_path, use_gda=False)
+    else:
+      self._restore_checkpoint_cfg = None
     self._save_checkpoint_cfg = utils.SaveCheckpointConfig(
-        dtype=dtype, keep=5, save_dataset=False, use_gda=False)
+        dtype=dtype, keep=5, save_dataset=False, use_gda=False, period=1000)
     self._train_state_initializer = utils.TrainStateInitializer(
         optimizer_def=self._model.optimizer_def,
         init_fn=self._model.get_initial_variables,
@@ -180,7 +192,7 @@ class InteractiveModel(abc.ABC):
     # Initialize checkpoint manager.
     self._checkpoint_manager = utils.LegacyCheckpointManager(
         save_cfg=self._save_checkpoint_cfg,
-        restore_cfg=restore_checkpoint_cfg,
+        restore_cfg=self._restore_checkpoint_cfg,
         train_state_shape=(
             self._train_state_initializer.global_train_state_shape),
         partitioner=self._partitioner,
@@ -194,12 +206,40 @@ class InteractiveModel(abc.ABC):
     def get_state(rng):
       return self._train_state_initializer.from_scratch(rng).state_dict()
 
-    self._train_state = self._checkpoint_manager.restore(
-        [restore_checkpoint_cfg.path], restore_checkpoint_cfg,
-        utils.get_fallback_state(restore_checkpoint_cfg, get_state,
-                                 self._init_rng))
+    restore_cfgs = []
+    # 1. From a checkpoint specified by `self._restore_checkpoint_cfg.path`, if
+    # set.
+    if self._restore_checkpoint_cfg:
+      restore_cfgs.append(self._restore_checkpoint_cfg)
+    # 2. If no checkpoint provided, look for one in the model directory.
+    if self._restore_checkpoint_cfg is not None:
+      state_transforms_for_restore = [
+          functools.partial(fn, is_resuming=True)
+          for fn in self._restore_checkpoint_cfg.state_transformation_fns
+      ]
+    else:
+      state_transforms_for_restore = []
+    restore_cfgs.append(
+        utils.RestoreCheckpointConfig(
+            path=self._output_dir,
+            mode="latest",
+            dtype=self._save_checkpoint_cfg.dtype
+            if self._save_checkpoint_cfg else "float32",
+            checkpointer_cls=self._save_checkpoint_cfg.checkpointer_cls
+            if self._save_checkpoint_cfg else checkpoints.Checkpointer,
+            # Restore dataset state if it is being saved.
+            restore_dataset=(self._save_checkpoint_cfg and
+                             self._save_checkpoint_cfg.save_dataset),
+            state_transformation_fns=state_transforms_for_restore))
 
-    # 2. If no checkpoint to restore, init from scratch.
+    # Restore the model using a checkpoint.
+    valid_restore_cfg, restore_paths = utils.get_first_valid_restore_config_and_paths(
+        restore_cfgs)
+    self._train_state = self._checkpoint_manager.restore(
+        restore_paths, valid_restore_cfg,
+        utils.get_fallback_state(valid_restore_cfg, get_state, self._init_rng))
+
+    # 3. If no checkpoint to restore, init from scratch.
     if self._train_state is None:
       self._train_state = self._train_state_initializer.from_scratch(
           self._init_rng)
@@ -995,3 +1035,94 @@ def get_seqio_task_from_examples(
         metric_fns=metric_fns)
 
   return seqio.get_mixture_or_task(task_name)
+
+
+# pylint: disable=protected-access
+def get_gin_config_from_interactive_model(interactive_model: InteractiveModel,
+                                          script_type: T5XScriptType,
+                                          task_name: str,
+                                          partitioner_config_str: str,
+                                          model_config_str: str,
+                                          train_steps: int = 1,
+                                          imports_str: str = ""):
+  """Converts an InteractiveModel instance into a Gin config string.
+
+  This function will be used to graduate people to the T5X/SeqIO-based
+  train/infer/eval scripts.
+
+  Args:
+    interactive_model: an instance of the InteractiveModel.
+    script_type: which T5X script the Gin config should function with.
+    task_name: the name of the SeqIO task to be used.
+    partitioner_config_str: a string that defines the Partitioner object in the
+      Gin config.
+    model_config_str: a string that defines the Model object in the Gin config.
+    train_steps: the number of steps to train for, only used if FINETUNING or
+      PRETRAINING is selected as the script type.
+    imports_str: if the `model_config_str` or `partitioner_config_str` relies on
+      some other files to be imported, these import statements can be included
+      in the final Gin file by adding them to this string.
+
+  Returns:
+    A string that contains the full Gin file to be used for train/infer/eval.py.
+  """
+  if script_type == T5XScriptType.FINETUNING:
+    # TODO(b/240732774): Populate this condition.
+    gin_config = ""
+  elif script_type == T5XScriptType.INFERENCE:
+    # TODO(b/240732774): Populate this condition.
+    gin_config = ""
+  elif script_type == T5XScriptType.EVALUATION:
+    # TODO(b/240732774): Populate this condition.
+    gin_config = ""
+  elif script_type == T5XScriptType.PRETRAINING:
+    restore_config_str = ""
+    if interactive_model._restore_checkpoint_cfg:
+
+      restore_config_str = f"""utils.RestoreCheckpointConfig:
+  path = '{interactive_model._restore_checkpoint_cfg.path}'
+  mode = '{interactive_model._restore_checkpoint_cfg.mode}'
+  dtype = '{interactive_model._restore_checkpoint_cfg.dtype}'"""
+    gin_config = f"""
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5x import utils
+
+include 't5x/configs/runs/pretrain.gin'
+
+{imports_str}
+
+MODEL_DIR = "{interactive_model._output_dir}"
+
+TRAIN_STEPS = {train_steps}
+MIXTURE_OR_TASK_MODULE = "t5x.interactive_model"
+MIXTURE_OR_TASK_NAME = "{task_name}"
+TASK_FEATURE_LENGTHS = {interactive_model._task_feature_lengths}
+DROPOUT_RATE = 0.0
+USE_CACHED_TASKS = False
+SHUFFLE_TRAIN_EXAMPLES = False
+BATCH_SIZE = {interactive_model._batch_size}
+
+{model_config_str}
+
+train/utils.DatasetConfig:
+  pack = False
+
+train_eval/utils.DatasetConfig:
+  pack = False
+
+{restore_config_str}
+utils.SaveCheckpointConfig:
+  period = {interactive_model._save_checkpoint_cfg.period}
+  dtype = '{interactive_model._save_checkpoint_cfg.dtype}'
+  keep = {interactive_model._save_checkpoint_cfg.keep}
+  save_dataset = {interactive_model._save_checkpoint_cfg.save_dataset}
+
+{partitioner_config_str}
+"""
+
+  return gin_config
+
+
+# pylint: enable=protected-access

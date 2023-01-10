@@ -40,6 +40,7 @@ infer_eval/utils.DatasetConfig:
 
 train_script.train:
   eval_period = 250
+  stats_period = 250
   eval_steps = 20
   random_seed = 0
   use_hardware_rng = True

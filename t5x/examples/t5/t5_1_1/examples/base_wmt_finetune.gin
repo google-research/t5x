@@ -1,0 +1,53 @@
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+import seqio
+import t5.data.mixtures
+from t5x import utils
+from t5x import models
+
+
+include 't5x/configs/runs/finetune.gin'
+include 't5x/examples/t5/t5_1_1/base.gin'
+
+BATCH_SIZE = 128
+MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
+TASK_FEATURE_LENGTHS = {'inputs': 256, 'targets': 256}
+DROPOUT_RATE = 0.1
+TRAIN_STEPS = 1_020_000  # 1000000 pre-trained steps + 20000 fine-tuning steps.
+USE_CACHED_TASKS = False
+
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_base/checkpoint_1000000"
+
+# `LOSS_NORMALIZING_FACTOR`: When fine-tuning a model that was pre-trained
+# using Mesh Tensorflow (e.g. the public T5 / mT5 / ByT5 models), this should be
+# set to `pretraining batch_size` * `target_token_length`. For T5 and T5.1.1:
+# `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
+LOSS_NORMALIZING_FACTOR = 233472
+
+train_script.train:
+  eval_period = 100
+
+train_script.train:
+  train_dataset_cfg = @train/utils.DatasetConfig()
+  train_eval_dataset_cfg = @train_eval/utils.DatasetConfig()
+  infer_eval_dataset_cfg = @infer_eval/utils.DatasetConfig()
+
+models.EncoderDecoderModel.predict_batch_with_aux.num_decodes = 4
+
+
+infer_eval/utils.DatasetConfig:
+  mixture_or_task_name = %MIXTURE_OR_TASK_NAME
+  task_feature_lengths = %TASK_FEATURE_LENGTHS
+  split = 'validation'
+  batch_size = 64
+  shuffle = False
+  seed = 42
+  pack = False
+  use_cached = %USE_CACHED_TASKS
+  module = %MIXTURE_OR_TASK_MODULE
+
+seqio.Evaluator:
+  logger_cls = [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]
+  num_examples = None  # Use all examples in the dataset.
+  use_memory_cache = True

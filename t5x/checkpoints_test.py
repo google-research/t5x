@@ -1395,7 +1395,8 @@ class CheckpointsTest(parameterized.TestCase):
                 mode='specific', path=path, use_gda=False)
         ]))
     self.assertLen(restored, 1)
-    return restored[0]
+    state, _ = restored[0]
+    return state
 
   def test_checkpointer_in_threaded_env(self):
     """Tests use of asyncio in checkpointer works with non-main threads."""

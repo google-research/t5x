@@ -26,7 +26,7 @@ from version import __version__  # pylint: disable=g-import-not-at-top
 with open('README.md') as fp:
   _LONG_DESCRIPTION = fp.read()
 
-_jax_version = '0.2.27'
+_jax_version = '0.4.0'
 _jaxlib_version = '0.1.76'
 
 setuptools.setup(
@@ -52,6 +52,7 @@ setuptools.setup(
         'gin-config',
         f'jax >= {_jax_version}',
         f'jaxlib >= {_jaxlib_version}',
+        'jestimator',
         'numpy',
         'orbax @ git+https://github.com/google/orbax#egg=orbax',
         'seqio @ git+https://github.com/google/seqio#egg=seqio',

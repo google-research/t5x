@@ -8,7 +8,7 @@ defined with [SeqIO](https://github.com/google/seqio/blob/main/README.md).
 
 Refer to this tutorial when you have an existing model that you want to
 evaluate. If you would like to fine-tune your model before evaluation, please
-refer to the [fine-tuning](finetune) tutorial. You can run evals as part of your
+refer to the [fine-tuning](finetune.md) tutorial. You can run evals as part of your
 fine-tuning run as well.
 
 ## Overview
@@ -41,7 +41,7 @@ SeqIO Task will be used:
     [`t5x/configs/models/t5_1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
 
 If you would like to fine-tune your model before evaluation, please follow the
-[fine-tuning](finetune) tutorial, and continue to Step 2.
+[fine-tuning](finetune.md) tutorial, and continue to Step 2.
 
 ## Step 2: Choose a SeqIO Task/Mixture
 
@@ -203,9 +203,9 @@ python -m t5.scripts.parse_tb \
 Now that you have successfully evaluated a model on the Natural Questions
 benchmark, here are some topics you might want to explore next:
 
-+   [Running inference on a model.](infer)
-+   [Fine-tuning a model.](finetune)
-+   [Training a model from scratch.](pretrain)
++   [Running inference on a model.](infer.md)
++   [Fine-tuning a model.](finetune.md)
++   [Training a model from scratch.](pretrain.md)
 
 We also touch upon a few advanced topics related to evaluations below that might
 be useful, especially when customizing your eval job.

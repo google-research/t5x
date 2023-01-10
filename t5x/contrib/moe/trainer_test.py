@@ -34,7 +34,7 @@ jax.config.parse_flags_with_absl()
 
 # Make `log_elapsed_time` a no-op to simplify mocking of `time.time()`.
 @contextlib.contextmanager
-def fake_log_elapsed_time(_):
+def fake_log_elapsed_time(_, event=None):  # pylint: disable=unused-argument
   yield
 
 

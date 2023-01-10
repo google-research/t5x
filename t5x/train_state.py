@@ -34,6 +34,7 @@ MutableVariableDict = flax_scope.MutableVariableDict
 VariableDict = flax_scope.VariableDict
 
 
+@typing_extensions.runtime_checkable
 class TrainState(typing_extensions.Protocol):
   """TrainState interface."""
 
