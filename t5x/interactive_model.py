@@ -177,11 +177,11 @@ class InteractiveModel(abc.ABC):
     # Define restore and save checkpoints.
     if checkpoint_path:
       self._restore_checkpoint_cfg = utils.RestoreCheckpointConfig(
-          dtype=dtype, mode=restore_mode, path=checkpoint_path, use_gda=False)
+          dtype=dtype, mode=restore_mode, path=checkpoint_path)
     else:
       self._restore_checkpoint_cfg = None
     self._save_checkpoint_cfg = utils.SaveCheckpointConfig(
-        dtype=dtype, keep=5, save_dataset=False, use_gda=False, period=1000)
+        dtype=dtype, keep=5, save_dataset=False, period=1000)
     self._train_state_initializer = utils.TrainStateInitializer(
         optimizer_def=self._model.optimizer_def,
         init_fn=self._model.get_initial_variables,
@@ -197,8 +197,7 @@ class InteractiveModel(abc.ABC):
             self._train_state_initializer.global_train_state_shape),
         partitioner=self._partitioner,
         ds_iter=None,
-        model_dir=self._output_dir,
-        use_gda=False)
+        model_dir=self._output_dir)
 
     # --------------------------------------------------------------------------
     # Restore a model from a checkpoint or from scratch.

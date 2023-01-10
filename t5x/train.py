@@ -22,7 +22,6 @@ import math
 import os
 import time
 from typing import Callable, Mapping, Optional, Sequence, Tuple, Type
-import warnings
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
@@ -119,7 +118,6 @@ def train(
     run_eval_before_training: bool = False,
     train_state_initializer_cls: Type[
         utils.TrainStateInitializer] = utils.TrainStateInitializer,
-    use_gda: bool = True,
     use_jax_array: bool = False,
     use_orbax: bool = False,
     verify_matching_vocabs_fn: Optional[
@@ -181,8 +179,7 @@ def train(
       eval metrics before training begins.
     train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
       initializing partitioned TrainState from checkpoints or scratch.
-    use_gda: if True, uses GlobalDeviceArray. Experimental feature.
-    use_jax_array: if True, uses jax.Array if use_gda is also True. Experimental
+    use_jax_array: if True, uses jax.Array. Experimental
       feature.
     use_orbax: if True, uses Orbax for checkpointing. Experimental feature.
     verify_matching_vocabs_fn: Function to validate whether the task vocabulary
@@ -196,24 +193,13 @@ def train(
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
-  if use_gda:
-    logging.info('GlobalDeviceArray enabled.')
+  if use_jax_array:
+    jax.config.update('jax_array', True)
   else:
-    warnings.warn(
-        '`use_gda=False` is deprecated and will be removed on Feb-01-23.'
-        ' Please ensure that your workflow can use GDA.', DeprecationWarning)
-  if use_jax_array and not use_gda:
-    raise ValueError('Invalid configuration of `use_gda` and `use_jax_array`.')
-  if use_gda:
-    if use_jax_array:
-      jax.config.update('jax_array', True)
-    else:
-      jax.config.update('jax_parallel_functions_output_gda', True)
+    jax.config.update('jax_parallel_functions_output_gda', True)
 
   if use_orbax:
     logging.info('Checkpointing with Orbax enabled.')
-    if not use_gda:
-      raise ValueError('Must set of `use_gda` if `use_orbax` is enabled.')
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.
@@ -284,7 +270,6 @@ def train(
   train_iter = utils.prepare_train_iter(
       train_iter,
       checkpoint_cfg=checkpoint_cfg,
-      use_gda=use_gda,
       partitioner=partitioner,
       data_layout=data_layout)
 
@@ -385,8 +370,7 @@ def train(
           train_state_shape=train_state_initializer.global_train_state_shape,
           partitioner=partitioner,
           ds_iter=train_iter,
-          model_dir=model_dir,
-          use_gda=use_gda)
+          model_dir=model_dir)
       train_state = checkpoint_manager.restore(
           restore_paths, valid_restore_cfg,
           utils.get_fallback_state(valid_restore_cfg, _init, init_rng))
@@ -584,11 +568,7 @@ def train(
                                              lambda idx: dummy[idx])
 
   # Construct dummy batch for compiling the model.
-  if use_gda:
-    dummy_batch = jax.tree_map(_as_gda, train_iter.element_spec)
-  else:
-    dummy_batch = jax.tree_map(lambda x: np.ones(x.shape, x.dtype),
-                               train_iter.element_spec)
+  dummy_batch = jax.tree_map(_as_gda, train_iter.element_spec)
   if not isinstance(dummy_batch, Mapping):
     raise ValueError('Training loop expects batches to have type '
                      f'Mapping[str, np.ndarray] but got {type(dummy_batch)}.')

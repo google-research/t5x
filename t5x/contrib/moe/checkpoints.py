@@ -57,7 +57,6 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
                keep: Optional[int] = None,
                save_dtype: jnp.dtype = np.float32,
                restore_dtype: Optional[jnp.dtype] = None,
-               use_gda: Optional[bool] = True,
                keep_dataset_checkpoints: Optional[int] = None):
     """Checkpointer constructor.
 
@@ -77,16 +76,10 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
       save_dtype: Dtype to cast targets to before saving.
       restore_dtype: Optional dtype to cast targets to after restoring. If None,
         no parameter casting is performed.
-      use_gda: If True, enabled gda_lib.GlobalDeviceArray. Sparse upcycling is
-        only under GDA.
       keep_dataset_checkpoints: An optional maximum number of data iterators to
         keep. If more than this number of data iterators exist after a save, the
         oldest ones will be automatically deleted to save space.
     """
-    if not use_gda:
-      raise ValueError('Sparse upcycling is only supported with GDA. Please '
-                       'set. Please set `use_gda`=True.')
-
     super().__init__(
         train_state=train_state,
         partitioner=partitioner,
@@ -95,7 +88,6 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
         keep=keep,
         save_dtype=save_dtype,
         restore_dtype=restore_dtype,
-        use_gda=use_gda,
         keep_dataset_checkpoints=keep_dataset_checkpoints)
 
     self._num_experts = num_experts
@@ -127,11 +119,8 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
       LazyArray object. If it is an MLP parameter kernel that needs to be
       "sparsified", then the MLP parameter kernel is broadcast to all experts.
     """
-    mesh = None
-    axes = None
-    if self._use_gda:
-      mesh = self._partitioner.mesh
-      axes = param_info.axes
+    mesh = self._partitioner.mesh
+    axes = param_info.axes
 
     async def get_fn():
       nonlocal mesh
@@ -147,8 +136,8 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
 
       is_sharded_jax_array = isinstance(
           arr, jax.Array) and not arr.is_fully_addressable
-      if self._use_gda and isinstance(
-          arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
+      if isinstance(arr,
+                    (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
         if axes is None:
           axes = PartitionSpec(None,)
         if restore_dtype is not None:
