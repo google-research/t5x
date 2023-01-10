@@ -59,6 +59,7 @@ P = partitioning.PartitionSpec
 TRAIN_METRIC_KEY = 'train'
 # String keys that is acceptable from config.
 _ACTION_KEYS = frozenset(trainer_lib.ActionMode.__members__.keys())
+_IMPORT_TIME = time.time()
 
 
 def run_actions(
@@ -608,6 +609,9 @@ def train(
                              train_iter_warmup_tock - train_iter_warmup_tick,
                              host_step)
 
+  jax.monitoring.record_event_duration_secs(
+      '/jax/t5x/train/time_before_first_step_secs',
+      time.time() - _IMPORT_TIME)
 
   # Main Loop over "epochs".
   for epoch in range(first_epoch, num_epochs):
