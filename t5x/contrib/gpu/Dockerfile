@@ -14,4 +14,4 @@ WORKDIR /t5x_home
 # install the requirements for T5x
 COPY . .
 RUN pip install -e .
-RUN pip install -r t5x/scripts_gpu/pile_requirements.txt
+RUN pip install -r t5x/contrib/gpu/scripts_gpu/pile_requirements.txt

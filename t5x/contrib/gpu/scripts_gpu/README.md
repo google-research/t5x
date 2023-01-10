@@ -4,12 +4,12 @@ This directory contains scripts optimized for GPU usage.
 Install with `pip install -r pile_requirements.txt` to get all pile dependencies.
 
 ## Building the container
-The Dockerfile at the top level given will build a container with all gpu/pile dependencies. It can be built with `cd ../../; docker/build.sh` 
+The Dockerfile in `t5x/contrib/gpu` given will build a container with all gpu/pile dependencies. It can be built with `t5x/contrib/gpu/docker/build.sh <name>` 
 
 ## Running interactively
-Note: this should only be done with singlenode jobs and/or for downloading the pile. Use `docker/interactive_pull_and_launch.sh`. This takes arguments for the URL to pull a container from and the location of the dataset directory to mount. For example:
+Note: this should only be done with singlenode jobs and/or for downloading the pile. Use `t5x/contrib/gpu/docker/interactive_pull_and_launch.sh`. This takes arguments for the URL to pull a container from and the location of the dataset directory to mount. For example:
 
-`cd ../../; docker/interactive_pull_and_launch.sh [URL] /my/dataset/dir`
+`t5x/contrib/gpu/docker/interactive_pull_and_launch.sh [URL] /my/dataset/dir`
 
 ## Downloading The Pile
 Run `download_the_pile.py` to download the pile. It will download to the directory set in the environment variable: `TFDS_DATA_DIR`. After that, set the `TFDS_DATA_DIR` to the same directory in your scripts to use.

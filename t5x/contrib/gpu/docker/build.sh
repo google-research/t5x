@@ -14,21 +14,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+echo "Ensure you run this script from the top-level directory of the repo"
+
 CONTAINER="t5x"
 if [ $# -eq 1 ]
 then
-    if [ $1 = "jax_t5x" ]
-    then
-        echo "Give a name other than \"jax_t5x\". Exiting ..."
-        exit
-    fi
     echo $1
     CONTAINER=$1
-
 else
     echo "Usage: bash build <container name>"
     exit
 fi
 
 # building container here 
-docker build -t $CONTAINER .
+docker build -t $CONTAINER . -f t5x/contrib/gpu/Dockerfile
