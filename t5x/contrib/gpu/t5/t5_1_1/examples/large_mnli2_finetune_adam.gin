@@ -1,0 +1,23 @@
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5.data import mixtures
+from t5x import models
+from t5x import partitioning
+from t5x import utils
+import t5x.contrib.gpu.scripts_gpu.seqio_tasks
+
+include "t5x/contrib/gpu/t5/t5_1_1/large.gin"
+include 't5x/contrib/gpu/t5/t5_1_1/adamw_opt.gin'
+include "t5x/contrib/gpu/t5/configs/runs/finetune_mnli.gin"
+
+MIXTURE_OR_TASK_NAME = "glue_mnli_v2"
+TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 16}
+TRAIN_STEPS = 1_006_001  # 1000000 pre-trained steps + 6000 fine-tuning steps.
+DROPOUT_RATE = 0.1
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_large/checkpoint_1000000"
+# `LOSS_NORMALIZING_FACTOR`: When fine-tuning a model that was pre-trained
+# using Mesh Tensorflow (e.g. the public T5 / mT5 / ByT5 models), this should be
+# set to `pretraining batch_size` * `target_token_length`. For T5 and T5.1.1:
+# `2048 * 114`. For mT5: `1024 * 229`. For ByT5: `1024 * 189`.
+LOSS_NORMALIZING_FACTOR = 131077

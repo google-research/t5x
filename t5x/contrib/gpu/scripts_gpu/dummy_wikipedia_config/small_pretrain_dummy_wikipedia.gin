@@ -1,0 +1,38 @@
+# Copyright 2022 The T5X Authors.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __gin__ import dynamic_registration
+
+from t5x import partitioning
+
+from t5x.examples.t5 import network
+
+include "t5x/contrib/gpu/t5/t5_1_1/small.gin"
+include "t5x/contrib/gpu/t5/t5_1_1/adamw_opt.gin"
+include "t5x/contrib/gpu/t5/configs/runs/pretrain_pile.gin"
+
+# Register necessary SeqIO Tasks/Mixtures.
+import t5.data.mixtures
+# Register Dummy Wikipedia Seqio Task (needed for benchmarking)
+import dummy_wikipedia_seqio
+
+MIXTURE_OR_TASK_NAME = "wikipedia_dummy"
+TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 128}
+TRAIN_STEPS = 100
+DROPOUT_RATE = 0.1
+BATCH_SIZE = 256
+USE_CACHED_TASKS=False
+
+partitioning.PjitPartitioner:
+    num_partitions=1
