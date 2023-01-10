@@ -58,6 +58,18 @@ class ModelsTest(parameterized.TestCase):
     # The expected output is the original sequences.
     np.testing.assert_array_equal(actual, sequences)
 
+  def test_count_packed_examples(self):
+    segment_ids_1 = np.array([[1, 1, 2, 2, 0, 0], [1, 1, 1, 1, 1, 1]])
+    actual_1 = models.count_packed_examples(segment_ids_1)
+    # `actual_1` is DeviceArray(3, dtype=int32).
+    np.testing.assert_array_equal(actual_1, [3])
+
+    segment_ids_2 = np.array([[1, 1, 3, 3, 0, 0], [2, 2, 2, 2, 2, 2],
+                              [2, 7, 7, 7, 7, 0]])
+    actual_2 = models.count_packed_examples(segment_ids_2)
+    # `actual_2` is DeviceArray(5, dtype=int32).
+    np.testing.assert_array_equal(actual_2, [5])
+
 
 BATCH_SIZE, ENCODER_LEN, MAX_DECODE_LEN, EMBED_DIM = 2, 3, 4, 5
 
@@ -485,11 +497,10 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         input_shapes=input_shapes,
         partitioner=partitioner)
     train_state_axes = train_state_initializer.train_state_axes
-    train_state = train_state_initializer.from_scratch(jax.random.PRNGKey(0))
 
     trainer = trainer_lib.Trainer(
         model,
-        train_state=train_state,
+        train_state=train_state_initializer.from_scratch(jax.random.PRNGKey(0)),
         partitioner=partitioner,
         eval_names=[],
         summary_dir=None,
@@ -499,7 +510,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         num_microbatches=1)
 
     trainer.train(ds_iter, 1)
-    logging.info('optimizer after first step %s', train_state.params)
+    logging.info('optimizer after first step %s', trainer.train_state.params)
 
 
   @parameterized.parameters(

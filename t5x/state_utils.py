@@ -90,12 +90,16 @@ def intersect_state(
 
 
 def merge_state(state_dict: Mapping[str, Any],
-                from_scratch_state: Mapping[str, Any]) -> Mapping[str, Any]:
+                from_scratch_state: Mapping[str, Any],
+                overwrite: bool = False) -> Mapping[str, Any]:
   """Inserts new entries into `state_dict`.
 
   Args:
     state_dict: nested dict of optimizer state
     from_scratch_state: nested dict of entries to insert
+    overwrite: if True, values present in both state_dict and from_scratch_state
+      will be present in the result with the value taken from
+      `from_scratch_state`.
 
   Returns:
     a nested dict like `state_dict` but with extra entries from
@@ -105,7 +109,7 @@ def merge_state(state_dict: Mapping[str, Any],
   from_scratch_state_flat = flatten_state_dict(from_scratch_state)
 
   for k in from_scratch_state_flat:
-    if k not in state_dict_flat:
+    if k not in state_dict_flat or overwrite:
       logging.warning("Initializing param=%s from scratch", k)
       state_dict_flat[k] = from_scratch_state_flat[k]
 

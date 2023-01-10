@@ -15,9 +15,11 @@
 """Tests for t5x.utils."""
 
 import dataclasses
+import functools
 import os
 import re
 from typing import Optional
+import unittest
 
 from absl import flags
 from absl.testing import absltest
@@ -375,6 +377,75 @@ class UtilsTest(parameterized.TestCase):
           np.array([8, 0]),
       ])
 
+  @mock.patch.object(utils, "get_dataset")
+  def test_get_training_eval_datasets_mixture_obj(self, mock_get_dataset):
+    # Verify calls to utils.dataset using seqio.Task or seqio.Mixture
+    # Register a mock SeqIO mixture.
+    task3 = mock.create_autospec(seqio.Task, instance=True)
+    task3.name = "mock_task3"
+    task3.splits = set(["train", "test"])
+    task4 = mock.create_autospec(seqio.Task, instance=True)
+    task4.name = "mock_task4"
+    task4.splits = set(["train", "test"])
+    seqio.TaskRegistry.add_provider("mock_task3", task3)
+    seqio.TaskRegistry.add_provider("mock_task4", task4)
+    mixture = seqio.Mixture(
+        "mock_mix2", ["mock_task3", "mock_task4"], default_rate=1.0)
+    seqio.MixtureRegistry.add_provider("mock_mix2", mixture)
+
+    mock_get_dataset.return_value = tf.data.Dataset.range(10).batch(1)
+    cfg_obj = utils.DatasetConfig(
+        mixture_or_task_name=mixture,
+        task_feature_lengths={},
+        split="test",
+        batch_size=4,
+        shuffle=False,
+        seed=23)
+
+    res_obj = utils.get_training_eval_datasets(
+        cfg_obj,
+        shard_id=0,
+        num_shards=2,
+        eval_steps=3,
+        feature_converter_cls=seqio.FeatureConverter)
+
+    expected_calls = expected_calls = [
+        mock.call(
+            dataclasses.replace(
+                cfg_obj, mixture_or_task_name="mock_task3", batch_size=1),
+            shard_id=0,
+            num_shards=1,
+            feature_converter_cls=seqio.FeatureConverter,
+            continue_from_last_checkpoint=False,
+            num_epochs=12),
+        mock.call(
+            dataclasses.replace(
+                cfg_obj, mixture_or_task_name="mock_task4", batch_size=1),
+            shard_id=0,
+            num_shards=1,
+            feature_converter_cls=seqio.FeatureConverter,
+            continue_from_last_checkpoint=False,
+            num_epochs=12),
+        mock.call(
+            dataclasses.replace(cfg_obj, batch_size=1),
+            shard_id=0,
+            num_shards=1,
+            feature_converter_cls=seqio.FeatureConverter,
+            continue_from_last_checkpoint=False,
+            num_epochs=12)
+    ]
+
+    mock_get_dataset.assert_has_calls(expected_calls)
+
+    self.assertSameElements(res_obj.keys(),
+                            ["mock_task3", "mock_task4", "mock_mix2"])
+    for ds in res_obj.values():
+      jax.tree_map(np.testing.assert_equal, list(ds), [
+          np.array([0, 2]),
+          np.array([4, 6]),
+          np.array([8, 0]),
+      ])
+
   def test_override_params_axes_names(self):
     model_variables = flax.core.freeze({
         "params": {
@@ -442,6 +513,114 @@ class UtilsTest(parameterized.TestCase):
             }
         }))
 
+  def test_create_checkpoint_manager_validate(self):
+    directory = "path/to/dir"
+    path = os.path.join(directory, "checkpoint")
+    save_cfg = utils.SaveCheckpointConfig(checkpoint_manager_cls=None)
+    restore_cfg = utils.RestoreCheckpointConfig(
+        path=path, checkpoint_manager_cls=checkpoints.BestCheckpointManager)
+    with self.assertRaises(ValueError):
+      utils.create_checkpoint_manager(
+          save_cfg=save_cfg,
+          restore_cfg=restore_cfg,
+          train_state_shape=mock.Mock(),
+          partitioner=mock.Mock(),
+          model_dir=directory)
+
+  def test_create_checkpoint_manager(self):
+    directory = self.create_tempdir(name="all_checkpoints")
+    path = os.path.join(directory, "checkpoint")
+    mock_data_layout = mock.Mock(
+        shard_id=0, num_shards=1, is_first_host_in_replica_set=True)
+    mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
+    best_checkpoint_manager_cls = functools.partial(
+        checkpoints.BestCheckpointManager,
+        metric_name_to_monitor="accuracy",
+        metric_mode="min",
+        force_keep_period=10,
+        keep_checkpoints_without_metrics=False,
+    )
+    save_cfg = utils.SaveCheckpointConfig(
+        checkpoint_manager_cls=best_checkpoint_manager_cls,
+        dtype="float32",
+        keep=5,
+        period=2,
+        save_dataset=True)
+    restore_cfg = utils.RestoreCheckpointConfig(
+        path=path,
+        checkpoint_manager_cls=best_checkpoint_manager_cls,
+        dtype="bfloat16",
+        restore_dataset=False)
+
+    manager = utils.create_checkpoint_manager(
+        save_cfg=save_cfg,
+        restore_cfg=restore_cfg,
+        train_state_shape=mock.Mock(),
+        partitioner=mock_partitioner,
+        ds_iter=mock.Mock(),
+        model_dir=directory)
+
+    self.assertIsInstance(manager, checkpoints.BestCheckpointManager)
+    self.assertEqual(manager._options.max_to_keep, 5)
+    self.assertEqual(manager._options.save_interval_steps, 2)
+    self.assertEqual(manager._save_dtype, "float32")
+    self.assertEqual(manager._restore_dtype, "bfloat16")
+    self.assertTrue(manager._should_write_dataset_ckpt)
+
+    # Save best options.
+    self.assertEqual(manager._options.force_keep_period, 10)
+    self.assertEqual(manager._options.best_mode, "min")
+    self.assertFalse(manager._options.keep_checkpoints_without_metrics)
+    self.assertEqual(
+        manager._options.best_fn({
+            "accuracy": 0.8,
+            "loss": 0.1
+        }), 0.8)
+
+  def test_create_checkpoint_manager_from_checkpointer(self):
+    directory = self.create_tempdir(name="all_checkpoints")
+    path = os.path.join(directory, "checkpoint")
+    mock_data_layout = mock.Mock(
+        shard_id=0, num_shards=1, is_first_host_in_replica_set=True)
+    mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
+    checkpointer_cls = checkpoints.SaveBestCheckpointer
+    save_cfg = utils.SaveCheckpointConfig(
+        checkpointer_cls=checkpointer_cls,
+        dtype="float32",
+        keep=5,
+        period=2,
+        save_dataset=True)
+    restore_cfg = utils.RestoreCheckpointConfig(
+        path=path,
+        checkpointer_cls=checkpointer_cls,
+        dtype="bfloat16",
+        restore_dataset=False)
+
+    manager = utils.create_checkpoint_manager(
+        save_cfg=save_cfg,
+        restore_cfg=restore_cfg,
+        train_state_shape=mock.Mock(),
+        partitioner=mock_partitioner,
+        ds_iter=mock.Mock(),
+        model_dir=directory)
+
+    self.assertIsInstance(manager, checkpoints.BestCheckpointManager)
+    self.assertEqual(manager._options.max_to_keep, 5)
+    self.assertEqual(manager._options.save_interval_steps, 2)
+    self.assertEqual(manager._save_dtype, "float32")
+    self.assertEqual(manager._restore_dtype, "bfloat16")
+    self.assertTrue(manager._should_write_dataset_ckpt)
+
+    # Save best options.
+    self.assertIsNone(manager._options.force_keep_period, None)
+    self.assertEqual(manager._options.best_mode, "max")
+    self.assertTrue(manager._options.keep_checkpoints_without_metrics)
+    self.assertEqual(
+        manager._options.best_fn({
+            "train/accuracy": 0.8,
+            "train/loss": 0.1
+        }), 0.8)
+
 
 @dataclasses.dataclass
 class MockTrainState:
@@ -458,6 +637,42 @@ class MockCheckpointer(checkpoints.Checkpointer):
   # for simplicity.
   def restore(self, path, *args, **kwargs):
     return MockTrainState(path=path, from_scratch=False)
+
+
+class MockCheckpointManager(checkpoints.CheckpointManager):
+
+  def __init__(self, *args, **kwargs):
+    pass
+
+  def restore(self, path, *args, **kwargs):
+    return MockTrainState(path=path, from_scratch=False)
+
+
+class OrbaxRestoreTest(parameterized.TestCase):
+
+  def setUp(self):
+    super().setUp()
+
+    self.ckptdir = self.create_tempdir(name="primary_checkpoints")
+    steps = (2, 3)
+    self.paths = []
+    for s in steps:
+      step_dir = self.ckptdir.mkdir(f"checkpoint_{s}")
+      step_dir.create_file("checkpoint")
+      self.paths += [step_dir.full_path]
+
+  def test_orbax_restore(self):
+    # Properties of config not needed in this test.
+    restore_cfg = utils.RestoreCheckpointConfig(path=[])
+
+    manager = MockCheckpointManager()
+    restored = utils.restore(manager, [self.paths[0]], restore_cfg)
+    self.assertIsInstance(restored, MockTrainState)
+    self.assertEqual(restored.path, self.paths[0])
+
+    restored = utils.restore(manager, self.paths, restore_cfg)
+    self.assertIsInstance(restored, list)
+    self.assertSequenceEqual([state.path for state in restored], self.paths)
 
 
 class TrainStateInitializerTest(parameterized.TestCase):
@@ -516,8 +731,9 @@ class TrainStateInitializerTest(parameterized.TestCase):
     # multiple paths
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.paths, mode="specific", checkpointer_cls=MockCheckpointer)
-    restored = self.train_state_init.from_checkpoints([ckpt_cfg])
-    self.assertSequenceEqual(self.paths, [state.path for state in restored])
+    restored = list(self.train_state_init.from_checkpoints([ckpt_cfg]))
+    self.assertSequenceEqual(self.paths, [state.path for state, _ in restored])
+    self.assertSequenceEqual(self.paths, [path for _, path in restored])
     with self.assertRaisesRegex(ValueError, r"^Expected at most 1 checkpoint"):
       self.train_state_init.from_checkpoint([ckpt_cfg])
 
@@ -529,11 +745,13 @@ class TrainStateInitializerTest(parameterized.TestCase):
         checkpointer_cls=MockCheckpointer)
     restored = list(self.train_state_init.from_checkpoints([ckpt_cfg]))
     assert len(restored) == 1
-    self.assertEqual(self.paths[-1], restored[0].path)
-    restored = self.train_state_init.from_checkpoint([ckpt_cfg])
-    self.assertEqual(self.paths[-1], restored.path)
+    restored_state, restored_path = restored[0]
+    self.assertEqual(self.paths[-1], restored_state.path)
+    self.assertEqual(self.paths[-1], restored_path)
+    restored_state = self.train_state_init.from_checkpoint([ckpt_cfg])
+    self.assertEqual(self.paths[-1], restored_state.path)
 
-  def test_from_checkpoints_multiple_configs(self):
+  def test_from_checkpoint_multiple_configs(self):
     # uses first checkpoint with files present.
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.ckptdir.full_path,
@@ -551,7 +769,7 @@ class TrainStateInitializerTest(parameterized.TestCase):
         [ckpt_cfg, secondary_ckpt_cfg])
     self.assertEqual(self.paths[-1], restored.path)
 
-  def test_from_checkpoints_multiple_configs_one_empty(self):
+  def test_from_checkpoint_multiple_configs_one_empty(self):
     # skips empty_checkpoints directory with no checkpoints present.
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.ckptdir.full_path,

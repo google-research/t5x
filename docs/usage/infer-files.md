@@ -39,7 +39,7 @@ SeqIO Task will be used:
     [`models/t5_1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
 
 If you would like to fine-tune your model before inference, please follow the
-[fine-tuning](finetune) tutorial, and continue to Step 2.
+[fine-tuning](finetune.md) tutorial, and continue to Step 2.
 
 ## Step 2: Choose a TF Example file source
 
@@ -182,9 +182,9 @@ inference run. Refer to [Sharding](#sharding) and
 Now that you have successfully run inference on a model, here are some topics
 you might want to explore next:
 
-+   [Fine-tuning a model.](finetune)
-+   [Evaluating a model.](eval)
-+   [Training a model from scratch.](pretrain)
++   [Fine-tuning a model.](finetune.md)
++   [Evaluating a model.](eval.md)
++   [Training a model from scratch.](pretrain.md)
 
 We also touch upon a few advanced topics related to inference below that might
 be useful, especially when customizing your inference job.

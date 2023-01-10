@@ -23,6 +23,7 @@ Model             | Use Case
 [T5](#t5-checkpoints)                       | The original T5 work for reproducibility. English only.
 [T5 1.1 LM-Adapted](#t5-11-lm-adapted-checkpoints)| Trained for 100k additional steps on the LM objective, per [prompt tuning paper](https://arxiv.org/abs/2104.08691).
 [mT5](#mt5-checkpoints)                     | Multilingual T5. Recommended for multilingual research. Note that at smaller scales (at least through XL), mT5 performance is lower than T5 on English tasks.
+[mT5 LM-Adapted](#mt5-lm-adapted-checkpoints)| Trained for 100k additional steps on the LM objective, per [zero-shot cross-lingual generation (XGen) paper](https://arxiv.org/abs/2205.12647).
 [ByT5](#byt5-checkpoints)                   | ByT5. A "token-free" model that uses UTF-8 bytes for input and output. Recommended for tasks involving word-internal phenomena such as spelling, pronunciation, or morphology.
 [LongT5](#longt5-checkpoints)               | TBD
 [MoE](#mixture-of-experts-moe-checkpoints)  | Useful for MoE experimentation.
@@ -36,10 +37,12 @@ Model             | Use Case
 These are the checkpoints used in the paper [Exploring the Limits of Transfer
 Learning with a Unified Text-to-Text
 Transformer](https://arxiv.org/abs/1910.10683). They are encoder-decoder models
-trained on [C4](https://www.tensorflow.org/datasets/catalog/c4) with a denoising
-objective.
+pre-trained on [C4](https://www.tensorflow.org/datasets/catalog/c4) with a "span
+corruption" denoising objective, in addition to a mixture of downstream tasks
+including: GLUE, SuperGLUE, CNN/Daily Mail, SQuAD, and WMT.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model    | Gin File Location                                                              | Checkpoint Location
 -------- | ------------------------------------------------------------------------------ | -------------------
@@ -68,7 +71,8 @@ For English-language, sequence-to-sequence-style tasks (ones where the goal is
 to map from an input text sequence to a target sequence) these are usually the
 best models to fine-tune.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model        | Gin File Location                                                                  | Checkpoint Location
 ------------ | ---------------------------------------------------------------------------------- | -------------------
@@ -87,7 +91,8 @@ ability of the model to be used for
 [prompt tuning](https://arxiv.org/abs/2104.08691). These checkpoints were also
 used within the BigScience [T0](https://arxiv.org/abs/2110.08207) project.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model                | Gin File Location                                                                                                   | Checkpoint Location
 -------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
@@ -107,7 +112,8 @@ They are encoder-decoder models trained on
 with a denoising objective. These are the best checkpoints to fine-tune for
 non-English sequence-to-sequence tasks.
 
-**Vocabulary:** [mc4.250000.100extra](gs://t5-data/vocabs/mc4.250000.100extra)
+**Vocabulary:**
+[mc4.250000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/mc4.250000.100extra)
 
 Model     | Gin File Location                                                            | Checkpoint Location
 --------- | ---------------------------------------------------------------------------- | -------------------
@@ -116,6 +122,26 @@ mT5 Base  | [mt5/base.gin](https://github.com/google-research/t5x/blob/main/t5x/
 mT5 Large | [mt5/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/large.gin) | [gs://t5-data/pretrained_models/t5x/mt5_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_large)
 mT5 XL    | [mt5/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xl.gin)       | [gs://t5-data/pretrained_models/t5x/mt5_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_xl)
 mT5 XXL   | [mt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xxl.gin)     | [gs://t5-data/pretrained_models/t5x/mt5_xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_xxl)
+
+#### mT5 LM-Adapted Checkpoints
+
+These are the checkpoints released as part of the [zero-shot cross-lingual generation (XGen) paper](https://arxiv.org/abs/2205.12647).
+
+These "LM-adapted" models are initialized from mT5 (above) and trained for an
+additional 100K steps on the LM objective discussed in the [T5 paper](https://arxiv.org/abs/1910.10683).
+
+This adaptation improves the ability of the model to be used for [prompt tuning](https://arxiv.org/abs/2104.08691).
+
+**Vocabulary:**
+[mc4.250000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/mc4.250000.100extra)
+
+Model                | Gin File Location                                                                                                   | Checkpoint Location
+-------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
+mT5 LM-Adapted Small | [mt5/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/small.gin) | [mt5_lm_adapted/small/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/small/checkpoint_1100000)
+mT5 LM-Adapted Base | [mt5/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/base.gin) | [mt5_lm_adapted/base/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/base/checkpoint_1100000)
+mT5 LM-Adapted Large | [mt5/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/large.gin) | [mt5_lm_adapted/large/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/large/checkpoint_1100000)
+mT5 LM-Adapted XL | [mt5/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xl.gin) | [mt5_lm_adapted/xl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/xl/checkpoint_1100000)
+mT5 LM-Adapted XXL | [mt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xxl.gin) | [mt5_lm_adapted/xxl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/xxl/checkpoint_1100000)
 
 #### ByT5 Checkpoints
 
@@ -153,7 +179,8 @@ The checkpoints below use local attention, which uses a sliding window to reduce
 training time from quadratic (with regards to input length) to linear. These are
 the recommended checkpoints to use for faster training/inference time.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model                        | Gin File Location                                                                                                                     | Checkpoint Location
 ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------
@@ -167,7 +194,8 @@ tokens at each encoder layer to allow tokens to interact with each other at
 longer distances. These are the recommended checkpoints to use for increased
 performance on long input sequence tasks.
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model        | Gin File Location                                                                                                                                                | Checkpoint Location
 ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------
@@ -188,7 +216,8 @@ the MoeTrainer and the MoePjitPartitioner. For example, for fine-tuning, use the
 These are the checkpoints from the
 [Switch Transformer model](https://arxiv.org/abs/2101.03961).
 
-**Vocabulary:** [cc_all.32000.100extra](gs://t5-data/vocabs/cc_all.32000.100extra)
+**Vocabulary:**
+[cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
 
 Model                                    | Gin File Location                                                                                            | Checkpoint Location
 ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------

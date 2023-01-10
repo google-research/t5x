@@ -172,9 +172,9 @@ experiment.
 Now that you have successfully pretrained a model, here are some topics you
 might want to explore next:
 
-+   [Fine-tuning a model.](finetune)
-+   [Evaluating a fine-tuned model.](eval)
-+   [Running inference on a fine-tuned model.](infer)
++   [Fine-tuning a model.](finetune.md)
++   [Evaluating a fine-tuned model.](eval.md)
++   [Running inference on a fine-tuned model.](infer.md)
 
 We also touch upon a few advanced topics related to pretraining below that might
 be useful, especially when customizing your pretraining job.

@@ -63,6 +63,20 @@ For an example in context, see [`layers.py`][param_with_axes].
 Tip: We recommend you use the *canonical* logical axis names listed
 [below](#canonical-logical-axis-names).
 
+To specify the logical axes for *activation partitioning*, provide the logical axes
+names to `flax.linen.partitioning.with_sharding_constraint` (instead of using
+`jax.pjit.with_sharding_constraint` or
+`t5x.partitioning.with_sharding_constraint`).
+
+```py
+from flax.linen import partitioning
+
+...
+output = jnp.dot(x, embedding)
+output = with_sharding_constraint(output, ('batch', 'length', 'embed'))
+return output
+```
+
 ### Map logical names to device
 
 For `jax.pjit` to know how to partition these arrays across the hardware, the
@@ -83,19 +97,6 @@ referring to the default mappings for data- and model-parallelism.
 > *   [`t5x.partitioning.standard_logical_axis_rules`][standard-rules]
 >     implementation
 
-To specify hardware axes for *activation partitioning*, provide the logical axes
-names to `flax.linen.partitioning.with_sharding_constraint` (instead of using
-`jax.pjit.with_sharding_constraint` or
-`t5x.partitioning.with_sharding_constraint`).
-
-```py
-from flax.linen import partitioning
-
-...
-output = jnp.dot(x, embedding)
-output = with_sharding_constraint(output, ('batch', 'length', 'embed'))
-return output
-```
 
 
 #### Configuring `PjitPartitioner`

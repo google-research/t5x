@@ -23,7 +23,7 @@ import enum
 import os
 import threading
 import time
-from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Sequence, TYPE_CHECKING, Tuple, Union, Protocol
+from typing import Any, Dict, Iterator, Mapping, MutableMapping, Optional, Protocol, Sequence, TYPE_CHECKING, Tuple, Union
 
 from absl import logging
 import cached_property
@@ -33,6 +33,8 @@ import clu.data
 import clu.metrics
 import clu.values
 from flax.core import FrozenDict
+import jax
+from jax.experimental import multihost_utils
 import jax.lax
 import jax.numpy as jnp
 import jax.random
@@ -454,7 +456,7 @@ class BaseTrainer(abc.ABC):
 
     # The eval metrics only include metrics added by the Model.
     self.eval_metrics_managers = {  # pylint:disable=g-complex-comprehension
-        n: MetricsManager(f"training_eval/{n}", summary_dir=summary_dir)
+        n: MetricsManager(f"training_eval/{n[:113]}", summary_dir=summary_dir)
         for n in eval_names
     }
 
@@ -567,6 +569,10 @@ class BaseTrainer(abc.ABC):
         utils.multihost_assert_equal(
             jnp.array(num_steps),
             "Eval step mismatch across hosts. Check for empty dataset shard.")
+        if jax.config.jax_array and jax.process_count() > 1:
+          batch = multihost_utils.host_local_array_to_global_array(
+              batch, self._partitioner.mesh,
+              self._partitioner.data_partition_spec)
         metrics_update = eval_step_fn(train_state, batch)
         if metrics:
           metrics = merge_metrics(metrics, metrics_update)
@@ -605,6 +611,10 @@ class BaseTrainer(abc.ABC):
       tick = time.time()
       cache_key: BatchSpec = FrozenDict(jax.eval_shape(lambda: batch))  # pylint:disable=cell-var-from-loop
       if cache_key not in self._compiled_eval_step_cache:
+        if jax.config.jax_array and jax.process_count() > 1:
+          batch = multihost_utils.host_local_array_to_global_array(
+              batch, self._partitioner.mesh,
+              self._partitioner.data_partition_spec)
         self._compiled_eval_step_cache[cache_key] = self._partitioner.compile(
             self._partitioned_eval_step, self.train_state, batch)
       self._compiled_eval_steps[eval_name] = self._compiled_eval_step_cache[

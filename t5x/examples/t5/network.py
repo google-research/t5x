@@ -299,7 +299,9 @@ class Transformer(nn.Module):
              enable_dropout=True):
     """Applies Transformer encoder-branch on the inputs."""
     cfg = self.config
-    assert encoder_input_tokens.ndim == 2  # (batch, len)
+    assert encoder_input_tokens.ndim == 2, (
+        f'Expected `encoder_input_tokens` to be of shape (batch, len). '
+        f'Got {encoder_input_tokens.shape}')
 
     # Make padding attention mask.
     encoder_mask = layers.make_attention_mask(

@@ -17,12 +17,14 @@
 from typing import Any
 
 from absl.testing import absltest
+import flax
 from flax import core as flax_core
 from flax.linen import partitioning as flax_partitioning
 import jax
 from jax._src.lib import xla_bridge
 import numpy as np
 import optax
+from t5x import adafactor
 from t5x import optimizers
 from t5x import partitioning as base_partitioning
 from t5x import test_utils
@@ -36,14 +38,15 @@ AxisMetadata = flax_partitioning.AxisMetadata
 DataLayout = moe_partitioning.DataLayout
 FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
 FrozenDict = flax_core.frozen_dict.FrozenDict
+FrozenVariableDict = flax_core.scope.FrozenVariableDict
 InferenceState = train_state_lib.InferenceState
 PartitionSpec = moe_partitioning.PartitionSpec
 PRNGKey = Any
 
 
-def create_train_state() -> FlaxOptimTrainState:
-  """Creates simple Adam optimizer."""
-  model_variables = flax_core.freeze({
+def create_model_variables() -> FrozenVariableDict:
+  """Creates simple model variables."""
+  return flax_core.freeze({
       'params': {
           'logits_dense': np.ones((16, 16), np.float32),
           'mlp': {
@@ -62,8 +65,38 @@ def create_train_state() -> FlaxOptimTrainState:
       }
   })
 
+
+def create_train_state() -> FlaxOptimTrainState:
+  """Creates simple Adam optimizer train state."""
   optimizer_def = optimizers.adamw(learning_rate=1e-4)
-  return FlaxOptimTrainState.create(optimizer_def, model_variables)
+  return FlaxOptimTrainState.create(optimizer_def, create_model_variables())
+
+
+def create_adafactor_train_state(factored: bool = True) -> FlaxOptimTrainState:
+  """Creates MultiOptimizer train state."""
+  optimizer_def = adafactor.Adafactor(learning_rate=0.1, factored=factored)
+  return FlaxOptimTrainState.create(optimizer_def, create_model_variables())
+
+
+def create_multioptimizer_train_state(
+    factored: bool = True) -> FlaxOptimTrainState:
+  """Creates MultiOptimizer train state."""
+
+  def _is_mlp(path):
+    return 'mlp' in path
+
+  mlp_vars = flax.traverse_util.ModelParamTraversal(
+      lambda path, _: not _is_mlp(path))
+  non_mlp_vars = flax.traverse_util.ModelParamTraversal(
+      lambda path, _: _is_mlp(path))
+  scaled_opt = adafactor.Adafactor(learning_rate=0.1, factored=factored)
+  unscaled_opt = adafactor.Adafactor(
+      learning_rate=0.1, multiply_by_parameter_scale=False, factored=factored)
+
+  optimizer_def = optimizers.MultiOptimizer(
+      ((mlp_vars, scaled_opt), (non_mlp_vars, unscaled_opt)))
+
+  return FlaxOptimTrainState.create(optimizer_def, create_model_variables())
 
 
 class PartitioningTest(absltest.TestCase):
@@ -291,6 +324,54 @@ class PartitioningTest(absltest.TestCase):
                     'kernel': PartitionSpec('vocab', 'embed'),
                 },
             })))
+
+  def test_infer_state_function(self):
+
+    with self.subTest(name='optax'):
+      optax_train_state = create_train_state()
+      self.assertIsNone(
+          moe_partitioning._infer_state_filter_fn(optax_train_state))
+
+    with self.subTest(name='factored_adafactor'):
+      adafactor_train_state = create_adafactor_train_state(factored=True)
+      match_fn = moe_partitioning._infer_state_filter_fn(adafactor_train_state)
+      self.assertTrue(match_fn('expert/kernel/v_col'))
+      self.assertTrue(match_fn('expert/kernel/v_row'))
+      self.assertFalse(match_fn('expert/kernel/m'))
+      self.assertFalse(match_fn('kernel/v_col'))
+
+    with self.subTest(name='unfactored_adafactor'):
+      adafactor_train_state = create_adafactor_train_state(factored=False)
+      self.assertIsNone(
+          moe_partitioning._infer_state_filter_fn(adafactor_train_state))
+
+    with self.subTest(name='factored_adafactor_multi_optimizer'):
+      multi_opt_train_state = create_multioptimizer_train_state(factored=True)
+      match_fn = moe_partitioning._infer_state_filter_fn(multi_opt_train_state)
+      self.assertTrue(match_fn('expert/kernel/v_col'))
+      self.assertTrue(match_fn('expert/kernel/v_row'))
+      self.assertFalse(match_fn('expert/kernel/m'))
+      self.assertFalse(match_fn('kernel/v_col'))
+
+    with self.subTest(name='unfactored_adafactor_multi_optimizer'):
+      multi_opt_train_state = create_multioptimizer_train_state(factored=False)
+      self.assertIsNone(
+          moe_partitioning._infer_state_filter_fn(multi_opt_train_state))
+
+    with self.subTest(name='mixed_factoring_adafactor_multi_optimizer'):
+      true_vars = flax.traverse_util.ModelParamTraversal(lambda p, _: True)
+      false_vars = flax.traverse_util.ModelParamTraversal(lambda p, _: False)
+      factored_opt = adafactor.Adafactor(learning_rate=0.1, factored=True)
+      unfactored_opt = adafactor.Adafactor(learning_rate=1., factored=False)
+      optimizer_def = optimizers.MultiOptimizer(
+          ((true_vars, factored_opt), (false_vars, unfactored_opt)))
+      multi_opt_train_state = FlaxOptimTrainState.create(
+          optimizer_def, create_model_variables())
+
+      with self.assertRaisesRegex(
+          ValueError,
+          'all suboptimizers must be either factored or unfactored'):
+        _ = moe_partitioning._infer_state_filter_fn(multi_opt_train_state)
 
   def test_logical_axis_rules(self):
     self.assertEqual(
