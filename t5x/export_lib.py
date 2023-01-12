@@ -1184,3 +1184,107 @@ def save(
 
 
   # TODO(danielandor): Save the graph.pbtxt for debugging purposes.
+
+
+def model_validate(
+    *,
+    model: models.BaseTransformerModel,
+    inference_mode: str,
+    restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
+    create_preprocessor_fn: CreatePreprocessorFn = create_preprocessor,
+    create_postprocessor_fn: CreatePostprocessorFn = create_postprocessor,
+    partitioner: Optional[partitioning.BasePartitioner],
+    output_features: Optional[Mapping[str, seqio.Feature]],
+    task_feature_lengths: Mapping[str, int],
+    batch_size: Optional[int],
+    saved_model_dir: str,
+    tokenized_inputs: bool = False,
+    mixture_or_task_name: Optional[str] = None,
+    validation_examples: Optional[List[Any]] = None,
+    decode_outputs: Optional[bool] = None,
+    trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
+    output_vocab_feature_name: Optional[str] = 'targets',
+    signature_name: Optional[
+        str
+    ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    # output_dir: Optional[str] = None,
+):
+  """Validate the Saved Model with the original JAX function."""
+  if partitioner:
+    train_state_initializer = get_train_state_initializer(
+        model, partitioner, task_feature_lengths, batch_size, trailing_shapes
+    )
+    # Log the variable shapes information.
+    utils.log_model_info(
+        None, train_state_initializer.global_train_state_shape, partitioner
+    )
+  else:
+    train_state_initializer = None
+
+  if mixture_or_task_name is not None and output_features is not None:
+    raise ValueError(
+        'Only one of mixture_or_task_name and output_features may be non empty.'
+    )
+  if mixture_or_task_name is not None:
+    logging.info('Fetching output features from task %s', mixture_or_task_name)
+    output_features = seqio.get_mixture_or_task(
+        mixture_or_task_name
+    ).output_features
+  # Get the preprocessor and postprocessor.
+
+  # Non-vanilla seq-to-seq/decoder-only models can have a different
+  # vocabulary feature or not use a vocabulary feature at all.
+  output_vocab = None
+  if output_vocab_feature_name:
+    output_vocab = output_features[output_vocab_feature_name].vocabulary
+
+  # Handle the new and old create_preprocessor_fn signatures, for backwards
+  # compatibility.
+  # TODO(marcrasi): Delete after migrating clients.
+  if 'batch_size' in inspect.signature(create_preprocessor_fn).parameters:
+    # New signature.
+    preprocessor, _ = create_preprocessor_fn(
+        batch_size, output_features, task_feature_lengths, tokenized_inputs
+    )  # type: ignore
+  else:
+    # Old signature.
+    preprocessor = create_preprocessor_fn(
+        output_features, task_feature_lengths, tokenized_inputs
+    )  # type: ignore
+
+  logging.info('Loading parameters from checkpoint...')
+  params = load_params_from_checkpoint(
+      restore_checkpoint_cfg=restore_checkpoint_cfg,
+      train_state_initializer=train_state_initializer,
+  )
+
+  logging.info('Preparing Module to save...')
+  if decode_outputs is None:
+    decode_outputs = not tokenized_inputs
+  postprocessor = create_postprocessor_fn(
+      output_vocab, inference_mode, decode_outputs
+  )
+
+  # Run Jax/TF validation on validation examples.
+  if validation_examples:
+    model_fn = create_inference_function(
+        model=model,
+        train_state_initializer=train_state_initializer,
+        partitioner=partitioner,
+        inference_mode=inference_mode,
+        enable_jax2tf=False,
+    )
+    if partitioner is None:
+      model_fn = jax.jit(model_fn)
+      params = jax.device_put(params, jax.local_devices()[0])
+    validate.compare_jax_and_savedmodel(
+        validation_examples,
+        batch_size,
+        preprocessor,
+        model_fn,
+        postprocessor,
+        params,
+        saved_model_dir,
+        signature_name,
+        is_tpu_model=True,
+    )
