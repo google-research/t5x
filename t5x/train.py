@@ -764,7 +764,6 @@ if __name__ == '__main__':
   flags.DEFINE_integer('process_index', None, help='Index of this process.')
 
 
-
   def main(argv: Sequence[str]):
     """Wrapper for pdb post mortems."""
     _main(argv)
@@ -797,7 +796,8 @@ if __name__ == '__main__':
         FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
         FLAGS.gin_file,
         FLAGS.gin_bindings)
-    train_using_gin()
+    with jax.spmd_mode('allow_all'):
+      train_using_gin()
     jax.effects_barrier()
 
 
