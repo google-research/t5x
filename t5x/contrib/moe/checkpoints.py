@@ -20,6 +20,7 @@ from typing import Any, Optional, Union
 import clu.data
 import jax
 from jax import pxla
+import jax.config
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental.gda_serialization import serialization as gda_serialization
 import jax.numpy as jnp
@@ -45,20 +46,22 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
   for more details.
   """
 
-  def __init__(self,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               checkpoints_dir: str,
-               num_experts: int,
-               dataset_iterator: Optional[
-                   Union[tf.data.Iterator,
-                         clu.data.dataset_iterator.DatasetIterator]] = None,
-               *,
-               keep: Optional[int] = None,
-               save_dtype: jnp.dtype = np.float32,
-               restore_dtype: Optional[jnp.dtype] = None,
-               use_gda: Optional[bool] = True,
-               keep_dataset_checkpoints: Optional[int] = None):
+  def __init__(
+      self,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      checkpoints_dir: str,
+      num_experts: int,
+      dataset_iterator: Optional[
+          Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]
+      ] = None,
+      *,
+      keep: Optional[int] = None,
+      save_dtype: jnp.dtype = np.float32,
+      restore_dtype: Optional[jnp.dtype] = None,
+      use_gda: Optional[bool] = True,
+      keep_dataset_checkpoints: Optional[int] = None,
+  ):
     """Checkpointer constructor.
 
     Args:
@@ -84,8 +87,16 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
         oldest ones will be automatically deleted to save space.
     """
     if not use_gda:
-      raise ValueError('Sparse upcycling is only supported with GDA. Please '
-                       'set. Please set `use_gda`=True.')
+      raise ValueError(
+          'Sparse upcycling is only supported with GDA. Please '
+          'set. Please set `use_gda`=True.'
+      )
+    if not jax.config.jax_array:
+      raise ValueError(
+          'Sparse upcycling is currently only supported for '
+          'jax.Array(s). Please set `use_jax_array`=True in '
+          'the train library (train.py).'
+      )
 
     super().__init__(
         train_state=train_state,
@@ -96,13 +107,18 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
         save_dtype=save_dtype,
         restore_dtype=restore_dtype,
         use_gda=use_gda,
-        keep_dataset_checkpoints=keep_dataset_checkpoints)
+        keep_dataset_checkpoints=keep_dataset_checkpoints,
+    )
 
     self._num_experts = num_experts
 
   def _create_lazy_awaitable_array(
-      self, param_info: _ParameterInfo, maybe_ts_spec: Any, ckpt_path: str,
-      restore_dtype: Optional[jnp.dtype]) -> LazyAwaitableArray:
+      self,
+      param_info: _ParameterInfo,
+      maybe_ts_spec: Any,
+      ckpt_path: str,
+      restore_dtype: Optional[jnp.dtype],
+  ) -> LazyAwaitableArray:
     """Creates LazyArray from tensorstore and optionally broadcasts it.
 
     Does not materialize the array immediately.
@@ -143,36 +159,49 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
           self._num_experts,
           restore_dtype=restore_dtype,
           mesh=mesh,
-          axes=axes)
+          axes=axes,
+      )
 
-      is_sharded_jax_array = isinstance(
-          arr, jax.Array) and not arr.is_fully_addressable
-      if self._use_gda and isinstance(
-          arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
+      is_sharded_jax_array = (
+          isinstance(arr, jax.Array) and not arr.is_fully_addressable
+      )
+      if (
+          self._use_gda
+          and isinstance(arr, (np.ndarray, jnp.ndarray))
+          and not is_sharded_jax_array
+      ):
         if axes is None:
-          axes = PartitionSpec(None,)
+          axes = PartitionSpec(
+              None,
+          )
         if restore_dtype is not None:
           arr = arr.astype(restore_dtype)
         if jax.config.jax_array:
           arr = jax.make_array_from_callback(
-              arr.shape, jax.sharding.NamedSharding(mesh, axes),
-              lambda idx: arr[idx])
+              arr.shape,
+              jax.sharding.NamedSharding(mesh, axes),
+              lambda idx: arr[idx],
+          )
         else:
-          arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
-                                                        lambda idx: arr[idx])
+          arr = gda_lib.GlobalDeviceArray.from_callback(
+              arr.shape, mesh, axes, lambda idx: arr[idx]
+          )
       return arr
 
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
-        maybe_ts_spec, get_fn, dtype=restore_dtype)
+        maybe_ts_spec, get_fn, dtype=restore_dtype
+    )
 
 
-async def _read_upcycle_ts(param_info: _ParameterInfo,
-                           maybe_ts_spec: Any,
-                           ckpt_path: str,
-                           num_experts: int,
-                           restore_dtype: Optional[jnp.dtype] = None,
-                           mesh: Optional[pxla.Mesh] = None,
-                           axes: Optional[gda_lib.MeshAxes] = None):
+async def _read_upcycle_ts(
+    param_info: _ParameterInfo,
+    maybe_ts_spec: Any,
+    ckpt_path: str,
+    num_experts: int,
+    restore_dtype: Optional[jnp.dtype] = None,
+    mesh: Optional[pxla.Mesh] = None,
+    axes: Optional[gda_lib.MeshAxes] = None,
+):
   """Reads array from tensorstore and handles broadcasting of expert weights.
 
   If both `mesh` and `axes` are provided, the method will attempt to restore the
@@ -231,7 +260,8 @@ async def _read_upcycle_ts(param_info: _ParameterInfo,
   # location. Path and gcs bucket (if applicable) information is updated
   # in-place.
   checkpoints._update_ts_path_from_relative_to_absolute(  # pylint:disable=protected-access
-      os.path.dirname(ckpt_path), tmp_ts_spec_dict)
+      os.path.dirname(ckpt_path), tmp_ts_spec_dict
+  )
 
   if param_info.shape is not None:
     ts_spec_arr_shape = tuple(tmp_ts_spec_dict['metadata']['shape'])
@@ -242,23 +272,29 @@ async def _read_upcycle_ts(param_info: _ParameterInfo,
     else:
       shapes_match = ts_spec_arr_shape == param_info.shape
     if not shapes_match:
-      raise ValueError(f'Shape of `{param_info.name}` in checkpoint '
-                       f'{ts_spec_arr_shape} does not match expected '
-                       f'{param_info.shape}.')
+      raise ValueError(
+          f'Shape of `{param_info.name}` in checkpoint '
+          f'{ts_spec_arr_shape} does not match expected '
+          f'{param_info.shape}.'
+      )
 
-  if ('dtype' in tmp_ts_spec_dict and tmp_ts_spec_dict['dtype']
-      == 'uint16') or ('dtype' in tmp_ts_spec_dict['metadata'] and
-                       tmp_ts_spec_dict['metadata']['dtype'] == '<u2'):
+  if (
+      'dtype' in tmp_ts_spec_dict and tmp_ts_spec_dict['dtype'] == 'uint16'
+  ) or (
+      'dtype' in tmp_ts_spec_dict['metadata']
+      and tmp_ts_spec_dict['metadata']['dtype'] == '<u2'
+  ):
     error_message = (
         'Found unsupported uint16 type in Tensorstore spec: '
-        f'{tmp_ts_spec_dict}. Please update saved types to bfloat16.')
+        f'{tmp_ts_spec_dict}. Please update saved types to bfloat16.'
+    )
     raise ValueError(error_message)
 
   if restore_dtype is not None:
     tmp_ts_spec_dict = {
         'base': tmp_ts_spec_dict,
         'driver': 'cast',
-        'dtype': jnp.dtype(restore_dtype).name
+        'dtype': jnp.dtype(restore_dtype).name,
     }
 
   if mesh is None or axes is None:
@@ -278,7 +314,8 @@ async def _read_upcycle_ts(param_info: _ParameterInfo,
       checkpoint_axes = axes
 
     arr = await gda_serialization.async_deserialize(
-        jax.sharding.NamedSharding(mesh, checkpoint_axes), tmp_ts_spec_dict)
+        jax.sharding.NamedSharding(mesh, checkpoint_axes), tmp_ts_spec_dict
+    )
 
   if (not m_or_v) and is_expert_param:
     if mesh is not None and axes is not None:
@@ -303,7 +340,7 @@ async def _read_upcycle_ts(param_info: _ParameterInfo,
         arr = partitioning.pjit(
             upcycle,
             in_axis_resources=checkpoint_axes,
-            out_axis_resources=upcycled_axes)(
-                arr)
+            out_axis_resources=upcycled_axes,
+        )(arr)
 
   return arr
