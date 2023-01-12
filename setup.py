@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """Install T5X."""
 
 import os
@@ -69,16 +70,6 @@ setuptools.setup(
 
         # Cloud TPU requirements.
         'tpu': [f'jax[tpu] >= {_jax_version}'],
-        'gpu': [
-            'ipdb==0.13.9',
-            'fasttext==0.9.2',
-            'pysimdjson==5.0.2',
-            'pytablewriter==0.64.2',
-            'gdown==4.5.3',
-            'best-download==0.0.9',
-            'lm_dataformat==0.0.20',
-            'tfds-nightly==4.6.0.dev202210040045',
-            ],
     },
     classifiers=[
         'Development Status :: 4 - Beta',

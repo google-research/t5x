@@ -202,6 +202,7 @@ def evaluate(
       set to True. If None, parameter initialization is not allowed during model
       loading and having fallback_to_scratch enabled will result in an error.
   """
+  jax.monitoring.record_event('/jax/t5x/evaluate/beacon')
   logging.info('Process ID: %d', jax.process_index())
   if dataset_cfg.module:
     utils.import_module(dataset_cfg.module)

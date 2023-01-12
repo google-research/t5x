@@ -399,6 +399,7 @@ def infer(
     output_vocab_feature_name: The name of the feature corresponding to the
       output vocabulary.
   """
+  jax.monitoring.record_event('/jax/t5x/infer/beacon')
   logging.info('Process ID: %d', jax.process_index())
 
   # Only allow `shard_id` 0 to write config summary, since the config summary

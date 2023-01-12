@@ -1024,6 +1024,7 @@ def save(
       be different or empty for other models.
     signature_name: Optional name of the exported function.
   """
+  jax.monitoring.record_event('/jax/t5x/export/beacon')
   if not os.path.basename(output_dir).isdigit():
     raise ValueError('output_dir must be in the form ${BASE}/${VERSION}, where '
                      '${VERSION} is an integer. Got a non-numeric version %s' %
