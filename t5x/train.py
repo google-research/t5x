@@ -416,7 +416,7 @@ def train(
   # Trainer
   # ---------------------------------------------------------------------------
 
-  trainer: trainer_lib.BaseTrainer = trainer_cls(
+  trainer: trainer_lib.BaseTrainer = trainer_cls(  # pytype: disable=wrong-arg-types
       model=model,
       train_state=train_state,
       partitioner=partitioner,
