@@ -1987,14 +1987,17 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
     Leaves stored in T5X checkpoints as ts.Spec must be modified to an
     Orbax-interpretable placeholder containing the parameter name.
 
+    The 'checkpoint' msgpack file is not necessarily needed. However, if it does
+    not exist, all parameters must have been saved with Tensorstore, or a
+    fallback state must be provided to initialize the parameters for which there
+    is no record.
+
     Args:
       directory: location of the checkpoint.
 
     Returns:
       A structure for the checkpoint.
     """
-    result = super().structure(directory)
-    result = _get_optimizer_state_dict(result, {}, [])
 
     def tensorstore_spec_to_name(leaf):
       if isinstance(leaf, ts.Spec):
@@ -2003,7 +2006,14 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
         leaf = orbax.checkpoint.utils.leaf_placeholder(leaf)
       return leaf
 
-    return jax.tree_map(tensorstore_spec_to_name, result)
+    if (directory / _FLAX_CHECKPOINT_FILE).exists():
+      result = super().structure(directory)
+      result = jax.tree_map(tensorstore_spec_to_name, result)
+    else:
+      result = orbax.checkpoint.utils.pytree_structure(directory)
+      result = {_OPTIMIZER_KEY: result, _VERSION_KEY: VERSION}
+
+    return _get_optimizer_state_dict(result, {}, [])
 
 
 class NonAtomicCheckpointer(orbax.checkpoint.Checkpointer):
