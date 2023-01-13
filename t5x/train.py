@@ -211,6 +211,9 @@ def train(
     else:
       jax.config.update('jax_parallel_functions_output_gda', True)
 
+  if not use_jax_array:
+    jax.config.update('jax_array', False)
+
   if use_orbax:
     logging.info('Checkpointing with Orbax enabled.')
     if not use_gda:
