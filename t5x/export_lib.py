@@ -33,6 +33,7 @@ from jax.experimental.global_device_array import GlobalDeviceArray as GDA
 import jax.numpy as jnp
 import ml_collections
 import numpy as np
+from orbax import export as orbax_export
 import seqio
 from t5x import checkpoints
 from t5x import decoding
@@ -1026,6 +1027,125 @@ def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
   return output_dirs
 
 
+def _handle_new_and_old_preprocessor(
+    create_preprocessor_fn: CreatePreprocessorFn,
+    batch_size: Optional[int],
+    output_features: Optional[Mapping[str, seqio.Feature]],
+    task_feature_lengths: Mapping[str, int],
+    tokenized_inputs: bool,
+):
+  """Handle the new and old create_preprocessor_fn signatures for backwards compatibility."""
+  # TODO(marcrasi): Delete after migrating clients.
+  if 'batch_size' in inspect.signature(create_preprocessor_fn).parameters:
+    # New signature.
+    preprocessor, input_signature = create_preprocessor_fn(
+        batch_size, output_features, task_feature_lengths, tokenized_inputs
+    )  # type: ignore
+  else:
+    # Old signature.
+    preprocessor = create_preprocessor_fn(
+        output_features, task_feature_lengths, tokenized_inputs
+    )  # type: ignore
+    input_signature = create_single_tensor_input_signature(
+        batch_size, task_feature_lengths, tokenized_inputs
+    )
+  return preprocessor, input_signature
+
+
+def create_orbax_jax_module_and_serve_config(
+    *,
+    model: models.BaseTransformerModel,
+    inference_mode: str,
+    restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
+    create_preprocessor_fn: CreatePreprocessorFn,
+    create_postprocessor_fn: CreatePostprocessorFn,
+    partitioner: Optional[partitioning.BasePartitioner],
+    create_decoding_state_callback_fn: Optional[
+        CreateDecodingStateCallbackFn
+    ] = None,
+    output_features: Optional[Mapping[str, seqio.Feature]],
+    task_feature_lengths: Mapping[str, int],
+    batch_size: Optional[int],
+    tokenized_inputs: bool = False,
+    mixture_or_task_name: Optional[str] = None,
+    decode_outputs: Optional[bool] = None,
+    trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
+    output_vocab_feature_name: Optional[str] = 'targets',
+    signature_name: Optional[
+        str
+    ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+):
+  """Convert t5x input into obrax standard JaxModule and ServeConfig classes."""
+  output_features = _standardize_output_features(
+      mixture_or_task_name, output_features
+  )
+
+  preprocessor, input_signature = _handle_new_and_old_preprocessor(
+      create_preprocessor_fn=create_preprocessor_fn,
+      batch_size=batch_size,
+      output_features=output_features,
+      task_feature_lengths=task_feature_lengths,
+      tokenized_inputs=tokenized_inputs,
+  )
+
+  # Non-vanilla seq-to-seq/decoder-only models can have a different
+  # vocabulary feature or not use a vocabulary feature at all.
+  output_vocab = None
+  if output_vocab_feature_name:
+    output_vocab = output_features[output_vocab_feature_name].vocabulary
+
+  if decode_outputs is None:
+    decode_outputs = not tokenized_inputs
+  postprocessor = create_postprocessor_fn(
+      output_vocab, inference_mode, decode_outputs
+  )
+
+  logging.info('Loading parameters from checkpoint...')
+  train_state_initializer = get_train_state_initializer(
+      model, partitioner, task_feature_lengths, batch_size, trailing_shapes
+  )
+  params = load_params_from_checkpoint(
+      restore_checkpoint_cfg=restore_checkpoint_cfg,
+      train_state_initializer=train_state_initializer,
+  )
+
+  decoding_state_callback_fn = None
+  if create_decoding_state_callback_fn is not None:
+    decoding_state_callback_fn = create_decoding_state_callback_fn(
+        vocab=output_vocab
+    )
+
+  model_fn = create_inference_function(
+      model=model,
+      train_state_initializer=train_state_initializer,
+      decoding_state_callback_fn=decoding_state_callback_fn,
+      partitioner=partitioner,
+      inference_mode=inference_mode,
+      enable_jax2tf=False,
+  )
+
+  if partitioner is None:
+    model_fn = jax.jit(model_fn)
+    params = jax.device_put(params, jax.local_devices()[0])
+
+  jax_module = orbax_export.JaxModule(params, model_fn)
+  serving_configs = [
+      orbax_export.ServingConfig(
+          signature_name,
+          input_signature=input_signature,
+          tf_preprocessor=preprocessor,
+          tf_postprocessor=postprocessor,
+      )
+  ]
+  return (
+      jax_module,
+      serving_configs,
+      params,
+      train_state_initializer,
+      decoding_state_callback_fn,
+  )
+
+
 def save(
     *,
     model: models.BaseTransformerModel,
@@ -1110,35 +1230,35 @@ def save(
   logging.info('jax.process_count: %s', jax.process_count())
   logging.info('jax.local_devices: %s', jax.local_devices())  # Seems necessary.
   logging.info('Creating inference function...')
-  train_state_initializer = get_train_state_initializer(
-      model, partitioner, task_feature_lengths, batch_size, trailing_shapes
+
+  (
+      jax_module,
+      serving_configs,
+      params,
+      train_state_initializer,
+      decoding_state_callback_fn,
+  ) = create_orbax_jax_module_and_serve_config(
+      model=model,
+      inference_mode=inference_mode,
+      restore_checkpoint_cfg=restore_checkpoint_cfg,
+      create_preprocessor_fn=create_preprocessor_fn,
+      create_postprocessor_fn=create_postprocessor_fn,
+      partitioner=partitioner,
+      create_decoding_state_callback_fn=create_decoding_state_callback_fn,
+      output_features=output_features,
+      task_feature_lengths=task_feature_lengths,
+      batch_size=batch_size,
+      tokenized_inputs=tokenized_inputs,
+      mixture_or_task_name=mixture_or_task_name,
+      decode_outputs=decode_outputs,
+      trailing_shapes=trailing_shapes,
+      output_vocab_feature_name=output_vocab_feature_name,
+      signature_name=signature_name,
   )
 
-  output_features = _standardize_output_features(
-      mixture_or_task_name, output_features
-  )
-  # Get the preprocessor and postprocessor.
-
-  # Non-vanilla seq-to-seq/decoder-only models can have a different
-  # vocabulary feature or not use a vocabulary feature at all.
-  output_vocab = None
-  if output_vocab_feature_name:
-    output_vocab = output_features[output_vocab_feature_name].vocabulary
-
-  # Handle the new and old create_preprocessor_fn signatures, for backwards
-  # compatibility.
-  # TODO(marcrasi): Delete after migrating clients.
-  if 'batch_size' in inspect.signature(create_preprocessor_fn).parameters:
-    # New signature.
-    preprocessor, input_signature = create_preprocessor_fn(
-        batch_size, output_features, task_feature_lengths,
-        tokenized_inputs)  # type: ignore
-  else:
-    # Old signature.
-    preprocessor = create_preprocessor_fn(output_features, task_feature_lengths,
-                                          tokenized_inputs)  # type: ignore
-    input_signature = create_single_tensor_input_signature(
-        batch_size, task_feature_lengths, tokenized_inputs)
+  serving_config = serving_configs[0]
+  preprocessor = serving_config.tf_preprocessor
+  input_signature = serving_config.input_signature
 
   logging.info('Converting inference function...')
 
@@ -1165,12 +1285,7 @@ def save(
   else:
     polymorphic_shapes_inputs = None
 
-  decoding_state_callback_fn = None
-  if create_decoding_state_callback_fn is not None:
-    decoding_state_callback_fn = create_decoding_state_callback_fn(
-        vocab=output_vocab
-    )
-
+  # TODO(dinghua) should call orbax.export create tf function directly.
   model_tf_fn = create_inference_function(
       model=model,
       train_state_initializer=train_state_initializer,
@@ -1182,16 +1297,8 @@ def save(
       native_lowering=native_lowering,
   )
 
-  logging.info('Loading parameters from checkpoint...')
-  params = load_params_from_checkpoint(
-      restore_checkpoint_cfg=restore_checkpoint_cfg,
-      train_state_initializer=train_state_initializer)
+  postprocessor = serving_config.tf_postprocessor
 
-  logging.info('Preparing Module to save...')
-  if decode_outputs is None:
-    decode_outputs = not tokenized_inputs
-  postprocessor = create_postprocessor_fn(output_vocab, inference_mode,
-                                          decode_outputs)
   module = exportable_module_cls(
       preproc_tf_fn=preprocessor,
       model_tf_fn=model_tf_fn,
