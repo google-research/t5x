@@ -169,6 +169,17 @@ class InferenceEvaluator:
     return all_metrics
 
 
+def _sorted_ckpt_paths(ckpt_paths):
+  return sorted(ckpt_paths, key=lambda x: int(x.split('_')[-1]))
+
+
+def _load_evaluated_ckpt_paths(eval_ckpt_path):
+  if not gfile.exists(eval_ckpt_path):
+    return set()
+  with gfile.GFile(eval_ckpt_path, 'r') as f:
+    return set(f.read().split())
+
+
 def evaluate(
     *,
     model: models.BaseTransformerModel,
@@ -263,16 +274,16 @@ def evaluate(
           checkpoints.get_checkpoint_dir(ckpt_dir, step)
           for step in checkpoints.all_steps(ckpt_dir))
 
-    with gfile.GFile(eval_ckpt_path, 'r') as f:
-      evaluated_ckpt_paths = set(f.read().split())
+    evaluated_ckpt_paths = _load_evaluated_ckpt_paths(eval_ckpt_path)
 
     logging.info(
-        'Skipping evaluated checkpoints:\n %s', '\n '.join(
-            sorted(
-                ckpt_paths & evaluated_ckpt_paths,
-                key=lambda x: int(x.split('_')[-1]))))
+        'Skipping evaluated checkpoints:\n %s',
+        '\n '.join(_sorted_ckpt_paths(ckpt_paths & evaluated_ckpt_paths)),
+    )
     restore_checkpoint_cfg.mode = 'specific'
-    restore_checkpoint_cfg.path = sorted(ckpt_paths - evaluated_ckpt_paths)
+    restore_checkpoint_cfg.path = _sorted_ckpt_paths(
+        ckpt_paths - evaluated_ckpt_paths
+    )
 
   if fallback_init_rng is not None:
     fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
@@ -290,8 +301,11 @@ def evaluate(
     # Wait until computations are done before continuing.
     utils.sync_global_devices(f'step_{host_step}:complete')
     if jax.process_index() == 0:
-      with gfile.GFile(eval_ckpt_path, 'a') as f:
-        f.write(f'{ckpt_path}\n')
+      # Read/write/replace rather than append to avoid filesystem issue.
+      evaluated_ckpt_paths = _load_evaluated_ckpt_paths(eval_ckpt_path)
+      evaluated_ckpt_paths.add(ckpt_path)
+      with gfile.GFile(eval_ckpt_path, 'w') as f:
+        f.write('\n'.join(_sorted_ckpt_paths(evaluated_ckpt_paths)))
 
   logging.info('Finished.')
 
