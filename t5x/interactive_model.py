@@ -269,6 +269,26 @@ class InteractiveModel(abc.ABC):
         num_microbatches=None)
 
   @property
+  def trainer(self):
+    return self._trainer
+
+  @property
+  def partitioner(self):
+    return self._partitioner
+
+  @property
+  def model(self):
+    return self._model
+
+  @property
+  def train_state(self):
+    return self._train_state
+
+  @property
+  def train_state_axes(self):
+    return self._train_state_axes
+
+  @property
   def train_summary(self):
     return self._train_summary.result()
 
