@@ -2166,6 +2166,8 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     step = get_local_data(step)
     # Integer, to avoid side effects in the checkpoint path.
     step = int(step)
+    if not self.should_save(step):
+      return False
 
     # TODO(b/216649487) Test state_transformation_fns.
     state_dict, param_infos = (
