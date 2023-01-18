@@ -521,8 +521,11 @@ def train(
     # checkpoint if a checkpoint does not already exist for that step. This is
     # because Orbax will error out if we try to save a checkpoint that already
     # exists.
-    if not use_orbax or (use_orbax and trainer.train_state.step
-                         not in checkpoint_manager.all_steps()):
+    if not use_orbax or (
+        use_orbax
+        and utils.get_local_data(trainer.train_state.step)
+        not in checkpoint_manager.all_steps()
+    ):
       logging.info('Saving checkpoint before the training loop starts.')
       checkpoint_manager.save(trainer.train_state,
                               checkpoint_cfg.save.state_transformation_fns)
