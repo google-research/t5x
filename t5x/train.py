@@ -714,9 +714,6 @@ if __name__ == '__main__':
 
   FLAGS = flags.FLAGS
 
-  # OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
-  tf.config.experimental.set_visible_devices([], 'GPU')
-
   jax.config.parse_flags_with_absl()
 
   flags.DEFINE_multi_string(
@@ -773,6 +770,11 @@ if __name__ == '__main__':
     """True main function."""
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
+
+    # OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
+    # This must go after InitGoogle(), which is called by
+    # gin_utils.run(main).
+    tf.config.experimental.set_visible_devices([], 'GPU')
 
 
     if FLAGS.multiprocess_gpu:
