@@ -966,7 +966,7 @@ def save(
     output_features: Optional[Mapping[str, seqio.Feature]],
     task_feature_lengths: Mapping[str, int],
     batch_size: Optional[int],
-    output_dir: str,
+    output_dir: Union[str, Mapping[str, str]],
     model_name: str,
     warmup_examples: Optional[WarmupExamples] = None,
     tokenized_inputs: bool = False,
@@ -993,10 +993,12 @@ def save(
     task_feature_lengths: Input and target lengths.
     batch_size: Batch size for model to process. If None, then batch
       polymorphism is invoked.
-    output_dir: Path in ${BASE}/${VERSION} format output the final TPU-converted
+    output_dir: This is either:
+      (a) A path in ${BASE}/${VERSION} format output the final TPU-converted
       saved model. The CPU saved model will be saved to ${BASE}_cpu/${VERSION},
       such that "_cpu" is appended to the base path but the numeric version is
       preserved.
+      (b) A dict with key 'cpu' and as value the path to write the CPU model to.
     model_name: Name of model, like "/ml/user/half_plus_two".
     warmup_examples: Optional list of warmup examples. If proveded, they will be
       written in Predict mode to assets.extra.
@@ -1026,10 +1028,23 @@ def save(
     signature_name: Optional name of the exported function.
   """
   jax.monitoring.record_event('/jax/t5x/export/beacon')
-  if not os.path.basename(output_dir).isdigit():
-    raise ValueError('output_dir must be in the form ${BASE}/${VERSION}, where '
-                     '${VERSION} is an integer. Got a non-numeric version %s' %
-                     os.path.basename(output_dir))
+  if output_dir is None:
+    raise ValueError('output_dir is mandatory')
+  if isinstance(output_dir, str):
+    output_dirs = {'tpu': output_dir}
+  else:
+    output_dirs = dict(output_dir)
+  if 'cpu' not in output_dirs:
+    if 'tpu' not in output_dirs:
+      raise ValueError('output_dir["cpu"] or output_dir["tpu"] is mandatory')
+    export_version = os.path.basename(output_dirs['tpu'])
+    if not export_version.isdigit():
+      raise ValueError('output_dir must be in the form ${BASE}/${VERSION}, '
+                       'where  ${VERSION} is an integer. Got a non-numeric '
+                       f'version {export_version}.')
+    output_dirs['cpu'] = os.path.join(
+        os.path.dirname(output_dirs['tpu']) + '_cpu', export_version)
+  del output_dir
 
   logging.info('jax.process_count: %s', jax.process_count())
   logging.info('jax.local_devices: %s', jax.local_devices())  # Seems necessary.
@@ -1136,8 +1151,6 @@ def save(
       signature_name: module.__call__.get_concrete_function(*input_signature)
   }
   logging.info('Saving the CPU model...')
-  head, tail = os.path.split(output_dir)
-  export_dir_cpu = os.path.join(head + '_cpu', tail)
   # TODO(b/196260374): Figure out how to set experimental_custom_gradients=True.
   options = tf.saved_model.SaveOptions(
       experimental_custom_gradients=False,
@@ -1146,11 +1159,10 @@ def save(
       })
   tf.saved_model.save(
       module,
-      export_dir_cpu,
+      output_dirs['cpu'],
       signatures=signatures,
       options=options,
   )
-
 
 
   if warmup_examples:
@@ -1164,7 +1176,7 @@ def save(
 
     write_warmup_example_fn(
         warmup_examples,
-        output_dir=export_dir_cpu,
+        output_dir=output_dirs['cpu'],
         model_name=model_name,
         batch_sizes=module.export_batch_sizes,
         signature_name=signature_name)

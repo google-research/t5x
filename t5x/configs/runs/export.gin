@@ -7,8 +7,15 @@
 # - TASK_FEATURE_LENGTHS: The lengths per key in the SeqIO Task to trim features
 #                         to.
 # - CHECKPOINT_PATH: The model checkpoint to use for inference
-# - INFER_OUTPUT_DIR: The dir to write results to. When launching using
-#                     XManager, this is set automatically.
+# - MODEL_OUTPUT_DIR: The dir to write results to.
+#       This can be a dict (recommended) whereby the 'cpu' key specifies where
+#       the CPU model should be written.
+#       Alternatively (legacy), this can be a simple directory path as a string.
+#       It must end in a version number, whereby the CPU model is written in an
+#       adjacent directory with _cpu appended to the parent directory, with the
+#       same version directory inside. That is, confusingly, the CPU model is
+#       not written to the exact directory you specified.
+# - MODEL_NAME: Name of model, like "/ml/user/half_plus_two".
 #
 # Commonly overridden options:
 #
