@@ -34,7 +34,7 @@ NUM_MICROBATCHES=${8:-0}
 # If true, this will duplicate the last checkpoint in MODEL_DIR and add a date/time string. It will finetune on this directory. Useful if running many experiments on the same pretrained checkpoint.
 MAKE_FT_DIR=${9:-false} # 'true' or 'false'. 
 
-export XLA_FLAGS='--xla_gpu_simplify_all_fp_conversions --xla_gpu_all_reduce_combine_threshold_bytes=136314880 ${XLA_FLAGS}'
+export XLA_FLAGS="--xla_gpu_simplify_all_fp_conversions --xla_gpu_all_reduce_combine_threshold_bytes=136314880 ${XLA_FLAGS}"
 
 case $MAKE_FT_DIR in
   true)

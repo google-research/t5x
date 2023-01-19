@@ -17,7 +17,7 @@
 set -x
 
 # Setting XLA flags
-export XLA_FLAGS='--xla_gpu_simplify_all_fp_conversions --xla_gpu_all_reduce_combine_threshold_bytes=136314880 ${XLA_FLAGS}'
+export XLA_FLAGS="--xla_gpu_simplify_all_fp_conversions --xla_gpu_all_reduce_combine_threshold_bytes=136314880 ${XLA_FLAGS}"
 
 TFDS_DATA_DIR="/t5x_home/datasets/"
 T5X_DIR=${PWD}
