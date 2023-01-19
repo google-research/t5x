@@ -46,10 +46,12 @@ class DecodingState:
   Note that we use a different class than `SamplingLoopState` or `Beamstate` to
   decouple the concerns of what data is useful for the loop vs. what the
   sampling method needs.
+  Decodes for a given batch entry are flattened in a column-major way so that
+  decodes from the same batch entry are grouped together.
 
   Attributes:
-    cur_index: [batch_size] array position of the sampling loop in the length
-      dimension.
+    cur_index: [batch_size * num_decodes] array position of the sampling loop in
+      the length dimension.
     sequences: [batch_size * num_decodes, max_decode_len] array of current
       sampled sequence prefixes.
     cur_token: [batch_size * num_decodes] single timestep slice containing
@@ -62,9 +64,9 @@ class DecodingState:
   cache: Mapping[str, jnp.ndarray]
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Temperature Sampling
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 
 @flax.struct.dataclass
@@ -72,16 +74,16 @@ class SamplingLoopState:
   """Holds sampling state data.
 
   Attributes:
-    cur_index: [batch_size] array position of the sampling loop in the length
-      dimension.
+    cur_index: [batch_size * num_decodes] array position of the sampling loop in
+      the length dimension.
     sequences: [batch_size * num_decodes, max_decode_len] array of current
       sampled sequence prefixes.
     cache: any mapping of arrays, e.g. flax attention cache.
-    cur_token: [batch_size, num_decodes] single timestep slice containing
+    cur_token: [batch_size * num_decodes] single timestep slice containing
       current tokens.
-    ended: [batch_size, num_decodes] binary array marking completed sequences.
+    ended: [batch_size * num_decodes] binary array marking completed sequences.
     rng: Jax PRNGKey
-    log_prob: [batch_size, num_decodes] array of log probs for each sequence.
+    log_prob: [batch_size * num_decodes] array of log probs for each sequence.
   """
   cur_index: jnp.ndarray
   sequences: jnp.ndarray
@@ -657,9 +659,9 @@ def _temperature_sample_single_trial(
   return final_sequences[:, 1:-1], log_prob
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # BEAM Sampling
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 
 def brevity_penalty(alpha: float, length: int) -> jnp.ndarray:
