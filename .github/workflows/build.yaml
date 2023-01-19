@@ -12,6 +12,7 @@ jobs:
       with:
         python-version: '3.9.x'
         cache: 'pip'
+        cache-dependency-path: setup.py
     - name: Install dependencies
       run: |
         pip install -e .[test] -f https://storage.googleapis.com/jax-releases/libtpu_releases.html
