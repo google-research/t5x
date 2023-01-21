@@ -572,7 +572,9 @@ def create_decoder_preprocessor(
     # It is the length of 'inputs' tiled across length dimension and
     # 'inputs_width_add_pos' is the same except that it has one additional
     # position tensor.
-    inputs_length = tf.shape(inputs)[-1]
+    inputs_length = tf.shape(decoder_input_tokens)[-1]
+    if output_features['inputs'].add_eos:
+      inputs_length -= 1
     inputs_width = tf.fill(tf.shape(decoder_target_tokens), inputs_length)
     inputs_width_add_pos = tf.fill(
         tf.shape(decoder_target_tokens), inputs_length + 1)
