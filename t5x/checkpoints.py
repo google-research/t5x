@@ -1210,6 +1210,11 @@ class Checkpointer(object):
       state_dict = _run_future_tree(future_state_dict)
 
     if self.restore_dtype is not None:
+      if 'target' not in state_dict:
+        raise ValueError(
+            f'restore_dtype={self.restore_dtype} was specified, but no `target`'
+            ' parameters were loaded.'
+        )
       state_dict['target'] = _cast(state_dict['target'], self.restore_dtype)
 
     return state_dict
