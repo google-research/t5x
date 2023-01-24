@@ -523,9 +523,10 @@ class UtilsTest(parameterized.TestCase):
       utils.create_checkpoint_manager(
           save_cfg=save_cfg,
           restore_cfg=restore_cfg,
-          train_state_shape=mock.Mock(),
+          train_state=mock.Mock(),
           partitioner=mock.Mock(),
-          model_dir=directory)
+          model_dir=directory,
+      )
 
   def test_create_checkpoint_manager(self):
     directory = self.create_tempdir(name="all_checkpoints")
@@ -555,10 +556,11 @@ class UtilsTest(parameterized.TestCase):
     manager = utils.create_checkpoint_manager(
         save_cfg=save_cfg,
         restore_cfg=restore_cfg,
-        train_state_shape=mock.Mock(),
+        train_state=mock.Mock(),
         partitioner=mock_partitioner,
         ds_iter=mock.Mock(),
-        model_dir=directory)
+        model_dir=directory,
+    )
 
     self.assertIsInstance(manager, checkpoints.BestCheckpointManager)
     self.assertEqual(manager._options.max_to_keep, 5)
@@ -599,10 +601,11 @@ class UtilsTest(parameterized.TestCase):
     manager = utils.create_checkpoint_manager(
         save_cfg=save_cfg,
         restore_cfg=restore_cfg,
-        train_state_shape=mock.Mock(),
+        train_state=mock.Mock(),
         partitioner=mock_partitioner,
         ds_iter=mock.Mock(),
-        model_dir=directory)
+        model_dir=directory,
+    )
 
     self.assertIsInstance(manager, checkpoints.BestCheckpointManager)
     self.assertEqual(manager._options.max_to_keep, 5)

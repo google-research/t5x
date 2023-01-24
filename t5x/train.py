@@ -372,10 +372,11 @@ def train(
       checkpoint_manager = utils.create_checkpoint_manager(
           save_cfg=checkpoint_cfg.save,
           restore_cfg=valid_restore_cfg,
-          train_state_shape=train_state_initializer.global_train_state_shape,
+          train_state=train_state_initializer.global_train_state_shape,
           partitioner=partitioner,
           ds_iter=train_iter,
-          model_dir=model_dir)
+          model_dir=model_dir,
+      )
       train_state = utils.restore(
           checkpoint_manager, restore_paths, valid_restore_cfg,
           utils.get_fallback_state(valid_restore_cfg, _init, init_rng))
