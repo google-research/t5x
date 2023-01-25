@@ -35,6 +35,7 @@ import ml_collections
 import numpy as np
 import seqio
 from t5x import checkpoints
+from t5x import decoding
 from t5x import models
 from t5x import partitioning
 from t5x import utils
@@ -88,6 +89,17 @@ class CreatePostprocessorFn(typing_extensions.Protocol):
       inference_mode: Union[str, CustomInferenceMode],
       decode_outputs: bool = True,
       output_feature_names: Optional[List[str]] = None) -> PostprocessorFn:
+    ...
+
+
+class CreateDecodingStateCallbackFn(typing_extensions.Protocol):
+
+  def __call__(
+      self,
+      vocab: seqio.Vocabulary,
+      num_decodes: int = 1,
+      output_feature_names: Optional[List[str]] = None,
+  ) -> decoding.StateCallbackFn:
     ...
 
 
@@ -260,6 +272,7 @@ def create_inference_function(
     inference_mode: Union[str, CustomInferenceMode],
     partitioner: Optional[partitioning.BasePartitioner],
     train_state_initializer: Optional[utils.TrainStateInitializer],
+    decoding_state_callback_fn: Optional[decoding.StateCallbackFn] = None,
     enable_jax2tf: bool,
     polymorphic_shapes_inputs: Optional[Any] = None,
     native_lowering: bool = False,
@@ -296,17 +309,22 @@ def create_inference_function(
     #
     # TODO(b/256173604): Make the following Gin-configurable.
 
-    def model_fn(params: Mapping[str, Any],
-                 inputs: Mapping[str, jnp.ndarray]) -> Tuple[Any, Any]:
+    def model_fn(
+        params: Mapping[str, Any], inputs: Mapping[str, jnp.ndarray]
+    ) -> Tuple[Any, Any]:
       batch = dict(inputs)
+
+      decoder_params = batch.pop('decoder_params', {})
+      if decoding_state_callback_fn is not None:
+        decoder_params['state_callback_fn'] = decoding_state_callback_fn
+
       kwargs = {}
-      try:
-        kwargs['decoder_params'] = batch.pop('decoder_params')
-      except KeyError:
-        pass
+      if decoder_params:
+        kwargs['decoder_params'] = decoder_params
       # pytype: disable=wrong-keyword-args
       return model.predict_batch_with_aux(params, batch, **kwargs)
       # pytype: enable=wrong-keyword-args
+
   else:
     model_fn = getattr(model, inference_mode.model_fn_name)
 
@@ -965,6 +983,9 @@ def save(
     create_preprocessor_fn: CreatePreprocessorFn = create_preprocessor,
     create_postprocessor_fn: CreatePostprocessorFn = create_postprocessor,
     partitioner: Optional[partitioning.BasePartitioner],
+    create_decoding_state_callback_fn: Optional[
+        CreateDecodingStateCallbackFn
+    ] = None,
     output_features: Optional[Mapping[str, seqio.Feature]],
     task_feature_lengths: Mapping[str, int],
     batch_size: Optional[int],
@@ -979,8 +1000,10 @@ def save(
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
     output_vocab_feature_name: Optional[str] = 'targets',
-    signature_name: Optional[str] = tf.saved_model
-    .DEFAULT_SERVING_SIGNATURE_DEF_KEY):
+    signature_name: Optional[
+        str
+    ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
   Args:
@@ -991,19 +1014,18 @@ def save(
     create_preprocessor_fn: Configurable func. to create the PreprocessorFn.
     create_postprocessor_fn: Configurable func. to create the PostprocessorFn.
     partitioner: Partitioner, usually for Pjit.
+    create_decoding_state_callback_fn: Configurable func. to create an optional
+      decoding.StateCallbackFn.
     output_features: Output Features of the task.
     task_feature_lengths: Input and target lengths.
     batch_size: Batch size for model to process. If None, then batch
       polymorphism is invoked.
-    output_dir: This is either:
-      (a) A path in ${BASE}/${VERSION} format output the final TPU-converted
-      saved model. The CPU saved model will be saved to ${BASE}_cpu/${VERSION},
-      such that "_cpu" is appended to the base path but the numeric version is
-      preserved.
-      (b) A dict with key 'cpu' and as value the path to write the CPU model to.
+    output_dir: This is either: (a) A path in ${BASE}/${VERSION} format output
+      the final TPU-converted saved model. The CPU saved model will be saved to
+      ${BASE}_cpu/${VERSION}, such that "_cpu" is appended to the base path but
+      the numeric version is preserved. (b) A dict with key 'cpu' and as value
     model_name: Name of model, like "/ml/user/half_plus_two".
     warmup_examples: Optional list of warmup examples. If proveded, they will be
-      written in Predict mode to assets.extra.
     tokenized_inputs: if True, inputs are expected to be pre-tokenized before
       being passed to the Jax2TF converted model, e.g. an int32 tensor of type
       [B, L]. If False, inputs is expected to be a string tensor of shape [B].
@@ -1015,12 +1037,11 @@ def save(
     mixture_or_task_name: Optioanl SeqIO task name used to get output features.
       In order to set this output_features must be None.
     validation_examples: Optional list of validation examples. If proveded, they
-      will be used to validate the latency and numeric accuracy of the TPU
-      saved model.
-    native_lowering: for experimental purposes only -- if True,
-      don't convert Jax fns to TF fns.
-    decode_outputs: Optional bool. If provided, determines whether to decode
-      the output with the tokenizer, or to leave the output as is.
+      will be used to validate the latency and numeric accuracy of the TPU saved
+    native_lowering: for experimental purposes only -- if True, don't convert
+      Jax fns to TF fns.
+    decode_outputs: Optional bool. If provided, determines whether to decode the
+      output with the tokenizer, or to leave the output as is.
     trailing_shapes: Optional mapping of model feature name to trailing shape,
       the `...?` in `(batch_size, seqlen, ...?)`, which is needed to initialize
       the model correctly.
@@ -1124,14 +1145,22 @@ def save(
   else:
     polymorphic_shapes_inputs = None
 
+  decoding_state_callback_fn = None
+  if create_decoding_state_callback_fn is not None:
+    decoding_state_callback_fn = create_decoding_state_callback_fn(
+        vocab=output_vocab
+    )
+
   model_tf_fn = create_inference_function(
       model=model,
       train_state_initializer=train_state_initializer,
+      decoding_state_callback_fn=decoding_state_callback_fn,
       partitioner=partitioner,
       inference_mode=inference_mode,
       enable_jax2tf=True,
       polymorphic_shapes_inputs=polymorphic_shapes_inputs,
-      native_lowering=native_lowering)
+      native_lowering=native_lowering,
+  )
 
   logging.info('Loading parameters from checkpoint...')
   params = load_params_from_checkpoint(
