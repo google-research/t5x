@@ -140,7 +140,7 @@ metrics = {
 }
 ```
 
-`Metric` objects can either be intialized directly or by using
+`Metric` objects can either be initialized directly or by using
 `from_model_output`.
 
 The metrics created on one particular training step (one call of the loss
@@ -253,7 +253,7 @@ is called automatically called to set the duration of time-related metrics.
 
 #### `StepsPerTime`
 
-This metric represents the sythesis of the above two, which can represent a
+This metric represents the synthesis of the above two, which can represent a
 metric such as `steps_per_second`.
 
 ```py

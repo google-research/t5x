@@ -1085,7 +1085,7 @@ class CheckpointsTest(parameterized.TestCase):
     # Checkpoints 41 and 43 should always be kept because they are pinned.
     checkpointer.save(update_train_state_step(train_state, 44))
     self.assertSequenceEqual(checkpointer.all_steps(), [41, 42, 43, 44])
-    # Checkpoint 44 should get deleted on next save. 43 is saved inspite of
+    # Checkpoint 44 should get deleted on next save. 43 is saved in spite of
     #  it's low accuracy because it is pinned.
     checkpointer.save(update_train_state_step(train_state, 45))
     self.assertSequenceEqual(checkpointer.all_steps(), [41, 42, 43, 45])

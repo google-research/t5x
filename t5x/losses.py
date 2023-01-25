@@ -41,7 +41,7 @@ def cross_entropy_with_logits(logits: jnp.ndarray, targets: jnp.ndarray,
     logits: [batch, length, num_classes] float array.
     targets: categorical one-hot targets [batch, length, num_classes] float
       array.
-    z_loss: coefficient for auxilliary z-loss loss term.
+    z_loss: coefficient for auxiliary z-loss loss term.
 
   Returns:
     tuple with the total loss and the z_loss, both
@@ -50,7 +50,7 @@ def cross_entropy_with_logits(logits: jnp.ndarray, targets: jnp.ndarray,
   logits_sum = jax.scipy.special.logsumexp(logits, axis=-1, keepdims=True)
   log_softmax = logits - logits_sum
   loss = -jnp.sum(targets * log_softmax, axis=-1)
-  # Add auxilliary z-loss term.
+  # Add auxiliary z-loss term.
   log_z = jnp.squeeze(logits_sum, axis=-1)
   total_z_loss = z_loss * jax.lax.square(log_z)
   loss += total_z_loss
@@ -71,7 +71,7 @@ def _cross_entropy_with_logits_fwd(
   sum_exp = jnp.sum(exp_shifted, axis=-1, keepdims=True)
   log_softmax = shifted - jnp.log(sum_exp)
   loss = -jnp.sum(targets * log_softmax, axis=-1)
-  # Add auxilliary z-loss term.
+  # Add auxiliary z-loss term.
   log_z = jnp.squeeze(jnp.log(sum_exp) + max_logit, axis=-1)
   total_z_loss = z_loss * jax.lax.square(log_z)
   loss += total_z_loss

@@ -116,7 +116,7 @@ Since the length information is provided dynamically, we don't set
 `beam_search` whose length is the dynamically determined maximum length.
 
 If `max_decode_len` is explicitly specified via gin, this will override the
-implictly determined length information unless it is passed by
+implicitly determined length information unless it is passed by
 `predict_batch_with_aux`.
 
 ### Temperature sampling

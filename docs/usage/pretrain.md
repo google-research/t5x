@@ -116,7 +116,7 @@ include 't5x/examples/t5/t5_1_1/small.gin'
 Note that the `include` statements can use relative paths in this example for
 which You will pass an appropriate `gin_search_paths` flag to locate these files
 when launching your run. However, we recommend that you use absolute paths
-because it can be more difficult to locate the gin files speicified via relative
+because it can be more difficult to locate the gin files specified via relative
 paths without inspecting the launch command.
 
 You will also need to import the Python module(s) that register SeqIO Tasks and

@@ -240,7 +240,7 @@ class Adafactor(OptimizerDef):
       dtype_momentum: dtype of momentum buffers.
       factor_map: hparam-map from key path to manual factorization rules.
       logical_factor_rules: factorization rules provided as a set of mappings
-        from logical axis name to ROW, COLUMN, BATCH, or NONE.  Supercedes
+        from logical axis name to ROW, COLUMN, BATCH, or NONE.  Supersedes
         factor_map if `set_param_axes` is called.
       weight_decay_rate_lr_exponent: If present, weight decay rate is computed
         as (learning_rate ** weight_decay_rate_lr_exponent).  If

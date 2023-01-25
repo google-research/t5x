@@ -947,7 +947,7 @@ def get_batches_from_seqio(
       SeqIO `get_dataset()` call.
 
   Returns:
-    A sequence of batches, where each batch is a sequnce of examples. Each
+    A sequence of batches, where each batch is a sequence of examples. Each
       example is a dictionary mapping 'input' and 'target' to the corresponding
       values for a single example.
   """

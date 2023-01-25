@@ -17,7 +17,7 @@ additional tutorials and background, see the [complete documentation](docs/index
 T5X can be run with [XManager](https://github.com/deepmind/xmanager) on
 [Vertex AI](https://cloud.google.com/vertex-ai). Vertex AI is a platform for
 training that creates TPU instances and runs code on the TPUs. Vertex AI will
-also shut down the TPUs when the jobs terminate. This is signifcantly easier
+also shut down the TPUs when the jobs terminate. This is significantly easier
 than managing GCE VMs and TPU VM instances.
 
 1. Follow the pre-requisites and directions to install [XManager](https://github.com/deepmind/xmanager).
@@ -121,7 +121,7 @@ the TPU VM instance unless otherwise stated.
     checkpoints. To create a GCS bucket, see these
     [instructions](https://cloud.google.com/storage/docs/creating-buckets).
 
-6.  (optional) If you prefer working with Jupyter/Cloab style environment
+6.  (optional) If you prefer working with Jupyter/Colab style environment
     you can setup a custom Colab runtime by following steps from
     [t5x/notebooks](t5x/notebooks/README.md).
 
@@ -211,7 +211,7 @@ optimizer states.
 #### TensorBoard
 
 To monitor the training in [TensorBoard](https://www.tensorflow.org/tensorboard), it is much easier (due to
-authentification issues) to launch the TensorBoard on your own machine and _not_ in
+authentication issues) to launch the TensorBoard on your own machine and _not_ in
 the TPU VM. So in the commandline where you ssh'ed into the TPU VM, launch the
 TensorBoard with the `logdir` pointing to the `MODEL_DIR`.
 
@@ -266,7 +266,7 @@ Gin makes it easy to change a number of configurations. For example, you can
 change the `partitioning.PjitPartitioner.num_partitions` (overriding
 the value in
 [base_wmt_from_scratch.gin](t5x/examples/t5/t5_1_1/examples/base_wmt_from_scratch.gin))
-to chanage the parallelism strategy and pass it as a commandline arg.
+to change the parallelism strategy and pass it as a commandline arg.
 
 ```sh
 --gin.partitioning.PjitPartitioner.num_partitions=8
@@ -389,7 +389,7 @@ ${HOME}
 
 As an example, let's define a new dataset. Here we use the same Translation
 dataset but we define the translation task in the opposite direction, i.e.,
-German to English intead of English to German. We define this task in `tasks.py`
+German to English instead of English to German. We define this task in `tasks.py`
 
 ```py
 # ${HOME}/dir1/user_dir/tasks.py

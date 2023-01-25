@@ -178,7 +178,7 @@ class MultiHeadDotProductAttention(nn.Module):
       variable inside of a method doesn't work. These returns will be removed
       eventually.
     """
-    # Make a reference to the data underlaying the variable for ease of
+    # Make a reference to the data underlying the variable for ease of
     # use.
     cache_index.value = prefill_lengths
     # Note, the cache index is now a vector of batch size so that each example

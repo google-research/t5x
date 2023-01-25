@@ -4,7 +4,7 @@
 # - tiny model size
 # - small enough batch size
 # - small sequence length
-# - determinstic dataset pipeline
+# - deterministic dataset pipeline
 #
 # This gin file adds such configs. To use this gin file, add it on top of the
 # existing full-scale gin files. The ordering of the gin file matters. So this

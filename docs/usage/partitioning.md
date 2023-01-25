@@ -294,13 +294,22 @@ partitioning.standard_logical_axis_rules:
 Alternatively, you can manually set the rules, experimenting with some of the
 following options:
 
-*   [Data-only parallelism](#data-only-parallelism)
-*   [Data parallel with parameter gather](#data-parallel-with-parameter-gather)
-*   [Data and model parallel with replicated
-    activations](#data-and-model-parallel-with-replicated-activations)
-*   [Data and model parallel with sharded
-    activations](#data-and-model-parallel-with-sharded-activations)
-*   [Full 2D sharding](#full-2d-sharding)
+- [Data, Model, and Activation Partitioning](#data-model-and-activation-partitioning)
+  - [How to Partition](#how-to-partition)
+    - [Specify logical axis names](#specify-logical-axis-names)
+    - [Map logical names to device](#map-logical-names-to-device)
+      - [Configuring `PjitPartitioner`](#configuring-pjitpartitioner)
+  - [Other Stuff](#other-stuff)
+    - [Overriding axis names from an external codebase](#overriding-axis-names-from-an-external-codebase)
+    - [Canonical logical axis names](#canonical-logical-axis-names)
+  - [Example configurations](#example-configurations)
+    - [Automatic - Full 2D partitioning](#automatic---full-2d-partitioning)
+    - [Manual configurations](#manual-configurations)
+      - [Data-only parallelism](#data-only-parallelism)
+      - [Data parallel with parameter gather](#data-parallel-with-parameter-gather)
+      - [Data and model parallel with replicated activations](#data-and-model-parallel-with-replicated-activations)
+      - [Data and model parallel with sharded activations](#data-and-model-parallel-with-sharded-activations)
+      - [Full 2D sharding](#full-2d-sharding)
 
 #### Data-only parallelism
 
@@ -324,7 +333,7 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 
 #### Data parallel with parameter gather
 
-An example of 2D parameter partitioning with trival MP submesh, such as
+An example of 2D parameter partitioning with trivial MP submesh, such as
 [ZeRO-3][ZeRO-3].
 
 ```py

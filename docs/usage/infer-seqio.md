@@ -232,7 +232,7 @@ decoding.temperature_sample:
     max_decode_steps = 50
 ```
 
-More detailed documentation on defining a decoding stategy can be found
+More detailed documentation on defining a decoding strategy can be found
 [here](https://github.com/google-research/t5x/blob/main/docs/usage.md/decoding).
 
 

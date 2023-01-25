@@ -235,7 +235,7 @@ def train(
     raise ValueError(
         f'Checkpoint period ({checkpoint_period}), eval '
         f'period ({eval_period}), and GC period ({gc_period}) must all be '
-        f'multiples of eachother.')
+        f'multiples of each other.')
 
   if use_hardware_rng or random_seed is None:
     logging.info(
@@ -701,7 +701,7 @@ def train(
   _cleanup()
 
   if gc_period:
-    # Reenable garbage collection to avoid affecting future code executed in
+    # Re-enable garbage collection to avoid affecting future code executed in
     # the same interpreter.
     gc.enable()
 
