@@ -396,8 +396,12 @@ class InteractiveModel(abc.ABC):
     self._train_state = self._trainer.train_state
 
   def infer_with_preprocessors(
-      self, mode: InferenceType, examples: Sequence[Union[str, dict[str, str]]],
-      preprocessors: Sequence[Callable[..., tf.data.Dataset]]) -> _Inferences:
+      self,
+      mode: InferenceType,
+      examples: Sequence[Union[str, dict[str, str]]],
+      preprocessors: Sequence[Callable[..., tf.data.Dataset]],
+      **inference_kwargs,
+  ) -> _Inferences:
     """Infer function.
 
     Args:
@@ -411,6 +415,8 @@ class InteractiveModel(abc.ABC):
         a tf.data.Dataset and return a tf.data.Dataset. These will be executed
         sequentially and the final dataset must include features matching
         `self._features`.
+      **inference_kwargs: additional keyword arguments to pass to the inference
+        function (e.g., `model.predict_batch_with_aux` or `score_batch`).
 
     Returns:
       Returns a tuple of predictions/scores and any auxiliary values.
@@ -427,11 +433,13 @@ class InteractiveModel(abc.ABC):
                        f" but instead was {mode}.")
     infer_fn = functools.partial(
         utils.get_infer_fn(
-            infer_step=infer_step,
+            infer_step=functools.partial(infer_step, **inference_kwargs),
             batch_size=self._batch_size,
             train_state_axes=self._train_state_initializer.train_state_axes,
-            partitioner=self._partitioner),
-        train_state=self._train_state)
+            partitioner=self._partitioner,
+        ),
+        train_state=self._train_state,
+    )
 
     # --------------------------------------------------------------------------
     # Construct a dataset and dataset iterator.
