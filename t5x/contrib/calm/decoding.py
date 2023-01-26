@@ -31,13 +31,13 @@ from t5x.decoding import MIN_TEMPERATURE
 from t5x.decoding import NEG_INF
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Temperature Sampling
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 
 @flax.struct.dataclass
-class SamplingLoopState(decoding.SamplingLoopState):
+class SamplingLoopState:
   """Holds sampling state data.
 
   Attributes:
