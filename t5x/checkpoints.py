@@ -1946,38 +1946,34 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
       raise ValueError('Expected `restore_args` to be set.')
 
     ckpt_structure = self.structure(directory)
-    # pylint: disable=protected-access
-    param_infos = orbax.checkpoint.pytree_checkpoint_handler._get_param_infos_from_structure(
-        directory, ckpt_structure
-    )
-
     # After transforms, may be a subset of keys: only the ones we actually need
     # to restore.
     state_dict_to_restore = _get_optimizer_state_dict(
         ckpt_structure, item, state_transformation_fns
     )
-    # Transform param_infos to new structure, but values still point to paths of
-    # checkpoint parameters, which conform to the old checkpoint structure.
-    param_infos = _get_optimizer_state_dict(
-        param_infos, item, state_transformation_fns
-    )
-    if fallback_state is not None:
-      # Select only the RestoreArgs which overlap with the parameters we
-      # actually need to restore.
-      restore_args = state_utils.intersect_state(
-          restore_args, state_dict_to_restore
-      )
 
-    async def _async_restore(param_infos, item, restore_args):
+    # After transformations, state_dict_to_restore may still have extra keys
+    # relative to item (the eventual restoration structure). Extraneous keys
+    # need to be dropped.
+    state_dict_to_restore = state_utils.intersect_state(
+        state_dict_to_restore, item
+    )
+    # pylint: disable=protected-access
+    param_infos = orbax.checkpoint.pytree_checkpoint_handler._get_param_infos_from_structure(
+        directory, state_dict_to_restore
+    )
+    restore_args = state_utils.intersect_state(
+        restore_args, state_dict_to_restore
+    )
+
+    async def _async_restore(infos, values, args):
       concurrent_bytes = self._concurrent_gb * 10**9
       byte_limiter = gda_serialization._LimitInFlightBytes(concurrent_bytes)  # pylint: disable=protected-access
-      param_infos = jax.tree_util.tree_map(
+      infos = jax.tree_util.tree_map(
           functools.partial(dataclasses.replace, byte_limiter=byte_limiter),
-          param_infos,
+          infos,
       )
-      future_arrays = jax.tree_map(
-          self._maybe_deserialize, param_infos, item, restore_args
-      )
+      future_arrays = jax.tree_map(self._maybe_deserialize, infos, values, args)
       future_arrays, _ = jax.tree_util.tree_flatten(future_arrays)
       return await asyncio.gather(*future_arrays)
 
@@ -2080,7 +2076,7 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
       result = orbax.checkpoint.utils.pytree_structure(directory)
       result = {_OPTIMIZER_KEY: result, _VERSION_KEY: VERSION}
 
-    return _get_optimizer_state_dict(result, {}, [])
+    return result
 
 
 class NonAtomicCheckpointer(orbax.checkpoint.Checkpointer):
