@@ -21,7 +21,7 @@ import json
 import os
 import os.path
 import typing
-from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, List, Mapping, Optional, Sequence, Tuple, Type, Union
 
 from absl import logging
 
@@ -32,6 +32,9 @@ from jax.experimental import jax2tf  # type: ignore[import]
 import jax.numpy as jnp
 import ml_collections
 import numpy as np
+from orbax import export as orbax_export
+from orbax.export import validate as orbax_export_validate
+from orbax.export.validate.validation_report import ValidationReportOption
 import seqio
 from t5x import checkpoints
 from t5x import decoding
@@ -52,6 +55,25 @@ PreprocessorFn = Callable[..., Mapping[str, tf.Tensor]]
 WarmupExamples = List[Union[Union[str, bytes], List[int]]]
 PostprocessorFn = Callable[[Tuple[Any, Any]], Union[Tuple[Any, Any],
                                                     Mapping[str, Any]]]
+
+
+def _generate_batch_inputs(examples: List[Any], batch_size: Optional[int]):
+  """Generate model batch_inputs from examples."""
+  if not examples:
+    raise ValueError('No examples provided to run inference.')
+
+  ds = tf.data.Dataset.from_tensor_slices(examples)
+  if batch_size is not None:
+    if len(examples) < batch_size * 100:
+      # Run at least 100 batches to get meaningful latency distribution.
+      ds = ds.repeat().take(batch_size * 100)
+    ds = ds.batch(batch_size, drop_remainder=True)
+  else:
+    batch_size = 1
+    ds = ds.batch(1)
+
+  batched_examples = list(iter(ds))
+  return batched_examples
 
 
 class CreatePreprocessorFnNew(typing_extensions.Protocol):
@@ -120,10 +142,13 @@ class ExportableModule(tf.Module):
   def __init__(
       self,
       preproc_tf_fn,
-      model_tf_fn,
+      jax_model_fn,
       postproc_tf_fn,
       params: Mapping[str, Any],
       batch_size: Optional[int],
+      input_polymorphic_shape: Optional[Any],
+      signature_name,
+      input_signature,
       num_batch_threads: int = 8,
       max_enqueued_batches: int = 64,
       batch_timeout_micros: int = 1000_000,
@@ -132,6 +157,8 @@ class ExportableModule(tf.Module):
       jit_compile: bool = True,
       use_batch_function: bool = False,
       use_gpu: bool = False,
+      experimental_native_lowering: bool = False,
+      partitioner: Optional[partitioning.BasePartitioner] = None,
   ):
     super().__init__()
 
@@ -149,10 +176,32 @@ class ExportableModule(tf.Module):
     else:
       flat_param_vars = flat_params(params)
     self._variables = list(flat_param_vars.values())
-    param_vars = frozen_dict.freeze(
-        flax.traverse_util.unflatten_dict(flat_param_vars))
     self._preproc_tf_fn = preproc_tf_fn
     self._postproc_tf_fn = postproc_tf_fn
+
+    jax2tf_kwargs = {
+        'experimental_native_lowering': experimental_native_lowering
+    }
+    jax_module = orbax_export.JaxModule(
+        params,
+        jax_model_fn,
+        input_polymorphic_shape=input_polymorphic_shape,
+        jax2tf_kwargs=jax2tf_kwargs,
+        jit_compile=jit_compile,
+    )
+    self._jax_module = jax_module
+
+    serving_configs = [
+        orbax_export.ServingConfig(
+            signature_key=signature_name,
+            input_signature=input_signature,
+            tf_preprocessor=preproc_tf_fn,
+            tf_postprocessor=postproc_tf_fn,
+        )
+    ]
+    self._signature_name = signature_name
+    self._serving_configs = serving_configs
+    model_tf_fn = jax_module.methods[jax_module.DEFAULT_METHOD_KEY]
 
     # TF trackable resources must be assigned to an attribute of the module.
     # TODO(dinghua): We should have a more formal API for getting the
@@ -164,10 +213,7 @@ class ExportableModule(tf.Module):
 
     # Note: jit_compile=True also instructs the TPU inference converter v2 to
     # wrap this function with `TPUPartitionedCall`.
-    self._model_tf_fn = tf.function(
-        lambda x: model_tf_fn(param_vars, x),
-        autograph=False,
-        jit_compile=jit_compile)
+    self._model_tf_fn = model_tf_fn
     self._batch_size = batch_size
     self._num_batch_threads = num_batch_threads
     self._max_enqueued_batches = max_enqueued_batches
@@ -175,6 +221,7 @@ class ExportableModule(tf.Module):
     self._allowed_batch_sizes = allowed_batch_sizes
     self._use_batch_function = use_batch_function
     self._max_batch_size = max_batch_size
+    self._partitioner = partitioner
 
   @functools.partial(tf.function, autograph=False, jit_compile=False)
   def __call__(self, *input_batches) -> Tuple[Any, Any]:
@@ -206,22 +253,118 @@ class ExportableModule(tf.Module):
         *flattended
     )
 
-  def _call(self, *args, tree_def=None):
-    if tree_def is not None:
-      input_batches = jax.tree_util.tree_unflatten(tree_def, args)
-    else:
-      input_batches = args
+  def _call(self, *input_batches):
     features = self._preproc_tf_fn(*input_batches)
     model_output = self._model_tf_fn(features)
     return self._postproc_tf_fn(model_output)
 
   @property
-  def tpu_func(self):
+  def partitioner(self):
+    return self._partitioner
+
+  @property
+  def signature_name(self) -> str:
+    return self._signature_name
+
+  @property
+  def jax_module(self) -> orbax_export.JaxModule:
+    return self._jax_module
+
+  @property
+  def serving_configs(self) -> Sequence[orbax_export.ServingConfig]:
+    return self._serving_configs
+
+  @property
+  def batch_size(self) -> int:
+    return self._batch_size
+
+  @property
+  def model_tf_fn(self):
     return self._model_tf_fn
 
   @property
   def export_batch_sizes(self):
     return self._allowed_batch_sizes or [self._batch_size]
+
+  def export_model(
+      self,
+      model_dirs: dict[str, str],
+  ):
+    assert len(self.serving_configs) == 1
+    serving_config = self.serving_configs[0]
+    signatures = {
+        self.signature_name: self.__call__.get_concrete_function(
+            *serving_config.input_signature
+        )
+    }
+    logging.info('Saving the CPU model...')
+    # TODO(b/196260374): Figure out how to set
+    # experimental_custom_gradients=True.
+    options = tf.saved_model.SaveOptions(
+        experimental_custom_gradients=False,
+        function_aliases={
+            'tpu_func': self.model_tf_fn,
+        },
+    )
+    assert 'cpu' in model_dirs
+    tf.saved_model.save(
+        self,
+        model_dirs['cpu'],
+        signatures=signatures,
+        options=options,
+    )
+
+
+
+  def validate_exported_model(
+      self,
+      exported_model_dir: str,
+      examples: Optional[List[Any]] = None,
+      floating_atol: float = 5e-2,
+      floating_rtol: float = 5e-2,
+      max_non_floating_mismatch_ratio: float = 1e-2,
+  ):
+    """Validate the JAX and TF exported_model_dir consistency."""
+    batch_inputs = _generate_batch_inputs(examples, self.batch_size)
+
+    validation_mgr = orbax_export_validate.ValidationManager(
+        self.jax_module.jax_methods,
+        self.serving_configs,
+        batch_inputs,
+    )
+
+    tags = ['serve']
+    tf_model = tf.saved_model.load(exported_model_dir, tags=tags)
+
+    validation_reports = validation_mgr.validate(
+        tf_model,
+        report_option=ValidationReportOption(
+            floating_atol=floating_atol,
+            floating_rtol=floating_rtol,
+            max_non_floating_mismatch_ratio=max_non_floating_mismatch_ratio,
+            print_debug_info=False,
+        ),
+    )
+
+    if len(validation_reports.keys()) > 1:
+      raise ValueError('Currently only support single report.')
+
+    for key, report in validation_reports.items():
+      logging.info('%s Latency: %s', key, report.latency)
+      logging.info('%s Xprof url: %s', key, report.xprof_url)
+
+      result_json = report.to_json(indent=2, sort_keys=True)
+      assets_extra = os.path.join(exported_model_dir, 'assets.extra')
+      tf.io.gfile.makedirs(assets_extra)
+      report_path = os.path.join(assets_extra, 'jax_tf_validation.json')
+      with tf.io.gfile.GFile(report_path, 'w') as f:
+        f.write(result_json)
+      logging.info('save validation result json to %s', report_path)
+
+      if report.status.name != 'Pass':
+        logging.error(
+            'export validation fail.  Please check the report %s', report_path
+        )
 
 
 def get_train_state_initializer(
@@ -290,8 +433,7 @@ def create_inference_function(
     train_state_initializer: Optional[utils.TrainStateInitializer],
     decoding_state_callback_fn: Optional[decoding.StateCallbackFn] = None,
     enable_jax2tf: bool,
-    enable_xla: bool = True,
-    polymorphic_shapes_inputs: Optional[Any] = None,
+    input_polymorphic_shape: Optional[Any] = None,
     native_lowering: bool = False,
 ) -> Callable[[Mapping[str, Any], Any], PyTreeDef]:
   """Fetches a model and returns the inference function based on inference_mode."""
@@ -315,8 +457,9 @@ def create_inference_function(
     else:
       raise ValueError(
           '`inference_mode` must be a string in '
-          f'{list(_BUILTIN_INFERENCE_MODES.keys())} or a `CustomInferenceMode`. '
-          f'Got inference_mode={inference_mode}.')
+          f'{list(_BUILTIN_INFERENCE_MODES.keys())} or a `CustomInferenceMode`.'
+          f' Got inference_mode={inference_mode}.'
+      )
 
   inference_mode = typing.cast(CustomInferenceMode, inference_mode)
 
@@ -349,9 +492,8 @@ def create_inference_function(
   if enable_jax2tf:
     model_fn = jax2tf.convert(
         model_fn,
-        polymorphic_shapes=[None, polymorphic_shapes_inputs],
+        polymorphic_shapes=[None, input_polymorphic_shape],
         experimental_native_lowering=native_lowering,
-        enable_xla=enable_xla,
     )
 
   def inference_fn(params: Mapping[str, Any],
@@ -634,10 +776,13 @@ def create_decoder_preprocessor(
         functools.partial(featurize, length=targets_length),
         inputs_width_add_pos,
         fn_output_signature=(tf.int32, tf.int32, tf.int32))
-    decoder_target_tokens, decoder_input_tokens, decoder_loss_weights = tf.map_fn(
-        functools.partial(featurize, length=targets_length),
-        decoder_target_tokens,
-        fn_output_signature=(tf.int32, tf.int32, tf.int32))
+    decoder_target_tokens, decoder_input_tokens, decoder_loss_weights = (
+        tf.map_fn(
+            functools.partial(featurize, length=targets_length),
+            decoder_target_tokens,
+            fn_output_signature=(tf.int32, tf.int32, tf.int32),
+        )
+    )
 
     positions = tf.range(tf.shape(decoder_target_tokens)[-1])
     positions = tf.repeat([positions],
@@ -755,13 +900,11 @@ class PreprocessorFnFromTask(object):
     # Dataset of batched model features.
     ds = self.feature_converter(
         ds, task_feature_lengths=self.task_feature_lengths)
-    # Assume all batch size are the same.
-    single_feature = jax.tree_util.tree_leaves(examples)[0]
     if self.batch_size is not None:
-      single_feature.shape[:1].assert_is_compatible_with([self.batch_size])
+      examples.shape[:1].assert_is_compatible_with([self.batch_size])
       ds = ds.batch(self.batch_size, drop_remainder=True)
     else:
-      batch_size = tf.cast(tf.shape(single_feature)[0], dtype=tf.int64)
+      batch_size = tf.cast(tf.shape(examples)[0], dtype=tf.int64)
       ds = ds.batch(batch_size, drop_remainder=True)
     # As we process one batch at a time, the dataset ds has a single batch.
     return ds.get_single_element()
@@ -1055,28 +1198,147 @@ def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
   return output_dirs
 
 
-def create_fake_input(signature: Dict[str, tf.TensorSpec]) -> Any:
-  """Create all zeros fake inputs accroding to signature spec.
+def _handle_new_and_old_preprocessor(
+    create_preprocessor_fn: CreatePreprocessorFn,
+    batch_size: Optional[int],
+    output_features: Optional[Mapping[str, seqio.Feature]],
+    task_feature_lengths: Mapping[str, int],
+    tokenized_inputs: bool,
+):
+  """Handle the new and old create_preprocessor_fn signatures for backwards compatibility."""
+  # TODO(marcrasi): Delete after migrating clients.
+  if 'batch_size' in inspect.signature(create_preprocessor_fn).parameters:
+    # New signature.
+    preprocessor, input_signature = create_preprocessor_fn(
+        batch_size, output_features, task_feature_lengths, tokenized_inputs
+    )  # type: ignore
+  else:
+    # Old signature.
+    preprocessor = create_preprocessor_fn(
+        output_features, task_feature_lengths, tokenized_inputs
+    )  # type: ignore
+    input_signature = create_single_tensor_input_signature(
+        batch_size, task_feature_lengths, tokenized_inputs
+    )
+  return preprocessor, input_signature
 
-  Args:
-    signature: A dictionary of tensor specs that will used for serving.
 
-  Returns:
-    A pytree with the same structure as signature with all zeros tf.Tensor.
-  """
+def create_exportable(
+    *,
+    model: models.BaseTransformerModel,
+    inference_mode: str,
+    restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
+    create_preprocessor_fn: CreatePreprocessorFn,
+    create_postprocessor_fn: CreatePostprocessorFn,
+    partitioner: Optional[partitioning.BasePartitioner],
+    create_decoding_state_callback_fn: Optional[
+        CreateDecodingStateCallbackFn
+    ] = None,
+    output_features: Optional[Mapping[str, seqio.Feature]],
+    task_feature_lengths: Mapping[str, int],
+    batch_size: Optional[int],
+    tokenized_inputs: bool,
+    mixture_or_task_name: Optional[str],
+    experimental_native_lowering: bool,
+    exportable_module_cls: Type[ExportableModule],
+    decode_outputs: Optional[bool] = None,
+    trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
+    output_vocab_feature_name: Optional[str] = 'targets',
+    signature_name: Optional[
+        str
+    ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+) -> ExportableModule:
+  """Convert t5x input into obrax standard JaxModule and ServeConfig classes."""
+  output_features = _standardize_output_features(
+      mixture_or_task_name, output_features
+  )
 
-  def _gen_dummy_tensor(ts: tf.TensorSpec):
-    shape = ts.shape.as_list()
-    if not all(shape[1:]):
-      raise ValueError(
-          'Only supports polymorphic batch size at leading dimenstion, got '
-          f'{ts} in the input signature.'
-      )
-    if shape and shape[0] is None:
-      shape[0] = 1
-    return tf.zeros(shape, ts.dtype)
+  preprocessor, input_signature = _handle_new_and_old_preprocessor(
+      create_preprocessor_fn=create_preprocessor_fn,
+      batch_size=batch_size,
+      output_features=output_features,
+      task_feature_lengths=task_feature_lengths,
+      tokenized_inputs=tokenized_inputs,
+  )
 
-  return jax.tree_util.tree_map(_gen_dummy_tensor, signature)
+  # Non-vanilla seq-to-seq/decoder-only models can have a different
+  # vocabulary feature or not use a vocabulary feature at all.
+  output_vocab = None
+  if output_vocab_feature_name:
+    output_vocab = output_features[output_vocab_feature_name].vocabulary
+
+  if decode_outputs is None:
+    decode_outputs = not tokenized_inputs
+  postprocessor = create_postprocessor_fn(
+      output_vocab, inference_mode, decode_outputs
+  )
+
+  logging.info('Loading parameters from checkpoint...')
+  train_state_initializer = get_train_state_initializer(
+      model, partitioner, task_feature_lengths, batch_size, trailing_shapes
+  )
+  params = load_params_from_checkpoint(
+      restore_checkpoint_cfg=restore_checkpoint_cfg,
+      train_state_initializer=train_state_initializer,
+  )
+
+  decoding_state_callback_fn = None
+  if create_decoding_state_callback_fn is not None:
+    decoding_state_callback_fn = create_decoding_state_callback_fn(
+        vocab=output_vocab
+    )
+
+  # The model_fn takes two arguments, the params and the inputs. The inputs are
+  # a pytree of arrays with the first dimension being the batch dimension.
+  if batch_size is None:
+
+    def _gen_dummy_tensor(ts: tf.TensorSpec):
+      shape = ts.shape.as_list()
+      if not all(shape[1:]):
+        raise ValueError(
+            'Only supports polymorphic batch size at leading dimenstion, got '
+            f'{ts} in the input signature.'
+        )
+      if shape and shape[0] is None:
+        shape[0] = 1
+      return tf.zeros(shape, ts.dtype)
+
+    fake_inputs = jax.tree_util.tree_map(_gen_dummy_tensor, input_signature)
+    features = preprocessor(*fake_inputs)
+
+    # All the features have a leading batch dimension.
+    input_polymorphic_shape = jax.tree_util.tree_map(
+        lambda _: 'b, ...', features
+    )
+  else:
+    input_polymorphic_shape = None
+
+  model_fn = create_inference_function(
+      model=model,
+      train_state_initializer=train_state_initializer,
+      decoding_state_callback_fn=decoding_state_callback_fn,
+      partitioner=partitioner,
+      inference_mode=inference_mode,
+      enable_jax2tf=False,
+  )
+
+  if partitioner is None:
+    model_fn = jax.jit(model_fn)
+    params = jax.device_put(params, jax.local_devices()[0])
+
+  module = exportable_module_cls(
+      preproc_tf_fn=preprocessor,
+      jax_model_fn=model_fn,
+      postproc_tf_fn=postprocessor,
+      params=params,
+      batch_size=batch_size,
+      experimental_native_lowering=experimental_native_lowering,
+      signature_name=signature_name,
+      input_signature=input_signature,
+      input_polymorphic_shape=input_polymorphic_shape,
+      partitioner=partitioner,
+  )
+  return module
 
 
 def save(
@@ -1102,14 +1364,12 @@ def save(
     mixture_or_task_name: Optional[str] = None,
     validation_examples: Optional[List[Any]] = None,
     native_lowering: bool = False,
-    enable_xla: bool = True,
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
     output_vocab_feature_name: Optional[str] = 'targets',
     signature_name: Optional[
         str
     ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-    create_fake_input_fn: Any = create_fake_input,
 ):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
@@ -1147,8 +1407,6 @@ def save(
       will be used to validate the latency and numeric accuracy of the TPU saved
     native_lowering: for experimental purposes only -- if True, don't convert
       Jax fns to TF fns.
-    enable_xla: Defaults to true. If false, jax2tf conversion only emits non-XLA
-      ops.
     decode_outputs: Optional bool. If provided, determines whether to decode the
       output with the tokenizer, or to leave the output as is.
     trailing_shapes: Optional mapping of model feature name to trailing shape,
@@ -1158,9 +1416,6 @@ def save(
       plain text. For standard T5X models this will always be 'targets', but may
       be different or empty for other models.
     signature_name: Optional name of the exported function.
-    create_fake_input_fn: Optional function to create fake inputs instead of
-      relying on signautres which would create all zeros and some preprocessors
-      might not work with zeros.
   """
   jax.monitoring.record_event('/jax/t5x/export/beacon')
   output_dirs = _standardize_output_dirs(output_dir)
@@ -1170,100 +1425,30 @@ def save(
   logging.info('jax.process_count: %s', jax.process_count())
   logging.info('jax.local_devices: %s', jax.local_devices())  # Seems necessary.
   logging.info('Creating inference function...')
-  train_state_initializer = get_train_state_initializer(
-      model, partitioner, task_feature_lengths, batch_size, trailing_shapes
-  )
 
-  output_features = _standardize_output_features(
-      mixture_or_task_name, output_features
-  )
-  # Get the preprocessor and postprocessor.
-
-  # Non-vanilla seq-to-seq/decoder-only models can have a different
-  # vocabulary feature or not use a vocabulary feature at all.
-  output_vocab = None
-  if output_vocab_feature_name:
-    output_vocab = output_features[output_vocab_feature_name].vocabulary
-
-  # Handle the new and old create_preprocessor_fn signatures, for backwards
-  # compatibility.
-  # TODO(marcrasi): Delete after migrating clients.
-  if 'batch_size' in inspect.signature(create_preprocessor_fn).parameters:
-    # New signature.
-    preprocessor, input_signature = create_preprocessor_fn(
-        batch_size, output_features, task_feature_lengths,
-        tokenized_inputs)  # type: ignore
-  else:
-    # Old signature.
-    preprocessor = create_preprocessor_fn(output_features, task_feature_lengths,
-                                          tokenized_inputs)  # type: ignore
-    input_signature = create_single_tensor_input_signature(
-        batch_size, task_feature_lengths, tokenized_inputs)
-
-  logging.info('Converting inference function...')
-
-  # The model_fn takes two arguments, the params and the inputs. The inputs are
-  # a pytree of arrays with the first dimension being the batch dimension.
-  if batch_size is None:
-    fake_inputs = create_fake_input_fn(input_signature)
-    features = preprocessor(*fake_inputs)
-
-    # All the features have a leading batch dimension.
-    polymorphic_shapes_inputs = jax.tree_util.tree_map(lambda _: 'b, ...',
-                                                       features)
-  else:
-    polymorphic_shapes_inputs = None
-
-  decoding_state_callback_fn = None
-  if create_decoding_state_callback_fn is not None:
-    decoding_state_callback_fn = create_decoding_state_callback_fn(
-        vocab=output_vocab
-    )
-
-  model_tf_fn = create_inference_function(
+  module = create_exportable(
       model=model,
-      train_state_initializer=train_state_initializer,
-      decoding_state_callback_fn=decoding_state_callback_fn,
-      partitioner=partitioner,
       inference_mode=inference_mode,
-      enable_jax2tf=True,
-      enable_xla=enable_xla,
-      polymorphic_shapes_inputs=polymorphic_shapes_inputs,
-      native_lowering=native_lowering,
-  )
-
-  logging.info('Loading parameters from checkpoint...')
-  params = load_params_from_checkpoint(
       restore_checkpoint_cfg=restore_checkpoint_cfg,
-      train_state_initializer=train_state_initializer)
-
-  logging.info('Preparing Module to save...')
-  if decode_outputs is None:
-    decode_outputs = not tokenized_inputs
-  postprocessor = create_postprocessor_fn(output_vocab, inference_mode,
-                                          decode_outputs)
-  module = exportable_module_cls(
-      preproc_tf_fn=preprocessor,
-      model_tf_fn=model_tf_fn,
-      postproc_tf_fn=postprocessor,
-      params=params,
+      create_preprocessor_fn=create_preprocessor_fn,
+      create_postprocessor_fn=create_postprocessor_fn,
+      partitioner=partitioner,
+      create_decoding_state_callback_fn=create_decoding_state_callback_fn,
+      output_features=output_features,
+      task_feature_lengths=task_feature_lengths,
       batch_size=batch_size,
+      tokenized_inputs=tokenized_inputs,
+      mixture_or_task_name=mixture_or_task_name,
+      decode_outputs=decode_outputs,
+      trailing_shapes=trailing_shapes,
+      output_vocab_feature_name=output_vocab_feature_name,
+      signature_name=signature_name,
+      experimental_native_lowering=native_lowering,
+      exportable_module_cls=exportable_module_cls,
   )
-  signatures = {
-      signature_name: module.__call__.get_concrete_function(*input_signature)
-  }
-  logging.info('Saving the CPU model...')
-  # TODO(b/196260374): Figure out how to set experimental_custom_gradients=True.
-  options = tf.saved_model.SaveOptions(
-      experimental_custom_gradients=False,
-      function_aliases={
-          'tpu_func': module.tpu_func,
-      })
-  tf.saved_model.save(
-      module,
-      output_dirs['cpu'],
-      signatures=signatures,
-      options=options,
+
+  module.export_model(
+      model_dirs=output_dirs,
   )
 
 
@@ -1281,7 +1466,8 @@ def save(
         output_dir=output_dirs['cpu'],
         model_name=model_name,
         batch_sizes=module.export_batch_sizes,
-        signature_name=signature_name)
+        signature_name=signature_name,
+    )
 
 
 
