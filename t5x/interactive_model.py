@@ -1094,23 +1094,51 @@ def get_gin_config_from_interactive_model(interactive_model: InteractiveModel,
   Returns:
     A string that contains the full Gin file to be used for train/infer/eval.py.
   """
+  restore_config_str = ""
+  if interactive_model._restore_checkpoint_cfg:
+    restore_config_str = f"""CHECKPOINT_PATH = '{interactive_model._restore_checkpoint_cfg.path}'
+utils.RestoreCheckpointConfig:
+  path = %CHECKPOINT_PATH
+  mode = '{interactive_model._restore_checkpoint_cfg.mode}'
+  dtype = '{interactive_model._restore_checkpoint_cfg.dtype}'"""
+
+  base_config_str = f"""
+{imports_str}
+
+MODEL_DIR = "{interactive_model._output_dir}"
+MIXTURE_OR_TASK_NAME = "{task_name}"
+TASK_FEATURE_LENGTHS = {interactive_model._task_feature_lengths}
+USE_CACHED_TASKS = False
+SHUFFLE_TRAIN_EXAMPLES = False
+BATCH_SIZE = {interactive_model._batch_size}
+
+{model_config_str}
+{partitioner_config_str}
+{restore_config_str}"""
+
   if script_type == T5XScriptType.FINETUNING:
     # TODO(b/240732774): Populate this condition.
     gin_config = ""
   elif script_type == T5XScriptType.INFERENCE:
-    # TODO(b/240732774): Populate this condition.
-    gin_config = ""
+    if not interactive_model._restore_checkpoint_cfg:
+      raise ValueError("A checkpoint must be provided to run inference.")
+    gin_config = f"""
+include 't5x/configs/runs/infer.gin'
+{base_config_str}
+
+INFER_OUTPUT_DIR = %MODEL_DIR
+
+utils.DatasetConfig:
+  use_cached = %USE_CACHED_TASKS
+  batch_size = %BATCH_SIZE
+  shuffle = False
+  seed = 0
+  pack = False
+"""
   elif script_type == T5XScriptType.EVALUATION:
     # TODO(b/240732774): Populate this condition.
     gin_config = ""
   elif script_type == T5XScriptType.PRETRAINING:
-    restore_config_str = ""
-    if interactive_model._restore_checkpoint_cfg:
-
-      restore_config_str = f"""utils.RestoreCheckpointConfig:
-  path = '{interactive_model._restore_checkpoint_cfg.path}'
-  mode = '{interactive_model._restore_checkpoint_cfg.mode}'
-  dtype = '{interactive_model._restore_checkpoint_cfg.dtype}'"""
     gin_config = f"""
 from __gin__ import dynamic_registration
 
@@ -1118,38 +1146,23 @@ import __main__ as train_script
 from t5x import utils
 
 include 't5x/configs/runs/pretrain.gin'
-
-{imports_str}
-
-MODEL_DIR = "{interactive_model._output_dir}"
-
-TRAIN_STEPS = {train_steps}
-MIXTURE_OR_TASK_MODULE = "t5x.interactive_model"
-MIXTURE_OR_TASK_NAME = "{task_name}"
-TASK_FEATURE_LENGTHS = {interactive_model._task_feature_lengths}
-DROPOUT_RATE = 0.0
-USE_CACHED_TASKS = False
-SHUFFLE_TRAIN_EXAMPLES = False
-BATCH_SIZE = {interactive_model._batch_size}
-
-{model_config_str}
-
-train/utils.DatasetConfig:
-  pack = False
-
-train_eval/utils.DatasetConfig:
-  pack = False
-
-{restore_config_str}
+{base_config_str}
 utils.SaveCheckpointConfig:
   period = {interactive_model._save_checkpoint_cfg.period}
   dtype = '{interactive_model._save_checkpoint_cfg.dtype}'
   keep = {interactive_model._save_checkpoint_cfg.keep}
   save_dataset = {interactive_model._save_checkpoint_cfg.save_dataset}
 
-{partitioner_config_str}
-"""
+TRAIN_STEPS = {train_steps}
+SHUFFLE_TRAIN_EXAMPLES = False
+DROPOUT_RATE = 0.0
 
+train/utils.DatasetConfig:
+  pack = False
+
+train_eval/utils.DatasetConfig:
+  pack = False
+"""
   return gin_config
 
 
