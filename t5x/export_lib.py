@@ -224,28 +224,38 @@ def get_train_state_initializer(
     task_feature_lengths: Mapping[str, int],
     batch_size: Optional[int],
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
-) -> utils.TrainStateInitializer:
+) -> Optional[utils.TrainStateInitializer]:
   """Creates an TrainStateInitializer based on the model and partitioning."""
+  if not partitioner:
+    return None
+
   data_layout = partitioner.get_data_layout(batch_size)
   p_batch_size = data_layout.batch_size
   feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)
   model_feature_lengths = feature_converter.get_model_feature_lengths(
-      task_feature_lengths)
+      task_feature_lengths
+  )
   input_shapes = {}
   for k, l in model_feature_lengths.items():
     input_shapes[k] = (p_batch_size, l)
     if feature_converter.MODEL_FEATURES[k].rank > 1:
       if k not in trailing_shapes:
-        raise ValueError('Must set the trailing shape--`...?` in '
-                         '`(batch_size, seqlen, ...?)`--for higher rank '
-                         f'feature {k}')
+        raise ValueError(
+            'Must set the trailing shape--`...?` in '
+            '`(batch_size, seqlen, ...?)`--for higher rank '
+            f'feature {k}'
+        )
       input_shapes[k] += trailing_shapes[k]
-  return utils.TrainStateInitializer(
+  train_state_initializer = utils.TrainStateInitializer(
       optimizer_def=None,
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
       partitioner=partitioner,
   )
+  utils.log_model_info(
+      None, train_state_initializer.global_train_state_shape, partitioner
+  )
+  return train_state_initializer
 
 
 def flatten(compute_outputs: PyTreeDef,
@@ -1073,22 +1083,9 @@ def save(
   logging.info('jax.process_count: %s', jax.process_count())
   logging.info('jax.local_devices: %s', jax.local_devices())  # Seems necessary.
   logging.info('Creating inference function...')
-  if partitioner:
-    train_state_initializer = get_train_state_initializer(
-        model, partitioner, task_feature_lengths, batch_size, trailing_shapes)
-    # Log the variable shapes information.
-    utils.log_model_info(None, train_state_initializer.global_train_state_shape,
-                         partitioner)
-    num_cores_per_replica = partitioner.mesh.size
-    convert_to_tpu_args = dict(
-        enable_spmd_xla_partitioning=bool(partitioner),
-        num_cores_per_replica=num_cores_per_replica,
-        # We don't need to set `topology` and `device_assignment` here as those
-        # information can be automatically inferred in the runtime.
-    )
-  else:
-    train_state_initializer = None
-    convert_to_tpu_args = {}
+  train_state_initializer = get_train_state_initializer(
+      model, partitioner, task_feature_lengths, batch_size, trailing_shapes
+  )
 
   if mixture_or_task_name is not None and output_features is not None:
     raise ValueError('Only one of mixture_or_task_name and output_features may '
