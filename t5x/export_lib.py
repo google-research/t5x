@@ -1026,6 +1026,32 @@ def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
   return output_dirs
 
 
+def _save_model(
+    *,
+    partitioner: Optional[partitioning.BasePartitioner],
+    module: ExportableModule,
+    signatures: Mapping[str, Any],
+    output_dirs: Mapping[str, str],
+    signature_name: Optional[str],
+):
+  """Model save core function implementation."""
+  # pyformat: disable
+  # TODO(b/196260374): Figure out how to set experimental_custom_gradients=True.
+  options = tf.saved_model.SaveOptions(
+      experimental_custom_gradients=False,
+      function_aliases={
+          'tpu_func': module.tpu_func,
+      })
+  tf.saved_model.save(
+      module,
+      output_dirs['cpu'],
+      signatures=signatures,
+      options=options,
+  )
+
+  # pyformat: enable
+
+
 def save(
     *,
     model: models.BaseTransformerModel,
@@ -1203,19 +1229,15 @@ def save(
       signature_name: module.__call__.get_concrete_function(*input_signature)
   }
   logging.info('Saving the CPU model...')
-  # TODO(b/196260374): Figure out how to set experimental_custom_gradients=True.
-  options = tf.saved_model.SaveOptions(
-      experimental_custom_gradients=False,
-      function_aliases={
-          'tpu_func': module.tpu_func,
-      })
-  tf.saved_model.save(
-      module,
-      output_dirs['cpu'],
+  _save_model(
+      partitioner=partitioner,
+      module=module,
       signatures=signatures,
-      options=options,
+      output_dirs=output_dirs,
+      pathways_config=pathways_config,
+      enable_mla_export=enable_mla_export,
+      signature_name=signature_name,
   )
-
 
   if warmup_examples:
     if batch_size:
