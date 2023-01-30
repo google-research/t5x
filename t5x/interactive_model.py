@@ -1116,10 +1116,7 @@ BATCH_SIZE = {interactive_model._batch_size}
 {partitioner_config_str}
 {restore_config_str}"""
 
-  if script_type == T5XScriptType.FINETUNING:
-    # TODO(b/240732774): Populate this condition.
-    gin_config = ""
-  elif script_type == T5XScriptType.INFERENCE:
+  if script_type == T5XScriptType.INFERENCE:
     if not interactive_model._restore_checkpoint_cfg:
       raise ValueError("A checkpoint must be provided to run inference.")
     gin_config = f"""
@@ -1135,10 +1132,11 @@ utils.DatasetConfig:
   seed = 0
   pack = False
 """
-  elif script_type == T5XScriptType.EVALUATION:
-    # TODO(b/240732774): Populate this condition.
-    gin_config = ""
-  elif script_type == T5XScriptType.PRETRAINING:
+  elif (
+      script_type == T5XScriptType.FINETUNING
+      or script_type == T5XScriptType.PRETRAINING
+      or script_type == T5XScriptType.EVALUATION
+  ):
     gin_config = f"""
 from __gin__ import dynamic_registration
 
@@ -1162,6 +1160,13 @@ train/utils.DatasetConfig:
 
 train_eval/utils.DatasetConfig:
   pack = False
+"""
+    if script_type == T5XScriptType.EVALUATION:
+      gin_config += """
+train_script.train:
+  run_eval_before_training = True
+  eval_period = 0
+  total_steps = 0
 """
   return gin_config
 
