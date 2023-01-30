@@ -1002,6 +1002,30 @@ def _standardize_output_features(
   return new_output_features
 
 
+def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
+  """standardize the format of output_dirs from user input."""
+  if output_dir is None:
+    raise ValueError('output_dir is mandatory')
+  if isinstance(output_dir, str):
+    output_dirs = {'tpu': output_dir}
+  else:
+    output_dirs = dict(output_dir)
+  if 'cpu' not in output_dirs:
+    if 'tpu' not in output_dirs:
+      raise ValueError('output_dir["cpu"] or output_dir["tpu"] is mandatory')
+    export_version = os.path.basename(output_dirs['tpu'])
+    if not export_version.isdigit():
+      raise ValueError(
+          'output_dir must be in the form ${BASE}/${VERSION}, '
+          'where  ${VERSION} is an integer. Got a non-numeric '
+          f'version {export_version}.'
+      )
+    output_dirs['cpu'] = os.path.join(
+        os.path.dirname(output_dirs['tpu']) + '_cpu', export_version
+    )
+  return output_dirs
+
+
 def save(
     *,
     model: models.BaseTransformerModel,
@@ -1079,22 +1103,7 @@ def save(
     signature_name: Optional name of the exported function.
   """
   jax.monitoring.record_event('/jax/t5x/export/beacon')
-  if output_dir is None:
-    raise ValueError('output_dir is mandatory')
-  if isinstance(output_dir, str):
-    output_dirs = {'tpu': output_dir}
-  else:
-    output_dirs = dict(output_dir)
-  if 'cpu' not in output_dirs:
-    if 'tpu' not in output_dirs:
-      raise ValueError('output_dir["cpu"] or output_dir["tpu"] is mandatory')
-    export_version = os.path.basename(output_dirs['tpu'])
-    if not export_version.isdigit():
-      raise ValueError('output_dir must be in the form ${BASE}/${VERSION}, '
-                       'where  ${VERSION} is an integer. Got a non-numeric '
-                       f'version {export_version}.')
-    output_dirs['cpu'] = os.path.join(
-        os.path.dirname(output_dirs['tpu']) + '_cpu', export_version)
+  output_dirs = _standardize_output_dirs(output_dir)
   del output_dir
 
 
