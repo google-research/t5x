@@ -984,6 +984,24 @@ def write_warmup_examples(
 
 
 
+def _standardize_output_features(
+    mixture_or_task_name: Optional[str],
+    output_features: Optional[Mapping[str, seqio.Feature]],
+):
+  """Standarize the output_features from user inputs."""
+  new_output_features = output_features
+  if mixture_or_task_name is not None and output_features is not None:
+    raise ValueError(
+        'Only one of mixture_or_task_name and output_features may be non empty.'
+    )
+  if mixture_or_task_name is not None:
+    logging.info('Fetching output features from task %s', mixture_or_task_name)
+    new_output_features = seqio.get_mixture_or_task(
+        mixture_or_task_name
+    ).output_features
+  return new_output_features
+
+
 def save(
     *,
     model: models.BaseTransformerModel,
@@ -1087,13 +1105,9 @@ def save(
       model, partitioner, task_feature_lengths, batch_size, trailing_shapes
   )
 
-  if mixture_or_task_name is not None and output_features is not None:
-    raise ValueError('Only one of mixture_or_task_name and output_features may '
-                     'be non empty.')
-  if mixture_or_task_name is not None:
-    logging.info('Fetching output features from task %s', mixture_or_task_name)
-    output_features = seqio.get_mixture_or_task(
-        mixture_or_task_name).output_features
+  output_features = _standardize_output_features(
+      mixture_or_task_name, output_features
+  )
   # Get the preprocessor and postprocessor.
 
   # Non-vanilla seq-to-seq/decoder-only models can have a different
