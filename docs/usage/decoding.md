@@ -116,7 +116,7 @@ Since the length information is provided dynamically, we don't set
 `beam_search` whose length is the dynamically determined maximum length.
 
 If `max_decode_len` is explicitly specified via gin, this will override the
-implictly determined length information unless it is passed by
+implicitly determined length information unless it is passed by
 `predict_batch_with_aux`.
 
 ### Temperature sampling
@@ -178,13 +178,13 @@ the smallest set such that
 
 $$\sum_{i \in V^{(p)}} p_i \ge p$$
 
-where $$p_i$$ is the conditional dsitribution at each time step for item $$i$$.
+where $$p_i$$ is the conditional distribution at each time step for item $$i$$.
 This is called "Nucleus sampling", which was introduced by
 [Holtzman et al. ICLR 2020](https://openreview.net/forum?id=rygGQyrFvH).
 
 IMPORTANT: Only one of `topk` or `topp` can be used.
 
-## Option2: subclassing a model class
+## Option 2: subclassing a model class
 
 If `DecodeFnCallable` is not flexible enough for your custom decoding function,
 you can subclass the model class and override `predict_batch_with_aux` method.
