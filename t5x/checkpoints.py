@@ -568,8 +568,12 @@ class Checkpointer(object):
     """
     if not use_gda:
       warnings.warn(
-          '`use_gda=False` is deprecated and will be removed on Feb-01-23.'
-          ' Please ensure that your workflow can use GDA.', DeprecationWarning)
+          (
+              '`use_gda=False` is deprecated and will be removed on Feb-22-23.'
+              ' Please ensure that your workflow can use GDA.'
+          ),
+          DeprecationWarning,
+      )
     self._train_state = train_state
     self._partitioner = partitioner
     self.checkpoints_dir = checkpoints_dir
