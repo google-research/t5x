@@ -191,10 +191,11 @@ class RestoreCheckpointConfig:
       raise ValueError(
           "`RestoreCheckpointConfig.mode` must be one of 'specific', 'latest', "
           f"or 'all'. Got {self.mode}.")
-    if self.dtype not in (None, 'float32', 'bfloat16'):
+    if self.dtype not in (None, 'float32', 'bfloat16', 'float16'):
       raise ValueError(
           "`RestoreCheckpointConfig.dtype` must be one of `None`, 'float32', "
-          f"or 'bfloat16'. Got {self.dtype}.")
+          f"'float16' or 'bfloat16'. Got {self.dtype}."
+      )
     if self.assignment_map is not None:
       # Turns `assignment_map` into a transformation function.
       assignment_map_fn = functools.partial(
