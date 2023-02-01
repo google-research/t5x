@@ -120,6 +120,7 @@ class InteractiveModel(abc.ABC):
     """
     self._batch_size = batch_size
     self._task_feature_lengths = task_feature_lengths
+    self._cached_infer_fns = {}
     # --------------------------------------------------------------------------
     # Configure the output directory
     # --------------------------------------------------------------------------
@@ -431,13 +432,18 @@ class InteractiveModel(abc.ABC):
     else:
       raise ValueError("Mode must be `predict_with_aux`, or `score`,"
                        f" but instead was {mode}.")
+    infer_fn_key = tuple(
+        sorted(seqio.utils.flatten_dict(inference_kwargs).items())
+    )
+    if infer_fn_key not in self._cached_infer_fns:
+      self._cached_infer_fns[infer_fn_key] = utils.get_infer_fn(
+          infer_step=functools.partial(infer_step, **inference_kwargs),
+          batch_size=self._batch_size,
+          train_state_axes=self._train_state_initializer.train_state_axes,
+          partitioner=self._partitioner,
+      )
     infer_fn = functools.partial(
-        utils.get_infer_fn(
-            infer_step=functools.partial(infer_step, **inference_kwargs),
-            batch_size=self._batch_size,
-            train_state_axes=self._train_state_initializer.train_state_axes,
-            partitioner=self._partitioner,
-        ),
+        self._cached_infer_fns[infer_fn_key],
         train_state=self._train_state,
     )
 
