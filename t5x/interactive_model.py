@@ -371,13 +371,8 @@ class InteractiveModel(abc.ABC):
           "Stopping training early since `stop_training` is requested.")
       return
 
-    if isinstance(self._train_state, Sequence):
-      raise ValueError(
-          "Expected a single train state, but instead received a Sequence.")
     try:
-      first_step = int(utils.get_local_data(self._train_state.step))
-      self._train_summary = self._trainer.train(
-          train_iter, 1, start_step=first_step)
+      self.train_step_from_batch_iterator(train_iter)
     except trainer_lib.PreemptionError as e:
       logging.info("Saving emergency checkpoint.")
       self.save_checkpoint()
@@ -387,6 +382,18 @@ class InteractiveModel(abc.ABC):
     # Save a checkpoint.
     logging.info("Saving checkpoint.")
     self.save_checkpoint()
+
+  def train_step_from_batch_iterator(self, iterator):
+    """Runs one training step from a batch iterator."""
+    if isinstance(self._train_state, Sequence):
+      raise ValueError(
+          "Expected a single train state, but instead received a Sequence."
+      )
+
+    first_step = int(utils.get_local_data(self._train_state.step))
+    self._train_summary = self._trainer.train(
+        iterator, 1, start_step=first_step
+    )
 
     # Wait until computations are done before exiting
     utils.sync_global_devices("complete")
