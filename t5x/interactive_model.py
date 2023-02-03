@@ -65,19 +65,22 @@ class T5XScriptType(enum.Enum):
 class InteractiveModel(abc.ABC):
   """Wrapper around T5X components to enable interactive train/infer/eval."""
 
-  def __init__(self,
-               batch_size: int,
-               task_feature_lengths: Mapping[str, int],
-               output_dir: str,
-               partitioner: partitioning.BasePartitioner,
-               model: models.BaseTransformerModel,
-               dtype: str,
-               restore_mode: str,
-               checkpoint_path: str,
-               input_shapes: Mapping[str, utils.Array],
-               input_types: Optional[Mapping[str, utils.DType]] = None,
-               init_random_seed: int = 42,
-               add_eos: bool = True):
+  def __init__(
+      self,
+      batch_size: int,
+      task_feature_lengths: Mapping[str, int],
+      output_dir: str,
+      partitioner: partitioning.BasePartitioner,
+      model: models.BaseTransformerModel,
+      dtype: str,
+      restore_mode: str,
+      checkpoint_path: str,
+      input_shapes: Mapping[str, utils.Array],
+      input_types: Optional[Mapping[str, utils.DType]] = None,
+      init_random_seed: int = 42,
+      add_eos: bool = True,
+      eval_names: Optional[Sequence[str]] = None,
+  ):
     """Init function.
 
     Configures the output directory, RNGs, and partitioner given the provided
@@ -112,6 +115,8 @@ class InteractiveModel(abc.ABC):
         be `jnp.float32`.
       init_random_seed: the random seed used to initialize all RNGs.
       add_eos: whether or not to add the EOS token to inputs/targets.
+      eval_names: names of evaluation datasets, which must match the keys of the
+        mapping passed to trainer's `eval` method.
 
     Raises:
       ValueError: the partitioner has an incorrect submesh, or the checkpoint
@@ -262,12 +267,13 @@ class InteractiveModel(abc.ABC):
         model=self._model,
         train_state=self._train_state,
         partitioner=self._partitioner,
-        eval_names=[],
+        eval_names=eval_names if eval_names else [],
         summary_dir=self._output_dir,
         train_state_axes=self._train_state_axes,
         rng=self._trainer_rng,
         learning_rate_fn=utils.create_learning_rate_scheduler(),
-        num_microbatches=None)
+        num_microbatches=None,
+    )
 
   @property
   def trainer(self):
