@@ -49,6 +49,7 @@ import jax.config
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
 from jax.experimental.gda_serialization import serialization as gda_serialization
+from jax.experimental.maps import Mesh
 import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint
@@ -1759,7 +1760,9 @@ def load_t5x_checkpoint(
     state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
     remap: bool = True,
     restore_dtype: Optional[jnp.dtype] = None,
-    lazy_parameters: bool = False) -> PyTreeDef:
+    lazy_parameters: bool = False,
+    use_gda: bool = True,
+) -> PyTreeDef:
   """Load a T5X checkpoint without pre-defining the optimizer.
 
   Note:
@@ -1775,6 +1778,7 @@ def load_t5x_checkpoint(
       no parameter casting is performed.
     lazy_parameters: whether to load the parameters as LazyArrays to preserve
       memory.
+    use_gda: Whether to restore arrays as GDA.
 
   Returns:
     A nested dictionary of weights and parameter states from the checkpoint.
@@ -1835,12 +1839,20 @@ def load_t5x_checkpoint(
   def _create_lazy_awaitable_array(
       param_info: _ParameterInfo, maybe_ts_spec: Any, ckpt_path: str,
       restore_dtype: Optional[jnp.dtype]) -> LazyAwaitableArray:
+    mesh = None
+    axes = None
+    if use_gda:
+      mesh = Mesh(jax.devices(), ('x',))
+      axes = (None,)
     get_fn = functools.partial(
         _read_ts,
         param_info,
         maybe_ts_spec,
         ckpt_path=ckpt_path,
-        restore_dtype=restore_dtype)
+        restore_dtype=restore_dtype,
+        mesh=mesh,
+        axes=axes,
+    )
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
 
