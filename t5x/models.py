@@ -833,6 +833,7 @@ class DecoderOnlyModel(BaseTransformerModel):
     sequence_scores = token_scores.sum(-1)
 
     if return_intermediates:
+      intermediates['decoder']['token_scores'] = (token_scores,)
       return sequence_scores, intermediates
 
     return sequence_scores
