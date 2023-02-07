@@ -79,7 +79,7 @@ _CITATION = """
 """
 _DATASET_MODES = ["lm"]
 
-_PILE_URL = 'http://eaidata.bmk.sh/data/pile/train/{}.jsonl.zst'
+_PILE_URL = 'https://the-eye.eu/public/AI/pile/train/{}.jsonl.zst'
 _PILE_SPLITS = 30
 
 _URLS = {
@@ -87,8 +87,8 @@ _URLS = {
         'train': [
             _PILE_URL.format(str(i).zfill(2)) for i in range(_PILE_SPLITS)
         ],
-        'test': 'http://eaidata.bmk.sh/data/pile/test.jsonl.zst',
-        'validation': 'http://eaidata.bmk.sh/data/pile/val.jsonl.zst',
+        'test': 'https://the-eye.eu/public/AI/pile/test.jsonl.zst',
+        'validation': 'https://the-eye.eu/public/AI/pile/val.jsonl.zst',
     }
 }
 
@@ -175,12 +175,9 @@ class ThePile(tfds.core.GeneratorBasedBuilder):
     dl_paths = dl_manager.download(_URLS['the_pile'])
     print(dl_paths)
     return {
-        tfds.core.SplitGenerator(name=tfds.Split.TRAIN,
-                                 gen_kwargs={"paths": dl_paths['train']}),
-        tfds.core.SplitGenerator(name=tfds.Split.VALIDATION,
-                                 gen_kwargs={"paths": dl_paths['validation']}),
-        tfds.core.SplitGenerator(name=tfds.Split.TEST,
-                                 gen_kwargs={"paths": dl_paths['test']}),
+            'train': self._generate_examples(dl_paths['train']),
+            'validation': self._generate_examples(dl_paths['validation']),
+            'test': self._generate_examples(dl_paths['test']),
     }
 
   def _generate_examples(self, paths):
