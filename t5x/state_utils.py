@@ -82,7 +82,9 @@ def intersect_state(
   for k in list(state_dict_flat):
     if k not in intersect_state_dict_flat:
       state_dict_flat.pop(k)
-      logging.warning("Ignoring param=%s from checkpoint", k)
+      logging.warning(
+          "Not restoring param=%s because it's missing in the checkpoint", k
+      )
 
   state_dict = traverse_util.unflatten_dict(state_dict_flat, sep="/")
 
