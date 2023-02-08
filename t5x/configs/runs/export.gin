@@ -76,8 +76,6 @@ utils.RestoreCheckpointConfig:
   mode = 'specific'
   dtype = 'bfloat16'
   checkpointer_cls = @checkpoints.Checkpointer
-  # TODO(b/234480674): GDA disabled due to incompatibility with export.
-  use_gda = False
 
 export_lib.create_preprocessor:
   output_features = %OUTPUT_FEATURES
