@@ -80,6 +80,8 @@ class InteractiveModel(abc.ABC):
       init_random_seed: int = 42,
       add_eos: bool = True,
       eval_names: Optional[Sequence[str]] = None,
+      save_checkpointer_cls: checkpoints.CheckpointerConstructor = checkpoints.Checkpointer,
+      restore_checkpointer_cls: checkpoints.CheckpointerConstructor = checkpoints.Checkpointer,
   ):
     """Init function.
 
@@ -117,6 +119,8 @@ class InteractiveModel(abc.ABC):
       add_eos: whether or not to add the EOS token to inputs/targets.
       eval_names: names of evaluation datasets, which must match the keys of the
         mapping passed to trainer's `eval` method.
+      save_checkpointer_cls: the checkpointer class for saving checkpoint.
+      restore_checkpointer_cls: the checkpointer class for restoring checkpoint.
 
     Raises:
       ValueError: the partitioner has an incorrect submesh, or the checkpoint
@@ -183,11 +187,22 @@ class InteractiveModel(abc.ABC):
     # Define restore and save checkpoints.
     if checkpoint_path:
       self._restore_checkpoint_cfg = utils.RestoreCheckpointConfig(
-          dtype=dtype, mode=restore_mode, path=checkpoint_path, use_gda=False)
+          checkpointer_cls=restore_checkpointer_cls,
+          dtype=dtype,
+          mode=restore_mode,
+          path=checkpoint_path,
+          use_gda=False,
+      )
     else:
       self._restore_checkpoint_cfg = None
     self._save_checkpoint_cfg = utils.SaveCheckpointConfig(
-        dtype=dtype, keep=5, save_dataset=False, use_gda=False, period=1000)
+        checkpointer_cls=save_checkpointer_cls,
+        dtype=dtype,
+        keep=5,
+        save_dataset=False,
+        use_gda=False,
+        period=1000,
+    )
     self._train_state_initializer = utils.TrainStateInitializer(
         optimizer_def=self._model.optimizer_def,
         init_fn=self._model.get_initial_variables,
