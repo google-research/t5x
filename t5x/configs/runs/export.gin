@@ -31,6 +31,7 @@ from t5x import models
 from t5x import partitioning
 from t5x import utils
 from t5x import export_lib
+from t5x import validate_lib
 
 # Must be overridden
 OUTPUT_FEATURES = %gin.REQUIRED
@@ -70,6 +71,18 @@ export_lib.save:
   model_name = %MODEL_NAME
   batch_size = %BATCH_SIZE
   native_lowering = False
+
+validate_lib.model_validate:
+  model = %MODEL  # imported from separate gin file
+  inference_mode = 'predict'
+  restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
+  create_preprocessor_fn = @export_lib.create_preprocessor
+  create_postprocessor_fn = @export_lib.create_postprocessor
+  partitioner = @partitioning.PjitPartitioner()
+  output_features = %OUTPUT_FEATURES
+  task_feature_lengths = %TASK_FEATURE_LENGTHS
+  output_dir = %MODEL_OUTPUT_DIR
+  batch_size = %BATCH_SIZE
 
 utils.RestoreCheckpointConfig:
   path = %CHECKPOINT_PATH
