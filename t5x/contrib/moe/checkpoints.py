@@ -19,7 +19,6 @@ from typing import Any, Optional, Union
 
 import clu.data
 import jax
-from jax import pxla
 import jax.config
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental.gda_serialization import serialization as gda_serialization
@@ -199,7 +198,7 @@ async def _read_upcycle_ts(
     ckpt_path: str,
     num_experts: int,
     restore_dtype: Optional[jnp.dtype] = None,
-    mesh: Optional[pxla.Mesh] = None,
+    mesh: Optional[jax.sharding.Mesh] = None,
     axes: Optional[gda_lib.MeshAxes] = None,
 ):
   """Reads array from tensorstore and handles broadcasting of expert weights.
@@ -309,7 +308,7 @@ async def _read_upcycle_ts(
     if (not m_or_v) and is_expert_param:
       # The checkpoint kernels do not have an expert axis, so we override the
       # specs for "expected" expert parameters from ('expert', ...) to (...).
-      checkpoint_axes = jax.experimental.PartitionSpec(*axes[1:])
+      checkpoint_axes = jax.sharding.PartitionSpec(*axes[1:])
     else:
       checkpoint_axes = axes
 

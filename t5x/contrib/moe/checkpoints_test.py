@@ -21,7 +21,6 @@ from typing import Any, Mapping, Optional, Tuple
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-from jax import pxla
 from jax._src.lib import xla_bridge
 from jax.experimental import global_device_array as gda_lib
 import jax.numpy as jnp
@@ -45,7 +44,7 @@ FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
 
 
 def create_sharded_array(
-    arr: np.ndarray, global_mesh: pxla.Mesh, mesh_axes: gda_lib.MeshAxes
+    arr: np.ndarray, global_mesh: jax.sharding.Mesh, mesh_axes: gda_lib.MeshAxes
 ) -> jax.Array:
   """Converts NumPy array into sharded JAX Array."""
   return jax.make_array_from_callback(
@@ -74,7 +73,7 @@ def make_train_state(
 def shard_train_state(
     *,
     train_state: FlaxOptimTrainState,
-    global_mesh: Optional[pxla.Mesh],
+    global_mesh: Optional[jax.sharding.Mesh],
     mesh_axes: Optional[gda_lib.MeshAxes],
 ) -> FlaxOptimTrainState:
   """Helper to construct a sharded train state from NumPy arrays."""

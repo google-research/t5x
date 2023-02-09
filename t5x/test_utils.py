@@ -23,7 +23,7 @@ import unittest
 
 import jax
 from jax.experimental.global_device_array import GlobalDeviceArray
-from jax.experimental.maps import Mesh
+from jax.sharding import Mesh
 import numpy as np
 import seqio
 from t5x import adafactor

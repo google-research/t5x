@@ -20,7 +20,7 @@ from absl import logging
 import cached_property
 from flax import core as flax_core
 import jax
-from jax.experimental.maps import Mesh
+from jax.sharding import Mesh
 import numpy as np
 from t5x import adafactor
 from t5x import optimizers
