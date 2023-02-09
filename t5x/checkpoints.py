@@ -34,6 +34,7 @@ import os
 import re
 import subprocess
 import time
+import typing
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import warnings
 
@@ -502,7 +503,7 @@ class Checkpointer(object):
   to their own TensorStore, with each host writing their portion to the same
   TensorStore in parallel. If a partition is written on multiple hosts, the
   partition is further sharded across these replicas to avoid additional
-  overhead. In place of the paramater, a `tensorstore.Spec` is written to the
+  overhead. In place of the parameter, a `tensorstore.Spec` is written to the
   msgpack (by host 0) as a reference to be used during restore. Note that the
   path of the array being written is relative. This makes the checkpoints
   portable. In other words, even if the checkpoint files are moved to a new
@@ -1416,9 +1417,9 @@ class SaveBestCheckpointer(Checkpointer):
   """A Checkpointer class that keeps checkpoints based on 'best' metrics.
 
   This extends the standard Checkpointer to garbage collect checkpoints based on
-  metric values, instead of step recency. It uses Tensorboard summary files to
+  metric values, instead of step recency. It uses TensorBoard summary files to
   determine best values for a given user configured metric name. Events are read
-  and parsed using Tensorboard's event_processing packages.
+  and parsed using TensorBoard's event_processing packages.
 
   The metric name must be of the form `{run_name}/{tag_name}`. For example,
   'train/accuracy' or 'inference_eval/glue_cola_v002/eval/accuracy'.
@@ -1439,7 +1440,7 @@ class SaveBestCheckpointer(Checkpointer):
     crucial to always keep the latest checkpoint (for recovery purposes) we
     always store the latest checkpoint plus `keep` number of best checkpoints.
 
-  - It is assumed that Tensorboard summaries (event) files share a common root
+  - It is assumed that TensorBoard summaries (event) files share a common root
     directory with `checkpoint_dir`, which is the directory passed to the
     the logdir crawler that searches for event files.
 
@@ -2210,11 +2211,17 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     mesh_axes = self._partitioner.get_mesh_axes(train_state).state_dict()
     return jax.tree_util.tree_map(_OrbaxParamInfo, param_names, mesh_axes)
 
-  def _get_save_directory(self,
-                          step: int,
-                          directory: epath.Path,
-                          key_name: Optional[str] = None) -> epath.Path:
+  def _get_save_directory(
+      self,
+      step: int,
+      directory: epath.Path,
+      key_name: Optional[str] = None,
+      tmp_directory: Optional[epath.Path] = None,
+  ) -> epath.Path:
     """Returns the standardized path to a save directory for a single item."""
+    # `tmp` option is not handled here, since tmp directory creation is
+    # handled differently in T5X.
+    del tmp_directory
     step_dir = epath.Path(get_checkpoint_dir(os.fspath(directory), step))
     if (key_name is None or key_name == _STATE_KEY or
         key_name == _DATASET_KEY or
@@ -2428,29 +2435,41 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
 
     return self._train_state.restore_state(state_dict)
 
-  def _add_checkpoint_info(self, step, metrics):
-    """Record CheckpointInfo after save. Ensure save is atomic."""
-    assert metrics is None
-    if jax.process_index() == 0:
-      assert self._tmp_directory is not None
-      final_directory = os.fspath(
-          self._get_save_directory(step, self.directory))
-      tmp_directory = os.fspath(self._tmp_directory)
-      if final_directory.startswith('gs://'):
-        subprocess.run(['gsutil', '-m', 'mv', tmp_directory, final_directory],
-                       stdout=subprocess.DEVNULL,
-                       check=True)
-      else:
-        gfile.rename(tmp_directory, final_directory)
+  def _finalize_checkpoint(self):
+    """Moves tmp step checkpoint to final."""
+    for tmp_file in orbax.checkpoint.utils.tmp_checkpoints(self.directory):
+      if jax.process_index() == 0:
+        assert self._tmp_directory is not None
+        final_directory = os.fspath(
+            self._get_save_directory(
+                orbax.checkpoint.utils.step_from_checkpoint_name(tmp_file),
+                self.directory,
+            )
+        )
+        tmp_directory = os.fspath(self._tmp_directory)
+        if final_directory.startswith('gs://'):
+          subprocess.run(
+              ['gsutil', '-m', 'mv', tmp_directory, final_directory],
+              stdout=subprocess.DEVNULL,
+              check=True,
+          )
+        else:
+          gfile.rename(tmp_directory, final_directory)
     _sync_global_devices('CheckpointManager:atomic_save')
-    super()._add_checkpoint_info(step, metrics)
+
+  def _create_tmp_directory(self, directory: epath.Path) -> epath.Path:
+    # Override is needed because of flat directory structure.
+    # Tmp directory creation is handled in save directly.
+    assert self._tmp_directory is not None
+    return typing.cast(epath.Path, self._tmp_directory)
 
   def _cleanup_tmp_directories(self):
     if jax.process_index() == 0:
       files = self.directory.glob('checkpoint_*')
       tmp_files = [
-          f for f in files
-          if not orbax.checkpoint.utils.is_checkpoint_item_finalized(f)
+          f
+          for f in files
+          if not orbax.checkpoint.utils.is_checkpoint_finalized(f)
       ]
       for tmp_file in tmp_files:
         tmp_file.rmtree()
