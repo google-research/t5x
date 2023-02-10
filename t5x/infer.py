@@ -259,7 +259,11 @@ def write_inferences_to_file(
   with gfile.GFile(path, 'w') as f:
     for i, inp in task_ds.enumerate().as_numpy_iterator():
       predictions = all_predictions[i]
-      aux_values = {aux_field: v[i] for aux_field, v in all_aux_values.items()}
+      aux_values = jax.tree_map(
+          f=lambda v, i=i: v[i],
+          tree=all_aux_values,
+          is_leaf=lambda v: isinstance(v, (np.ndarray, list)),
+      )
 
       if include_all_inputs:
         inputs = inp
@@ -287,6 +291,8 @@ def write_inferences_to_file(
           json_dict['prediction_tokens'] = pred
       elif mode == 'score':
         json_dict['score'] = _json_compat(predictions)
+        if aux_values:
+          json_dict['aux'] = jax.tree_map(_json_compat, aux_values)
       elif mode == 'predict_with_aux':
         assert vocabulary is not None
         json_dict['prediction'] = _json_compat(
@@ -322,12 +328,13 @@ def _extract_tokens_and_aux_values(inference_fn_outputs) -> _Inferences:
     indices, tokens = zip(*indices_and_tokens)
 
     permutation = np.argsort(indices)
-
-    tokens = [tokens[permutation[i]] for i in range(len(permutation))]
-    for aux_keys, aux_values in all_aux_values.items():
-      all_aux_values[aux_keys] = [
-          aux_values[permutation[i]] for i in range(len(permutation))
-      ]
+    permute = lambda v: [v[permutation[i]] for i in range(len(permutation))]
+    tokens = permute(tokens)
+    all_aux_values = jax.tree_map(
+        f=permute,
+        tree=all_aux_values,
+        is_leaf=lambda v: isinstance(v, (np.ndarray, list)),
+    )
 
   else:
     indices_and_tokens = inference_fn_outputs
@@ -399,6 +406,7 @@ def infer(
     output_vocab_feature_name: The name of the feature corresponding to the
       output vocabulary.
   """
+  jax.monitoring.record_event('/jax/t5x/infer/beacon')
   logging.info('Process ID: %d', jax.process_index())
 
   # Only allow `shard_id` 0 to write config summary, since the config summary

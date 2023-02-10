@@ -46,10 +46,12 @@ class DecodingState:
   Note that we use a different class than `SamplingLoopState` or `Beamstate` to
   decouple the concerns of what data is useful for the loop vs. what the
   sampling method needs.
+  Decodes for a given batch entry are flattened in a column-major way so that
+  decodes from the same batch entry are grouped together.
 
   Attributes:
-    cur_index: [batch_size] array position of the sampling loop in the length
-      dimension.
+    cur_index: [batch_size * num_decodes] array position of the sampling loop in
+      the length dimension.
     sequences: [batch_size * num_decodes, max_decode_len] array of current
       sampled sequence prefixes.
     cur_token: [batch_size * num_decodes] single timestep slice containing
@@ -62,9 +64,9 @@ class DecodingState:
   cache: Mapping[str, jnp.ndarray]
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Temperature Sampling
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 
 @flax.struct.dataclass
@@ -72,17 +74,19 @@ class SamplingLoopState:
   """Holds sampling state data.
 
   Attributes:
-    cur_index: [batch_size] array position of the sampling loop in the length
-      dimension.
+    step: Scalar decoding step count. Starts from zero.
+    cur_index: [batch_size * num_decodes] array position of the sampling loop in
+      the length dimension.
     sequences: [batch_size * num_decodes, max_decode_len] array of current
       sampled sequence prefixes.
     cache: any mapping of arrays, e.g. flax attention cache.
-    cur_token: [batch_size, num_decodes] single timestep slice containing
+    cur_token: [batch_size * num_decodes] single timestep slice containing
       current tokens.
-    ended: [batch_size, num_decodes] binary array marking completed sequences.
+    ended: [batch_size * num_decodes] binary array marking completed sequences.
     rng: Jax PRNGKey
-    log_prob: [batch_size, num_decodes] array of log probs for each sequence.
+    log_prob: [batch_size * num_decodes] array of log probs for each sequence.
   """
+  step: jnp.ndarray
   cur_index: jnp.ndarray
   sequences: jnp.ndarray
   cache: Mapping[str, jnp.ndarray]
@@ -100,11 +104,16 @@ def _is_tracer(value: Any):
   return isinstance(value, jax.core.Tracer)
 
 
+StateCallbackFn = Callable[[SamplingLoopState], SamplingLoopState]
+LogitCallbackFn = Callable[[jnp.ndarray, SamplingLoopState], jnp.ndarray]
+
+
 def temperature_sample(
     inputs: jnp.ndarray,
     cache: Mapping[str, jnp.ndarray],
-    tokens_to_logits: Callable[[DecodingState],
-                               Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]],
+    tokens_to_logits: Callable[
+        [DecodingState], Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]
+    ],
     eos_id: int,
     decode_rng: Optional[jnp.ndarray] = None,
     num_decodes: int = 1,
@@ -116,10 +125,8 @@ def temperature_sample(
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
     max_decode_steps_hard_limit: Optional[int] = None,
     rescale_log_probs: bool = True,
-    state_callback_fn: Optional[Callable[[SamplingLoopState],
-                                         SamplingLoopState]] = None,
-    logit_callback_fn: Optional[Callable[[jnp.ndarray, SamplingLoopState],
-                                         jnp.ndarray]] = None
+    state_callback_fn: Optional[StateCallbackFn] = None,
+    logit_callback_fn: Optional[LogitCallbackFn] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Temperature sampling for language model generation.
 
@@ -394,8 +401,9 @@ def temperature_sample(
 def _temperature_sample_single_trial(
     inputs: jnp.ndarray,
     cache: Mapping[str, jnp.ndarray],
-    tokens_to_logits: Callable[[DecodingState],
-                               Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]],
+    tokens_to_logits: Callable[
+        [DecodingState], Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]
+    ],
     eos_id: int,
     prng_key: jnp.ndarray,
     num_decodes: int = 1,
@@ -405,10 +413,8 @@ def _temperature_sample_single_trial(
     initial_index: Optional[jnp.ndarray] = None,
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
     rescale_log_probs: bool = True,
-    state_callback_fn: Optional[Callable[[SamplingLoopState],
-                                         SamplingLoopState]] = None,
-    logit_callback_fn: Optional[Callable[[jnp.ndarray, SamplingLoopState],
-                                         jnp.ndarray]] = None
+    state_callback_fn: Optional[StateCallbackFn] = None,
+    logit_callback_fn: Optional[LogitCallbackFn] = None,
 ) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
@@ -455,6 +461,7 @@ def _temperature_sample_single_trial(
   temperature = jnp.asarray(temperature)
 
   # Initialize sampling loop state.
+  step = jnp.zeros((), dtype=jnp.int32)
   # initial loop PRNGKey
   rng0 = prng_key
   # the per batch-item holding current token in loop.
@@ -476,8 +483,9 @@ def _temperature_sample_single_trial(
   # as well as the generated output of newly sampled tokens.
   sequences0 = expanded_prompt_inputs
   log_prob0 = jnp.zeros((batch_size,), dtype=jnp.float32)
-  sampling_loop_init_state = SamplingLoopState(i0, sequences0, cache, token0,
-                                               ended0, rng0, log_prob0)
+  sampling_loop_init_state = SamplingLoopState(
+      step, i0, sequences0, cache, token0, ended0, rng0, log_prob0
+  )
   # Initial eos count to be used to determine whether eos is "generated". Many
   # inputs follow the format bos, inputs..., eos, targets..., eos. By counting
   # the number of eos tokens we can detect when a new one is added, instead of
@@ -642,12 +650,23 @@ def _temperature_sample_single_trial(
     ended = state.ended | has_additional_eos | jnp.expand_dims(
         i >= max_decode_len - 1, axis=1)
 
-    return SamplingLoopState(i + 1, new_sequences, new_cache,
-                             next_token_or_endpad, ended, rng2, next_log_prob)
+    return SamplingLoopState(
+        state.step + 1,
+        i + 1,
+        new_sequences,
+        new_cache,
+        next_token_or_endpad,
+        ended,
+        rng2,
+        next_log_prob,
+    )
 
   # Run sampling loop and collect final state.
   final_state = lax.while_loop(sampling_loop_cond_fn, sampling_loop_body_fn,
                                sampling_loop_init_state)
+
+  if state_callback_fn is not None:
+    final_state = state_callback_fn(final_state)
 
   # Pick part of the state corresponding to the sampled sequences.
   final_sequences = final_state.sequences
@@ -657,9 +676,9 @@ def _temperature_sample_single_trial(
   return final_sequences[:, 1:-1], log_prob
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # BEAM Sampling
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 
 def brevity_penalty(alpha: float, length: int) -> jnp.ndarray:

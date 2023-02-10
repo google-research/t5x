@@ -1,0 +1,13 @@
+include 't5x/contrib/gpu/t5/t5_1_1/xl.gin'
+include 't5x/contrib/gpu/t5/configs/runs/pretrain_pile.gin'
+include 't5x/contrib/gpu/t5/t5_1_1/adamw_opt.gin'
+
+# Register necessary SeqIO Tasks/Mixtures
+import t5.data.mixtures
+import t5x.contrib.gpu.scripts_gpu.seqio_tasks
+
+MIXTURE_OR_TASK_NAME = "the_pile_span_corruption"
+TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 128}
+TRAIN_STEPS = 1000000
+DROPOUT_RATE = 0.0
+BATCH_SIZE = 2048

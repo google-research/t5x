@@ -34,6 +34,7 @@ import os
 import re
 import subprocess
 import time
+import typing
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import warnings
 
@@ -49,6 +50,7 @@ import jax.config
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
 from jax.experimental.gda_serialization import serialization as gda_serialization
+from jax.experimental.maps import Mesh
 import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint
@@ -381,6 +383,41 @@ def _get_spec(directory: str, arr: Any, name: str,
   return ts.Spec(spec)
 
 
+def _maybe_make_sharded_array(arr: Any,
+                              mesh: Any,
+                              axes: Optional[gda_lib.MeshAxes] = None,
+                              restore_dtype: Optional[jnp.dtype] = None,
+                              use_gda: bool = True) -> Any:
+  """Makes a sharded array from non-sharded array if necessary.
+
+  Args:
+    arr: array to maybe shard.
+    mesh: Mesh.
+    axes: mesh_axes.
+    restore_dtype: type to restore as.
+    use_gda: Whether GDA is enabled.
+
+  Returns:
+    Sharded or unsharded array.
+  """
+  is_sharded_jax_array = isinstance(arr,
+                                    jax.Array) and not arr.is_fully_addressable
+  if use_gda and isinstance(
+      arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
+    if axes is None:
+      axes = PartitionSpec(None,)
+    if restore_dtype is not None:
+      arr = arr.astype(restore_dtype)
+    if jax.config.jax_array:
+      arr = jax.make_array_from_callback(arr.shape,
+                                         jax.sharding.NamedSharding(mesh, axes),
+                                         lambda idx: arr[idx])
+    else:
+      arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
+                                                    lambda idx: arr[idx])
+  return arr
+
+
 class _BytesConditionVariable(object):
   """Wraps a condition variable to control concurrency based on bytes."""
 
@@ -466,7 +503,7 @@ class Checkpointer(object):
   to their own TensorStore, with each host writing their portion to the same
   TensorStore in parallel. If a partition is written on multiple hosts, the
   partition is further sharded across these replicas to avoid additional
-  overhead. In place of the paramater, a `tensorstore.Spec` is written to the
+  overhead. In place of the parameter, a `tensorstore.Spec` is written to the
   msgpack (by host 0) as a reference to be used during restore. Note that the
   path of the array being written is relative. This makes the checkpoints
   portable. In other words, even if the checkpoint files are moved to a new
@@ -533,8 +570,12 @@ class Checkpointer(object):
     """
     if not use_gda:
       warnings.warn(
-          '`use_gda=False` is deprecated and will be removed on Feb-01-23.'
-          ' Please ensure that your workflow can use GDA.', DeprecationWarning)
+          (
+              '`use_gda=False` is deprecated and will be removed on Feb-22-23.'
+              ' Please ensure that your workflow can use GDA.'
+          ),
+          DeprecationWarning,
+      )
     self._train_state = train_state
     self._partitioner = partitioner
     self.checkpoints_dir = checkpoints_dir
@@ -1136,22 +1177,12 @@ class Checkpointer(object):
           restore_dtype=restore_dtype,
           mesh=mesh,
           axes=axes)
-      is_sharded_jax_array = isinstance(
-          arr, jax.Array) and not arr.is_fully_addressable
-      if self._use_gda and isinstance(
-          arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
-        if axes is None:
-          axes = PartitionSpec(None,)
-        if restore_dtype is not None:
-          arr = arr.astype(restore_dtype)
-        if jax.config.jax_array:
-          arr = jax.make_array_from_callback(
-              arr.shape, jax.sharding.NamedSharding(mesh, axes),
-              lambda idx: arr[idx])
-        else:
-          arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
-                                                        lambda idx: arr[idx])
-      return arr
+      return _maybe_make_sharded_array(
+          arr,
+          mesh,
+          axes=axes,
+          restore_dtype=restore_dtype,
+          use_gda=self._use_gda)
 
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
@@ -1185,6 +1216,11 @@ class Checkpointer(object):
       state_dict = _run_future_tree(future_state_dict)
 
     if self.restore_dtype is not None:
+      if 'target' not in state_dict:
+        raise ValueError(
+            f'restore_dtype={self.restore_dtype} was specified, but no `target`'
+            ' parameters were loaded.'
+        )
       state_dict['target'] = _cast(state_dict['target'], self.restore_dtype)
 
     return state_dict
@@ -1381,9 +1417,9 @@ class SaveBestCheckpointer(Checkpointer):
   """A Checkpointer class that keeps checkpoints based on 'best' metrics.
 
   This extends the standard Checkpointer to garbage collect checkpoints based on
-  metric values, instead of step recency. It uses Tensorboard summary files to
+  metric values, instead of step recency. It uses TensorBoard summary files to
   determine best values for a given user configured metric name. Events are read
-  and parsed using Tensorboard's event_processing packages.
+  and parsed using TensorBoard's event_processing packages.
 
   The metric name must be of the form `{run_name}/{tag_name}`. For example,
   'train/accuracy' or 'inference_eval/glue_cola_v002/eval/accuracy'.
@@ -1404,7 +1440,7 @@ class SaveBestCheckpointer(Checkpointer):
     crucial to always keep the latest checkpoint (for recovery purposes) we
     always store the latest checkpoint plus `keep` number of best checkpoints.
 
-  - It is assumed that Tensorboard summaries (event) files share a common root
+  - It is assumed that TensorBoard summaries (event) files share a common root
     directory with `checkpoint_dir`, which is the directory passed to the
     the logdir crawler that searches for event files.
 
@@ -1725,7 +1761,9 @@ def load_t5x_checkpoint(
     state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
     remap: bool = True,
     restore_dtype: Optional[jnp.dtype] = None,
-    lazy_parameters: bool = False) -> PyTreeDef:
+    lazy_parameters: bool = False,
+    use_gda: bool = True,
+) -> PyTreeDef:
   """Load a T5X checkpoint without pre-defining the optimizer.
 
   Note:
@@ -1741,6 +1779,7 @@ def load_t5x_checkpoint(
       no parameter casting is performed.
     lazy_parameters: whether to load the parameters as LazyArrays to preserve
       memory.
+    use_gda: Whether to restore arrays as GDA.
 
   Returns:
     A nested dictionary of weights and parameter states from the checkpoint.
@@ -1801,12 +1840,20 @@ def load_t5x_checkpoint(
   def _create_lazy_awaitable_array(
       param_info: _ParameterInfo, maybe_ts_spec: Any, ckpt_path: str,
       restore_dtype: Optional[jnp.dtype]) -> LazyAwaitableArray:
+    mesh = None
+    axes = None
+    if use_gda:
+      mesh = Mesh(jax.devices(), ('x',))
+      axes = (None,)
     get_fn = functools.partial(
         _read_ts,
         param_info,
         maybe_ts_spec,
         ckpt_path=ckpt_path,
-        restore_dtype=restore_dtype)
+        restore_dtype=restore_dtype,
+        mesh=mesh,
+        axes=axes,
+    )
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
 
@@ -1837,20 +1884,6 @@ _CHECKPOINTS_SUBDIR = 'checkpoints'
 _STATE_KEY = 'state'
 _DATASET_KEY = 'dataset'
 _FLAX_CHECKPOINT_FILE = 'checkpoint'
-
-
-def _transforms_from_state_transformation_fns(
-    state_transformation_fns: Sequence[SaveStateTransformationFn]):
-  """Constructs Orbax transforms from state_transformation_fns."""
-  result = {}
-  for fn in state_transformation_fns:
-    assignments = fn.keywords['assignment_map']  # pytype: disable=attribute-error
-    for dest, origin in assignments:
-      if origin is None:
-        result[dest] = orbax.checkpoint.Transform(use_fallback=True)
-      else:
-        result[dest] = orbax.checkpoint.Transform(original_key=origin)
-  return result
 
 
 @dataclasses.dataclass
@@ -1908,6 +1941,78 @@ class DatasetCheckpointHandler(orbax.checkpoint.CheckpointHandler):
 class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
   """Implementation of PyTreeCheckpointHandler that accounts for legacy checkpoints."""
 
+  def restore(
+      self,
+      directory: epath.Path,
+      item: Optional[PyTreeDef] = None,
+      restore_args: Optional[PyTreeDef] = None,
+      transforms: Optional[PyTreeDef] = None,
+      transforms_default_to_original: bool = True,
+      fallback_state: Optional[Mapping[str, Any]] = None,
+      state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
+  ) -> PyTreeDef:
+    """See superclass documentation."""
+    if not directory.exists():
+      raise FileNotFoundError(
+          f'Requested directory for restore does not exist at {directory}'
+      )
+    # TODO(b/216650048) Consider allowing users to specify transforms instead.
+    if transforms is not None:
+      raise ValueError('Orbax-style `transforms` not yet supported.')
+    if restore_args is None:
+      raise ValueError('Expected `restore_args` to be set.')
+
+    ckpt_structure = self.structure(directory)
+    # After transforms, may be a subset of keys: only the ones we actually need
+    # to restore.
+    state_dict_to_restore = _get_optimizer_state_dict(
+        ckpt_structure, item, state_transformation_fns
+    )
+
+    # After transformations, state_dict_to_restore may still have extra keys
+    # relative to item (the eventual restoration structure). Extraneous keys
+    # need to be dropped.
+    state_dict_to_restore = state_utils.intersect_state(
+        state_dict_to_restore, item
+    )
+    # pylint: disable=protected-access
+    param_infos = orbax.checkpoint.pytree_checkpoint_handler._get_param_infos_from_structure(
+        directory, state_dict_to_restore
+    )
+    restore_args = state_utils.intersect_state(
+        restore_args, state_dict_to_restore
+    )
+
+    async def _async_restore(infos, values, args):
+      concurrent_bytes = self._concurrent_gb * 10**9
+      byte_limiter = gda_serialization._LimitInFlightBytes(concurrent_bytes)  # pylint: disable=protected-access
+      infos = jax.tree_util.tree_map(
+          functools.partial(dataclasses.replace, byte_limiter=byte_limiter),
+          infos,
+      )
+      future_arrays = jax.tree_map(self._maybe_deserialize, infos, values, args)
+      future_arrays, _ = jax.tree_util.tree_flatten(future_arrays)
+      return await asyncio.gather(*future_arrays)
+
+    result = asyncio.run(
+        _async_restore(param_infos, state_dict_to_restore, restore_args)
+    )
+    restored_state_dict_partial = jax.tree_util.tree_unflatten(
+        jax.tree_util.tree_structure(state_dict_to_restore), result
+    )
+
+    # If `fallback_state` was specified, then fill the missing parameters.
+    if fallback_state is not None:
+      restored_state_dict = state_utils.merge_state(
+          restored_state_dict_partial, fallback_state
+      )
+    else:
+      restored_state_dict = restored_state_dict_partial
+    orbax.checkpoint.utils.sync_global_devices(
+        'TrainStateCheckpointHandler:restore'
+    )
+    return restored_state_dict
+
   async def _write_aggregate_file(self, directory: epath.Path, item: PyTreeDef,
                                   param_infos: PyTreeDef, save_args: PyTreeDef):
     """Writes msgpack with ts.Spec leaves.
@@ -1962,14 +2067,17 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
     Leaves stored in T5X checkpoints as ts.Spec must be modified to an
     Orbax-interpretable placeholder containing the parameter name.
 
+    The 'checkpoint' msgpack file is not necessarily needed. However, if it does
+    not exist, all parameters must have been saved with Tensorstore, or a
+    fallback state must be provided to initialize the parameters for which there
+    is no record.
+
     Args:
       directory: location of the checkpoint.
 
     Returns:
       A structure for the checkpoint.
     """
-    result = super().structure(directory)
-    result = _get_optimizer_state_dict(result, {}, [])
 
     def tensorstore_spec_to_name(leaf):
       if isinstance(leaf, ts.Spec):
@@ -1978,7 +2086,14 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
         leaf = orbax.checkpoint.utils.leaf_placeholder(leaf)
       return leaf
 
-    return jax.tree_map(tensorstore_spec_to_name, result)
+    if (directory / _FLAX_CHECKPOINT_FILE).exists():
+      result = super().structure(directory)
+      result = jax.tree_map(tensorstore_spec_to_name, result)
+    else:
+      result = orbax.checkpoint.utils.pytree_structure(directory)
+      result = {_OPTIMIZER_KEY: result, _VERSION_KEY: VERSION}
+
+    return result
 
 
 class NonAtomicCheckpointer(orbax.checkpoint.Checkpointer):
@@ -2039,7 +2154,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
   def __init__(
       self,
       directory: str,
-      train_state_shape: train_state_lib.TrainState,
+      train_state: train_state_lib.TrainState,
       partitioner: partitioning.BasePartitioner,
       dataset_iterator: Optional[tf.data.Iterator] = None,
       save_dtype: Optional[jnp.dtype] = None,
@@ -2048,8 +2163,9 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       period: Optional[int] = 1,
       keep_dataset_checkpoints: Optional[int] = None,
       force_keep_period: Optional[int] = None,
-      options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None):
-    self._train_state_shape = train_state_shape
+      options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None,
+  ):
+    self._train_state = train_state
     self._partitioner = partitioner
     self._dataset_iterator = dataset_iterator
     self._save_dtype = save_dtype
@@ -2095,11 +2211,17 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     mesh_axes = self._partitioner.get_mesh_axes(train_state).state_dict()
     return jax.tree_util.tree_map(_OrbaxParamInfo, param_names, mesh_axes)
 
-  def _get_save_directory(self,
-                          step: int,
-                          directory: epath.Path,
-                          key_name: Optional[str] = None) -> epath.Path:
+  def _get_save_directory(
+      self,
+      step: int,
+      directory: epath.Path,
+      key_name: Optional[str] = None,
+      tmp_directory: Optional[epath.Path] = None,
+  ) -> epath.Path:
     """Returns the standardized path to a save directory for a single item."""
+    # `tmp` option is not handled here, since tmp directory creation is
+    # handled differently in T5X.
+    del tmp_directory
     step_dir = epath.Path(get_checkpoint_dir(os.fspath(directory), step))
     if (key_name is None or key_name == _STATE_KEY or
         key_name == _DATASET_KEY or
@@ -2131,13 +2253,15 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     step = get_local_data(step)
     # Integer, to avoid side effects in the checkpoint path.
     step = int(step)
+    if not self.should_save(step):
+      return False
 
     # TODO(b/216649487) Test state_transformation_fns.
-    state_dict, param_infos = (
-        _transform_state_and_infos(
-            train_state.state_dict(),
-            self._parameter_infos(self._train_state_shape),
-            state_transformation_fns))
+    state_dict, param_infos = _transform_state_and_infos(
+        train_state.state_dict(),
+        self._parameter_infos(self._train_state),
+        state_transformation_fns,
+    )
 
     def _save_args(param_info):
       dtype = None
@@ -2184,8 +2308,9 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       step: Optional[int] = None,
       path: Optional[str] = None,
       fallback_state: Optional[Mapping[str, Any]] = None,
-      state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
-      lazy_parameters: Optional[bool] = False) -> train_state_lib.TrainState:
+      state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
+      lazy_parameters: Optional[bool] = False,
+  ) -> train_state_lib.TrainState:
     """Restores a TrainState from the given step or path.
 
     Note: can only provide one of `step` or `path`.
@@ -2213,20 +2338,9 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     if path is not None:
       directory, step = get_step_from_checkpoint_dir(os.fspath(path))
 
-    transforms = _transforms_from_state_transformation_fns(
-        state_transformation_fns)
-
-    state_dict = self._train_state_shape.state_dict()
+    state_dict = self._train_state.state_dict()
     # Returns a state dict rather than a train state.
-    param_infos = self._parameter_infos(self._train_state_shape)
-    if fallback_state is not None:
-      logging.info('Using fallback_state')
-      # Merge state with fallback state, replacing values present in both with
-      # fallback values.
-      state_dict = dict(
-          state_utils.merge_state(state_dict, fallback_state, overwrite=True))
-      # Merge states to match shape, but keep original param_infos values.
-      param_infos = state_utils.merge_state(param_infos, fallback_state)
+    param_infos = self._parameter_infos(self._train_state)
 
     def _restore_args(param_info):
       dtype = None
@@ -2253,7 +2367,8 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     restore_kwargs = {
         _STATE_KEY: {
             'restore_args': restore_args,
-            'transforms': transforms,
+            'state_transformation_fns': state_transformation_fns,
+            'fallback_state': fallback_state,
         },
     }
 
@@ -2263,7 +2378,19 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     if self._should_write_dataset_ckpt:
       self._dataset_iterator = restored[_DATASET_KEY]
 
-    train_state = self._train_state_shape.restore_state(state_dict)
+    # After restoration, some values may still be non-sharded arrays from
+    # fallback state.
+    def _maybe_make_sharded_array_helper(arr, info):
+      return _maybe_make_sharded_array(
+          arr,
+          self._partitioner.mesh,
+          axes=info.mesh_axes,
+          restore_dtype=self._restore_dtype)
+
+    state_dict = jax.tree_util.tree_map(_maybe_make_sharded_array_helper,
+                                        state_dict, param_infos)
+
+    train_state = self._train_state.restore_state(state_dict)
 
     end_time = time.time()
     monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
@@ -2279,11 +2406,12 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
   ) -> train_state_lib.TrainState:
     """Restore from a TensorFlow-based T5 checkpoint."""
     full_state_dict = checkpoint_importer.restore_from_t5_checkpoint(
-        self._train_state_shape.state_dict(),
+        self._train_state.state_dict(),
         path_or_dir,
         lazy_parameters=False,
         strict=strict,
-        translator=translator)
+        translator=translator,
+    )
     full_state_dict = dict(full_state_dict)
 
     def _partition_parameter(maybe_arr: Any, param_info: _OrbaxParamInfo):
@@ -2300,34 +2428,48 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       full_state_dict['target'] = _cast(full_state_dict['target'],
                                         self._restore_dtype)
     state_dict = jax.tree_util.tree_map(
-        _partition_parameter, full_state_dict,
-        self._parameter_infos(self._train_state_shape))
+        _partition_parameter,
+        full_state_dict,
+        self._parameter_infos(self._train_state),
+    )
 
-    return self._train_state_shape.restore_state(state_dict)
+    return self._train_state.restore_state(state_dict)
 
-  def _add_checkpoint_info(self, step, metrics):
-    """Record CheckpointInfo after save. Ensure save is atomic."""
-    assert metrics is None
-    if jax.process_index() == 0:
-      assert self._tmp_directory is not None
-      final_directory = os.fspath(
-          self._get_save_directory(step, self.directory))
-      tmp_directory = os.fspath(self._tmp_directory)
-      if final_directory.startswith('gs://'):
-        subprocess.run(['gsutil', '-m', 'mv', tmp_directory, final_directory],
-                       stdout=subprocess.DEVNULL,
-                       check=True)
-      else:
-        gfile.rename(tmp_directory, final_directory)
+  def _finalize_checkpoint(self):
+    """Moves tmp step checkpoint to final."""
+    for tmp_file in orbax.checkpoint.utils.tmp_checkpoints(self.directory):
+      if jax.process_index() == 0:
+        assert self._tmp_directory is not None
+        final_directory = os.fspath(
+            self._get_save_directory(
+                orbax.checkpoint.utils.step_from_checkpoint_name(tmp_file),
+                self.directory,
+            )
+        )
+        tmp_directory = os.fspath(self._tmp_directory)
+        if final_directory.startswith('gs://'):
+          subprocess.run(
+              ['gsutil', '-m', 'mv', tmp_directory, final_directory],
+              stdout=subprocess.DEVNULL,
+              check=True,
+          )
+        else:
+          gfile.rename(tmp_directory, final_directory)
     _sync_global_devices('CheckpointManager:atomic_save')
-    super()._add_checkpoint_info(step, metrics)
+
+  def _create_tmp_directory(self, directory: epath.Path) -> epath.Path:
+    # Override is needed because of flat directory structure.
+    # Tmp directory creation is handled in save directly.
+    assert self._tmp_directory is not None
+    return typing.cast(epath.Path, self._tmp_directory)
 
   def _cleanup_tmp_directories(self):
     if jax.process_index() == 0:
       files = self.directory.glob('checkpoint_*')
       tmp_files = [
-          f for f in files
-          if not orbax.checkpoint.utils.is_checkpoint_item_finalized(f)
+          f
+          for f in files
+          if not orbax.checkpoint.utils.is_checkpoint_finalized(f)
       ]
       for tmp_file in tmp_files:
         tmp_file.rmtree()
@@ -2380,7 +2522,7 @@ class CheckpointManagerConstructor(typing_extensions.Protocol):
   def __call__(
       self,
       directory: str,
-      train_state_shape: train_state_lib.TrainState,
+      train_state: train_state_lib.TrainState,
       partitioner: partitioning.BasePartitioner,
       dataset_iterator: Optional[tf.data.Iterator] = None,
       save_dtype: Optional[jnp.dtype] = None,
@@ -2388,7 +2530,7 @@ class CheckpointManagerConstructor(typing_extensions.Protocol):
       keep: Optional[int] = None,
       period: Optional[int] = None,
       force_keep_period: Optional[int] = None,
-      options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None
+      options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None,
   ) -> CheckpointManager:
     """CheckpointManager constructor."""
     pass

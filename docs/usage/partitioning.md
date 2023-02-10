@@ -217,7 +217,7 @@ encoder, without modifying any other modules:
 ```py
 class MyCustomEncoderDecoderModel(models.EncoderDecoderModel):
 
-  def get_initial_variables():
+  def get_initial_variables(
     self,
     rng: jnp.ndarray,
     input_shapes: Mapping[str, Array],

@@ -6,7 +6,8 @@ models (starting with language) at many scales.
 
 It is essentially a new and improved implementation of the
 [T5 codebase](https://github.com/google-research/text-to-text-transfer-transformer)
-(based on [Mesh TensorFlow](https://github.com/tensorflow/mesh)) in [JAX](https://github.com/google/jax) and [Flax](https://github.com/google/flax).
+(based on [Mesh TensorFlow](https://github.com/tensorflow/mesh)) in [JAX](https://github.com/google/jax) and [Flax](https://github.com/google/flax). To learn
+more, see the [T5X Paper](https://arxiv.org/abs/2203.17189).
 
 Below is a quick start guide for training models with TPUs on Google Cloud. For
 additional tutorials and background, see the [complete documentation](docs/index.md).
@@ -65,6 +66,10 @@ python3 ./t5x/scripts/xm_launch.py \
 
 Check `gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x/` for the output artifacts, which can
 be read by TensorBoard.
+
+## GPU Usage
+
+T5X can be run easily on GPUs either in single-node configurations or multi-node configurations with a SLURM+pyxis cluster. Further instructions at [t5x/contrib/gpu/scripts_gpu](./t5x/contrib/gpu/scripts_gpu/README.md). The `t5x/contrib/gpu/scripts_gpu` folder contains example scripts for pretraining T5X on [The Pile](https://pile.eleuther.ai/) and for finetuning on SQuAD and MNLI. These scripts and associated `gin` configurations also contain additional GPU optimizations for better throughput.
 
 
 ## Installation

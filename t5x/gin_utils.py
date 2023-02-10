@@ -102,7 +102,7 @@ def rewrite_gin_args(args: Sequence[str]) -> Sequence[str]:
     arg = arg[6:]
     name, value = arg.split('=', maxsplit=1)
     r_arg = f'--gin_bindings={name} = {value}'
-    print(f'Rewritten gin arg: {r_arg}')
+    logging.info('Rewritten gin arg: %s', r_arg)
     return r_arg
 
   return [_rewrite_gin_arg(arg) for arg in args]

@@ -63,13 +63,25 @@ setuptools.setup(
     ],
     extras_require={
         'gcp': [
-            'gevent', 'google-api-python-client', 'google-compute-engine',
-            'google-cloud-storage', 'oauth2client'
+            'gevent',
+            'google-api-python-client',
+            'google-compute-engine',
+            'google-cloud-storage',
+            'oauth2client',
         ],
         'test': ['pytest'],
-
         # Cloud TPU requirements.
         'tpu': [f'jax[tpu] >= {_jax_version}'],
+        'gpu': [
+            'ipdb==0.13.9',
+            'fasttext==0.9.2',
+            'pysimdjson==5.0.2',
+            'pytablewriter==0.64.2',
+            'gdown==4.5.3',
+            'best-download==0.0.9',
+            'lm_dataformat==0.0.20',
+            'tfds-nightly==4.6.0.dev202210040045',
+        ],
     },
     classifiers=[
         'Development Status :: 4 - Beta',

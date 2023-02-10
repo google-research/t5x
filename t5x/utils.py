@@ -191,10 +191,11 @@ class RestoreCheckpointConfig:
       raise ValueError(
           "`RestoreCheckpointConfig.mode` must be one of 'specific', 'latest', "
           f"or 'all'. Got {self.mode}.")
-    if self.dtype not in (None, 'float32', 'bfloat16'):
+    if self.dtype not in (None, 'float32', 'bfloat16', 'float16'):
       raise ValueError(
           "`RestoreCheckpointConfig.dtype` must be one of `None`, 'float32', "
-          f"or 'bfloat16'. Got {self.dtype}.")
+          f"'float16' or 'bfloat16'. Got {self.dtype}."
+      )
     if self.assignment_map is not None:
       # Turns `assignment_map` into a transformation function.
       assignment_map_fn = functools.partial(
@@ -303,14 +304,19 @@ def create_checkpoint_manager(
     *,
     save_cfg: Optional[SaveCheckpointConfig] = None,
     restore_cfg: Optional[RestoreCheckpointConfig] = None,
-    train_state_shape: train_state_lib.TrainState,
+    train_state: train_state_lib.TrainState,
     partitioner: partitioning.BasePartitioner,
-    ds_iter: Optional[Union[tf.data.Iterator,
-                            clu.data.dataset_iterator.DatasetIterator]] = None,
-    model_dir: Optional[str] = None):
+    ds_iter: Optional[
+        Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]
+    ] = None,
+    model_dir: Optional[str] = None,
+):
   """Creates Orbax CheckpointManager."""
   if save_cfg is not None and restore_cfg is not None:
-    if save_cfg.checkpoint_manager_cls is not restore_cfg.checkpoint_manager_cls:
+    if (
+        save_cfg.checkpoint_manager_cls
+        is not restore_cfg.checkpoint_manager_cls
+    ):
       msg = (
           'Must provide matching configurations of `checkpoint_manager_cls` in '
           '`save_cfg` and `restore_cfg`.')
@@ -367,14 +373,15 @@ def create_checkpoint_manager(
 
   return checkpoint_manager_cls(
       directory=model_dir,
-      train_state_shape=train_state_shape,
+      train_state=train_state,
       partitioner=partitioner,
       dataset_iterator=ds_iter,
       save_dtype=save_dtype,
       restore_dtype=restore_dtype,
       keep=keep,
       period=period,
-      **extra_kwargs)
+      **extra_kwargs,
+  )
 
 
 class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
@@ -741,9 +748,9 @@ def multihost_assert_equal(input_tree, fail_message: str = ''):
   multihost_utils.assert_equal(input_tree, fail_message)
 
 
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # Fast *nondeterministic* hardware RNG for faster Dropout
-#------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def _hardware_uniform(
     rng_key: Array,
     shape: Shape,

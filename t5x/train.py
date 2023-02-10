@@ -59,6 +59,7 @@ P = partitioning.PartitionSpec
 TRAIN_METRIC_KEY = 'train'
 # String keys that is acceptable from config.
 _ACTION_KEYS = frozenset(trainer_lib.ActionMode.__members__.keys())
+_IMPORT_TIME = time.time()
 
 
 def run_actions(
@@ -192,6 +193,7 @@ def train(
   Returns:
     The tuple of (last_step, last_train_state).
   """
+  jax.monitoring.record_event('/jax/t5x/train/beacon')
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
@@ -370,10 +372,11 @@ def train(
       checkpoint_manager = utils.create_checkpoint_manager(
           save_cfg=checkpoint_cfg.save,
           restore_cfg=valid_restore_cfg,
-          train_state_shape=train_state_initializer.global_train_state_shape,
+          train_state=train_state_initializer.global_train_state_shape,
           partitioner=partitioner,
           ds_iter=train_iter,
-          model_dir=model_dir)
+          model_dir=model_dir,
+      )
       train_state = utils.restore(
           checkpoint_manager, restore_paths, valid_restore_cfg,
           utils.get_fallback_state(valid_restore_cfg, _init, init_rng))
@@ -414,7 +417,7 @@ def train(
   # Trainer
   # ---------------------------------------------------------------------------
 
-  trainer: trainer_lib.BaseTrainer = trainer_cls(
+  trainer: trainer_lib.BaseTrainer = trainer_cls(  # pytype: disable=wrong-arg-types
       model=model,
       train_state=train_state,
       partitioner=partitioner,
@@ -519,8 +522,11 @@ def train(
     # checkpoint if a checkpoint does not already exist for that step. This is
     # because Orbax will error out if we try to save a checkpoint that already
     # exists.
-    if not use_orbax or (use_orbax and trainer.train_state.step
-                         not in checkpoint_manager.all_steps()):
+    if not use_orbax or (
+        use_orbax
+        and utils.get_local_data(trainer.train_state.step)
+        not in checkpoint_manager.all_steps()
+    ):
       logging.info('Saving checkpoint before the training loop starts.')
       checkpoint_manager.save(trainer.train_state,
                               checkpoint_cfg.save.state_transformation_fns)
@@ -571,9 +577,16 @@ def train(
 
   def _as_gda(spec):
     dummy = np.ones((data_layout.batch_size, *spec.shape[1:]), spec.dtype)
-    return GlobalDeviceArray.from_callback(dummy.shape, partitioner.mesh,
-                                           partitioner.data_partition_spec,
-                                           lambda idx: dummy[idx])
+    if jax.config.jax_array:
+      return jax.make_array_from_callback(
+          dummy.shape,
+          jax.sharding.NamedSharding(partitioner.mesh,
+                                     partitioner.data_partition_spec),
+          lambda idx: dummy[idx])
+    else:
+      return GlobalDeviceArray.from_callback(dummy.shape, partitioner.mesh,
+                                             partitioner.data_partition_spec,
+                                             lambda idx: dummy[idx])
 
   # Construct dummy batch for compiling the model.
   if use_gda:
@@ -601,6 +614,9 @@ def train(
                              train_iter_warmup_tock - train_iter_warmup_tick,
                              host_step)
 
+  jax.monitoring.record_event_duration_secs(
+      '/jax/t5x/train/time_before_first_step_secs',
+      time.time() - _IMPORT_TIME)
 
   # Main Loop over "epochs".
   for epoch in range(first_epoch, num_epochs):
@@ -702,9 +718,6 @@ if __name__ == '__main__':
 
   FLAGS = flags.FLAGS
 
-  # OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
-  tf.config.experimental.set_visible_devices([], 'GPU')
-
   jax.config.parse_flags_with_absl()
 
   flags.DEFINE_multi_string(
@@ -753,7 +766,6 @@ if __name__ == '__main__':
   flags.DEFINE_integer('process_index', None, help='Index of this process.')
 
 
-
   def main(argv: Sequence[str]):
     """Wrapper for pdb post mortems."""
     _main(argv)
@@ -762,6 +774,11 @@ if __name__ == '__main__':
     """True main function."""
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
+
+    # OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
+    # This must go after InitGoogle(), which is called by
+    # gin_utils.run(main).
+    tf.config.experimental.set_visible_devices([], 'GPU')
 
 
     if FLAGS.multiprocess_gpu:
