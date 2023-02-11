@@ -172,9 +172,11 @@ class InferenceEvaluator:
 
 def _sorted_ckpt_paths(ckpt_paths: Collection[str]) -> Sequence[str]:
   def _extract_ckpt_step(ckpt_path: str) -> int:
-    match = re.search(r'checkpoint_(\d+)', ckpt_path)
+    match = re.search(r'(checkpoint_|model.ckpt-)(\d+)', ckpt_path)
+    if match is None:
+      raise ValueError(f'Invalid checkpoint path: {ckpt_path}')
     assert match is not None
-    return int(match.group(1))
+    return int(match.group(2))
 
   return sorted(ckpt_paths, key=_extract_ckpt_step)
 
