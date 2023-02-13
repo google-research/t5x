@@ -57,7 +57,6 @@ setuptools.setup(
         'numpy',
         'orbax @ git+https://github.com/google/orbax#egg=orbax',
         'seqio @ git+https://github.com/google/seqio#egg=seqio',
-        't5',
         'tensorflow-cpu',
         'tensorstore >= 0.1.20',
     ],
@@ -69,7 +68,7 @@ setuptools.setup(
             'google-cloud-storage',
             'oauth2client',
         ],
-        'test': ['pytest'],
+        'test': ['pytest', 't5'],
         # Cloud TPU requirements.
         'tpu': [f'jax[tpu] >= {_jax_version}'],
         'gpu': [
