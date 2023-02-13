@@ -2234,7 +2234,8 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
   def save(
       self,
       train_state: train_state_lib.TrainState,
-      state_transformation_fns: Sequence[SaveStateTransformationFn] = ()
+      state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
+      force: bool = True,
   ) -> bool:
     """Saves a checkpoint for the given train state.
 
@@ -2243,6 +2244,9 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         LazyArray objects and arrays (e.g., np.ndarray, jax.DeviceArray)
       state_transformation_fns: Transformations to apply, in order, to the state
         before writing.
+      force: Saves regardless of whether should_save is False. True by default
+        because should_save logic is handled externally to this class in T5X.
+        This is because of a feature that decouples actual step and step offset.
 
     Returns:
       Whether the save was performed or not.
@@ -2253,7 +2257,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     step = get_local_data(step)
     # Integer, to avoid side effects in the checkpoint path.
     step = int(step)
-    if not self.should_save(step):
+    if not force and not self.should_save(step):
       return False
 
     # TODO(b/216649487) Test state_transformation_fns.
@@ -2294,7 +2298,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         }
     }
 
-    saved = super().save(step, items, save_kwargs=save_kwargs)
+    saved = super().save(step, items, save_kwargs=save_kwargs, force=force)
 
     end_time = time.time()
     monitoring.record_event_duration_secs(_WRITE_CHECKPOINT_EVENT,

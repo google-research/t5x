@@ -215,6 +215,22 @@ def train(
     logging.info('Checkpointing with Orbax enabled.')
     if not use_gda:
       raise ValueError('Must set of `use_gda` if `use_orbax` is enabled.')
+    if (
+        checkpoint_cfg.save
+        and isinstance(
+            checkpoint_cfg.save.checkpointer_cls, pw_checkpoints.Checkpointer
+        )
+    ) or (
+        checkpoint_cfg.restore
+        and isinstance(
+            checkpoint_cfg.restore.checkpointer_cls, pw_checkpoints.Checkpointer
+        )
+    ):
+      warnings.warn(
+          'Requested use_orbax with Pathways checkpointing, which is currently'
+          ' unsupported. Setting use_orbax=False.'
+      )
+      use_orbax = False
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.
@@ -528,8 +544,10 @@ def train(
         not in checkpoint_manager.all_steps()
     ):
       logging.info('Saving checkpoint before the training loop starts.')
-      checkpoint_manager.save(trainer.train_state,
-                              checkpoint_cfg.save.state_transformation_fns)
+      checkpoint_manager.save(
+          trainer.train_state,
+          checkpoint_cfg.save.state_transformation_fns,
+      )
 
   # If we take manual control of the garbage collector, we need to disable it
   # before starting training.
@@ -639,7 +657,8 @@ def train(
             logging.info('Saving a checkpoint before early stopping...')
             checkpoint_manager.save(
                 trainer.train_state,
-                checkpoint_cfg.save.state_transformation_fns)
+                checkpoint_cfg.save.state_transformation_fns,
+            )
           logging.info('Stopping training loop early since `stop_training` is '
                        'requested.')
           break
@@ -661,8 +680,10 @@ def train(
     except trainer_lib.PreemptionError as e:
       if checkpoint_period:
         logging.info('Saving emergency checkpoint.')
-        checkpoint_manager.save(trainer.train_state,
-                                checkpoint_cfg.save.state_transformation_fns)
+        checkpoint_manager.save(
+            trainer.train_state,
+            checkpoint_cfg.save.state_transformation_fns,
+        )
         logging.info('Saving emergency checkpoint done.')
       raise e
 
@@ -678,8 +699,10 @@ def train(
       train_summary.result()
       logging.info('Saving checkpoint.')
       checkpoint_tick = time.time()
-      checkpoint_manager.save(trainer.train_state,
-                              checkpoint_cfg.save.state_transformation_fns)
+      checkpoint_manager.save(
+          trainer.train_state,
+          checkpoint_cfg.save.state_transformation_fns,
+      )
       checkpoint_tock = time.time()
       train_metrics.write_scalar('timing/checkpoint_seconds',
                                  checkpoint_tock - checkpoint_tick, host_step)
