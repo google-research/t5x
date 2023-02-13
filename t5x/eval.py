@@ -14,7 +14,7 @@
 
 # pylint:disable=line-too-long
 # pyformat: disable
-r"""This script runs inference-evaluation on a T5X-compatible model.
+r"""Runs training- and inference-evaluation on a T5X-compatible model.
 
 """
 # pyformat: enable
@@ -37,6 +37,7 @@ from t5x import gin_utils
 from t5x import models
 from t5x import partitioning
 from t5x import train_state as train_state_lib
+from t5x import trainer as trainer_lib
 from t5x import utils
 from tensorflow.io import gfile
 from typing_extensions import Protocol
@@ -195,11 +196,17 @@ def evaluate(
     restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
     partitioner: partitioning.BasePartitioner,
     output_dir: str,
-    inference_evaluator_cls: utils.EvaluatorConstructor = seqio.Evaluator,
+    inference_evaluator_cls: Optional[
+        utils.EvaluatorConstructor
+    ] = seqio.Evaluator,
+    training_evaluator_cls: Optional[Type[trainer_lib.Trainer]] = None,
     summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
     train_state_initializer_cls: Type[
-        utils.TrainStateInitializer] = utils.TrainStateInitializer,
-    fallback_init_rng: Optional[int] = None):
+        utils.TrainStateInitializer
+    ] = utils.TrainStateInitializer,
+    train_eval_get_dataset_fn: utils.GetEvalDatasetCallable = utils.get_training_eval_datasets,
+    fallback_init_rng: Optional[int] = None,
+):
   """Evaluation function.
 
   Args:
@@ -211,11 +218,16 @@ def evaluate(
     output_dir: Path to directory to write temporary files and final results.
     inference_evaluator_cls: seqio.Evaluator class to use for inference
       evaluation, potentially with bound configuration args.
+    training_evaluator_cls: an optional Trainer class to use for training
+      evaluation, potentially with bound configuration args.
     summarize_config_fn: A function that takes in the model directory, an
       optional SummaryWriter, and the step number, and writes a summary of the
       configuration. SummaryWriter will be None in most cases.
-    train_state_initializer_cls: t5x.utils.TrainStateInitializer class
-      for initializing partitioned TrainState from checkpoints or scratch.
+    train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
+      initializing partitioned TrainState from checkpoints or scratch.
+    train_eval_get_dataset_fn: Optional callable use to get the train-eval
+      datasets based on the DatasetConfig and shard information. If missing, it
+      defaults to `utils.get_training_eval_datasets`.
     fallback_init_rng: A random seed used for parameter initialization during
       model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
       set to True. If None, parameter initialization is not allowed during model
@@ -261,6 +273,37 @@ def evaluate(
                        train_state_initializer.global_train_state_shape,
                        partitioner)
 
+  if training_evaluator_cls:
+    data_layout = partitioner.get_data_layout(dataset_cfg.batch_size)
+    train_eval_datasets = train_eval_get_dataset_fn(  # pytype:disable=missing-parameter
+        dataset_cfg,
+        data_layout.shard_id,
+        data_layout.num_shards,
+        feature_converter_cls=model.FEATURE_CONVERTER_CLS,
+    )
+
+    train_evaluator = training_evaluator_cls(  # pytype:disable=wrong-arg-types
+        model=model,
+        train_state=None,  # Will replace later.
+        partitioner=partitioner,
+        train_state_axes=train_state_axes,
+        eval_names=train_eval_datasets.keys(),
+        summary_dir=output_dir,
+        rng=jax.random.PRNGKey(0),  # unused
+        learning_rate_fn=None,  # unused
+        num_microbatches=None,  # unused
+    )
+
+  def _maybe_run_train_eval(train_state: train_state_lib.TrainState):
+    if training_evaluator_cls:
+      train_evaluator.train_state = train_state
+      train_evaluator.eval(
+          {
+              task: ds.as_numpy_iterator()
+              for task, ds in train_eval_datasets.items()
+          }
+      )
+
   # Disable strictness since we are dropping the optimizer state.
   restore_checkpoint_cfg.strict = False
 
@@ -276,8 +319,9 @@ def evaluate(
     for ckpt_dir in ckpt_dirs:
       if not gfile.isdir(ckpt_dir):
         raise ValueError(
-            f"Checkpoint path '{ckpt_dir}' must be a valid directory when using "
-            "restore mode 'all'.")
+            f"Checkpoint path '{ckpt_dir}' must be a valid directory when "
+            "using restore mode 'all'."
+        )
       ckpt_paths.update(
           checkpoints.get_checkpoint_dir(ckpt_dir, step)
           for step in checkpoints.all_steps(ckpt_dir))
@@ -304,6 +348,7 @@ def evaluate(
 
     # Run final evaluation (with decoding) on the full eval dataset.
     host_step = int(utils.get_local_data(train_state.step))
+    _maybe_run_train_eval(train_state)
     all_metrics = evaluator.evaluate(train_state, train_state_axes)
     all_metrics.result()  # Ensure metrics are finished being computed.
     # Wait until computations are done before continuing.
