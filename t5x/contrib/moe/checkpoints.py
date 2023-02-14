@@ -337,9 +337,7 @@ async def _read_upcycle_ts(
       with mesh:
         upcycled_axes = axes
         arr = partitioning.pjit(
-            upcycle,
-            in_axis_resources=checkpoint_axes,
-            out_axis_resources=upcycled_axes,
+            upcycle, in_shardings=checkpoint_axes, out_shardings=upcycled_axes
         )(arr)
 
   return arr
