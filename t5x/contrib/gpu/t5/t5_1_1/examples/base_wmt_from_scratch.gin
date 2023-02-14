@@ -8,7 +8,7 @@ from t5x import partitioning
 from t5x import utils
 
 include "t5x/contrib/gpu/t5/t5_1_1/base.gin"
-include "t5x/configs/runs/pretrain.gin"
+include "t5x/contrib/gpu/t5/configs/runs/pretrain.gin"
 
 MIXTURE_OR_TASK_NAME = "wmt_t2t_ende_v003"
 TASK_FEATURE_LENGTHS = {"inputs": 256, "targets": 256}

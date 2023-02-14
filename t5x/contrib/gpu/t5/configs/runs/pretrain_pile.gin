@@ -1,4 +1,4 @@
-include 't5x/configs/runs/pretrain.gin'
+include 't5x/contrib/gpu/t5/configs/runs/pretrain.gin'
 
 USE_CACHED_TASKS = False
 

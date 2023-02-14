@@ -9,7 +9,7 @@ from t5x import utils
 from t5x.contrib.gpu.t5 import network
 
 include "t5x/contrib/gpu/t5/t5_1_1/base.gin"
-include "t5x/configs/runs/finetune.gin"
+include "t5x/contrib/gpu/t5/configs/runs/finetune.gin"
 
 MIXTURE_OR_TASK_NAME = "wmt19_ende_v003"
 MIXTURE_OR_TASK_MODULE = "t5.data.mixtures"
