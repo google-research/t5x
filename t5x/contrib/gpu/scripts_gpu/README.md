@@ -21,13 +21,14 @@ Pretraining and Finetuning can be done with `singlenode_*.sh`. These will build 
 For a SLURM+pyxis cluster, `example*.sub` files provide example slurm submit files (edit with your details), which call `multiprocess*.sh` to execute training. You can add a binding script in the `.sub` file for your cluster, or remove it entirely (dropping some throughput)
 
 ## Convergence
-For our Pile convergence runs, we used a Global batch size of `2048` for all models, where GBS is defined as `#GPUs * BS/GPU / Model_Parallel`. Below are example (tested) hardware topologies on NVIDIA DGX A100 (8x A100 80G) nodes.
+For our Pile convergence runs, we used a Global batch size of 2304 for XXL and 2048 for all other models, where GBS is defined as #GPUs * BS/GPU / Model_Parallel. Below are example (tested) hardware topologies on NVIDIA DGX A100 (8x A100 80G) nodes.
 
 | size | #GPUs | BS / GPU | Sequences/Sec | Estimated Walltime | MNLI 2.0 - matched | SQuAD v1.1 (EM/F1) | Convergence Log | 
 | ---- | ----- | -------- | ------------- | ------------------ | ------------------ | ------------------ | --------------- |
 | small| 8     | 256      | ~3168         | 7.48 days          | 83.06%             | 78.33 / 86.63      | [log](https://tensorboard.dev/experiment/lWnHal7PRnOLeZuewyWVxQ/#scalars&_smoothingWeight=0) |
 | large| 64    | 32       | ~3886         | 6.10 days          | 90.50%             | 87.31 / 94.04      | [log](https://tensorboard.dev/experiment/aOxJBIvTQBeTJ8XGXxaL6Q/#scalars&_smoothingWeight=0) |
 | xl   | 256   | 8        | ~3652         | 6.49 days          | 91.15%             | 89.36 / 95.29      | [log](https://tensorboard.dev/experiment/vuRoEYgkRgWiEtbvgxlOqw/#scalars&_smoothingWeight=0) |
+| xxl  | 512   | 4.5      | ~1346         | 19.81 days         | N/A(partial run)   | N/A(partial run)   | N/A(partial run)|
 
 Note: Convergence (as shown in log) was not necessarily done with the hardware topology listed, but the listed topology is tested. Estimated Walltime is calculated assuming full throughput (seq/sec) continuously. In practice, there are compilation overheads at the beginning of each run/restart(in cluster settings) + checkpointing overheads (if any).
 
