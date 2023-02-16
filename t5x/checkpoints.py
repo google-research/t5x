@@ -50,8 +50,8 @@ import jax.config
 from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
 from jax.experimental.gda_serialization import serialization as gda_serialization
-from jax.experimental.maps import Mesh
 import jax.numpy as jnp
+from jax.sharding import Mesh
 import numpy as np
 import orbax.checkpoint
 from t5x import checkpoint_importer
