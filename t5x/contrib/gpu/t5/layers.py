@@ -202,12 +202,10 @@ class MultiHeadDotProductAttention(nn.Module):
 
     # Project inputs_q to multi-headed q/k/v
     # dimensions are then [batch, length, num_heads, head_dim]
-    query = projection(kernel_init=query_init, name='query')(inputs_q)
+    query = projection(kernel_init=query_init, name='query')( \
+            (inputs_q / depth_scaling) if self.scale_attn_logits else inputs_q)
     key = projection(kernel_init=self.kernel_init, name='key')(inputs_kv)
     value = projection(kernel_init=self.kernel_init, name='value')(inputs_kv)
-
-    if self.scale_attn_logits:
-      query = query / depth_scaling
 
     query = with_sharding_constraint(query, ('batch', 'length', 'heads', 'kv'))
     key = with_sharding_constraint(key, ('batch', 'length', 'heads', 'kv'))
