@@ -936,6 +936,15 @@ def _request_for_batch(
   return request
 
 
+def _request_to_prediction_log(
+    request: predict_pb2.PredictRequest,
+) -> prediction_log_pb2.PredictionLog:
+  """Creates a PredictionLog for the Predict method."""
+  return prediction_log_pb2.PredictionLog(
+      predict_log=prediction_log_pb2.PredictLog(request=request)
+  )
+
+
 def write_warmup_examples(
     text_batch: WarmupExamples,
     output_dir: str,
@@ -945,6 +954,9 @@ def write_warmup_examples(
     batch_sizes: List[Optional[int]],
     input_tensor_name: str = 'text_batch',
     decoder_params_spec: Optional[DecoderParamsSpec] = None,
+    request_to_prediction_log: Callable[
+        [predict_pb2.PredictRequest], prediction_log_pb2.PredictionLog
+    ] = _request_to_prediction_log,
 ):
   """Writes warmup examples for all batch_sizes requested.
 
@@ -967,6 +979,8 @@ def write_warmup_examples(
     decoder_params_spec: The parameter specifciations on decoding. If present,
       dummy data (0s) with specified shape/dtype will be written into warmup
       examples.
+    request_to_prediction_log: A function that creates a PredictionLog from a
+      given request.
   """
   assets_extra = os.path.join(output_dir, 'assets.extra')
   tf.io.gfile.makedirs(assets_extra)
@@ -974,11 +988,15 @@ def write_warmup_examples(
   with tf.io.TFRecordWriter(warmup_output) as writer:
     for batch_size in batch_sizes:
       logging.info('Writing warmup data for batch size: %s ...', batch_size)
-      log = prediction_log_pb2.PredictionLog(
-          predict_log=prediction_log_pb2.PredictLog(
-              request=_request_for_batch(text_batch, model_name,
-                                         input_tensor_name, signature_name,
-                                         batch_size, decoder_params_spec)))
+      request = _request_for_batch(
+          text_batch,
+          model_name,
+          input_tensor_name,
+          signature_name,
+          batch_size,
+          decoder_params_spec,
+      )
+      log = request_to_prediction_log(request)
       writer.write(log.SerializeToString())
 
 
