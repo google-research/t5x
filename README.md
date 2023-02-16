@@ -121,7 +121,7 @@ the TPU VM instance unless otherwise stated.
     checkpoints. To create a GCS bucket, see these
     [instructions](https://cloud.google.com/storage/docs/creating-buckets).
 
-6.  (optional) If you prefer working with Jupyter/Cloab style environment
+6.  (optional) If you prefer working with Jupyter/Colab style environment
     you can setup a custom Colab runtime by following steps from
     [t5x/notebooks](t5x/notebooks/README.md).
 
