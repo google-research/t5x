@@ -1066,7 +1066,7 @@ def save(
     write_warmup_example_fn=write_warmup_examples,
     mixture_or_task_name: Optional[str] = None,
     validation_examples: Optional[List[Any]] = None,
-    native_lowering: bool = False,
+    native_lowering: bool = True,
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
     output_vocab_feature_name: Optional[str] = 'targets',
