@@ -1,0 +1,68 @@
+# Defaults for eval.py.
+#
+#
+# You must also include a binding for MODEL.
+#
+# Required to be set:
+#
+# - MIXTURE_OR_TASK_NAME: The SeqIO Task/Mixture to evaluate on
+# - CHECKPOINT_PATH: The model checkpoint to evaluate
+# - EVAL_OUTPUT_DIR: The dir to write results to.
+#
+#
+# Commonly overridden options:
+#
+# - DatasetConfig.split
+# - DatasetConfig.batch_size
+# - DatasetConfig.use_cached
+# - RestoreCheckpointConfig.mode
+# - PjitPartitioner.num_partitions
+from __gin__ import dynamic_registration
+
+import __main__ as eval_script
+import seqio
+from t5x import partitioning
+from t5x import utils
+
+
+# Must be overridden
+MIXTURE_OR_TASK_NAME = %gin.REQUIRED
+CHECKPOINT_PATH = %gin.REQUIRED
+EVAL_OUTPUT_DIR = %gin.REQUIRED
+TASK_FEATURE_LENGTHS = None # auto-computes the maximum features length to use.
+
+# DEPRECATED: Import the this module in your gin file.
+MIXTURE_OR_TASK_MODULE = None
+
+eval_script.evaluate:
+  model = %MODEL  # imported from separate gin file
+  dataset_cfg = @utils.DatasetConfig()
+  partitioner = @partitioning.PjitPartitioner()
+  restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
+  output_dir = %EVAL_OUTPUT_DIR
+  inference_evaluator_cls = @seqio.Evaluator
+
+partitioning.PjitPartitioner:
+  num_partitions = 1
+  logical_axis_rules = @partitioning.standard_logical_axis_rules()
+
+seqio.Evaluator:
+  logger_cls = [@seqio.PyLoggingLogger, @seqio.TensorBoardLogger, @seqio.JSONLogger]
+  num_examples = None  # Use all examples in the dataset.
+  use_memory_cache = True
+
+utils.DatasetConfig:
+  mixture_or_task_name = %MIXTURE_OR_TASK_NAME
+  task_feature_lengths = %TASK_FEATURE_LENGTHS
+  split = 'test'
+  batch_size = 32
+  shuffle = False
+  seed = 42
+  use_cached = False
+  pack = False
+  use_custom_packing_ops = False
+  module = %MIXTURE_OR_TASK_MODULE
+
+utils.RestoreCheckpointConfig:
+  path = %CHECKPOINT_PATH
+  mode = 'specific'
