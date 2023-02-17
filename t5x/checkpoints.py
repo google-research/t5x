@@ -2441,8 +2441,8 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
 
   def _finalize_checkpoint(self):
     """Moves tmp step checkpoint to final."""
-    for tmp_file in orbax.checkpoint.utils.tmp_checkpoints(self.directory):
-      if jax.process_index() == 0:
+    if jax.process_index() == 0:
+      for tmp_file in orbax.checkpoint.utils.tmp_checkpoints(self.directory):
         assert self._tmp_directory is not None
         final_directory = os.fspath(
             self._get_save_directory(

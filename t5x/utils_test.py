@@ -491,7 +491,8 @@ class UtilsTest(parameterized.TestCase):
         ])
 
     jax.tree_map(
-        np.testing.assert_equal, overridden_variables,
+        np.testing.assert_equal,
+        overridden_variables,
         flax.core.freeze({
             "params": {
                 "logits_dense": np.zeros((2, 4)),
@@ -500,7 +501,7 @@ class UtilsTest(parameterized.TestCase):
                         "kernel": np.zeros((4, 6)),
                         "bias": np.zeros(6),
                     }
-                }
+                },
             },
             "params_axes": {
                 "logits_dense_axes": AxisMetadata(names=("vocab", "embed")),
@@ -509,16 +510,20 @@ class UtilsTest(parameterized.TestCase):
                         "kernel_axes": AxisMetadata(names=("batch", "embed")),
                         "bias_axes": AxisMetadata(names=("embed",)),
                     }
-                }
-            }
-        }))
+                },
+            },
+        }),
+    )
 
   def test_create_checkpoint_manager_validate(self):
     directory = "path/to/dir"
     path = os.path.join(directory, "checkpoint")
-    save_cfg = utils.SaveCheckpointConfig(checkpoint_manager_cls=None)
+    save_cfg = utils.SaveCheckpointConfig(
+        checkpoint_manager_cls=checkpoints.BestCheckpointManager
+    )
     restore_cfg = utils.RestoreCheckpointConfig(
-        path=path, checkpoint_manager_cls=checkpoints.BestCheckpointManager)
+        path=path, checkpoint_manager_cls=None
+    )
     with self.assertRaises(ValueError):
       utils.create_checkpoint_manager(
           save_cfg=save_cfg,
@@ -594,7 +599,6 @@ class UtilsTest(parameterized.TestCase):
         save_dataset=True)
     restore_cfg = utils.RestoreCheckpointConfig(
         path=path,
-        checkpointer_cls=checkpointer_cls,
         dtype="bfloat16",
         restore_dataset=False)
 
