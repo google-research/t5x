@@ -671,18 +671,17 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
 
   device_buffers = jax.tree_map(_put_to_devices, host_arrays, global_shapes)
 
-  def _gda(dbs, global_shape):
-    if jax.config.jax_array:
-      return jax.make_array_from_single_device_arrays(
-          global_shape, jax.sharding.NamedSharding(global_mesh, axes), dbs)
-    else:
-      return GlobalDeviceArray(global_shape, global_mesh, axes, dbs)
+  def _jax_array(dbs, global_shape):
+    return jax.make_array_from_single_device_arrays(
+        global_shape, jax.sharding.NamedSharding(global_mesh, axes), dbs
+    )
 
   return jax.tree_map(
-      _gda,
+      _jax_array,
       device_buffers,
       global_shapes,
-      is_leaf=lambda x: isinstance(x, (list, tuple)))
+      is_leaf=lambda x: isinstance(x, (list, tuple)),
+  )
 
 
 class GDADatasetIterator(clu.data.dataset_iterator.DatasetIterator):
