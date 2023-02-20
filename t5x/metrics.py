@@ -296,7 +296,7 @@ def shape_obj_to_defined_obj(obj: clu_metrics.Metric):
         return attr
 
   return obj.__class__(
-      **{a.name: class_attr_shape(a) for a in dataclasses.fields(obj)})
+      **{a.name: class_attr_shape(a) for a in dataclasses.fields(obj)})  # pytype: disable=wrong-arg-types  # re-none
 
 
 def set_time_metrics_duration(metrics, duration):
