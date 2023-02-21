@@ -15,7 +15,6 @@
 """Tests for t5x.utils."""
 
 import dataclasses
-import functools
 import os
 import re
 from typing import Optional
@@ -534,18 +533,25 @@ class UtilsTest(parameterized.TestCase):
       )
 
   def test_create_checkpoint_manager(self):
+
+    class FakeBestCheckpointManager(checkpoints.BestCheckpointManager):
+
+      def __init__(self, *args, **kwargs):
+        super().__init__(
+            *args,
+            metric_name_to_monitor="loss",
+            metric_mode="min",
+            force_keep_period=10,
+            keep_checkpoints_without_metrics=False,
+            **kwargs,
+        )
+
     directory = self.create_tempdir(name="all_checkpoints")
     path = os.path.join(directory, "checkpoint")
     mock_data_layout = mock.Mock(
         shard_id=0, num_shards=1, is_first_host_in_replica_set=True)
     mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
-    best_checkpoint_manager_cls = functools.partial(
-        checkpoints.BestCheckpointManager,
-        metric_name_to_monitor="accuracy",
-        metric_mode="min",
-        force_keep_period=10,
-        keep_checkpoints_without_metrics=False,
-    )
+    best_checkpoint_manager_cls = FakeBestCheckpointManager
     save_cfg = utils.SaveCheckpointConfig(
         checkpoint_manager_cls=best_checkpoint_manager_cls,
         dtype="float32",
@@ -579,28 +585,41 @@ class UtilsTest(parameterized.TestCase):
     self.assertEqual(manager._options.best_mode, "min")
     self.assertFalse(manager._options.keep_checkpoints_without_metrics)
     self.assertEqual(
-        manager._options.best_fn({
-            "accuracy": 0.8,
-            "loss": 0.1
-        }), 0.8)
+        manager._options.best_fn({"accuracy": 0.8, "loss": 0.1}), 0.1
+    )
 
-  def test_create_checkpoint_manager_from_checkpointer(self):
+  @parameterized.parameters((True,), (False,))
+  def test_create_checkpoint_manager_from_checkpointer(
+      self, set_save_checkpointer_cls
+  ):
     directory = self.create_tempdir(name="all_checkpoints")
     path = os.path.join(directory, "checkpoint")
     mock_data_layout = mock.Mock(
         shard_id=0, num_shards=1, is_first_host_in_replica_set=True)
     mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
-    checkpointer_cls = checkpoints.SaveBestCheckpointer
+    save_checkpointer_cls = (
+        checkpoints.SaveBestCheckpointer
+        if set_save_checkpointer_cls
+        else checkpoints.Checkpointer
+    )
+    restore_checkpointer_cls = (
+        checkpoints.Checkpointer
+        if set_save_checkpointer_cls
+        else checkpoints.SaveBestCheckpointer
+    )
     save_cfg = utils.SaveCheckpointConfig(
-        checkpointer_cls=checkpointer_cls,
+        checkpointer_cls=save_checkpointer_cls,
         dtype="float32",
         keep=5,
         period=2,
-        save_dataset=True)
+        save_dataset=True,
+    )
     restore_cfg = utils.RestoreCheckpointConfig(
+        checkpointer_cls=restore_checkpointer_cls,
         path=path,
         dtype="bfloat16",
-        restore_dataset=False)
+        restore_dataset=False,
+    )
 
     manager = utils.create_checkpoint_manager(
         save_cfg=save_cfg,
@@ -623,10 +642,9 @@ class UtilsTest(parameterized.TestCase):
     self.assertEqual(manager._options.best_mode, "max")
     self.assertTrue(manager._options.keep_checkpoints_without_metrics)
     self.assertEqual(
-        manager._options.best_fn({
-            "train/accuracy": 0.8,
-            "train/loss": 0.1
-        }), 0.8)
+        manager._options.best_fn({"train/accuracy": 0.8, "train/loss": 0.1}),
+        0.8,
+    )
 
 
 @dataclasses.dataclass

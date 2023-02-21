@@ -368,10 +368,15 @@ def create_checkpoint_manager(
   if restore_cfg is not None:
     should_save_restore_dataset |= restore_cfg.restore_dataset
     restore_dtype = restore_cfg.dtype
-    # If already set, configuration from save_cfg takes precendence.
-    if checkpoint_manager_cls is None:
+    # If already set, configuration from save_cfg takes precendence. If
+    # checkpoint_manager_cls is base CheckpointManager, give it a chance to be
+    # reset to something more specialized.
+    if (
+        checkpoint_manager_cls is None
+        or checkpoint_manager_cls == checkpoints.CheckpointManager
+    ):
       checkpoint_manager_cls, extra_kwargs = _get_checkpoint_manager_cls(
-          save_cfg
+          restore_cfg
       )
   ds_iter = ds_iter if should_save_restore_dataset else None
 
