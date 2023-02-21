@@ -864,4 +864,4 @@ def make_decoder_mask(decoder_target_tokens: Array,
         make_attention_mask(
             decoder_segment_ids, decoder_segment_ids, jnp.equal, dtype=dtype))
 
-  return combine_masks(*masks, dtype=dtype)
+  return combine_masks(*masks, dtype=dtype)  # pytype: disable=bad-return-type  # jax-ndarray

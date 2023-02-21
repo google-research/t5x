@@ -1210,7 +1210,7 @@ def log_model_info(log_file: Optional[str],
 
 # -----------------------------------------------------------------------------
 # Utility functions for prediction and evaluation.
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------  # pytype: disable=annotation-type-mismatch  # jax-ndarray
 
 
 class InferStepWithRngCallable(typing_extensions.Protocol):

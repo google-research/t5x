@@ -209,7 +209,7 @@ def get_local_data(x):
     val = x.addressable_data(0)
     return val
   elif isinstance(x, pxla.ShardedDeviceArray):
-    val = x.device_buffers[0]
+    val = x.device_buffers[0]  # pytype: disable=attribute-error  # jax-ndarray
     if val.aval is None:
       val.aval = jax.ShapedArray(val.shape, val.dtype)
     return val

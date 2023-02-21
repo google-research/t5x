@@ -491,7 +491,7 @@ def train(
   def _run_training_eval(first_run: bool = False):
     if first_run:
       logging.info('Compiling training eval loop.')
-      trainer.compile_eval({
+      trainer.compile_eval({  # pytype: disable=wrong-arg-types  # jax-ndarray
           task: utils.get_zeros_batch_like_dataset(ds)
           for task, ds in train_eval_datasets.items()
       })
@@ -501,7 +501,7 @@ def train(
         for task, ds in train_eval_datasets.items()
     }
     eval_summaries = trainer.eval(eval_batch_iters)
-    trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,
+    trainer.stop_training = run_actions(trainer_lib.ActionMode.TRAIN_EVAL,  # pytype: disable=wrong-arg-types  # jax-ndarray
                                         actions, trainer.train_state,
                                         eval_summaries)
 
@@ -671,7 +671,7 @@ def train(
           # that the actions can be performed without special casing. The only
           # caveat is that train would need its own special `key` given no
           # `task` will be applied.
-          trainer.stop_training = run_actions(
+          trainer.stop_training = run_actions(  # pytype: disable=wrong-arg-types  # jax-ndarray
               trainer_lib.ActionMode.TRAIN, actions, trainer.train_state,
               {TRAIN_METRIC_KEY: train_summary.result()})
 

@@ -75,7 +75,7 @@ def _cross_entropy_with_logits_fwd(
   log_z = jnp.squeeze(jnp.log(sum_exp) + max_logit, axis=-1)
   total_z_loss = z_loss * jax.lax.square(log_z)
   loss += total_z_loss
-  return (loss, total_z_loss), (logits, targets, z_loss, exp_shifted, sum_exp,
+  return (loss, total_z_loss), (logits, targets, z_loss, exp_shifted, sum_exp,  # pytype: disable=bad-return-type  # jax-ndarray
                                 log_softmax, log_z)
 
 

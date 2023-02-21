@@ -409,7 +409,7 @@ class EncoderDecoderModel(BaseTransformerModel):
         enable_dropout=False)
     return initial_variables
 
-  def _compute_logits(
+  def _compute_logits(  # pytype: disable=signature-mismatch  # jax-ndarray
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
@@ -616,7 +616,7 @@ class EncoderDecoderModel(BaseTransformerModel):
     else:
       return decodes[:, -1, :], {'scores': scores[:, -1]}
 
-  def score_batch(
+  def score_batch(  # pytype: disable=signature-mismatch  # jax-ndarray
       self,
       params: PyTreeDef,
       batch: Mapping[str, jnp.ndarray],
@@ -644,7 +644,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       # `intermediates` should be tuples tracking all instantiations of a value.
       # These values each have just one instantiation, hence singletons.
     else:
-      logits = self._compute_logits(params, batch)  # type: jnp.ndarray
+      logits = self._compute_logits(params, batch)  # type: jnp.ndarray  # pytype: disable=annotation-type-mismatch  # jax-ndarray
 
     # Purposefully don't use config.z_loss because that term is for training
     # stability and shouldn't affect our reported scores.
@@ -833,7 +833,7 @@ class DecoderOnlyModel(BaseTransformerModel):
     sequence_scores = token_scores.sum(-1)
 
     if return_intermediates:
-      return sequence_scores, intermediates
+      return sequence_scores, intermediates  # pytype: disable=bad-return-type  # jax-ndarray
 
     return sequence_scores
 

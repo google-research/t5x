@@ -94,7 +94,7 @@ def precompile(
   train_state_axes = train_state_initializer.train_state_axes
 
   def train_step(train_state, batch):
-    return trainer_lib.train_with_lr(
+    return trainer_lib.train_with_lr(  # pytype: disable=wrong-arg-types  # jax-ndarray
         train_state,
         batch,
         learning_rate=1e-3,

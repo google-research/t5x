@@ -204,7 +204,7 @@ class TimeRate(Time):
     Returns:
       A TimeRate object.
     """
-    return cls(numerator=numerator)
+    return cls(numerator=numerator)  # pytype: disable=wrong-arg-types  # jax-ndarray
 
   def merge(self, other: "TimeRate") -> "TimeRate":
     assert_msg = "Merging with non-None durations is currently not supported."
