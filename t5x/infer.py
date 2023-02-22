@@ -373,6 +373,7 @@ def infer(
     ] = utils.verify_matching_vocabs,
     output_vocab_feature_name: str = 'targets',
     file_extension: str = 'jsonl',
+    keep_aux_as_numpy: bool = False,
 ):
   """Infer function.
 
@@ -414,6 +415,8 @@ def infer(
     output_vocab_feature_name: The name of the feature corresponding to the
       output vocabulary.
     file_extension: str. file extension used for file names
+    keep_aux_as_numpy: bool. whether to leave aux values as numpy arrays; can be
+      used to save space during serialization
   """
   jax.monitoring.record_event('/jax/t5x/infer/beacon')
   logging.info('Process ID: %d', jax.process_index())
@@ -504,8 +507,11 @@ def infer(
           infer_step=infer_step,
           batch_size=batch_size,
           train_state_axes=train_state_initializer.train_state_axes,
-          partitioner=partitioner),
-      train_state=train_state)
+          partitioner=partitioner,
+          keep_aux_as_numpy=keep_aux_as_numpy,
+      ),
+      train_state=train_state,
+  )
 
   def infer_task(task: seqio.Task):
     tmp_dir = os.path.join(output_dir,

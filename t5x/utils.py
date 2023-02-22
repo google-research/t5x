@@ -1268,9 +1268,13 @@ def _remove_padding(all_inferences, all_indices):
   return all_inferences, all_indices
 
 
-def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
-                 train_state_axes: train_state_lib.TrainState,
-                 partitioner: partitioning.BasePartitioner) -> InferFnCallable:
+def get_infer_fn(
+    infer_step: InferStepCallable,
+    batch_size: int,
+    train_state_axes: train_state_lib.TrainState,
+    partitioner: partitioning.BasePartitioner,
+    keep_aux_as_numpy: bool = False,
+) -> InferFnCallable:
   """Get prediction function for the SeqIO evaluator.
 
   The returned prediction function should take in an enumerated dataset, make
@@ -1297,6 +1301,9 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     batch_size: the number of examples in the global infer batch.
     train_state_axes: Partitioning info for the train state object.
     partitioner: partitioner to use.
+    keep_aux_as_numpy: whether to convert aux values to Python primitives or
+      keep them as numpy arrays (the latter can be better for disk space if
+      saving many bfloat16s)
 
   Returns:
     predict_fn: a callable which takes in the enumerated infer dataset and an
@@ -1466,7 +1473,10 @@ def get_infer_fn(infer_step: InferStepCallable, batch_size: int,
     if aux_values is None:
       return indices_and_outputs
     else:
-      aux_values = jax.tree_map(lambda x: np.array(x).tolist(), aux_values)
+      if keep_aux_as_numpy:
+        aux_values = jax.tree_map(lambda x: list(np.array(x)), aux_values)
+      else:
+        aux_values = jax.tree_map(lambda x: np.array(x).tolist(), aux_values)
       return indices_and_outputs, aux_values
 
   return infer_fn
