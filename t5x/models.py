@@ -470,6 +470,43 @@ class EncoderDecoderModel(BaseTransformerModel):
     new_flat_cache = new_vars['cache']
     return flat_logits, new_flat_cache
 
+  def _compute_kv_cache(
+      self,
+      params,
+      encoded_inputs: jnp.ndarray,
+      encoder_input_tokens: jnp.ndarray,
+      decoder_input_tokens: jnp.ndarray,
+  ) -> Tuple[PyTreeDef, Optional[jnp.ndarray]]:
+    """Initialize the key/value cache.
+
+    Args:
+      params: The parameters of the model.
+      encoded_inputs: Output of the encoder on the inputs. Unused.
+      encoder_input_tokens: Input tokens for the encoder. Only needed for
+        padding mask.
+      decoder_input_tokens: Input tokens for the decoder. Only needed for
+        length.
+
+    Returns:
+      cache: The initialzed cache.
+      initial_index: None, since we are not prefilling.
+    """
+    del encoded_inputs
+    _, initial_variables = self.module.apply(
+        {'params': params},
+        encoder_input_tokens=jnp.ones_like(encoder_input_tokens),
+        decoder_input_tokens=jnp.ones_like(decoder_input_tokens),
+        decoder_target_tokens=jnp.ones_like(decoder_input_tokens),
+        mutable=['cache'],
+        decode=True,
+        enable_dropout=False,
+    )
+
+    # Our initial index is None since we do not prefill based on a prompt.
+    initial_index = None
+
+    return initial_variables['cache'], initial_index
+
   def predict_batch_with_aux(
       self,
       params: PyTreeDef,
@@ -530,22 +567,9 @@ class EncoderDecoderModel(BaseTransformerModel):
         the batch of predictions, with the entire beam if requested
         an auxiliary dictionary of decoder scores
     """
-    # Prepare zeroed-out autoregressive cache.
     # [batch, input_len]
-    inputs = batch['encoder_input_tokens']
-    # [batch, target_len]
-    target_shape = batch['decoder_input_tokens'].shape
-    target_type = batch['decoder_input_tokens'].dtype
-    _, variables_with_cache = self.module.apply(
-        {'params': params},
-        jnp.ones(inputs.shape, inputs.dtype),
-        jnp.ones(target_shape, target_type),
-        jnp.ones(target_shape, target_type),
-        decode=True,
-        enable_dropout=False,
-        mutable=['cache'])
-
-    cache = variables_with_cache['cache']
+    encoder_input_tokens = batch['encoder_input_tokens']
+    decoder_input_tokens = batch['decoder_input_tokens']
 
     # Prepare transformer fast-decoder call for beam search: for beam search, we
     # need to set up our decoder model to handle a batch size equal to
@@ -555,23 +579,55 @@ class EncoderDecoderModel(BaseTransformerModel):
     # [el0, el1, el2] --> beamsize=2 --> [el0,el0,el1,el1,el2,el2]
     # [batch * num_decodes, input_len, emb_dim]
     encoded_inputs = decoding.flat_batch_beam_expand(
-        self.module.apply({'params': params},
-                          inputs,
-                          enable_dropout=False,
-                          method=self.module.encode), num_decodes)
+        self.module.apply(
+            {'params': params},
+            encoder_input_tokens,
+            enable_dropout=False,
+            method=self.module.encode,
+        ),
+        num_decodes,
+    )
+
+    # `decoder_prompt_inputs` is initialized from the batch's
+    # `decoder_input_tokens`. The EOS is stripped to avoid decoding to stop
+    # after the prompt by matching to `output_vocabulary.eos_id`.
+    # These inputs are ignored by the beam search decode fn.
+    if prompt_with_targets:
+      decoder_prompt_inputs = decoder_input_tokens
+      decoder_prompt_inputs = decoder_prompt_inputs * (
+          decoder_prompt_inputs != self.output_vocabulary.eos_id
+      )
+    else:
+      decoder_prompt_inputs = jnp.zeros_like(decoder_input_tokens)
+
+    # Prepare autoregressive cache.
+    cache, initial_index = self._compute_kv_cache(
+        params,
+        encoded_inputs=encoded_inputs,
+        encoder_input_tokens=encoder_input_tokens,
+        decoder_input_tokens=decoder_prompt_inputs,
+    )
 
     # [batch * num_decodes, input_len]
-    raw_inputs = decoding.flat_batch_beam_expand(inputs, num_decodes)
+    raw_inputs = decoding.flat_batch_beam_expand(
+        encoder_input_tokens, num_decodes
+    )
 
     tokens_ids_to_logits = functools.partial(
         self._compute_logits_from_slice,
         params=params,
         encoded_inputs=encoded_inputs,
         raw_inputs=raw_inputs,
-        max_decode_length=target_shape[1])
+        max_decode_length=decoder_input_tokens.shape[1],
+    )
 
     if decoder_params is None:
       decoder_params = {}
+    if initial_index is not None:
+      # We only set initial_index when it's non-None since it is not supported
+      # by all decoders.
+      decoder_params['initial_index'] = initial_index
+
     if rng is not None:
       if decoder_params.get('decode_rng') is not None:
         raise ValueError(
@@ -579,17 +635,6 @@ class EncoderDecoderModel(BaseTransformerModel):
             f"`decoder_params['decode_rng']` ({decoder_params['decode_rng']}). "
             'Please specify one or the other.')
       decoder_params['decode_rng'] = rng
-
-    # `decoder_prompt_inputs` is initialized from the batch's
-    # `decoder_input_tokens`. The EOS is stripped to avoid decoding to stop
-    # after the prompt by matching to `output_vocabulary.eos_id`.
-    # These inputs are ignored by the beam search decode fn.
-    if prompt_with_targets:
-      decoder_prompt_inputs = batch['decoder_input_tokens']
-      decoder_prompt_inputs = decoder_prompt_inputs * (
-          decoder_prompt_inputs != self.output_vocabulary.eos_id)
-    else:
-      decoder_prompt_inputs = jnp.zeros_like(batch['decoder_input_tokens'])
 
     # TODO(hwchung): rename the returned value names to more generic ones.
     # Using the above-defined single-step decoder function, run a
@@ -841,10 +886,24 @@ class DecoderOnlyModel(BaseTransformerModel):
       self,
       params: PyTreeDef,
       inputs: jnp.ndarray,
-      inputs_lengths: jnp.ndarray,
-      decoder_causal_attention: jnp.ndarray,
-  ) -> PyTreeDef:
-    """Compute the key/value cache on the input prefix."""
+      causal_attention_mask: jnp.ndarray,
+  ) -> Tuple[PyTreeDef, jnp.ndarray]:
+    """Compute the key/value cache on the input prompt.
+
+    Args:
+      params: The parameters of the model.
+      inputs: Tokens to use for prompting, with 0-padding.
+      causal_attention_mask: A boolean mask containing 1 at positions that are
+        treated as inputs.
+
+    Returns:
+      cache: The prefilled cache.
+      initial_index: The index of the next position following prefill.
+    """
+    # The lengths of the inputs match the number of non-padding positions,
+    # and purposefully exclude the initial BOS (which is also 0).
+    inputs_lengths = jnp.sum(inputs != 0, axis=-1)
+
     _, initial_variables = self.module.apply({'params': params},
                                              jnp.ones_like(inputs),
                                              jnp.ones_like(inputs),
@@ -875,14 +934,12 @@ class DecoderOnlyModel(BaseTransformerModel):
     # If `self._inputs_bidirectional_attention = False`, we should not pass
     # batch['decoder_causal_attention'] to `module.apply` during cache prefill
     # and pass None instead.
-    maybe_decoder_causal_attention = self._get_decoder_causal_attention(
-        {'decoder_causal_attention': decoder_causal_attention})
+    maybe_causal_attention_mask = self._get_decoder_causal_attention(
+        {'decoder_causal_attention': causal_attention_mask}
+    )
 
     _, variables_with_cache = self.module.apply(
-        {
-            'params': params,
-            'cache': cache
-        },
+        {'params': params, 'cache': cache},
         decoder_input_tokens=inputs,
         # Use the `decoder_causal_attention`, which has 1 for all input
         # positions, including the BOS token, as the targets so when the
@@ -891,13 +948,14 @@ class DecoderOnlyModel(BaseTransformerModel):
         # token (the 0 for BOS) will not be included in the mask. This also
         # restricts the mask to not include any target positions like it would
         # if you used `decoder_target_tokens`.
-        decoder_target_tokens=decoder_causal_attention,
-        decoder_causal_attention=maybe_decoder_causal_attention,
+        decoder_target_tokens=causal_attention_mask,
+        decoder_causal_attention=maybe_causal_attention_mask,
         mutable=['cache'],
         enable_dropout=False,
         prefill=True,
-        prefill_lengths=inputs_lengths)
-    return variables_with_cache['cache']
+        prefill_lengths=inputs_lengths,
+    )
+    return variables_with_cache['cache'], inputs_lengths
 
   def predict_batch_with_aux(
       self,
@@ -996,20 +1054,17 @@ class DecoderOnlyModel(BaseTransformerModel):
       raise ValueError(
           'Batch does not have the right format for text generation: probably '
           'because `task_feature_lengths` passed to the feature converter does '
-          'not have both `inputs` and `targets`.')
-    # We can use the decoder causal attention mask to tell how long the inputs
-    # are. The causal mask has a 1 for all the input tokens (and one more to
-    # cover the original BOS token, created by shifting the inputs one to the
-    # right) so we need to delete one.
-    inputs_lengths = jnp.sum(batch['decoder_causal_attention'], axis=1) - 1
+          'not have both `inputs` and `targets`.'
+      )
 
     # since decoder_input_tokens is shifted to the right and
     # `decoder_causal_attention` has one more 1 than the number of inputs
     # tokens, this masks out targets portion of the decoder_input_tokens.
     inputs = batch['decoder_input_tokens'] * batch['decoder_causal_attention']
 
-    prefilled_cache = self._compute_kv_cache(params, inputs, inputs_lengths,
-                                             batch['decoder_causal_attention'])
+    prefilled_cache, initial_index = self._compute_kv_cache(
+        params, inputs, batch['decoder_causal_attention']
+    )
 
     target_shape = batch['decoder_input_tokens'].shape
     max_decode_length = target_shape[1]
@@ -1041,9 +1096,10 @@ class DecoderOnlyModel(BaseTransformerModel):
         cache=prefilled_cache,
         tokens_to_logits=tokens_ids_to_logits,
         num_decodes=num_decodes,
-        initial_index=inputs_lengths,
+        initial_index=initial_index,
         cache_offset=1 if scanned else 0,
-        **decoder_params)
+        **decoder_params,
+    )
 
     if not return_all_decodes:
       # Search returns [n_batch, n_beam/decodes, n_length] with the beam/decode
@@ -1057,7 +1113,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       # We return all samples and scores, rather than just the top ones.
       aux = {'scores': scores}
 
-    return remove_prefix(decoded_sequences, inputs_lengths), aux
+    return remove_prefix(decoded_sequences, initial_index), aux
 
 
 @jax.vmap
