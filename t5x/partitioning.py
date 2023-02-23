@@ -35,7 +35,7 @@ from jax.sharding import PartitionSpec
 import numpy as np
 from t5x import train_state as train_state_lib
 
-JaxDevice = jax.lib.xla_client.Device
+JaxDevice = jax.Device
 TpuMesh = Tuple[int, int, int, int]  # (x, y, z, num_cores).
 OtherMesh = Tuple[int, int]
 HardwareMesh = Union[TpuMesh, OtherMesh]
@@ -118,8 +118,7 @@ def with_sharding_constraint(x, axis_resources):
 
 # pjit Mesh creation functions.
 # -----------------------------------------------------------------------------
-def bounds_from_last_device(
-    last_device: jax.lib.xla_client.Device) -> HardwareMesh:
+def bounds_from_last_device(last_device: jax.Device) -> HardwareMesh:
   """Get the bound from the given last device."""
   # Must be passed the device at the highest-coordinate corner of the
   # relevant mesh, which is a requirement we know is satisfied by the last
@@ -133,7 +132,7 @@ def bounds_from_last_device(
     return jax.host_count(), jax.local_device_count()
 
 
-def get_coords(device: jax.lib.xla_client.Device) -> HardwareMesh:
+def get_coords(device: jax.Device) -> HardwareMesh:
   """Returns the coordinates of the given device."""
   if hasattr(device, 'coords'):
     return (*device.coords, device.core_on_chip)
