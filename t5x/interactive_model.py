@@ -448,9 +448,9 @@ class InteractiveModel(abc.ABC):
     else:
       raise ValueError("Mode must be `predict_with_aux`, or `score`,"
                        f" but instead was {mode}.")
-    infer_fn_key = tuple(
-        sorted(seqio.utils.flatten_dict(inference_kwargs).items())
-    )
+    key_array = seqio.utils.flatten_dict(inference_kwargs)
+    key_array["mode"] = mode
+    infer_fn_key = tuple(key_array.items())
     if infer_fn_key not in self._cached_infer_fns:
       self._cached_infer_fns[infer_fn_key] = utils.get_infer_fn(
           infer_step=functools.partial(infer_step, **inference_kwargs),
