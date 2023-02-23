@@ -901,8 +901,8 @@ class DecoderOnlyModel(BaseTransformerModel):
       initial_index: The index of the next position following prefill.
     """
     # The lengths of the inputs match the number of non-padding positions,
-    # and purposefully exclude the initial BOS (which is also 0).
-    inputs_lengths = jnp.sum(inputs != 0, axis=-1)
+    # excluding the initial BOS.
+    inputs_lengths = jnp.sum(inputs[:, 1:] != 0, axis=-1)
 
     _, initial_variables = self.module.apply({'params': params},
                                              jnp.ones_like(inputs),
