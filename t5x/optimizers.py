@@ -241,13 +241,13 @@ class OptaxStatePartitionRules:
               inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
                   state.inner_state, params_axes)),
       optax.InjectHyperparamsState:
-          lambda state, params_axes: optax.InjectHyperparamsState(
+          lambda state, params_axes: optax.InjectHyperparamsState(  # pytype: disable=wrong-arg-types  # jax-ndarray
               count=None,
               hyperparams=jax.tree_map(lambda x: None, state.hyperparams),
               inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
                   state.inner_state, params_axes)),
       optax.MultiStepsState:
-          lambda state, params_axes: optax.MultiStepsState(
+          lambda state, params_axes: optax.MultiStepsState(  # pytype: disable=wrong-arg-types  # jax-ndarray
               mini_step=None,
               gradient_step=None,
               inner_opt_state=OptaxStatePartitionRules.
@@ -262,7 +262,7 @@ class OptaxStatePartitionRules:
               inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
                   state.inner_state, params_axes)),
       optax.MaybeUpdateState:
-          lambda state, params_axes: optax.MaybeUpdateState(
+          lambda state, params_axes: optax.MaybeUpdateState(  # pytype: disable=wrong-arg-types  # jax-ndarray
               inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
                   state.inner_state, params_axes),
               step=None),
@@ -345,7 +345,7 @@ class OptaxWrapper(OptimizerDef):
     Returns:
       Initial optimizer state.
     """
-    state = OptimizerState(
+    state = OptimizerState(  # pytype: disable=wrong-arg-types  # jax-ndarray
         step=0, param_states=self.optax_optimizer.init(params))
     return state
 
@@ -699,14 +699,14 @@ class MultiOptimizer(OptimizerDef):
         ps = _subtree_from_traversal(focus, param_logical_axes)
         ss = _subtree_from_traversal(focus, optimizer.state.param_states)
         new_opt = opt_def.derive_logical_axes(
-            Optimizer(opt_def, OptimizerState(None, ss), ps), ps)
+            Optimizer(opt_def, OptimizerState(None, ss), ps), ps)  # pytype: disable=wrong-arg-types  # jax-ndarray
         param_states = _update_subtree_of_traversal(focus, param_states,
                                                     new_opt.state.param_states)
     # Update axes to None when param is not optimized by any sub optimizer.
     param_states = jax.tree_map(
         lambda x: (None if isinstance(x, _Marker) else x), param_states)
     return Optimizer(optimizer.optimizer_def,
-                     OptimizerState(None, param_states), param_logical_axes)
+                     OptimizerState(None, param_states), param_logical_axes)  # pytype: disable=wrong-arg-types  # jax-ndarray
 
   # TODO(levskaya): add traversal handling for state_dict / restore_state
   # this is required to make this work w. optax optimizers...

@@ -166,7 +166,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         loss_normalizing_factor=loss_normalizing_factor,
     )
 
-  def get_pred_confidence(self,
+  def get_pred_confidence(self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
                           logits: jnp.ndarray = None,
                           prev_state: jnp.ndarray = None,
                           new_state: jnp.ndarray = None,
@@ -381,7 +381,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
     total_z_loss = 0.0  # hardcoded
 
-    metrics = self._compute_metrics(
+    metrics = self._compute_metrics(  # pytype: disable=wrong-arg-types  # jax-ndarray
         logits=all_logits[-1],
         targets=batch['decoder_target_tokens'],
         mask=weights,
@@ -940,7 +940,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
     # in increasing order of log-probability.
     # Return the highest scoring beam sequence.
     if return_all_decodes:
-      return decodes, {
+      return decodes, {  # pytype: disable=bad-return-type  # jax-ndarray
           'scores': scores,
           'exits': exits,
           'confidences': confidences

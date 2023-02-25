@@ -245,7 +245,7 @@ def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
       loss=total_loss,
       z_loss=z_loss)
   metrics.update(
-      _expert_metrics(
+      _expert_metrics(  # pytype: disable=wrong-arg-types  # jax-ndarray
           diversity_metrics,
           total_loss,
           z_loss,
@@ -312,7 +312,7 @@ def _expert_losses(diversity_metrics: Mapping[str, jnp.ndarray],
   aux_loss = auxiliary_loss_factor * diversity_metrics['auxiliary_loss'].mean()
   router_z_loss = router_z_loss_factor * diversity_metrics[
       'router_z_loss'].mean()
-  return aux_loss, router_z_loss
+  return aux_loss, router_z_loss  # pytype: disable=bad-return-type  # jax-ndarray
 
 
 def _expert_metrics(diversity_metrics: Mapping[str, jnp.ndarray],

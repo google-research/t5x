@@ -197,19 +197,21 @@ def merge_chunks_to_file(
   logging.info('Results written to %s.', output_path)
 
 
-_Inferences = Tuple[Sequence[Any], Mapping[str, Any]]
+Inferences = Tuple[Sequence[Any], Mapping[str, Any]]
+_Inferences = Inferences  # Backwards-compatible alias; used by Colabs
 
 
 def write_inferences_to_file(
     path: str,
-    inferences: _Inferences,
+    inferences: Inferences,
     task_ds: tf.data.Dataset,
     mode: str,
     vocabulary: Optional[seqio.Vocabulary] = None,
     json_encoder_cls: Type[json.JSONEncoder] = seqio.TensorAndNumpyEncoder,
     include_all_inputs: bool = False,
     input_fields_to_include: Optional[Sequence[str]] = None,
-    output_ids: bool = False) -> None:
+    output_ids: bool = False,
+) -> None:
   """Write model predictions, along with pretokenized inputs, to JSONL file.
 
   Args:
@@ -309,18 +311,21 @@ def write_inferences_to_file(
       f.write(json_str + '\n')
 
 
-WriteFn = Callable[[
-    str,
-    _Inferences,
-    tf.data.Dataset,
-    str,
-    Optional[seqio.Vocabulary],
-], None]
+WriteFn = Callable[
+    [
+        str,
+        Inferences,
+        tf.data.Dataset,
+        str,
+        Optional[seqio.Vocabulary],
+    ],
+    None,
+]
 
 MergeFn = Callable[[str, str, str, Optional[int]], None]
 
 
-def _extract_tokens_and_aux_values(inference_fn_outputs) -> _Inferences:
+def _extract_tokens_and_aux_values(inference_fn_outputs) -> Inferences:
   """Extracts tokens and aux scores from a cached dataset."""
   all_aux_values = {}
   if isinstance(inference_fn_outputs, tuple):
@@ -358,14 +363,17 @@ def infer(
     write_fn: WriteFn = write_inferences_to_file,
     checkpoint_ds_iter: bool = True,
     train_state_initializer_cls: Type[
-        utils.TrainStateInitializer] = utils.TrainStateInitializer,
+        utils.TrainStateInitializer
+    ] = utils.TrainStateInitializer,
     fallback_init_rng: Optional[int] = None,
     merge_fn: MergeFn = merge_chunks_to_file,
     summarize_config_fn: SummarizeConfigFn = gin_utils.summarize_gin_config,
     verify_matching_vocabs_fn: Optional[
-        Callable[[utils.DatasetConfig, models.BaseTransformerModel],
-                 None]] = utils.verify_matching_vocabs,
-    output_vocab_feature_name: str = 'targets'):
+        Callable[[utils.DatasetConfig, models.BaseTransformerModel], None]
+    ] = utils.verify_matching_vocabs,
+    output_vocab_feature_name: str = 'targets',
+    file_extension: str = 'jsonl',
+):
   """Infer function.
 
   Args:
@@ -391,8 +399,8 @@ def infer(
       `checkpoint_period` to enable faster restore. This must be disabled for
       certain datasets, for example since stateful iterators (e.g. from
       seqio.FunctionTask) cannot be checkpointed.
-    train_state_initializer_cls: t5x.utils.TrainStateInitializer class
-      for initializing partitioned TrainState from checkpoints or scratch.
+    train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
+      initializing partitioned TrainState from checkpoints or scratch.
     fallback_init_rng: A random seed used for parameter initialization during
       model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
       set to True. If None, parameter initialization is not allowed during model
@@ -405,6 +413,7 @@ def infer(
       matches the model vocabulary. Should raise an exception on error.
     output_vocab_feature_name: The name of the feature corresponding to the
       output vocabulary.
+    file_extension: str. file extension used for file names
   """
   jax.monitoring.record_event('/jax/t5x/infer/beacon')
   logging.info('Process ID: %d', jax.process_index())
@@ -533,7 +542,9 @@ def infer(
         logging.info('Restoring input iterator from %s', ckpt_path)
         input_ckpt.read(ckpt_path).assert_consumed()
 
-    output_fname = f'{task.name}-{mode}.jsonl-{shard_id:05}-of-{num_shards:05}'
+    output_fname = (
+        f'{task.name}-{mode}.{file_extension}-{shard_id:05}-of-{num_shards:05}'
+    )
     if gfile.exists(os.path.join(output_dir, f'{output_fname}.COMPLETED')):
       logging.info(
           "File %s exists. Skipping inference for shard %d/%d of task '%s'",
@@ -542,10 +553,13 @@ def infer(
     logging.info("Starting inference loop for shard %d of %d of task '%s'.",
                  shard_id, num_shards, task.name)
 
-    def _write_chunk_and_canonicalize_ckpt(chunk: int, chunk_path: str,
-                                           inferences: _Inferences,
-                                           task_ds: tf.data.Dataset,
-                                           chunk_ckpt_path: Optional[str]):
+    def _write_chunk_and_canonicalize_ckpt(
+        chunk: int,
+        chunk_path: str,
+        inferences: Inferences,
+        task_ds: tf.data.Dataset,
+        chunk_ckpt_path: Optional[str],
+    ):
       write_tick = time.time()
       logging.info('Writing chunk %d results to %s', chunk, chunk_path)
       vocabulary = task.output_features[output_vocab_feature_name].vocabulary

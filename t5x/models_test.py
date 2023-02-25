@@ -687,16 +687,26 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     fake_inputs = jnp.ones_like(batch['encoder_input_tokens'])
     fake_target = jnp.ones_like(batch['decoder_input_tokens'])
 
-    cache_init_call = model.module.call_args_list[0]
+    cache_init_call = model.module.call_args_list[1]
     self.assertEqual(cache_init_call['args'][0], {'params': {}})
-    np.testing.assert_allclose(cache_init_call['args'][1], fake_inputs)
-    np.testing.assert_allclose(cache_init_call['args'][2], fake_target)
-    np.testing.assert_allclose(cache_init_call['args'][3], fake_target)
-    self.assertEqual(cache_init_call['kwargs'], {
-        'decode': True,
-        'enable_dropout': False,
-        'mutable': ['cache']
-    })
+    call_kwargs = cache_init_call['kwargs']
+    np.testing.assert_allclose(
+        call_kwargs.pop('encoder_input_tokens'), fake_inputs
+    )
+    np.testing.assert_allclose(
+        call_kwargs.pop('decoder_input_tokens'), fake_target
+    )
+    np.testing.assert_allclose(
+        call_kwargs.pop('decoder_target_tokens'), fake_target
+    )
+    self.assertEqual(
+        call_kwargs,
+        {
+            'decode': True,
+            'enable_dropout': False,
+            'mutable': ['cache'],
+        },
+    )
 
 
 class DecoderOnlyModelTest(parameterized.TestCase):
@@ -750,7 +760,7 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     # had a 0 in the first location.
     np.testing.assert_array_equal(targets[:, 0], np.ones_like(targets[:, 0]))
     # Test that the targets are properly removed. Our input is a sequence from 0
-    # onward, so our largest value (the last input) should be equal by it's
+    # onward, so our largest value (the last input) should be equal by its
     # position (which is 1 - length). If we didn't mask the target correctly,
     # we would expect a larger value in the max.
     np.testing.assert_array_equal(

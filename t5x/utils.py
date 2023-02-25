@@ -358,6 +358,7 @@ def create_checkpoint_manager(
   period = None
   keep = None
   should_save_restore_dataset = False
+  checkpoint_manager_cls = None
   if save_cfg is not None:
     should_save_restore_dataset |= save_cfg.save_dataset
     save_dtype = save_cfg.dtype
@@ -367,8 +368,16 @@ def create_checkpoint_manager(
   if restore_cfg is not None:
     should_save_restore_dataset |= restore_cfg.restore_dataset
     restore_dtype = restore_cfg.dtype
-    checkpoint_manager_cls, extra_kwargs = _get_checkpoint_manager_cls(
-        restore_cfg)
+    # If already set, configuration from save_cfg takes precendence. If
+    # checkpoint_manager_cls is base CheckpointManager, give it a chance to be
+    # reset to something more specialized.
+    if (
+        checkpoint_manager_cls is None
+        or checkpoint_manager_cls == checkpoints.CheckpointManager
+    ):
+      checkpoint_manager_cls, extra_kwargs = _get_checkpoint_manager_cls(
+          restore_cfg
+      )
   ds_iter = ds_iter if should_save_restore_dataset else None
 
   return checkpoint_manager_cls(
@@ -667,18 +676,17 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
 
   device_buffers = jax.tree_map(_put_to_devices, host_arrays, global_shapes)
 
-  def _gda(dbs, global_shape):
-    if jax.config.jax_array:
-      return jax.make_array_from_single_device_arrays(
-          global_shape, jax.sharding.NamedSharding(global_mesh, axes), dbs)
-    else:
-      return GlobalDeviceArray(global_shape, global_mesh, axes, dbs)
+  def _jax_array(dbs, global_shape):
+    return jax.make_array_from_single_device_arrays(
+        global_shape, jax.sharding.NamedSharding(global_mesh, axes), dbs
+    )
 
   return jax.tree_map(
-      _gda,
+      _jax_array,
       device_buffers,
       global_shapes,
-      is_leaf=lambda x: isinstance(x, (list, tuple)))
+      is_leaf=lambda x: isinstance(x, (list, tuple)),
+  )
 
 
 class GDADatasetIterator(clu.data.dataset_iterator.DatasetIterator):
@@ -1202,7 +1210,7 @@ def log_model_info(log_file: Optional[str],
 
 # -----------------------------------------------------------------------------
 # Utility functions for prediction and evaluation.
-# -----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------  # pytype: disable=annotation-type-mismatch  # jax-ndarray
 
 
 class InferStepWithRngCallable(typing_extensions.Protocol):

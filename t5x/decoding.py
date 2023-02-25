@@ -524,12 +524,12 @@ def _temperature_sample_single_trial(
     def sample_logits_with_nonzero_temperature(logits, temperature):
       scaled_logits = logits / jnp.maximum(temperature, MIN_TEMPERATURE)
       if topk:
-        scaled_logits = binary_search.topk_mask(scaled_logits, topk, NEG_INF)
+        scaled_logits = binary_search.topk_mask(scaled_logits, topk, NEG_INF)  # pytype: disable=wrong-arg-types  # jax-ndarray
 
       # When topp is dynamic, we always use it since we cannot check
       # non-zeroness (but it will have no effect if topp is 0.0).
       if _is_tracer(topp) or topp:
-        scaled_logits = binary_search.topp_mask(scaled_logits, topp, NEG_INF)
+        scaled_logits = binary_search.topp_mask(scaled_logits, topp, NEG_INF)  # pytype: disable=wrong-arg-types  # jax-ndarray
 
       # [batch]
       next_token = random.categorical(rng1, scaled_logits).astype(jnp.int32)
@@ -673,7 +673,7 @@ def _temperature_sample_single_trial(
   log_prob = final_state.log_prob
   # Drop the first position because they are dummy bos tokens. Drop the new
   # garbage collection token at the end too.
-  return final_sequences[:, 1:-1], log_prob
+  return final_sequences[:, 1:-1], log_prob  # pytype: disable=bad-return-type  # jax-ndarray
 
 
 # ------------------------------------------------------------------------------
@@ -805,7 +805,7 @@ def cache_gather_beams(nested: PyTreeDef,
         return jnp.einsum('beo,lbo...->lbe...', oh_beam_indices,
                           x).astype(x.dtype)
 
-    return cache_map(gather_fn, nested)
+    return cache_map(gather_fn, nested)  # pytype: disable=bad-return-type  # jax-ndarray
 
   else:
     # True gather via fancy indexing.

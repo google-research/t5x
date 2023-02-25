@@ -533,7 +533,7 @@ class BaseTrainer(abc.ABC):
     self._compiled_train_step = self._partitioner.compile(
         self._partitioned_train_step, self.train_state, batch)
     tock = time.time()
-    self.train_metrics_manager.write_scalar("timing/compilation_seconds",
+    self.train_metrics_manager.write_scalar("timing/compilation_seconds",  # pytype: disable=wrong-arg-types  # jax-ndarray
                                             tock - tick, self.train_state.step)
 
   def eval(
@@ -570,7 +570,7 @@ class BaseTrainer(abc.ABC):
           jnp.array(-1),
           "Eval step mismatch across hosts. Check for empty dataset shard.")
 
-      eval_summaries[iter_name] = mm.write_metrics_summary(
+      eval_summaries[iter_name] = mm.write_metrics_summary(  # pytype: disable=wrong-arg-types  # jax-ndarray
           metrics, train_state.step, num_steps)
 
     # TODO(adarob): Return futures.
@@ -608,7 +608,7 @@ class BaseTrainer(abc.ABC):
       self._compiled_eval_steps[eval_name] = self._compiled_eval_step_cache[
           cache_key]
       tock = time.time()
-      self.eval_metrics_managers[eval_name].write_scalar(
+      self.eval_metrics_managers[eval_name].write_scalar(  # pytype: disable=wrong-arg-types  # jax-ndarray
           "timing/compilation_seconds", tock - tick, self.train_state.step)
 
   @property
@@ -786,7 +786,7 @@ def apply_grads(
 def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
               batch: jnp.ndarray) -> MetricMapType:
   """Default evaluation step."""
-  _, metrics = model.eval_fn(train_state.params, batch)
+  _, metrics = model.eval_fn(train_state.params, batch)  # pytype: disable=wrong-arg-types  # jax-ndarray
   return metrics
 
 
@@ -880,7 +880,7 @@ class Trainer(BaseTrainer):
           train_state,
           batch,
           learning_rate=self._learning_rate_fn(train_state.step),
-          dropout_rng=self._get_step_rng(train_state.step),
+          dropout_rng=self._get_step_rng(train_state.step),  # pytype: disable=wrong-arg-types  # jax-ndarray
           model=self._model,
           num_microbatches=self._num_microbatches,
           weight_metrics_computer=self._weight_metrics_computer,

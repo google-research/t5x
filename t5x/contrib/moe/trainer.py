@@ -112,7 +112,7 @@ class MoeTrainer(trainer.Trainer):
               self._model,
               train_state,
               batch,
-              self._get_step_rng(train_state.step),
+              self._get_step_rng(train_state.step),  # pytype: disable=wrong-arg-types  # jax-ndarray
               self._num_microbatches,
               data_partition_spec=self.data_partition_spec))
 
