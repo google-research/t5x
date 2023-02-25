@@ -48,6 +48,8 @@ from t5x import trainer as trainer_lib
 from t5x import utils
 import tensorflow as tf
 
+# OOM fix. Prevents TF from seeing GPUs to stop conflict with JAX.
+tf.config.experimental.set_visible_devices([], "GPU")
 
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
@@ -60,7 +62,6 @@ TRAIN_METRIC_KEY = 'train'
 # String keys that is acceptable from config.
 _ACTION_KEYS = frozenset(trainer_lib.ActionMode.__members__.keys())
 _IMPORT_TIME = time.time()
-
 
 def run_actions(
     mode: trainer_lib.ActionMode, actions: trainer_lib.ActionMapType,
@@ -828,6 +829,5 @@ if __name__ == '__main__':
         FLAGS.gin_bindings)
     train_using_gin()
     jax.effects_barrier()
-
 
   gin_utils.run(main)

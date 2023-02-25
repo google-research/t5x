@@ -46,7 +46,6 @@ from t5x import train_state as train_state_lib
 from t5x import utils
 import typing_extensions
 
-
 Array = Union[np.ndarray, jnp.ndarray]
 BatchSpec = Mapping[str, jax.ShapeDtypeStruct]
 BatchType = Mapping[str, np.ndarray]
@@ -485,6 +484,7 @@ class BaseTrainer(abc.ABC):
             num_steps: int,
             start_step: Optional[int] = None) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""
+
     metrics = None
     # Use pre-compiled step, if available.
     train_step_fn = self._compiled_train_step or self._partitioned_train_step
