@@ -1210,15 +1210,17 @@ def log_model_info(log_file: Optional[str],
 
 # -----------------------------------------------------------------------------
 # Utility functions for prediction and evaluation.
-# -----------------------------------------------------------------------------  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+# -----------------------------------------------------------------------------
 
 
 class InferStepWithRngCallable(typing_extensions.Protocol):
 
-  def __call__(self,
-               params: Mapping[str, Any],
-               batch: Mapping[str, jnp.ndarray],
-               rng: jnp.ndarray = None) -> PyTreeDef:
+  def __call__(
+      self,
+      params: Mapping[str, Any],
+      batch: Mapping[str, jnp.ndarray],
+      rng: jnp.ndarray = None,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+  ) -> PyTreeDef:
     """Runs an inference step returning a prediction or score."""
     ...
 
