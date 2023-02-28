@@ -29,7 +29,6 @@ from flax.core import frozen_dict
 import flax.traverse_util
 import jax
 from jax.experimental import jax2tf  # type: ignore[import]
-from jax.experimental.global_device_array import GlobalDeviceArray as GDA
 import jax.numpy as jnp
 import ml_collections
 import numpy as np
@@ -112,8 +111,6 @@ def convert_buffer_to_ndarray(v):
   Returns:
     A np.ndarray that represents the full array value of `v`.
   """
-  if isinstance(v, GDA):
-    return jax.experimental.multihost_utils.process_allgather(v)
   return np.asarray(v)
 
 
