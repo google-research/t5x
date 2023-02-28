@@ -50,6 +50,7 @@ setuptools.setup(
         'cached_property',
         'clu @ git+https://github.com/google/CommonLoopUtils#egg=clu',
         'flax @ git+https://github.com/google/flax#egg=flax',
+        'fiddle >= 0.2.5',
         'gin-config',
         f'jax >= {_jax_version}',
         f'jaxlib >= {_jaxlib_version}',
