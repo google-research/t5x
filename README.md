@@ -82,6 +82,9 @@ the TPU VM instance unless otherwise stated.
     to set up a Google Cloud Platform (GCP) account and enable the Cloud TPU
     API.
 
+    **Note:** While T5X works with GPU as well, we haven't heavily tested the
+    GPU usage.
+
 2.  Create a
     [Cloud TPU VM instance](https://cloud.google.com/blog/products/compute/introducing-cloud-tpu-vms)
     following
