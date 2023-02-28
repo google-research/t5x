@@ -69,7 +69,7 @@ be read by TensorBoard.
 
 ## GPU Usage
 
-T5X can be run easily on GPUs either in single-node configurations or multi-node configurations with a SLURM+pyxis cluster. Further instructions at [t5x/contrib/gpu/scripts_gpu](./t5x/contrib/gpu/scripts_gpu/README.md). The `t5x/contrib/gpu/scripts_gpu` folder contains example scripts for pretraining T5X on [The Pile](https://pile.eleuther.ai/) and for finetuning on SQuAD and MNLI. These scripts and associated `gin` configurations also contain additional GPU optimizations for better throughput.
+T5X can be run easily on GPUs either in single-node configurations or multi-node configurations with a SLURM+pyxis cluster. Further instructions at [t5x/contrib/gpu/scripts_gpu](https://github.com/google-research/t5x/blob/main/t5x/contrib/gpu/scripts_gpu/README.md). The `t5x/contrib/gpu/scripts_gpu` folder contains example scripts for pretraining T5X on [The Pile](https://pile.eleuther.ai/) and for finetuning on SQuAD and MNLI. These scripts and associated `gin` configurations also contain additional GPU optimizations for better throughput.
 
 
 ## Installation
@@ -82,8 +82,7 @@ the TPU VM instance unless otherwise stated.
     to set up a Google Cloud Platform (GCP) account and enable the Cloud TPU
     API.
 
-    **Note:** While T5X works with GPU as well, we haven't heavily tested the
-    GPU usage.
+    **Note:** T5X also works with GPU, please follow instructions in [t5x/contrib/gpu/scripts_gpu](https://github.com/google-research/t5x/blob/main/t5x/contrib/gpu/scripts_gpu/README.md) if you'd like to use GPU version.
 
 2.  Create a
     [Cloud TPU VM instance](https://cloud.google.com/blog/products/compute/introducing-cloud-tpu-vms)
