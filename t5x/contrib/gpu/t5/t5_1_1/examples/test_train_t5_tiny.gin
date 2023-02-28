@@ -9,7 +9,7 @@ from t5x import partitioning
 from t5x import trainer
 from t5x import utils
 
-include 't5x/configs/runs/pretrain.gin'
+include 't5x/contrib/gpu/t5/configs/runs/pretrain.gin'
 include 't5x/contrib/gpu/t5/t5_1_1/tiny.gin'
 
 MODEL_DIR = "/tmp"  # Will be overridden in test.

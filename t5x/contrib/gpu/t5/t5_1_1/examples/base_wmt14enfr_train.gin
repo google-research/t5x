@@ -3,7 +3,7 @@ import t5.data.mixtures
 import __main__ as train_script
 from t5x import utils
 
-include 't5x/configs/runs/pretrain.gin'
+include 't5x/contrib/gpu/t5/configs/runs/pretrain.gin'
 include 't5x/contrib/gpu/t5/t5_1_1/base.gin'
 
 TRAIN_STEPS = 100000

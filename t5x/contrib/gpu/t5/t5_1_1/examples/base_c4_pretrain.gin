@@ -5,7 +5,7 @@ import __main__ as train_script
 
 
 include 't5x/contrib/gpu/t5/t5_1_1/base.gin'
-include 't5x/configs/runs/pretrain.gin'
+include 't5x/contrib/gpu/t5/configs/runs/pretrain.gin'
 
 
 MIXTURE_OR_TASK_NAME = "c4_v220_span_corruption"

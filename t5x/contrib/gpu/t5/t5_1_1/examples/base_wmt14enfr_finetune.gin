@@ -7,7 +7,7 @@ from t5x import utils
 from t5x import models
 
 
-include 't5x/configs/runs/finetune.gin'
+include 't5x/contrib/gpu/t5/configs/runs/finetune.gin'
 include 't5x/contrib/gpu/t5/t5_1_1/base.gin'
 
 BATCH_SIZE = 128

@@ -1,0 +1,93 @@
+# Defaults for single_core_export.py.
+#
+# You must also include a binding for MODEL.
+#
+# Required to be set:
+#
+# - TASK_FEATURE_LENGTHS: The lengths per key in the SeqIO Task to trim features
+#                         to.
+# - CHECKPOINT_PATH: The model checkpoint to use for inference
+# - INFER_OUTPUT_DIR: The dir to write results to. When launching using
+#                     XManager, this is set automatically.
+#
+# Commonly overridden options:
+#
+# warmup_examples: Optional[List[str]] = None
+# jit_compile: bool = False
+
+from __gin__ import dynamic_registration
+
+import seqio
+
+from t5x import checkpoints
+from t5x import models
+from t5x import partitioning
+from t5x import utils
+from t5x import export_lib
+
+# Must be overridden
+OUTPUT_FEATURES = %gin.REQUIRED
+TASK_FEATURE_LENGTHS = %gin.REQUIRED
+CHECKPOINT_PATH = %gin.REQUIRED
+MODEL_OUTPUT_DIR = %gin.REQUIRED
+MODEL_NAME = %gin.REQUIRED
+BATCH_SIZE = None
+BEAM_SIZE = 1
+
+OUTPUT_FEATURES = {'inputs': @inputs/seqio.Feature(), 'targets': @outputs/seqio.Feature()}
+
+# Plumbing to extract the vocabulary directly from MODEL. This is needed to
+# tokenize the features from the saved model inputs we aren't provided with
+# vocabularies via a Task.
+inputs/seqio.Feature.vocabulary = @models.get_input_vocabulary()
+models.get_input_vocabulary.model = %MODEL  # imported from separate gin file
+outputs/seqio.Feature.vocabulary = @models.get_output_vocabulary()
+models.get_output_vocabulary.model = %MODEL  # imported from separate gin file
+
+
+# Typical for inference settings:
+ACTIVATION_DTYPE = 'bfloat16'
+
+export_lib.save:
+  model = %MODEL  # imported from separate gin file
+  inference_mode = 'predict'
+  restore_checkpoint_cfg = @utils.RestoreCheckpointConfig()
+  exportable_module_cls = @export_lib.ExportableModule
+  create_preprocessor_fn = @export_lib.create_preprocessor
+  create_postprocessor_fn = @export_lib.create_postprocessor
+  write_warmup_example_fn = @export_lib.write_warmup_examples
+  partitioner = @partitioning.PjitPartitioner()
+  output_features = %OUTPUT_FEATURES
+  task_feature_lengths = %TASK_FEATURE_LENGTHS
+  output_dir = %MODEL_OUTPUT_DIR
+  model_name = %MODEL_NAME
+  batch_size = %BATCH_SIZE
+  native_lowering = False
+
+utils.RestoreCheckpointConfig:
+  path = %CHECKPOINT_PATH
+  mode = 'specific'
+  dtype = 'bfloat16'
+  checkpointer_cls = @checkpoints.Checkpointer
+  # TODO(b/234480674): GDA disabled due to incompatibility with export.
+  use_gda = False
+
+export_lib.create_preprocessor:
+  output_features = %OUTPUT_FEATURES
+  task_feature_lengths = %TASK_FEATURE_LENGTHS
+
+export_lib.create_postprocessor:
+  output_feature_names = None
+
+export_lib.ExportableModule:
+  jit_compile = True
+  use_batch_function = False
+
+partitioning.PjitPartitioner:
+  num_partitions = 1
+  params_on_devices = True
+  logical_axis_rules = @partitioning.standard_logical_axis_rules()
+
+models.EncoderDecoderModel.predict_batch_with_aux:
+  num_decodes = %BEAM_SIZE
+  return_all_decodes = True
