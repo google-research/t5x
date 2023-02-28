@@ -17,11 +17,11 @@
 import functools
 import itertools
 from typing import Any, Mapping, Optional, Tuple
+import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-from jax._src.lib import xla_bridge
 from jax.experimental import global_device_array as gda_lib
 import jax.numpy as jnp
 import numpy as np
@@ -212,7 +212,8 @@ class CheckpointsTest(parameterized.TestCase):
     self.checkpoints_dir = self.create_tempdir()
     self.tmp_dir = self.checkpoints_dir.full_path
 
-  @mock.patch.object(xla_bridge, 'process_index')
+  @unittest.skipIf(jax.__version_info__ < (0, 4, 5), 'Test requires jax 0.4.5')
+  @mock.patch(f'{jax.process_index.__module__}.process_index')
   @mock.patch('jax.devices')
   @mock.patch('jax.local_devices')
   def get_partitioner(

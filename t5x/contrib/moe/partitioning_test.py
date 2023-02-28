@@ -15,13 +15,13 @@
 """Tests for partitioning."""
 
 from typing import Any
+import unittest
 
 from absl.testing import absltest
 import flax
 from flax import core as flax_core
 from flax.linen import partitioning as flax_partitioning
 import jax
-from jax._src.lib import xla_bridge
 import numpy as np
 import optax
 from t5x import adafactor
@@ -101,9 +101,10 @@ def create_multioptimizer_train_state(
 
 class PartitioningTest(absltest.TestCase):
 
+  @unittest.skipIf(jax.__version_info__ < (0, 4, 5), 'Test requires jax 0.4.5')
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')
-  @mock.patch.object(xla_bridge, 'process_index')
+  @mock.patch(f'{jax.process_index.__module__}.process_index')
   def test_default_mesh(self, process_index_fn, devices_fn, local_devices_fn):
     # Mesh with 8 devices.
     devices = test_utils.make_devices(2, 2, 1, 2, kind='TPU v3')
@@ -151,9 +152,10 @@ class PartitioningTest(absltest.TestCase):
     self.assertEqual(mesh.devices.shape, (1, jax.device_count(), 1))
     self.assertEqual(mesh.axis_names, ('data', 'expert', 'model'))
 
+  @unittest.skipIf(jax.__version_info__ < (0, 4, 5), 'Test requires jax 0.4.5')
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')
-  @mock.patch.object(xla_bridge, 'process_index')
+  @mock.patch(f'{jax.process_index.__module__}.process_index')
   def test_local_chunker_moe_usage(self, process_index_fn, devices_fn,
                                    local_devices_fn):
     # The MoE partitioning library uses a 2D "data" mesh spanning ('expert',
@@ -186,9 +188,10 @@ class PartitioningTest(absltest.TestCase):
           base_global_array_shape, ('data',)).replica_id
       self.assertEqual(moe_replica_id, base_replica_id)
 
+  @unittest.skipIf(jax.__version_info__ < (0, 4, 5), 'Test requires jax 0.4.5')
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')
-  @mock.patch.object(xla_bridge, 'process_index')
+  @mock.patch(f'{jax.process_index.__module__}.process_index')
   def test_local_chunker_data_layout(self, process_index_fn, devices_fn,
                                      local_devices_fn):
     # Mesh with 32 devices.

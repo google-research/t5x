@@ -15,13 +15,13 @@
 """Tests for t5x.partitioning."""
 
 import collections
+import unittest
 
 from absl.testing import absltest
 from absl.testing import parameterized
 import flax.core
 from flax.linen import partitioning as nn_partitioning
 import jax
-from jax._src.lib import xla_bridge
 import numpy as np
 from t5x import adafactor
 from t5x import optimizers
@@ -66,9 +66,10 @@ class PartitioningTest(absltest.TestCase):
     coords = partitioning.get_coords(device)
     self.assertEqual(coords, (1, 1))
 
+  @unittest.skipIf(jax.__version_info__ < (0, 4, 5), 'Test requires jax 0.4.5')
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')
-  @mock.patch.object(xla_bridge, 'process_index')
+  @mock.patch(f'{jax.process_index.__module__}.process_index')
   def test_default_mesh(self, process_index_fn, devices_fn, local_devices_fn):
     devices_fn.return_value = TPUV3_32
     local_devices_fn.return_value = [
@@ -109,9 +110,10 @@ class PartitioningTest(absltest.TestCase):
                    dtype=object)
     np.testing.assert_array_equal(local_mesh.devices, lds)
 
+  @unittest.skipIf(jax.__version_info__ < (0, 4, 5), 'Test requires jax 0.4.5')
   @mock.patch('jax.local_devices')
   @mock.patch('jax.devices')
-  @mock.patch.object(xla_bridge, 'process_index')
+  @mock.patch(f'{jax.process_index.__module__}.process_index')
   def test_local_chunker(self, process_index_fn, devices_fn, local_devices_fn):
     devices_fn.return_value = TPUV3_32
     local_devices_fn.return_value = [

@@ -19,6 +19,7 @@ import functools
 import itertools
 import os
 from typing import Any, Mapping
+import unittest
 
 from absl import flags
 from absl.testing import absltest
@@ -27,7 +28,6 @@ from flax import serialization
 from flax import traverse_util
 from flax.metrics import tensorboard
 import jax
-from jax._src.lib import xla_bridge
 import jax.numpy as jnp
 import numpy as np
 from t5x import checkpoints
@@ -155,7 +155,8 @@ class CheckpointsTest(parameterized.TestCase):
       step_dir = fake_checkpoints.mkdir(f'checkpoint_{step}')
       step_dir.create_file('checkpoint')
 
-  @mock.patch.object(xla_bridge, 'process_index')
+  @unittest.skipIf(jax.__version_info__ < (0, 4, 5), 'Test requires jax 0.4.5')
+  @mock.patch(f'{jax.process_index.__module__}.process_index')
   @mock.patch('jax.devices')
   @mock.patch('jax.local_devices')
   def get_partitioner(self,
