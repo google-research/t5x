@@ -24,7 +24,6 @@ from typing import MutableMapping, Optional, Union
 from clu import metrics as clu_metrics
 import flax  # Only used for flax.struct.dataclass.
 import jax
-from jax.experimental.global_device_array import GlobalDeviceArray
 import jax.numpy as jnp
 import numpy as np
 
@@ -214,15 +213,6 @@ class TimeRate(Time):
   def compute(self) -> Scalar:
     duration = super().compute()
     return self.numerator / duration
-
-  def replace_duration(self, duration: Scalar) -> "Time":
-    if not isinstance(self.numerator,
-                      (int, float, np.number, np.ndarray, GlobalDeviceArray)):
-      raise ValueError(
-          "Expected numerator to be of type np.ndarray or GlobalDeviceArray "
-          "since method should be called outside of a compiled function. "
-          "Got ", type(self.numerator))
-    return super().replace_duration(duration)
 
 
 @flax.struct.dataclass

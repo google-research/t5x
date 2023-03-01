@@ -22,7 +22,6 @@ from typing import Generator, List, Sequence, Tuple
 import unittest
 
 import jax
-from jax.experimental.global_device_array import GlobalDeviceArray
 from jax.sharding import Mesh
 import numpy as np
 import seqio
@@ -237,14 +236,14 @@ def get_fake_tokenized_dataset(*_, split='validation', **__):
 
 
 def assert_equal(a, b):
-  """Check equality of LazyArray / GDA / other array."""
+  """Check equality of LazyArray / jax.Array / other array."""
   assert isinstance(a,
                     type(b)), f'Found incompatible types: {type(a)}, {type(b)}'
   if isinstance(a, LazyArray):
     a = a.get()
   if isinstance(b, LazyArray):
     b = b.get()
-  if not isinstance(a, GlobalDeviceArray):
+  if not isinstance(a, jax.Array):
     np.testing.assert_array_equal(a, b)
   else:
     for s1, s2 in zip(a.addressable_shards, b.addressable_shards):

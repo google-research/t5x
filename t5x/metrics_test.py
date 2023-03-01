@@ -16,7 +16,6 @@
 
 from absl.testing import absltest
 from absl.testing import parameterized
-import jax
 import jax.numpy as jnp
 import numpy as np
 from t5x import metrics
@@ -45,19 +44,6 @@ class MetricsTest(parameterized.TestCase):
     metric = metrics.TimeRate.from_model_output(value)
     with self.assertRaises(ValueError):
       metric.compute()
-
-  def test_time_rate_sets_duration_inside_jitted_fn(self):
-
-    @jax.jit
-    def fn():
-      value = jnp.array([3.])
-      duration = 2.
-      metric = metrics.TimeRate.from_model_output(value).replace_duration(
-          duration)
-      return metric
-
-    with self.assertRaises(ValueError):
-      fn()
 
   def test_time(self):
     duration = 2.

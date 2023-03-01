@@ -36,9 +36,8 @@ import flax.core
 from flax.core import scope as flax_scope
 from flax.linen import partitioning as flax_partitioning
 import jax
-from jax.experimental import global_device_array as gda_lib
+from jax._src import sharding
 from jax.experimental import multihost_utils
-from jax.experimental.global_device_array import GlobalDeviceArray
 import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint
@@ -586,7 +585,7 @@ def _get_index_mappings(device_to_idxs):
   host_to_idxs = collections.defaultdict(list)
   idx_to_devices = collections.defaultdict(list)
   for d, idx in device_to_idxs.items():
-    hashed_idx = gda_lib._hashed_index(idx)  # pylint: disable=protected-access
+    hashed_idx = sharding._hashed_index(idx)  # pylint: disable=protected-access
     # Only need one copy of each idx, since they are unique. Need to maintain
     # original ordering though.
     if hashed_idx not in host_to_idxs[d.process_index]:
@@ -606,9 +605,12 @@ def _get_index_mappings(device_to_idxs):
   return host_to_idxs, idx_to_devices
 
 
-def _create_gda(partitioner: partitioning.BasePartitioner,
-                global_shapes: PyTreeDef, host_arrays: PyTreeDef) -> PyTreeDef:
-  """Create GDA or jax.Array from input arrays.
+def _create_sharded_array(
+    partitioner: partitioning.BasePartitioner,
+    global_shapes: PyTreeDef,
+    host_arrays: PyTreeDef,
+) -> PyTreeDef:
+  """Create jax.Array from input arrays.
 
   Example:
 
@@ -629,10 +631,10 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
     global_shapes: PyTree matching host_arrays specifying global shape of each
       array.
     host_arrays: PyTree of LOCAL arrays (not global) that should be converted to
-      GDA.
+      jax.Array.
 
   Returns:
-    PyTree matching host_arrays of GDA.
+    PyTree matching host_arrays of jax.Array.
   """
   global_mesh = partitioner.mesh
   axes = partitioner.data_partition_spec
@@ -642,13 +644,18 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
   # Global input array is already split into per-host shards.
   def _put_to_devices(x, global_shape):
     # Mapping of device to index slice from *global* array.
-    device_to_idxs = gda_lib.get_shard_indices(global_shape, global_mesh, axes)
+
+    device_to_idxs = jax.sharding.NamedSharding(
+        global_mesh, axes
+    ).devices_indices_map(global_shape)
     # Mapping of host to a set of unique index slices for that host.
     # Mapping of index slice to a list of devices onto which the slice should be
     # placed.
     host_to_idxs, idx_to_devices = _get_index_mappings(device_to_idxs)
 
-    shard_length = gda_lib.get_shard_shape(global_shape, global_mesh, axes)[0]
+    shard_length = jax.sharding.NamedSharding(global_mesh, axes).shard_shape(
+        global_shape
+    )[0]
     num_shards = len(x) // shard_length
     try:
       local_array_shards = np.split(x, num_shards, axis=0)
@@ -689,8 +696,8 @@ def _create_gda(partitioner: partitioning.BasePartitioner,
   )
 
 
-class GDADatasetIterator(clu.data.dataset_iterator.DatasetIterator):
-  """A wrapper iterator that returns GDA when the next element is requested."""
+class ShardedDatasetIterator(clu.data.dataset_iterator.DatasetIterator):
+  """A wrapper iterator that returns sharded arrays."""
 
   def __init__(self, iterator: clu.data.dataset_iterator.DatasetIterator,
                partitioner: partitioning.BasePartitioner,
@@ -700,8 +707,9 @@ class GDADatasetIterator(clu.data.dataset_iterator.DatasetIterator):
     self._partitioner = partitioner
 
   def __next__(self):
-    return _create_gda(self._partitioner, self._global_shapes,
-                       next(self._iterator))
+    return _create_sharded_array(
+        self._partitioner, self._global_shapes, next(self._iterator)
+    )
 
   def reset(self):
     return self._iterator.reset()
@@ -740,7 +748,7 @@ def prepare_train_iter(
   input_shapes = jax.tree_map(lambda x: (data_layout.batch_size, *x.shape[1:]),
                               train_iter.element_spec)
   if use_gda:
-    train_iter = GDADatasetIterator(train_iter, partitioner, input_shapes)
+    train_iter = ShardedDatasetIterator(train_iter, partitioner, input_shapes)
   return clu.data.dataset_iterator.PeekableDatasetIterator(train_iter)
 
 
@@ -1399,14 +1407,10 @@ def get_infer_fn(
         logging.info('Inference of batch %s done.', index)
 
       def _copy_to_host_async(x):
-        if isinstance(x, GlobalDeviceArray):
-          if hasattr(x, 'addressable_data'):
-            # GDA is fully replicated
-            x.addressable_data(0).copy_to_host_async()
-            return x.addressable_data(0)
-          else:
-            x.local_data(0).copy_to_host_async()  # GDA is fully replicated
-            return x.local_data(0)
+        if hasattr(x, 'addressable_data'):
+          # Array is fully replicated.
+          x.addressable_data(0).copy_to_host_async()
+          return x.addressable_data(0)
         else:
           x.copy_to_host_async()
           return x

@@ -47,7 +47,6 @@ import jax
 from jax import monitoring
 from jax import pxla
 import jax.config
-from jax.experimental import global_device_array as gda_lib
 from jax.experimental import multihost_utils
 from jax.experimental.gda_serialization import serialization as gda_serialization
 import jax.numpy as jnp
@@ -205,9 +204,6 @@ def get_local_data(x):
   if jax.config.jax_array and isinstance(
       x, jax.Array) and not isinstance(x, jax.core.Tracer):
     return x.addressable_data(0)
-  elif isinstance(x, gda_lib.GlobalDeviceArray):
-    val = x.addressable_data(0)
-    return val
   elif isinstance(x, pxla.ShardedDeviceArray):
     val = x.device_buffers[0]  # pytype: disable=attribute-error  # jax-ndarray
     if val.aval is None:
@@ -247,8 +243,6 @@ def _cast(target: PyTreeDef, dtype: jnp.dtype):
       return x
     elif isinstance(x, jax.ShapeDtypeStruct):
       return jax.ShapeDtypeStruct(x.shape, dtype)
-    elif isinstance(x, gda_lib.GlobalDeviceArray):
-      raise ValueError('GDA cast not supported.')
     else:
       return x.astype(dtype)
 
@@ -383,11 +377,13 @@ def _get_spec(directory: str, arr: Any, name: str,
   return ts.Spec(spec)
 
 
-def _maybe_make_sharded_array(arr: Any,
-                              mesh: Any,
-                              axes: Optional[gda_lib.MeshAxes] = None,
-                              restore_dtype: Optional[jnp.dtype] = None,
-                              use_gda: bool = True) -> Any:
+def _maybe_make_sharded_array(
+    arr: Any,
+    mesh: Any,
+    axes: Optional[PartitionSpec] = None,
+    restore_dtype: Optional[jnp.dtype] = None,
+    use_gda: bool = True,
+) -> Any:
   """Makes a sharded array from non-sharded array if necessary.
 
   Args:
@@ -408,13 +404,9 @@ def _maybe_make_sharded_array(arr: Any,
       axes = PartitionSpec(None,)
     if restore_dtype is not None:
       arr = arr.astype(restore_dtype)
-    if jax.config.jax_array:
-      arr = jax.make_array_from_callback(arr.shape,
-                                         jax.sharding.NamedSharding(mesh, axes),
-                                         lambda idx: arr[idx])
-    else:
-      arr = gda_lib.GlobalDeviceArray.from_callback(arr.shape, mesh, axes,
-                                                    lambda idx: arr[idx])
+    arr = jax.make_array_from_callback(
+        arr.shape, jax.sharding.NamedSharding(mesh, axes), lambda idx: arr[idx]
+    )
   return arr
 
 
@@ -562,8 +554,8 @@ class Checkpointer(object):
       save_dtype: dtype to cast targets to before saving.
       restore_dtype: optional dtype to cast targets to after restoring. If None,
         no parameter casting is performed.
-      use_gda: if True, enabled gda_lib.GlobalDeviceArray. Note: this is
-        currently an experimental feature under development.
+      use_gda: if True, enabled jax.Array. Note: this is currently an
+        experimental feature under development.
       keep_dataset_checkpoints: an optional maximum number of data iterators to
         keep. If more than this number of data iterators exist after a save, the
         oldest ones will be automatically deleted to save space.
@@ -593,7 +585,7 @@ class Checkpointer(object):
     self._dataset_iterator = dataset_iterator
     self._use_gda = use_gda
     if self._use_gda:
-      logging.info('Checkpointing using GDA format is enabled.')
+      logging.info('Checkpointing using jax.Array is enabled.')
 
     data_layout = partitioner.get_data_layout()
     self._dataset_ckpt_name = (
@@ -658,7 +650,7 @@ class Checkpointer(object):
             local_chunk_info=None,
             axes=None)
 
-      if isinstance(arr, gda_lib.GlobalDeviceArray):
+      if isinstance(arr, jax.Array):
         local_chunk_info = None
         metadata = gda_serialization._get_metadata(arr)  # pylint: disable=protected-access
         del metadata['dtype']
@@ -867,13 +859,14 @@ class Checkpointer(object):
         return maybe_arr
 
       # Only write each chunk of a parameter from one host
-      if isinstance(maybe_arr,
-                    (gda_lib.GlobalDeviceArray,
-                     jax.Array)) or param_info.local_chunk_info.replica_id == 0:
+      if (
+          isinstance(maybe_arr, jax.Array)
+          or param_info.local_chunk_info.replica_id == 0
+      ):
         arr = maybe_arr
 
         # Wait until memory is available.
-        if isinstance(arr, (gda_lib.GlobalDeviceArray, jax.Array)):
+        if isinstance(arr, jax.Array):
           n_bytes = sum([
               shard.data.nbytes
               for shard in arr.addressable_shards
@@ -890,8 +883,7 @@ class Checkpointer(object):
 
         if isinstance(maybe_arr, LazyArray):
           arr = await arr.get_async()
-        elif not isinstance(arr, np.ndarray) and not isinstance(
-            arr, (gda_lib.GlobalDeviceArray, jax.Array)):
+        elif not isinstance(arr, np.ndarray) and not isinstance(arr, jax.Array):
           # Cast jax.DeviceArray to np.ndarray.
           arr = np.array(maybe_arr, dtype=maybe_arr.dtype)
 
@@ -914,7 +906,7 @@ class Checkpointer(object):
               'dtype': jnp.dtype(arr.dtype).name,  # dtype before cast
           }
 
-        if isinstance(arr, (gda_lib.GlobalDeviceArray, jax.Array)):
+        if isinstance(arr, jax.Array):
           await gda_serialization.async_serialize(arr, tmp_ts_spec_dict)
         else:
           t = await ts.open(
@@ -1336,8 +1328,8 @@ class CheckpointerConstructor(typing_extensions.Protocol):
       save_dtype: dtype to cast targets to before saving.
       restore_dtype: optional dtype to cast targets to after restoring. If None,
         no parameter casting is performed.
-      use_gda: if True, enabled gda_lib.GlobalDeviceArray. Note: this is
-        currently an experimental feature under development.
+      use_gda: if True, enabled jax.Array. Note: this is currently an
+        experimental feature under development.
       keep_dataset_checkpoints: an optional maximum number of data iterators to
         keep. If more than this number of data iterators exist after a save, the
         oldest ones will be automatically deleted to save space.
@@ -1591,16 +1583,18 @@ def _transform_state_and_infos(
   return state_dict, parameter_infos
 
 
-async def _read_ts(param_info: _ParameterInfo,
-                   maybe_tspec: Any,
-                   ckpt_path: str,
-                   restore_dtype: Optional[jnp.dtype] = None,
-                   mesh: Optional[gda_lib.Shape] = None,
-                   axes: Optional[gda_lib.MeshAxes] = None):
+async def _read_ts(
+    param_info: _ParameterInfo,
+    maybe_tspec: Any,
+    ckpt_path: str,
+    restore_dtype: Optional[jnp.dtype] = None,
+    mesh: Optional[Tuple[int, ...]] = None,
+    axes: Optional[PartitionSpec] = None,
+):
   """Read from a tensorstore.
 
   If both `mesh` and `axes` are provided, the method will attempt to restore the
-  array as a GlobalDeviceArray.
+  array as a jax.Array.
 
   Note:
     We use param_infos as the first argument because this function is only used
@@ -2035,9 +2029,7 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
         if arg.dtype:
           arr = _cast(arr, arg.dtype)
         return arr
-      elif isinstance(
-          arr, gda_lib.GlobalDeviceArray) or (isinstance(arr, jax.Array) and
-                                              jax.config.jax_array):
+      elif isinstance(arr, jax.Array):
         metadata = gda_serialization._get_metadata(arr)  # pylint: disable=protected-access
         del metadata['dtype']
       else:
@@ -2354,15 +2346,13 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         dtype = self._restore_dtype
       if param_info.mesh_axes is None:
         return orbax.checkpoint.RestoreArgs(dtype=dtype, lazy=lazy_parameters)
-      restore_type = gda_lib.GlobalDeviceArray
-      if jax.config.jax_array:
-        restore_type = jax.Array
       return orbax.checkpoint.ArrayRestoreArgs(
-          restore_type=restore_type,
+          restore_type=jax.Array,
           mesh=self._partitioner.mesh,
           mesh_axes=param_info.mesh_axes,
           dtype=dtype,
-          lazy=lazy_parameters)
+          lazy=lazy_parameters,
+      )
 
     restore_args = jax.tree_util.tree_map(_restore_args, param_infos)
     items = {_STATE_KEY: state_dict}

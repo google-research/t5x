@@ -37,7 +37,6 @@ from fiddle import absl_flags
 import jax
 from jax import random
 from jax.experimental import multihost_utils
-from jax.experimental.global_device_array import GlobalDeviceArray
 import jax.numpy as jnp
 import numpy as np
 import seqio
@@ -111,23 +110,24 @@ def train(
     stats_period: Optional[int] = None,
     random_seed: Optional[int],
     use_hardware_rng: bool = False,
-    summarize_config_fn: Callable[[str, metric_writers.MetricWriter, int],
-                                  None],
+    summarize_config_fn: Callable[
+        [str, metric_writers.MetricWriter, int], None
+    ],
     inference_evaluator_cls: utils.EvaluatorConstructor = seqio.Evaluator,
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
     concurrent_metrics: bool = True,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
-    train_eval_get_dataset_fn: utils.GetEvalDatasetCallable = utils
-    .get_training_eval_datasets,
+    train_eval_get_dataset_fn: utils.GetEvalDatasetCallable = utils.get_training_eval_datasets,
     run_eval_before_training: bool = False,
     train_state_initializer_cls: Type[
-        utils.TrainStateInitializer] = utils.TrainStateInitializer,
+        utils.TrainStateInitializer
+    ] = utils.TrainStateInitializer,
     use_gda: bool = True,
-    use_jax_array: bool = False,
+    use_jax_array: bool = True,
     use_orbax: bool = False,
     verify_matching_vocabs_fn: Optional[
-        Callable[[utils.DatasetConfig, models.BaseTransformerModel],
-                 None]] = utils.verify_matching_vocabs,
+        Callable[[utils.DatasetConfig, models.BaseTransformerModel], None]
+    ] = utils.verify_matching_vocabs,
     gc_period: int = 0,
 ) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
@@ -184,9 +184,10 @@ def train(
       eval metrics before training begins.
     train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
       initializing partitioned TrainState from checkpoints or scratch.
-    use_gda: if True, uses GlobalDeviceArray. Experimental feature.
+    use_gda: if True, uses jax.Array. Experimental feature.
     use_jax_array: if True, uses jax.Array if use_gda is also True. Experimental
-      feature.
+      feature. Since GlobalDeviceArray is deprecated, this is ignored, as
+      jax.Array must always be used.
     use_orbax: if True, uses Orbax for checkpointing. Experimental feature.
     verify_matching_vocabs_fn: Function to validate whether the task vocabulary
       matches the model vocabulary. Should raise an exception on error.
@@ -201,7 +202,7 @@ def train(
   tf.io.gfile.makedirs(model_dir)
 
   if use_gda:
-    logging.info('GlobalDeviceArray enabled.')
+    logging.info('jax.Array enabled.')
   else:
     warnings.warn(
         '`use_gda=False` is deprecated and will be removed on Feb-01-23.'
@@ -211,8 +212,6 @@ def train(
   if use_gda:
     if use_jax_array:
       jax.config.update('jax_array', True)
-    else:
-      jax.config.update('jax_parallel_functions_output_gda', True)
 
   if use_orbax:
     logging.info('Checkpointing with Orbax enabled.')
@@ -599,16 +598,13 @@ def train(
 
   def _as_gda(spec):
     dummy = np.ones((data_layout.batch_size, *spec.shape[1:]), spec.dtype)
-    if jax.config.jax_array:
-      return jax.make_array_from_callback(
-          dummy.shape,
-          jax.sharding.NamedSharding(partitioner.mesh,
-                                     partitioner.data_partition_spec),
-          lambda idx: dummy[idx])
-    else:
-      return GlobalDeviceArray.from_callback(dummy.shape, partitioner.mesh,
-                                             partitioner.data_partition_spec,
-                                             lambda idx: dummy[idx])
+    return jax.make_array_from_callback(
+        dummy.shape,
+        jax.sharding.NamedSharding(
+            partitioner.mesh, partitioner.data_partition_spec
+        ),
+        lambda idx: dummy[idx],
+    )
 
   # Construct dummy batch for compiling the model.
   if use_gda:
