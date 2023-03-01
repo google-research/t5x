@@ -1,0 +1,10 @@
+include 't5x/examples/decoder_only/models/base.gin'  # imports vocab, optimizer and model.
+
+# ------------------- Network specification overrides --------------------------
+# Parameters obtained from similar config for encoder-decoder model: large.gin
+network.TransformerConfig:
+  emb_dim = 1024
+  num_heads = 16
+  num_layers = 24
+  head_dim = 64
+  mlp_dim = 2816
