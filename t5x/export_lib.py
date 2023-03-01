@@ -750,7 +750,9 @@ class PreprocessorFnFromTask(object):
       examples.shape[:1].assert_is_compatible_with([self.batch_size])
       ds = ds.batch(self.batch_size, drop_remainder=True)
     else:
-      batch_size = tf.cast(tf.shape(examples)[0], dtype=tf.int64)
+      # Assume all batch size are the same.
+      single_feature = jax.tree_util.tree_leaves(examples)[0]
+      batch_size = tf.cast(tf.shape(single_feature)[0], dtype=tf.int64)
       ds = ds.batch(batch_size, drop_remainder=True)
     # As we process one batch at a time, the dataset ds has a single batch.
     return ds.get_single_element()
@@ -1074,6 +1076,7 @@ def save(
     signature_name: Optional[
         str
     ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    create_fake_input_fn: Optional[Any] = None,
 ):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
@@ -1122,6 +1125,9 @@ def save(
       plain text. For standard T5X models this will always be 'targets', but may
       be different or empty for other models.
     signature_name: Optional name of the exported function.
+    create_fake_input_fn: Optional function to create fake inputs instead of
+      relying on signautres which would create all zeros and some preprocessors
+      might not work with zeros.
   """
   jax.monitoring.record_event('/jax/t5x/export/beacon')
   output_dirs = _standardize_output_dirs(output_dir)
@@ -1177,7 +1183,11 @@ def save(
         shape[0] = 1
       return tf.zeros(shape, ts.dtype)
 
-    fake_inputs = jax.tree_util.tree_map(_gen_dummy_tensor, input_signature)
+    if create_fake_input_fn is None:
+      create_fake_input_fn = lambda signature: jax.tree_util.tree_map(  # pylint: disable=g-long-lambda
+          _gen_dummy_tensor, signature
+      )
+    fake_inputs = create_fake_input_fn(input_signature)
     features = preprocessor(*fake_inputs)
 
     # All the features have a leading batch dimension.
