@@ -281,6 +281,7 @@ def create_inference_function(
     train_state_initializer: Optional[utils.TrainStateInitializer],
     decoding_state_callback_fn: Optional[decoding.StateCallbackFn] = None,
     enable_jax2tf: bool,
+    enable_xla: bool = True,
     polymorphic_shapes_inputs: Optional[Any] = None,
     native_lowering: bool = False,
 ) -> Callable[[Mapping[str, Any], Any], PyTreeDef]:
@@ -340,7 +341,9 @@ def create_inference_function(
     model_fn = jax2tf.convert(
         model_fn,
         polymorphic_shapes=[None, polymorphic_shapes_inputs],
-        experimental_native_lowering=native_lowering)
+        experimental_native_lowering=native_lowering,
+        enable_xla=enable_xla,
+    )
 
   def inference_fn(params: Mapping[str, Any],
                    batch: Mapping[str, jnp.ndarray]) -> PyTreeDef:
@@ -1064,6 +1067,7 @@ def save(
     mixture_or_task_name: Optional[str] = None,
     validation_examples: Optional[List[Any]] = None,
     native_lowering: bool = False,
+    enable_xla: bool = True,
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
     output_vocab_feature_name: Optional[str] = 'targets',
@@ -1107,6 +1111,8 @@ def save(
       will be used to validate the latency and numeric accuracy of the TPU saved
     native_lowering: for experimental purposes only -- if True, don't convert
       Jax fns to TF fns.
+    enable_xla: Defaults to true. If false, jax2tf conversion only emits non-XLA
+      ops.
     decode_outputs: Optional bool. If provided, determines whether to decode the
       output with the tokenizer, or to leave the output as is.
     trailing_shapes: Optional mapping of model feature name to trailing shape,
@@ -1193,6 +1199,7 @@ def save(
       partitioner=partitioner,
       inference_mode=inference_mode,
       enable_jax2tf=True,
+      enable_xla=enable_xla,
       polymorphic_shapes_inputs=polymorphic_shapes_inputs,
       native_lowering=native_lowering,
   )
