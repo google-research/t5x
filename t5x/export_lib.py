@@ -21,7 +21,7 @@ import json
 import os
 import os.path
 import typing
-from typing import Any, Callable, List, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Sequence, Tuple, Type, Union
 
 from absl import logging
 
@@ -192,16 +192,25 @@ class ExportableModule(tf.Module):
     else:
       raise ValueError(
           'Need to set either batch_size or allowed_batch_size when '
-          'using batch_function.')
+          'using batch_function.'
+      )
     batch_wrapper = tf.nondifferentiable_batch_function(
         num_batch_threads=self._num_batch_threads,
         max_enqueued_batches=self._max_enqueued_batches,
         max_batch_size=max_batch_size,
         batch_timeout_micros=self._batch_timeout_micros,
-        allowed_batch_sizes=allowed_batch_sizes)
-    return batch_wrapper(self._call)(*input_batches)
+        allowed_batch_sizes=allowed_batch_sizes,
+    )
+    flattended, tree_def = jax.tree_util.tree_flatten(input_batches)
+    return batch_wrapper(functools.partial(self._call, tree_def=tree_def))(
+        *flattended
+    )
 
-  def _call(self, *input_batches):
+  def _call(self, *args, tree_def=None):
+    if tree_def is not None:
+      input_batches = jax.tree_util.tree_unflatten(tree_def, args)
+    else:
+      input_batches = args
     features = self._preproc_tf_fn(*input_batches)
     model_output = self._model_tf_fn(features)
     return self._postproc_tf_fn(model_output)
@@ -746,11 +755,13 @@ class PreprocessorFnFromTask(object):
     # Dataset of batched model features.
     ds = self.feature_converter(
         ds, task_feature_lengths=self.task_feature_lengths)
+    # Assume all batch size are the same.
+    single_feature = jax.tree_util.tree_leaves(examples)[0]
     if self.batch_size is not None:
-      examples.shape[:1].assert_is_compatible_with([self.batch_size])
+      single_feature.shape[:1].assert_is_compatible_with([self.batch_size])
       ds = ds.batch(self.batch_size, drop_remainder=True)
     else:
-      batch_size = tf.cast(tf.shape(examples)[0], dtype=tf.int64)
+      batch_size = tf.cast(tf.shape(single_feature)[0], dtype=tf.int64)
       ds = ds.batch(batch_size, drop_remainder=True)
     # As we process one batch at a time, the dataset ds has a single batch.
     return ds.get_single_element()
@@ -1044,6 +1055,30 @@ def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
   return output_dirs
 
 
+def create_fake_input(signature: Dict[str, tf.TensorSpec]) -> Any:
+  """Create all zeros fake inputs accroding to signature spec.
+
+  Args:
+    signature: A dictionary of tensor specs that will used for serving.
+
+  Returns:
+    A pytree with the same structure as signature with all zeros tf.Tensor.
+  """
+
+  def _gen_dummy_tensor(ts: tf.TensorSpec):
+    shape = ts.shape.as_list()
+    if not all(shape[1:]):
+      raise ValueError(
+          'Only supports polymorphic batch size at leading dimenstion, got '
+          f'{ts} in the input signature.'
+      )
+    if shape and shape[0] is None:
+      shape[0] = 1
+    return tf.zeros(shape, ts.dtype)
+
+  return jax.tree_util.tree_map(_gen_dummy_tensor, signature)
+
+
 def save(
     *,
     model: models.BaseTransformerModel,
@@ -1074,6 +1109,7 @@ def save(
     signature_name: Optional[
         str
     ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    create_fake_input_fn: Any = create_fake_input,
 ):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
@@ -1122,6 +1158,9 @@ def save(
       plain text. For standard T5X models this will always be 'targets', but may
       be different or empty for other models.
     signature_name: Optional name of the exported function.
+    create_fake_input_fn: Optional function to create fake inputs instead of
+      relying on signautres which would create all zeros and some preprocessors
+      might not work with zeros.
   """
   jax.monitoring.record_event('/jax/t5x/export/beacon')
   output_dirs = _standardize_output_dirs(output_dir)
@@ -1166,18 +1205,7 @@ def save(
   # The model_fn takes two arguments, the params and the inputs. The inputs are
   # a pytree of arrays with the first dimension being the batch dimension.
   if batch_size is None:
-
-    def _gen_dummy_tensor(ts: tf.TensorSpec):
-      shape = ts.shape.as_list()
-      if not all(shape[1:]):
-        raise ValueError(
-            'Only supports polymorphic batch size at leading dimenstion, got '
-            f'{ts} in the input signature.')
-      if shape and shape[0] is None:
-        shape[0] = 1
-      return tf.zeros(shape, ts.dtype)
-
-    fake_inputs = jax.tree_util.tree_map(_gen_dummy_tensor, input_signature)
+    fake_inputs = create_fake_input_fn(input_signature)
     features = preprocessor(*fake_inputs)
 
     # All the features have a leading batch dimension.
