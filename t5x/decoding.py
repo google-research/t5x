@@ -16,6 +16,7 @@
 import functools
 
 from typing import Any, Callable, Mapping, Optional, Tuple, Union
+
 import flax
 from flax import traverse_util
 import jax
@@ -44,7 +45,7 @@ class DecodingState:
   """Holds decoding state data.
 
   Used to communicate the current decoding state to tokens_to_logits methods.
-  Note that we use a different class than `SamplingLoopState` or `Beamstate` to
+  Note that we use a different class than `SamplingLoopState` or `BeamState` to
   decouple the concerns of what data is useful for the loop vs. what the
   sampling method needs.
   Decodes for a given batch entry are flattened in a column-major way so that
@@ -86,6 +87,8 @@ class SamplingLoopState:
     ended: [batch_size * num_decodes] binary array marking completed sequences.
     rng: Jax PRNGKey
     log_prob: [batch_size * num_decodes] array of log probs for each sequence.
+    extra_state: Optional additional state that can be used by the
+      state_callback_fn.
   """
   step: jnp.ndarray
   cur_index: jnp.ndarray
@@ -95,6 +98,7 @@ class SamplingLoopState:
   ended: jnp.ndarray
   rng: jnp.ndarray
   log_prob: jnp.ndarray
+  extra_state: Optional[Any] = None
 
 
 _dynamic_update_vector_slice_in_dim = jax.vmap(
@@ -107,6 +111,7 @@ def _is_tracer(value: Any):
 
 StateCallbackFn = Callable[[SamplingLoopState], SamplingLoopState]
 LogitCallbackFn = Callable[[jnp.ndarray, SamplingLoopState], jnp.ndarray]
+ExtraStateFn = Callable[[jnp.ndarray], Any]
 
 
 def temperature_sample(
@@ -128,6 +133,7 @@ def temperature_sample(
     rescale_log_probs: bool = True,
     state_callback_fn: Optional[StateCallbackFn] = None,
     logit_callback_fn: Optional[LogitCallbackFn] = None,
+    extra_state_fn: Optional[ExtraStateFn] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Temperature sampling for language model generation.
 
@@ -333,6 +339,8 @@ def temperature_sample(
       sampling step. The function should take arguments (logits, state) and it
       should return the modified logits. See `decoding_test.py` for an example
       usage.
+    extra_state_fn: Optional function that returns the initial "extra state",
+      which can be used by the state_callback_fn.
 
   Returns:
     A tuple (decodes, log_prob) where `decodes` is sampled sequences with shape
@@ -380,7 +388,9 @@ def temperature_sample(
       max_decode_steps=max_decode_steps,
       rescale_log_probs=rescale_log_probs,
       state_callback_fn=state_callback_fn,
-      logit_callback_fn=logit_callback_fn)
+      logit_callback_fn=logit_callback_fn,
+      extra_state_fn=extra_state_fn,
+  )
 
   batch_size = inputs.shape[0]
   # [batch * num_decodes, len] -> [batch, num_decodes, len]
@@ -416,6 +426,7 @@ def _temperature_sample_single_trial(
     rescale_log_probs: bool = True,
     state_callback_fn: Optional[StateCallbackFn] = None,
     logit_callback_fn: Optional[LogitCallbackFn] = None,
+    extra_state_fn: Optional[ExtraStateFn] = None,
 ) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
@@ -484,8 +495,22 @@ def _temperature_sample_single_trial(
   # as well as the generated output of newly sampled tokens.
   sequences0 = expanded_prompt_inputs
   log_prob0 = jnp.zeros((batch_size,), dtype=jnp.float32)
+
+  if extra_state_fn is not None:
+    extra_state0 = extra_state_fn(sequences0)
+  else:
+    extra_state0 = None
+
   sampling_loop_init_state = SamplingLoopState(
-      step, i0, sequences0, cache, token0, ended0, rng0, log_prob0
+      step,
+      i0,
+      sequences0,
+      cache,
+      token0,
+      ended0,
+      rng0,
+      log_prob0,
+      extra_state0,
   )
   # Initial eos count to be used to determine whether eos is "generated". Many
   # inputs follow the format bos, inputs..., eos, targets..., eos. By counting
@@ -660,6 +685,7 @@ def _temperature_sample_single_trial(
         ended,
         rng2,
         next_log_prob,
+        state.extra_state,
     )
 
   # Run sampling loop and collect final state.
