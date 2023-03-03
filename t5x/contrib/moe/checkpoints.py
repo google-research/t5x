@@ -20,7 +20,6 @@ from typing import Any, Optional, Union
 import clu.data
 import jax
 import jax.config
-from jax.experimental import global_device_array as gda_lib
 from jax.experimental.gda_serialization import serialization as gda_serialization
 import jax.numpy as jnp
 import numpy as np
@@ -169,8 +168,10 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
               lambda idx: arr[idx],
           )
         else:
-          arr = gda_lib.GlobalDeviceArray.from_callback(
-              arr.shape, mesh, axes, lambda idx: arr[idx]
+          arr = jax.make_array_from_callback(
+              arr.shape,
+              jax.sharding.NamedSharding(mesh, axes),
+              lambda idx: arr[idx],
           )
       return arr
 
@@ -186,7 +187,7 @@ async def _read_upcycle_ts(
     num_experts: int,
     restore_dtype: Optional[jnp.dtype] = None,
     mesh: Optional[jax.sharding.Mesh] = None,
-    axes: Optional[gda_lib.MeshAxes] = None,
+    axes: Optional[jax.sharding.PartitionSpec] = None,
 ):
   """Reads array from tensorstore and handles broadcasting of expert weights.
 

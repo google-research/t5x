@@ -22,7 +22,6 @@ import unittest
 from absl.testing import absltest
 from absl.testing import parameterized
 import jax
-from jax.experimental import global_device_array as gda_lib
 import jax.numpy as jnp
 import numpy as np
 from t5x import optimizers
@@ -44,7 +43,9 @@ FlaxOptimTrainState = train_state_lib.FlaxOptimTrainState
 
 
 def create_sharded_array(
-    arr: np.ndarray, global_mesh: jax.sharding.Mesh, mesh_axes: gda_lib.MeshAxes
+    arr: np.ndarray,
+    global_mesh: jax.sharding.Mesh,
+    mesh_axes: PartitionSpec,
 ) -> jax.Array:
   """Converts NumPy array into sharded JAX Array."""
   return jax.make_array_from_callback(
@@ -74,7 +75,7 @@ def shard_train_state(
     *,
     train_state: FlaxOptimTrainState,
     global_mesh: Optional[jax.sharding.Mesh],
-    mesh_axes: Optional[gda_lib.MeshAxes],
+    mesh_axes: Optional[PartitionSpec],
 ) -> FlaxOptimTrainState:
   """Helper to construct a sharded train state from NumPy arrays."""
   return jax.tree_map(
