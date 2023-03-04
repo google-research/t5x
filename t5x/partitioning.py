@@ -798,17 +798,17 @@ class PjittedFnWithContext(PartitionedCallable):
     self._mesh = partition_mesh
     self._logical_axis_rules = logical_axis_rules
 
-  def __call__(self, *args):
+  def __call__(self, *args, **kwargs):
     with Mesh(self._mesh.devices,
               self._mesh.axis_names), flax_partitioning.axis_rules(
                   self._logical_axis_rules):
-      return self._pjitted_fn(*args)
+      return self._pjitted_fn(*args, **kwargs)
 
-  def lower(self, *args):
+  def lower(self, *args, **kwargs):
     with Mesh(self._mesh.devices,
               self._mesh.axis_names), flax_partitioning.axis_rules(
                   self._logical_axis_rules):
-      return self._pjitted_fn.lower(*args)
+      return self._pjitted_fn.lower(*args, **kwargs)
 
 
 class BasePjitPartitioner(BasePartitioner):
