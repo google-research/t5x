@@ -55,7 +55,7 @@ import typing_extensions
 FLAGS = flags.FLAGS
 
 Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
 PartitionSpec = partitioning.PartitionSpec
 DType = Union[np.dtype, type(jnp.bfloat16)]
 Shape = Tuple[int, ...]
@@ -607,9 +607,9 @@ def _get_index_mappings(device_to_idxs):
 
 def _create_sharded_array(
     partitioner: partitioning.BasePartitioner,
-    global_shapes: PyTreeDef,
-    host_arrays: PyTreeDef,
-) -> PyTreeDef:
+    global_shapes: PyTree,
+    host_arrays: PyTree,
+) -> PyTree:
   """Create jax.Array from input arrays.
 
   Example:
@@ -699,9 +699,12 @@ def _create_sharded_array(
 class ShardedDatasetIterator(clu.data.dataset_iterator.DatasetIterator):
   """A wrapper iterator that returns sharded arrays."""
 
-  def __init__(self, iterator: clu.data.dataset_iterator.DatasetIterator,
-               partitioner: partitioning.BasePartitioner,
-               global_shapes: PyTreeDef):
+  def __init__(
+      self,
+      iterator: clu.data.dataset_iterator.DatasetIterator,
+      partitioner: partitioning.BasePartitioner,
+      global_shapes: PyTree,
+  ):
     self._iterator = iterator
     self._global_shapes = global_shapes
     self._partitioner = partitioner
@@ -1228,24 +1231,25 @@ class InferStepWithRngCallable(typing_extensions.Protocol):
       params: Mapping[str, Any],
       batch: Mapping[str, jnp.ndarray],
       rng: jnp.ndarray = None,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
-  ) -> PyTreeDef:
+  ) -> PyTree:
     """Runs an inference step returning a prediction or score."""
     ...
 
 
 class InferStepWithoutRngCallable(typing_extensions.Protocol):
 
-  def __call__(self, params: Mapping[str, Any],
-               batch: Mapping[str, jnp.ndarray]) -> PyTreeDef:
+  def __call__(
+      self, params: Mapping[str, Any], batch: Mapping[str, jnp.ndarray]
+  ) -> PyTree:
     """Runs an inference step returning a prediction or score."""
     ...
 
 
 InferStepCallable = Union[InferStepWithRngCallable, InferStepWithoutRngCallable]
 
-# NOTE: We're not more prescriptive than PyTreeDef because that's what
+# NOTE: We're not more prescriptive than PyTree because that's what
 # InferStepCallable expects.
-_InferFnResult = Sequence[Tuple[int, PyTreeDef]]
+_InferFnResult = Sequence[Tuple[int, PyTree]]
 _InferFnWithAuxResult = Tuple[_InferFnResult, Mapping[str, Sequence[Any]]]
 
 

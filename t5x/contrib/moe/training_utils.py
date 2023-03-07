@@ -27,7 +27,6 @@ from t5x import train_state
 
 # Type Stubs
 ParamTree = Any
-PyTreeDef = Any
 Gradients = Union[flax.core.FrozenDict, train_state.TrainState]
 
 
@@ -93,7 +92,8 @@ def tree_map_with_names(f, param_tree, match_name_fn=lambda name: True):
 
 
 def _tree_flatten_with_names(
-    tree: ParamTree) -> Tuple[Sequence[Tuple[str, Any]], PyTreeDef]:
+    tree: ParamTree,
+) -> Tuple[Sequence[Tuple[str, Any]], jax.tree_util.PyTreeDef]:
   """Like jax.tree_util.tree_flatten but also fetches leaf names.
 
   Specialized to parameter trees of the form {'key0': {'subkey0': Any}, ...}.

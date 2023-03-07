@@ -38,7 +38,7 @@ import typing_extensions
 
 Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
 MetricsMap = metrics_lib.MetricsMap
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
 
 
 
@@ -224,7 +224,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
   def loss_fn_meta_cls(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: jnp.ndarray,
   ) -> Tuple[jnp.ndarray, MetricsMap]:
@@ -316,7 +316,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
   def loss_fn_meta_cls_geom_like(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: jnp.ndarray,
   ) -> Tuple[jnp.ndarray, MetricsMap]:
@@ -411,7 +411,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
   def loss_fn(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: jnp.ndarray,
   ) -> Tuple[jnp.ndarray, MetricsMap]:
@@ -496,7 +496,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
   def _compute_logits_from_slice_early_exit(
       self,
       decoding_state: calm_decoding.DecodingState,
-      params: PyTreeDef,
+      params: PyTree,
       encoded_inputs: jnp.ndarray,
       raw_inputs: jnp.ndarray,
       max_decode_length: int,
@@ -786,13 +786,13 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
   def predict_batch_with_aux(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
       decoder_params: Optional[MutableMapping[str, Any]] = None,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
-      prompt_with_targets: bool = False
+      prompt_with_targets: bool = False,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict with fast decoding beam search on a batch.
 

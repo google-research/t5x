@@ -68,7 +68,8 @@ from tensorboard.backend.event_processing import event_file_loader
 from tensorboard.backend.event_processing import io_wrapper
 
 PartitionSpec = partitioning.PartitionSpec
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
+PyTreeDef = jax.tree_util.PyTreeDef
 LazyArray = checkpoint_importer.LazyArray
 LazyAwaitableArray = checkpoint_importer.LazyAwaitableArray
 LazyThreadPoolArray = checkpoint_importer.LazyThreadPoolArray
@@ -232,7 +233,7 @@ def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
   return parent, int(checkpoint.replace('checkpoint_', ''))
 
 
-def _cast(target: PyTreeDef, dtype: jnp.dtype):
+def _cast(target: PyTree, dtype: jnp.dtype):
   """Cast arrays in target to dtype."""
 
   def maybe_cast(x):
@@ -433,8 +434,9 @@ class _BytesConditionVariable(object):
 
 class SaveStateTransformationFn(typing_extensions.Protocol):
 
-  def __call__(self, state_dict: PyTreeDef,
-               parameter_infos: PyTreeDef) -> Tuple[PyTreeDef, PyTreeDef]:
+  def __call__(
+      self, state_dict: PyTree, parameter_infos: PyTree
+  ) -> Tuple[PyTree, PyTree]:
     """Transforms the state and param info, e.g., by remapping parameters.
 
     Args:
@@ -449,11 +451,13 @@ class SaveStateTransformationFn(typing_extensions.Protocol):
 
 class RestoreStateTransformationFn(typing_extensions.Protocol):
 
-  def __call__(self,
-               state_dict: PyTreeDef,
-               target_state_dict: PyTreeDef,
-               *,
-               is_resuming: bool = False) -> PyTreeDef:
+  def __call__(
+      self,
+      state_dict: PyTree,
+      target_state_dict: PyTree,
+      *,
+      is_resuming: bool = False,
+  ) -> PyTree:
     """Transforms the given checkpoint state, e.g., by remapping parameters.
 
     Args:
@@ -961,10 +965,10 @@ class Checkpointer(object):
 
   def _transform_state_and_infos(
       self,
-      state_dict: PyTreeDef,
-      parameter_infos: PyTreeDef,
+      state_dict: PyTree,
+      parameter_infos: PyTree,
       state_transformation_fns: Sequence[SaveStateTransformationFn],
-  ) -> Tuple[PyTreeDef, PyTreeDef]:
+  ) -> Tuple[PyTree, PyTree]:
     """Applies transformations to the state dict and parameter infos PyTrees."""
     return _transform_state_and_infos(state_dict, parameter_infos,
                                       state_transformation_fns)
@@ -1286,8 +1290,10 @@ class Checkpointer(object):
         concurrent_gb=concurrent_gb)
 
   def _get_optimizer_state_dict(
-      self, ckpt_contents: PyTreeDef,
-      state_transformation_fns: Sequence[RestoreStateTransformationFn]):
+      self,
+      ckpt_contents: PyTree,
+      state_transformation_fns: Sequence[RestoreStateTransformationFn],
+  ):
     return _get_optimizer_state_dict(ckpt_contents,
                                      self._train_state.state_dict(),
                                      state_transformation_fns)
@@ -1553,8 +1559,10 @@ class SaveBestCheckpointer(Checkpointer):
 
 
 def _get_optimizer_state_dict(
-    ckpt_contents: PyTreeDef, optimizer_state: Mapping[str, Any],
-    state_transformation_fns: Sequence[RestoreStateTransformationFn]):
+    ckpt_contents: PyTree,
+    optimizer_state: Mapping[str, Any],
+    state_transformation_fns: Sequence[RestoreStateTransformationFn],
+):
   """Extracts optimizer state dict contents and applies assignment map."""
   version = ckpt_contents.get('version', 0)
   if version == 0:
@@ -1573,10 +1581,10 @@ def _get_optimizer_state_dict(
 
 
 def _transform_state_and_infos(
-    state_dict: PyTreeDef,
-    parameter_infos: PyTreeDef,
+    state_dict: PyTree,
+    parameter_infos: PyTree,
     state_transformation_fns: Sequence[SaveStateTransformationFn],
-) -> Tuple[PyTreeDef, PyTreeDef]:
+) -> Tuple[PyTree, PyTree]:
   """Applies transformations to the state dict and parameter infos PyTrees."""
   for fn in state_transformation_fns:
     state_dict, parameter_infos = fn(state_dict, parameter_infos)
@@ -1757,7 +1765,7 @@ def load_t5x_checkpoint(
     restore_dtype: Optional[jnp.dtype] = None,
     lazy_parameters: bool = False,
     use_gda: bool = True,
-) -> PyTreeDef:
+) -> PyTree:
   """Load a T5X checkpoint without pre-defining the optimizer.
 
   Note:
@@ -1938,13 +1946,13 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
   def restore(
       self,
       directory: epath.Path,
-      item: Optional[PyTreeDef] = None,
-      restore_args: Optional[PyTreeDef] = None,
-      transforms: Optional[PyTreeDef] = None,
+      item: Optional[PyTree] = None,
+      restore_args: Optional[PyTree] = None,
+      transforms: Optional[PyTree] = None,
       transforms_default_to_original: bool = True,
       fallback_state: Optional[Mapping[str, Any]] = None,
       state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
-  ) -> PyTreeDef:
+  ) -> PyTree:
     """See superclass documentation."""
     if not directory.exists():
       raise FileNotFoundError(
@@ -2007,8 +2015,13 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
     )
     return restored_state_dict
 
-  async def _write_aggregate_file(self, directory: epath.Path, item: PyTreeDef,
-                                  param_infos: PyTreeDef, save_args: PyTreeDef):
+  async def _write_aggregate_file(
+      self,
+      directory: epath.Path,
+      item: PyTree,
+      param_infos: PyTree,
+      save_args: PyTree,
+  ):
     """Writes msgpack with ts.Spec leaves.
 
     Item written to the msgpack file must contain ts.Spec as placeholder for
@@ -2053,7 +2066,7 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
     await self._aggregate_handler.serialize(
         directory / self._aggregate_filename, ser_item)
 
-  def structure(self, directory: epath.Path) -> PyTreeDef:
+  def structure(self, directory: epath.Path) -> PyTree:
     """See superclass documentation.
 
     Leaves stored in T5X checkpoints as ts.Spec must be modified to an
@@ -2193,8 +2206,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       return all_steps(os.fspath(self.directory))
     return super().all_steps(read=False)
 
-  def _parameter_infos(self,
-                       train_state: train_state_lib.TrainState) -> PyTreeDef:
+  def _parameter_infos(self, train_state: train_state_lib.TrainState) -> PyTree:
     """Construct _OrbaxParamInfo tree for TrainState parameters."""
     param_names = traverse_util.unflatten_dict({
         k: '/'.join(k) for k in traverse_util.flatten_dict(

@@ -45,7 +45,7 @@ from tensorflow_serving.apis import predict_pb2
 from tensorflow_serving.apis import prediction_log_pb2
 
 
-PyTreeDef = jax.tree_util.PyTreeDef
+PyTree = Any
 ConfigDict = ml_collections.ConfigDict
 DecoderParamsSpec = Sequence[Tuple[str, tf.DType, Sequence[int]]]
 PreprocessorFn = Callable[..., Mapping[str, tf.Tensor]]
@@ -77,7 +77,7 @@ class CustomInferenceMode:
   # getattr(model, model_fn_name).
   model_fn_name: str
   # Fetch useful output from the raw output of the model function.
-  fetch_output: Optional[Callable[[PyTreeDef], PyTreeDef]] = None
+  fetch_output: Optional[Callable[[PyTree], PyTree]] = None
 
 
 class CreatePostprocessorFn(typing_extensions.Protocol):
@@ -264,8 +264,9 @@ def get_train_state_initializer(
   return train_state_initializer
 
 
-def flatten(compute_outputs: PyTreeDef,
-            assert_output_len=None) -> Tuple[jnp.ndarray, ...]:
+def flatten(
+    compute_outputs: PyTree, assert_output_len=None
+) -> Tuple[jnp.ndarray, ...]:
   values, _ = jax.tree_util.tree_flatten(compute_outputs)
   if assert_output_len is not None:
     assert len(values) == assert_output_len
@@ -293,7 +294,7 @@ def create_inference_function(
     enable_xla: bool = True,
     polymorphic_shapes_inputs: Optional[Any] = None,
     native_lowering: bool = False,
-) -> Callable[[Mapping[str, Any], Any], PyTreeDef]:
+) -> Callable[[Mapping[str, Any], Any], PyTree]:
   """Fetches a model and returns the inference function based on inference_mode."""
   if partitioner and train_state_initializer:
     maybe_partition = lambda fn: partitioner.partition(  # pylint:disable=g-long-lambda
@@ -354,8 +355,9 @@ def create_inference_function(
         enable_xla=enable_xla,
     )
 
-  def inference_fn(params: Mapping[str, Any],
-                   batch: Mapping[str, jnp.ndarray]) -> PyTreeDef:
+  def inference_fn(
+      params: Mapping[str, Any], batch: Mapping[str, jnp.ndarray]
+  ) -> PyTree:
     outputs = model_fn(params, batch)
     if inference_mode.fetch_output:
       outputs = inference_mode.fetch_output(outputs)

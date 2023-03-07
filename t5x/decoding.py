@@ -26,7 +26,8 @@ import numpy as np
 
 from t5x import binary_search
 
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
+PyTreeDef = jax.tree_util.PyTreeDef
 
 # Constants
 # "Effective negative infinity" constant for masking in beam search.
@@ -767,13 +768,15 @@ def flat_batch_beam_expand(x: jnp.ndarray,
   return flatten_beam_dim(add_beam_dim(x, beam_size, offset), offset)
 
 
-def cache_gather_beams(nested: PyTreeDef,
-                       beam_indices: jnp.ndarray,
-                       batch_size: int,
-                       old_beam_size: int,
-                       new_beam_size: int,
-                       one_hot: bool = True,
-                       offset: int = 0) -> jnp.ndarray:
+def cache_gather_beams(
+    nested: PyTree,
+    beam_indices: jnp.ndarray,
+    batch_size: int,
+    old_beam_size: int,
+    new_beam_size: int,
+    one_hot: bool = True,
+    offset: int = 0,
+) -> jnp.ndarray:
   """Gathers the cache beam slices indexed by beam_indices into new beam array.
 
   Args:
@@ -824,12 +827,14 @@ def cache_gather_beams(nested: PyTreeDef,
     return cache_map(gather_fn, nested)
 
 
-def gather_beams(nested: PyTreeDef,
-                 beam_indices: jnp.ndarray,
-                 batch_size: int,
-                 old_beam_size: int,
-                 new_beam_size: int,
-                 one_hot: bool = True) -> jnp.ndarray:
+def gather_beams(
+    nested: PyTree,
+    beam_indices: jnp.ndarray,
+    batch_size: int,
+    old_beam_size: int,
+    new_beam_size: int,
+    one_hot: bool = True,
+) -> jnp.ndarray:
   """Gathers the beam slices indexed by beam_indices into new beam array.
 
   Args:
@@ -912,8 +917,12 @@ def top_k_two_stage(x, k):
     return lax.top_k(x, k)
 
 
-def gather_topk_beams(nested: PyTreeDef, score_or_log_prob: jnp.ndarray,
-                      batch_size: int, new_beam_size: int) -> jnp.ndarray:
+def gather_topk_beams(
+    nested: PyTree,
+    score_or_log_prob: jnp.ndarray,
+    batch_size: int,
+    new_beam_size: int,
+) -> jnp.ndarray:
   """Gathers the top-k beam slices given by score_or_log_prob array.
 
   Args:
@@ -951,7 +960,7 @@ class BeamState:
   # Records which of the 'finished_seqs' is occupied and not a filler slot.
   finished_flags: jnp.DeviceArray  # bool: [batch_size, beam_size]
   # The current state of the autoregressive decoding caches.
-  cache: PyTreeDef  # Any pytree of arrays, e.g. flax attention Cache object
+  cache: PyTree  # Any pytree of arrays, e.g. flax attention Cache object
 
 
 def beam_init(batch_size: int,

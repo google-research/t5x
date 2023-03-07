@@ -57,7 +57,7 @@ MetricMapSpec = Mapping[str, jax.ShapeDtypeStruct]
 MetricValueMapType = Mapping[str, clu.values.Value]
 ModelWeights = Any
 MutableMetricMapType = Dict[str, clu.metrics.Metric]
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
 PartitionSpec = partitioning.PartitionSpec
 
 if TYPE_CHECKING:  # See b/163639353
@@ -228,7 +228,7 @@ class _AsyncTimer(object):
   def __del__(self):
     self.close()
 
-  def _get_completion_future(self, block_on: PyTreeDef = ()) -> TimeFuture:
+  def _get_completion_future(self, block_on: PyTree = ()) -> TimeFuture:
     """Returns Future containing time when `block_on` is ready."""
 
     def _get_completion_time():
@@ -246,11 +246,11 @@ class _AsyncTimer(object):
 
     return self._pool(_get_completion_time)()
 
-  def start(self, block_on: PyTreeDef = ()):
+  def start(self, block_on: PyTree = ()):
     """Starts timer after `block_on` is ready."""
     self._start_future = self._get_completion_future(block_on)
 
-  def stop(self, block_on: PyTreeDef = ()) -> TimeFuture:
+  def stop(self, block_on: PyTree = ()) -> TimeFuture:
     """Stops timer after `block_on` is ready, returning the duration."""
     if not self._start_future:
       raise ValueError("The timer hasn't been started.")
@@ -333,7 +333,7 @@ class MetricsManager(object):
     with self._writer_lock:
       self._writer.write_scalars(step, scalars)
 
-  def start_duration_timer(self, block_on: PyTreeDef = ()):
+  def start_duration_timer(self, block_on: PyTree = ()):
     """Starts the duration timer."""
     self._duration_timer.start(block_on=block_on)
 
@@ -475,7 +475,7 @@ class BaseTrainer(abc.ABC):
       return self._train_state
 
   @train_state.setter
-  def train_state(self, train_state: PyTreeDef):
+  def train_state(self, train_state: PyTree):
     with self._train_state_mutex:
       self._train_state = train_state
 

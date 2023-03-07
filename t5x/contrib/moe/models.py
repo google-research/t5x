@@ -34,7 +34,7 @@ AveragePerStep = metrics_lib.AveragePerStep
 DecodeFnCallable = base_models.DecodeFnCallable
 FrozenVariableDict = flax_scope.FrozenVariableDict
 MetricsMap = metrics_lib.MetricsMap
-PyTreeDef = base_models.PyTreeDef
+PyTree = base_models.PyTree
 Sum = metrics_lib.Sum
 
 MOE_METRICS = ('auxiliary_loss', 'router_z_loss', 'fraction_tokens_left_behind',
@@ -72,8 +72,11 @@ class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
     self._router_z_loss_factor = router_z_loss_factor
 
   def loss_fn(
-      self, params: base_models.PyTreeDef, batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jnp.ndarray]) -> Tuple[jnp.ndarray, MetricsMap]:
+      self,
+      params: base_models.PyTree,
+      batch: Mapping[str, jnp.ndarray],
+      dropout_rng: Optional[jnp.ndarray],
+  ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Cross-entropy loss function with auxiliary MoE losses.
 
     Args:
@@ -93,13 +96,13 @@ class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
 
   def predict_batch_with_aux(  # pylint: disable=useless-super-delegation
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
       decoder_params: Optional[MutableMapping[str, Any]] = None,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
-      prompt_with_targets: bool = False
+      prompt_with_targets: bool = False,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict with fast decoding beam search on a batch.
 
@@ -155,8 +158,11 @@ class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
     self._router_z_loss_factor = router_z_loss_factor
 
   def loss_fn(
-      self, params: base_models.PyTreeDef, batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jnp.ndarray]) -> Tuple[jnp.ndarray, MetricsMap]:
+      self,
+      params: base_models.PyTree,
+      batch: Mapping[str, jnp.ndarray],
+      dropout_rng: Optional[jnp.ndarray],
+  ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Cross-entropy loss function with auxiliary MoE losses.
 
     Args:
@@ -176,7 +182,7 @@ class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
 
   def predict_batch_with_aux(  # pylint: disable=useless-super-delegation
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
       *,

@@ -39,7 +39,6 @@ JaxDevice = jax.Device
 TpuMesh = Tuple[int, int, int, int]  # (x, y, z, num_cores).
 OtherMesh = Tuple[int, int]
 HardwareMesh = Union[TpuMesh, OtherMesh]
-PyTreeDef = type(jax.tree_util.tree_structure(None))
 TrainState = train_state_lib.TrainState
 LogicalAxisRules = Sequence[Tuple[str, Optional[str]]]
 

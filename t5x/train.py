@@ -55,7 +55,6 @@ import tensorflow as tf
 _DEFAULT_GIN_SEARCH_PATHS = [
     os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ]
-PyTreeDef = type(jax.tree_util.tree_structure(None))
 P = partitioning.PartitionSpec
 # Special key that used to distinguish train metrics.
 TRAIN_METRIC_KEY = 'train'

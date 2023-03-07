@@ -42,7 +42,8 @@ import typing_extensions
 
 Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
 MetricsMap = metrics_lib.MetricsMap
-PyTreeDef = type(jax.tree_util.tree_structure(None))
+PyTree = Any
+PyTreeDef = jax.tree_util.PyTreeDef
 
 
 class TokensIdsToLogitsCallable(typing_extensions.Protocol):
@@ -118,7 +119,7 @@ class BaseModel(abc.ABC):
   @abc.abstractmethod
   def loss_fn(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray],
   ) -> Tuple[jnp.ndarray, MetricsMap]:
@@ -139,7 +140,7 @@ class BaseModel(abc.ABC):
 
   def eval_fn(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
   ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Computes loss and metrics during the evaluation.
@@ -160,10 +161,12 @@ class BaseModel(abc.ABC):
         dropout_rng=None,
     )
 
-  def predict_batch(self,
-                    params: PyTreeDef,
-                    batch: Mapping[str, jnp.ndarray],
-                    rng: Optional[jax.random.KeyArray] = None) -> jnp.ndarray:
+  def predict_batch(
+      self,
+      params: PyTree,
+      batch: Mapping[str, jnp.ndarray],
+      rng: Optional[jax.random.KeyArray] = None,
+  ) -> jnp.ndarray:
     """Predicts a batch of outputs from the model.
 
     Args:
@@ -179,7 +182,7 @@ class BaseModel(abc.ABC):
   @abc.abstractmethod
   def predict_batch_with_aux(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
@@ -197,10 +200,12 @@ class BaseModel(abc.ABC):
     pass
 
   @abc.abstractmethod
-  def score_batch(self,
-                  params: PyTreeDef,
-                  batch: Mapping[str, jnp.ndarray],
-                  return_intermediates: bool = False) -> jnp.ndarray:
+  def score_batch(
+      self,
+      params: PyTree,
+      batch: Mapping[str, jnp.ndarray],
+      return_intermediates: bool = False,
+  ) -> jnp.ndarray:
     """Computes scores for batch."""
     pass
 
@@ -259,15 +264,16 @@ class BaseTransformerModel(BaseModel):
   @abc.abstractmethod
   def _compute_logits(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jax.random.KeyArray] = None) -> jnp.ndarray:
+      dropout_rng: Optional[jax.random.KeyArray] = None,
+  ) -> jnp.ndarray:
     """Computes logits via a forward pass of the model."""
     pass
 
   def loss_fn(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray],
   ) -> Tuple[jnp.ndarray, MetricsMap]:
@@ -411,11 +417,11 @@ class EncoderDecoderModel(BaseTransformerModel):
 
   def _compute_logits(  # pytype: disable=signature-mismatch  # jax-ndarray
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray] = None,
       mutable: flax_scope.CollectionFilter = False,
-      other_variables: Optional[PyTreeDef] = None,
+      other_variables: Optional[PyTree] = None,
   ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, flax_scope.FrozenVariableDict]]:
     """Computes logits via a forward pass of `self.module_cls`."""
     # Dropout is provided only for the training mode.
@@ -440,9 +446,13 @@ class EncoderDecoderModel(BaseTransformerModel):
         mutable=mutable)
 
   def _compute_logits_from_slice(
-      self, decoding_state: decoding.DecodingState, params: PyTreeDef,
-      encoded_inputs: jnp.ndarray, raw_inputs: jnp.ndarray,
-      max_decode_length: int) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
+      self,
+      decoding_state: decoding.DecodingState,
+      params: PyTree,
+      encoded_inputs: jnp.ndarray,
+      raw_inputs: jnp.ndarray,
+      max_decode_length: int,
+  ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Token slice to logits from decoder model."""
     flat_ids = decoding_state.cur_token
     flat_cache = decoding_state.cache
@@ -476,7 +486,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       encoded_inputs: jnp.ndarray,
       encoder_input_tokens: jnp.ndarray,
       decoder_input_tokens: jnp.ndarray,
-  ) -> Tuple[PyTreeDef, Optional[jnp.ndarray]]:
+  ) -> Tuple[PyTree, Optional[jnp.ndarray]]:
     """Initialize the key/value cache.
 
     Args:
@@ -509,13 +519,13 @@ class EncoderDecoderModel(BaseTransformerModel):
 
   def predict_batch_with_aux(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
       decoder_params: Optional[MutableMapping[str, Any]] = None,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
-      prompt_with_targets: bool = False
+      prompt_with_targets: bool = False,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict with fast decoding beam search on a batch.
 
@@ -663,7 +673,7 @@ class EncoderDecoderModel(BaseTransformerModel):
 
   def score_batch(  # pytype: disable=signature-mismatch  # jax-ndarray
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       return_intermediates: bool = False,
   ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, Mapping[str, Any]]]:
@@ -781,11 +791,12 @@ class DecoderOnlyModel(BaseTransformerModel):
 
   def _compute_logits(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray] = None,
       mutable: flax_scope.CollectionFilter = False,
-      other_variables: Optional[PyTreeDef] = None) -> jnp.ndarray:
+      other_variables: Optional[PyTree] = None,
+  ) -> jnp.ndarray:
     """Computes logits via a forward pass of `self.module`."""
     rngs = {'dropout': dropout_rng} if dropout_rng is not None else None
     decoder_causal_attention = self._get_decoder_causal_attention(batch)
@@ -810,7 +821,7 @@ class DecoderOnlyModel(BaseTransformerModel):
   def _compute_logits_from_slice(
       self,
       decoding_state: decoding.DecodingState,
-      params: PyTreeDef,
+      params: PyTree,
       max_decode_length: int,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Token slice to logits from decoder model."""
@@ -837,10 +848,12 @@ class DecoderOnlyModel(BaseTransformerModel):
     new_flat_cache = new_vars['cache']
     return flat_logits, new_flat_cache
 
-  def score_batch(self,
-                  params: PyTreeDef,
-                  batch: Mapping[str, jnp.ndarray],
-                  return_intermediates: bool = False) -> jnp.ndarray:
+  def score_batch(
+      self,
+      params: PyTree,
+      batch: Mapping[str, jnp.ndarray],
+      return_intermediates: bool = False,
+  ) -> jnp.ndarray:
     """Compute log likelihood score on a batch."""
 
     decoder_target_tokens = batch['decoder_target_tokens']
@@ -884,10 +897,10 @@ class DecoderOnlyModel(BaseTransformerModel):
 
   def _compute_kv_cache(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       inputs: jnp.ndarray,
       causal_attention_mask: jnp.ndarray,
-  ) -> Tuple[PyTreeDef, jnp.ndarray]:
+  ) -> Tuple[PyTree, jnp.ndarray]:
     """Compute the key/value cache on the input prompt.
 
     Args:
@@ -959,7 +972,7 @@ class DecoderOnlyModel(BaseTransformerModel):
 
   def predict_batch_with_aux(
       self,
-      params: PyTreeDef,
+      params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
       *,
