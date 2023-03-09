@@ -51,14 +51,16 @@ def get_mock_train_state(params, param_states=None, step=0):
   step = np.array(step) if step is not None else None
   state = mock.Mock(param_states=param_states, step=step)
   state_dict = dict(
-      target=params, state=dict(param_states=param_states, step=step))
+      target=params, state=dict(param_states=param_states, step=step)
+  )
   return mock.Mock(
       params=params,
       param_states=param_states,
       step=step,
       state_dict=lambda: state_dict,
       optimizer=mock.Mock(
-          target=params, state=state, state_dict=lambda: state_dict),
+          target=params, state=state, state_dict=lambda: state_dict
+      ),
   )
 
 
@@ -70,35 +72,42 @@ class UtilsTest(parameterized.TestCase):
     self.assertEqual(utils.round_vocab_size_to_multiple(129), 256)
     self.assertEqual(utils.round_vocab_size_to_multiple(129), 256)
     self.assertEqual(
-        utils.round_vocab_size_to_multiple(25600, divisor=384), 256128)
+        utils.round_vocab_size_to_multiple(25600, divisor=384), 256128
+    )
 
   def test_get_zeros_batch_like_spec(self):
     test_utils.assert_same(
         utils.get_zeros_batch_like_spec({
             "i": jax.ShapeDtypeStruct((2, 5), dtype=np.int32),
             "j": jax.ShapeDtypeStruct((1,), dtype=np.float32),
-        }), {
+        }),
+        {
             "i": np.zeros((2, 5), dtype=np.int32),
-            "j": np.zeros((1,), dtype=np.float32)
-        })
+            "j": np.zeros((1,), dtype=np.float32),
+        },
+    )
 
   def test_get_zeros_batch_like_dataset(self):
     ds = tf.data.Dataset.from_tensors({
         "i": np.arange(10, dtype=np.int32).reshape((2, 5)),
-        "j": np.ones((1,), dtype=np.float32)
+        "j": np.ones((1,), dtype=np.float32),
     })
 
     test_utils.assert_same(
-        utils.get_zeros_batch_like_dataset(ds), {
+        utils.get_zeros_batch_like_dataset(ds),
+        {
             "i": np.zeros((2, 5), dtype=np.int32),
-            "j": np.zeros((1,), dtype=np.float32)
-        })
+            "j": np.zeros((1,), dtype=np.float32),
+        },
+    )
 
     test_utils.assert_same(
-        utils.get_zeros_batch_like_dataset(ds, batch_size=4), {
+        utils.get_zeros_batch_like_dataset(ds, batch_size=4),
+        {
             "i": np.zeros((4, 5), dtype=np.int32),
-            "j": np.zeros((4,), dtype=np.float32)
-        })
+            "j": np.zeros((4,), dtype=np.float32),
+        },
+    )
 
   @parameterized.named_parameters(
       dict(testcase_name="write_to_file", write_to_log_file=True),
@@ -109,73 +118,88 @@ class UtilsTest(parameterized.TestCase):
 
     mock_train_state = get_mock_train_state(
         params={
-            "a": {
-                "aa": jax.ShapeDtypeStruct(shape=(2, 3), dtype=np.int32)
-            },
-            "c": jax.ShapeDtypeStruct(shape=(7, 8), dtype=np.int32)
+            "a": {"aa": jax.ShapeDtypeStruct(shape=(2, 3), dtype=np.int32)},
+            "c": jax.ShapeDtypeStruct(shape=(7, 8), dtype=np.int32),
         },
         param_states={
             "a": {
                 "aa": {
                     "v_row": jax.ShapeDtypeStruct(shape=(2,), dtype=np.int32),
-                    "v_col": jax.ShapeDtypeStruct(shape=(3,), dtype=np.int32)
+                    "v_col": jax.ShapeDtypeStruct(shape=(3,), dtype=np.int32),
                 }
             },
             "c": {
                 "v_row": jax.ShapeDtypeStruct(shape=(2, 4), dtype=np.int32),
-                "v_col": None
-            }
-        })
+                "v_col": None,
+            },
+        },
+    )
 
     mock_logical_axes = get_mock_train_state(
         params={
-            "a": {
-                "aa": partitioning.AxisNames("a1", None)
-            },
-            "c": partitioning.AxisNames(None, "a1")
+            "a": {"aa": partitioning.AxisNames("a1", None)},
+            "c": partitioning.AxisNames(None, "a1"),
         },
         param_states={
             "a": {
                 "aa": {
-                    "v_row": partitioning.AxisNames(None,),
-                    "v_col": partitioning.AxisNames(None,)
+                    "v_row": partitioning.AxisNames(
+                        None,
+                    ),
+                    "v_col": partitioning.AxisNames(
+                        None,
+                    ),
                 }
             },
             "c": {
-                "v_row": partitioning.AxisNames("a1",),
-                "v_col": partitioning.AxisNames("a2",)
-            }
+                "v_row": partitioning.AxisNames(
+                    "a1",
+                ),
+                "v_col": partitioning.AxisNames(
+                    "a2",
+                ),
+            },
         },
-        step=None)
+        step=None,
+    )
 
     mock_mesh_axes = get_mock_train_state(
         params={
-            "a": {
-                "aa": PartitionSpec("b1", None)
-            },
-            "c": PartitionSpec(None, "b1")
+            "a": {"aa": PartitionSpec("b1", None)},
+            "c": PartitionSpec(None, "b1"),
         },
         param_states={
             "a": {
                 "aa": {
-                    "v_row": partitioning.AxisNames(None,),
-                    "v_col": partitioning.AxisNames(None,)
+                    "v_row": partitioning.AxisNames(
+                        None,
+                    ),
+                    "v_col": partitioning.AxisNames(
+                        None,
+                    ),
                 }
             },
             "c": {
-                "v_row": partitioning.AxisNames("b1",),
-                "v_col": partitioning.AxisNames("b2",)
-            }
+                "v_row": partitioning.AxisNames(
+                    "b1",
+                ),
+                "v_col": partitioning.AxisNames(
+                    "b2",
+                ),
+            },
         },
-        step=None)
+        step=None,
+    )
 
     partitioner = mock.Mock(
         get_logical_axes=lambda _: mock_logical_axes,
-        get_mesh_axes=lambda _: mock_mesh_axes)
+        get_mesh_axes=lambda _: mock_mesh_axes,
+    )
 
     with self.assertLogs(level="INFO") as logs:
-      utils.log_model_info(log_file and log_file.full_path, mock_train_state,
-                           partitioner)
+      utils.log_model_info(
+          log_file and log_file.full_path, mock_train_state, partitioner
+      )
 
     relevant_logs = [
         re.sub(r"\s+", " ", output)
@@ -185,22 +209,27 @@ class UtilsTest(parameterized.TestCase):
     self.assertLen(relevant_logs, 9)
     self.assertIn(
         "Variable a/aa size 6 shape (a1=2, None=3) partition spec ('b1', None)",
-        relevant_logs[0])
+        relevant_logs[0],
+    )
     self.assertIn(
         "Variable c size 56 shape (None=7, a1=8) partition spec (None, 'b1')",
-        relevant_logs[1])
+        relevant_logs[1],
+    )
 
     if write_to_log_file:
       self.assertEqual(
           re.sub(r"\s+", " ", log_file.read_text()),
-          "Variable a/aa size 6 shape (a1=2, None=3) partition spec ('b1', None) "
-          "Variable c size 56 shape (None=7, a1=8) partition spec (None, 'b1') "
-          "Total number of parameters: 62 "
-          "Variable param_states/a/aa/v_col size 3 shape (None=3) partition spec (None,) "
-          "Variable param_states/a/aa/v_row size 2 shape (None=2) partition spec (None,) "
-          "Variable param_states/c/v_col None "
-          "Variable param_states/c/v_row size 8 shape (2, 4) partition spec ('b1',) "
-          "Variable step size 1 shape () partition spec None ")
+          (
+              "Variable a/aa size 6 shape (a1=2, None=3) partition spec ('b1',"
+              " None) Variable c size 56 shape (None=7, a1=8) partition spec"
+              " (None, 'b1') Total number of parameters: 62 Variable"
+              " param_states/a/aa/v_col size 3 shape (None=3) partition spec"
+              " (None,) Variable param_states/a/aa/v_row size 2 shape (None=2)"
+              " partition spec (None,) Variable param_states/c/v_col None"
+              " Variable param_states/c/v_row size 8 shape (2, 4) partition"
+              " spec ('b1',) Variable step size 1 shape () partition spec None "
+          ),
+      )
 
   @mock.patch.object(utils, "get_dataset")
   def test_get_training_eval_datasets_task(self, mock_get_dataset):
@@ -218,7 +247,8 @@ class UtilsTest(parameterized.TestCase):
         split="test",
         batch_size=4,
         shuffle=False,
-        seed=None)
+        seed=None,
+    )
 
     # Single shard.
     ds = utils.get_training_eval_datasets(
@@ -226,7 +256,8 @@ class UtilsTest(parameterized.TestCase):
         shard_id=0,
         num_shards=1,
         eval_steps=3,
-        feature_converter_cls=mock_fc_cls)
+        feature_converter_cls=mock_fc_cls,
+    )
 
     mock_get_dataset.assert_called_once_with(
         dataclasses.replace(cfg, batch_size=1),
@@ -234,14 +265,19 @@ class UtilsTest(parameterized.TestCase):
         num_shards=1,
         feature_converter_cls=mock_fc_cls,
         num_epochs=12,
-        continue_from_last_checkpoint=False)
+        continue_from_last_checkpoint=False,
+    )
 
     self.assertSameElements(ds.keys(), ["mock_task"])
-    jax.tree_map(np.testing.assert_equal, list(ds["mock_task"]), [
-        np.array([0, 1, 2, 3]),
-        np.array([4, 5, 6, 7]),
-        np.array([8, 9, 0, 1]),
-    ])
+    jax.tree_map(
+        np.testing.assert_equal,
+        list(ds["mock_task"]),
+        [
+            np.array([0, 1, 2, 3]),
+            np.array([4, 5, 6, 7]),
+            np.array([8, 9, 0, 1]),
+        ],
+    )
 
     # 2 shards, shard 0
     mock_get_dataset.reset_mock()
@@ -250,7 +286,8 @@ class UtilsTest(parameterized.TestCase):
         shard_id=0,
         num_shards=2,
         eval_steps=3,
-        feature_converter_cls=mock_fc_cls)
+        feature_converter_cls=mock_fc_cls,
+    )
 
     # Call the underlying function loading all shards since the fn shards at the
     # example level.
@@ -260,14 +297,19 @@ class UtilsTest(parameterized.TestCase):
         num_shards=1,
         feature_converter_cls=mock_fc_cls,
         num_epochs=12,
-        continue_from_last_checkpoint=False)
+        continue_from_last_checkpoint=False,
+    )
 
     self.assertSameElements(ds.keys(), ["mock_task"])
-    jax.tree_map(np.testing.assert_equal, list(ds["mock_task"]), [
-        np.array([0, 2]),
-        np.array([4, 6]),
-        np.array([8, 0]),
-    ])
+    jax.tree_map(
+        np.testing.assert_equal,
+        list(ds["mock_task"]),
+        [
+            np.array([0, 2]),
+            np.array([4, 6]),
+            np.array([8, 0]),
+        ],
+    )
 
     # 2 shards, shard 1
     mock_get_dataset.reset_mock()
@@ -276,7 +318,8 @@ class UtilsTest(parameterized.TestCase):
         shard_id=1,
         num_shards=2,
         eval_steps=3,
-        feature_converter_cls=mock_fc_cls)
+        feature_converter_cls=mock_fc_cls,
+    )
 
     # Call the underlying function loading all shards since the fn shards at the
     # example level.
@@ -286,25 +329,31 @@ class UtilsTest(parameterized.TestCase):
         num_shards=1,
         feature_converter_cls=mock_fc_cls,
         num_epochs=12,
-        continue_from_last_checkpoint=False)
+        continue_from_last_checkpoint=False,
+    )
 
     self.assertSameElements(ds.keys(), ["mock_task"])
-    jax.tree_map(np.testing.assert_equal, list(ds["mock_task"]), [
-        np.array([1, 3]),
-        np.array([5, 7]),
-        np.array([9, 1]),
-    ])
+    jax.tree_map(
+        np.testing.assert_equal,
+        list(ds["mock_task"]),
+        [
+            np.array([1, 3]),
+            np.array([5, 7]),
+            np.array([9, 1]),
+        ],
+    )
 
     # 3 shards
     with self.assertRaisesWithLiteralMatch(
-        ValueError,
-        "Batch size (4) must be divisible by number of shards (3)."):
+        ValueError, "Batch size (4) must be divisible by number of shards (3)."
+    ):
       _ = utils.get_training_eval_datasets(
           cfg,
           shard_id=0,
           num_shards=3,
           eval_steps=3,
-          feature_converter_cls=mock_fc_cls)
+          feature_converter_cls=mock_fc_cls,
+      )
 
   @mock.patch.object(utils, "get_dataset")
   def test_get_training_eval_datasets_mixture(self, mock_get_dataset):
@@ -318,7 +367,8 @@ class UtilsTest(parameterized.TestCase):
     seqio.TaskRegistry.add_provider("mock_task1", task1)
     seqio.TaskRegistry.add_provider("mock_task2", task2)
     mixture = seqio.Mixture(
-        "mock_mix", ["mock_task1", "mock_task2"], default_rate=1.0)
+        "mock_mix", ["mock_task1", "mock_task2"], default_rate=1.0
+    )
     seqio.MixtureRegistry.add_provider("mock_mix", mixture)
 
     mock_get_dataset.return_value = tf.data.Dataset.range(10).batch(1)
@@ -330,51 +380,64 @@ class UtilsTest(parameterized.TestCase):
         split="test",
         batch_size=4,
         shuffle=False,
-        seed=23)
+        seed=23,
+    )
 
     res = utils.get_training_eval_datasets(
         cfg,
         shard_id=0,
         num_shards=2,
         eval_steps=3,
-        feature_converter_cls=seqio.FeatureConverter)
+        feature_converter_cls=seqio.FeatureConverter,
+    )
 
     expected_calls = [
         mock.call(
             dataclasses.replace(
-                cfg, mixture_or_task_name="mock_task1", batch_size=1),
+                cfg, mixture_or_task_name="mock_task1", batch_size=1
+            ),
             shard_id=0,
             num_shards=1,
             feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=12),
+            num_epochs=12,
+        ),
         mock.call(
             dataclasses.replace(
-                cfg, mixture_or_task_name="mock_task2", batch_size=1),
+                cfg, mixture_or_task_name="mock_task2", batch_size=1
+            ),
             shard_id=0,
             num_shards=1,
             feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=12),
+            num_epochs=12,
+        ),
         mock.call(
             dataclasses.replace(
-                cfg, mixture_or_task_name="mock_mix", batch_size=1),
+                cfg, mixture_or_task_name="mock_mix", batch_size=1
+            ),
             shard_id=0,
             num_shards=1,
             feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=12)
+            num_epochs=12,
+        ),
     ]
     mock_get_dataset.assert_has_calls(expected_calls)
 
-    self.assertSameElements(res.keys(),
-                            ["mock_task1", "mock_task2", "mock_mix"])
+    self.assertSameElements(
+        res.keys(), ["mock_task1", "mock_task2", "mock_mix"]
+    )
     for ds in res.values():
-      jax.tree_map(np.testing.assert_equal, list(ds), [
-          np.array([0, 2]),
-          np.array([4, 6]),
-          np.array([8, 0]),
-      ])
+      jax.tree_map(
+          np.testing.assert_equal,
+          list(ds),
+          [
+              np.array([0, 2]),
+              np.array([4, 6]),
+              np.array([8, 0]),
+          ],
+      )
 
   @mock.patch.object(utils, "get_dataset")
   def test_get_training_eval_datasets_mixture_obj(self, mock_get_dataset):
@@ -389,7 +452,8 @@ class UtilsTest(parameterized.TestCase):
     seqio.TaskRegistry.add_provider("mock_task3", task3)
     seqio.TaskRegistry.add_provider("mock_task4", task4)
     mixture = seqio.Mixture(
-        "mock_mix2", ["mock_task3", "mock_task4"], default_rate=1.0)
+        "mock_mix2", ["mock_task3", "mock_task4"], default_rate=1.0
+    )
     seqio.MixtureRegistry.add_provider("mock_mix2", mixture)
 
     mock_get_dataset.return_value = tf.data.Dataset.range(10).batch(1)
@@ -399,51 +463,63 @@ class UtilsTest(parameterized.TestCase):
         split="test",
         batch_size=4,
         shuffle=False,
-        seed=23)
+        seed=23,
+    )
 
     res_obj = utils.get_training_eval_datasets(
         cfg_obj,
         shard_id=0,
         num_shards=2,
         eval_steps=3,
-        feature_converter_cls=seqio.FeatureConverter)
+        feature_converter_cls=seqio.FeatureConverter,
+    )
 
     expected_calls = expected_calls = [
         mock.call(
             dataclasses.replace(
-                cfg_obj, mixture_or_task_name="mock_task3", batch_size=1),
+                cfg_obj, mixture_or_task_name="mock_task3", batch_size=1
+            ),
             shard_id=0,
             num_shards=1,
             feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=12),
+            num_epochs=12,
+        ),
         mock.call(
             dataclasses.replace(
-                cfg_obj, mixture_or_task_name="mock_task4", batch_size=1),
+                cfg_obj, mixture_or_task_name="mock_task4", batch_size=1
+            ),
             shard_id=0,
             num_shards=1,
             feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=12),
+            num_epochs=12,
+        ),
         mock.call(
             dataclasses.replace(cfg_obj, batch_size=1),
             shard_id=0,
             num_shards=1,
             feature_converter_cls=seqio.FeatureConverter,
             continue_from_last_checkpoint=False,
-            num_epochs=12)
+            num_epochs=12,
+        ),
     ]
 
     mock_get_dataset.assert_has_calls(expected_calls)
 
-    self.assertSameElements(res_obj.keys(),
-                            ["mock_task3", "mock_task4", "mock_mix2"])
+    self.assertSameElements(
+        res_obj.keys(), ["mock_task3", "mock_task4", "mock_mix2"]
+    )
     for ds in res_obj.values():
-      jax.tree_map(np.testing.assert_equal, list(ds), [
-          np.array([0, 2]),
-          np.array([4, 6]),
-          np.array([8, 0]),
-      ])
+      jax.tree_map(
+          np.testing.assert_equal,
+          list(ds),
+          [
+              np.array([0, 2]),
+              np.array([4, 6]),
+              np.array([8, 0]),
+          ],
+      )
 
   def test_override_params_axes_names(self):
     model_variables = flax.core.freeze({
@@ -454,31 +530,37 @@ class UtilsTest(parameterized.TestCase):
                     "kernel": np.zeros((4, 6)),
                     "bias": np.zeros(6),
                 }
-            }
+            },
         },
         "params_axes": {
             "logits_dense_axes": AxisMetadata(names=("vocab", "embed")),
             "mlp": {
-                "wo": {
-                    "kernel_axes": AxisMetadata(names=("embed", "mlp"))
-                }
-            }
-        }
+                "wo": {"kernel_axes": AxisMetadata(names=("embed", "mlp"))}
+            },
+        },
     })
 
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "Model variables do not contain a 'params_axes' collection to apply an "
-        "override to."):
-      utils.override_params_axes_names({"params": model_variables["params"]},
-                                       [("mlp/wo/kernel", ("embed",))])
+        (
+            "Model variables do not contain a 'params_axes' collection to apply"
+            " an override to."
+        ),
+    ):
+      utils.override_params_axes_names(
+          {"params": model_variables["params"]}, [("mlp/wo/kernel", ("embed",))]
+      )
 
     with self.assertRaisesWithLiteralMatch(
         ValueError,
-        "Provided axis name override for mlp/wo/kernel does not match param "
-        "rank (2): ('embed',)"):
-      utils.override_params_axes_names(model_variables,
-                                       [("mlp/wo/kernel", ("embed",))])
+        (
+            "Provided axis name override for mlp/wo/kernel does not match param"
+            " rank (2): ('embed',)"
+        ),
+    ):
+      utils.override_params_axes_names(
+          model_variables, [("mlp/wo/kernel", ("embed",))]
+      )
 
     overridden_variables = utils.override_params_axes_names(
         model_variables,
@@ -487,7 +569,8 @@ class UtilsTest(parameterized.TestCase):
             (".*/wo/kernel", ("batch", "embed")),  # this one is used
             ("mlp/wo/kernel", ("embed",)),  # unused since already matched
             ("mlp/wo/bias", ("embed",)),  # used
-        ])
+        ],
+    )
 
     jax.tree_map(
         np.testing.assert_equal,
@@ -533,7 +616,6 @@ class UtilsTest(parameterized.TestCase):
       )
 
   def test_create_checkpoint_manager(self):
-
     class FakeBestCheckpointManager(checkpoints.BestCheckpointManager):
 
       def __init__(self, *args, **kwargs):
@@ -549,7 +631,8 @@ class UtilsTest(parameterized.TestCase):
     directory = self.create_tempdir(name="all_checkpoints")
     path = os.path.join(directory, "checkpoint")
     mock_data_layout = mock.Mock(
-        shard_id=0, num_shards=1, is_first_host_in_replica_set=True)
+        shard_id=0, num_shards=1, is_first_host_in_replica_set=True
+    )
     mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
     best_checkpoint_manager_cls = FakeBestCheckpointManager
     save_cfg = utils.SaveCheckpointConfig(
@@ -557,12 +640,14 @@ class UtilsTest(parameterized.TestCase):
         dtype="float32",
         keep=5,
         period=2,
-        save_dataset=True)
+        save_dataset=True,
+    )
     restore_cfg = utils.RestoreCheckpointConfig(
         path=path,
         checkpoint_manager_cls=best_checkpoint_manager_cls,
         dtype="bfloat16",
-        restore_dataset=False)
+        restore_dataset=False,
+    )
 
     manager = utils.create_checkpoint_manager(
         save_cfg=save_cfg,
@@ -595,7 +680,8 @@ class UtilsTest(parameterized.TestCase):
     directory = self.create_tempdir(name="all_checkpoints")
     path = os.path.join(directory, "checkpoint")
     mock_data_layout = mock.Mock(
-        shard_id=0, num_shards=1, is_first_host_in_replica_set=True)
+        shard_id=0, num_shards=1, is_first_host_in_replica_set=True
+    )
     mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
     save_checkpointer_cls = (
         checkpoints.SaveBestCheckpointer
@@ -712,7 +798,8 @@ class TrainStateInitializerTest(parameterized.TestCase):
 
     partitioner = mock.Mock(get_mesh_axes=lambda _: None, partition=_partition)
     mock_inference_state_create = self.enter_context(
-        mock.patch.object(train_state_lib.InferenceState, "create"))
+        mock.patch.object(train_state_lib.InferenceState, "create")
+    )
     mock_inference_state_create.return_value = None
 
     shapes = {
@@ -729,20 +816,20 @@ class TrainStateInitializerTest(parameterized.TestCase):
     def _init_fn(rng, input_shapes, input_types):
       del rng
       return {
-          "ones":
-              np.ones(input_shapes["ones"], dtype=input_types["ones"]),
-          "twos":
-              np.ones(input_shapes["twos"], dtype=input_types["twos"]) * 2,
-          "threes":
+          "ones": np.ones(input_shapes["ones"], dtype=input_types["ones"]),
+          "twos": np.ones(input_shapes["twos"], dtype=input_types["twos"]) * 2,
+          "threes": (
               np.ones(input_shapes["threes"], dtype=input_types["threes"]) * 3
+          ),
       }
 
     init_fn = mock.Mock()
     init_fn.__call__ = _init_fn
     init_fn.__self__ = None
 
-    self.train_state_init = utils.TrainStateInitializer(None, init_fn, shapes,
-                                                        partitioner, types)
+    self.train_state_init = utils.TrainStateInitializer(
+        None, init_fn, shapes, partitioner, types
+    )
 
     self.ckptdir = self.create_tempdir(name="primary_checkpoints")
     steps = (2, 3)
@@ -755,7 +842,8 @@ class TrainStateInitializerTest(parameterized.TestCase):
   def test_from_checkpoints_specific(self):
     # multiple paths
     ckpt_cfg = utils.RestoreCheckpointConfig(
-        path=self.paths, mode="specific", checkpointer_cls=MockCheckpointer)
+        path=self.paths, mode="specific", checkpointer_cls=MockCheckpointer
+    )
     restored = list(self.train_state_init.from_checkpoints([ckpt_cfg]))
     self.assertSequenceEqual(self.paths, [state.path for state, _ in restored])
     self.assertSequenceEqual(self.paths, [path for _, path in restored])
@@ -767,7 +855,8 @@ class TrainStateInitializerTest(parameterized.TestCase):
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.ckptdir.full_path,
         mode="latest",
-        checkpointer_cls=MockCheckpointer)
+        checkpointer_cls=MockCheckpointer,
+    )
     restored = list(self.train_state_init.from_checkpoints([ckpt_cfg]))
     assert len(restored) == 1
     restored_state, restored_path = restored[0]
@@ -781,7 +870,8 @@ class TrainStateInitializerTest(parameterized.TestCase):
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.ckptdir.full_path,
         mode="latest",
-        checkpointer_cls=MockCheckpointer)
+        checkpointer_cls=MockCheckpointer,
+    )
     secondary_ckptdir = self.create_tempdir(name="secondary_checkpoints")
     for s in (4, 5):
       step_dir = secondary_ckptdir.mkdir(f"checkpoint_{s}")
@@ -789,9 +879,11 @@ class TrainStateInitializerTest(parameterized.TestCase):
     secondary_ckpt_cfg = utils.RestoreCheckpointConfig(
         path=secondary_ckptdir.full_path,
         mode="latest",
-        checkpointer_cls=MockCheckpointer)
+        checkpointer_cls=MockCheckpointer,
+    )
     restored = self.train_state_init.from_checkpoint(
-        [ckpt_cfg, secondary_ckpt_cfg])
+        [ckpt_cfg, secondary_ckpt_cfg]
+    )
     self.assertEqual(self.paths[-1], restored.path)
 
   def test_from_checkpoint_multiple_configs_one_empty(self):
@@ -799,41 +891,48 @@ class TrainStateInitializerTest(parameterized.TestCase):
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.ckptdir.full_path,
         mode="latest",
-        checkpointer_cls=MockCheckpointer)
+        checkpointer_cls=MockCheckpointer,
+    )
     empty_ckptdir = self.create_tempdir(name="empty_checkpoints")
     empty_ckpt_cfg = utils.RestoreCheckpointConfig(
         path=empty_ckptdir.full_path,
         mode="latest",
-        checkpointer_cls=MockCheckpointer)
+        checkpointer_cls=MockCheckpointer,
+    )
     restored = self.train_state_init.from_checkpoint([empty_ckpt_cfg, ckpt_cfg])
     self.assertEqual(self.paths[-1], restored.path)
 
   def test_from_scratch(self):
     self.assertTrue(
-        self.train_state_init.from_scratch(jax.random.PRNGKey(13)).from_scratch)
+        self.train_state_init.from_scratch(jax.random.PRNGKey(13)).from_scratch
+    )
 
   def test_from_checkpoint_or_scratch(self):
     ckpt_cfg = utils.RestoreCheckpointConfig(
         path=self.ckptdir.full_path,
         mode="latest",
-        checkpointer_cls=MockCheckpointer)
+        checkpointer_cls=MockCheckpointer,
+    )
     empty_ckptdir = self.create_tempdir(name="empty_checkpoints")
     empty_ckpt_cfg = utils.RestoreCheckpointConfig(
         path=empty_ckptdir.full_path,
         mode="latest",
-        checkpointer_cls=MockCheckpointer)
+        checkpointer_cls=MockCheckpointer,
+    )
 
     init_rng = jax.random.PRNGKey(13)
 
     # ckpt_cfg has checkpoints, restore from there
     restored = self.train_state_init.from_checkpoint_or_scratch(
-        [empty_ckpt_cfg, ckpt_cfg], init_rng=init_rng)
+        [empty_ckpt_cfg, ckpt_cfg], init_rng=init_rng
+    )
     self.assertEqual(self.paths[-1], restored.path)
     self.assertFalse(restored.from_scratch)
 
     # no checkpoints available, init from scratch
     initialized = self.train_state_init.from_checkpoint_or_scratch(
-        [empty_ckpt_cfg], init_rng=init_rng)
+        [empty_ckpt_cfg], init_rng=init_rng
+    )
     self.assertTrue(initialized.from_scratch)
 
 
