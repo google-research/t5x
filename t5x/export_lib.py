@@ -852,9 +852,19 @@ def create_preprocessor_with_decoder_params(
 
     return features
 
+  def _decoder_param_tensor_spec(decoder_param_spec) -> tf.TensorSpec:
+    """Returns the tensor spec for the decoder param."""
+    name, dtype, per_example_shape = decoder_param_spec
+    # decode_rng is a single parameter and not batched.
+    batch_shape = () if name == 'decode_rng' else (batch_size,)
+    return tf.TensorSpec(
+        batch_shape + tuple(per_example_shape), dtype, name=name
+    )
+
   input_signature = tuple(input_signature) + tuple(
-      tf.TensorSpec((batch_size,) + tuple(per_example_shape), dtype, name=name)
-      for name, dtype, per_example_shape in decoder_params_spec)
+      _decoder_param_tensor_spec(decoder_param_spec)
+      for decoder_param_spec in decoder_params_spec
+  )
   return wrapped, input_signature
 
 
@@ -1210,9 +1220,14 @@ def save(
     fake_inputs = create_fake_input_fn(input_signature)
     features = preprocessor(*fake_inputs)
 
-    # All the features have a leading batch dimension.
+    # All the features, except decode_rng, have a leading batch dimension.
     polymorphic_shapes_inputs = jax.tree_util.tree_map(lambda _: 'b, ...',
                                                        features)
+    if (
+        'decoder_params' in polymorphic_shapes_inputs
+        and 'decode_rng' in polymorphic_shapes_inputs['decoder_params']
+    ):
+      polymorphic_shapes_inputs['decoder_params']['decode_rng'] = '...'
   else:
     polymorphic_shapes_inputs = None
 
