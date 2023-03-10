@@ -375,7 +375,7 @@ class MetricsManager(object):
 
       # Ensure the metrics are not on device, which could lead to a deadlock.
       def _ensure_not_on_device(x):
-        assert not isinstance(x, jax.numpy.DeviceArray)
+        assert not isinstance(x, jax.Array)
 
       jax.tree_util.tree_map(_ensure_not_on_device, final_metrics)
       final_metrics = jax.tree_util.tree_map(utils.get_local_data,
