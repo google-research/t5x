@@ -41,6 +41,7 @@ import warnings
 from absl import logging
 import clu.data
 from etils import epath
+import flax
 from flax import serialization
 from flax import traverse_util
 import jax
@@ -159,7 +160,23 @@ class _ParameterInfo:
   axes: Optional[partitioning.PartitionSpec] = None
 
 
-orbax.checkpoint.utils.register_ts_spec_for_serialization()
+def register_ts_spec_for_serialization():
+  # Register functions with flax.serialization to handle `ts.Spec`.
+  def is_dict(s):
+    return isinstance(s, (dict, flax.core.FrozenDict))
+
+  serialization.register_serialization_state(
+      ts.Spec,
+      ty_to_state_dict=lambda t: t.to_json(),
+      # The parameter may have been written to tensorstore or msgpack.
+      # If the former, a dict of the spec will be stored. If the latter it will
+      # be the value itself.
+      ty_from_state_dict=lambda t, s: ts.Spec(s) if is_dict(s) else s,
+      override=True,
+  )
+
+
+register_ts_spec_for_serialization()
 
 
 def _run_future_tree(future_tree):
@@ -1940,6 +1957,19 @@ class DatasetCheckpointHandler(orbax.checkpoint.CheckpointHandler):
     return NotImplementedError
 
 
+def _rebuild_ts_specs(tree):
+  """Converts any ts_spec dict leaves to ts.Spec object."""
+
+  def is_leaf(x):
+    if isinstance(x, dict):
+      return set(x.keys()) >= {'driver', 'kvstore'}
+    return False
+
+  return jax.tree_util.tree_map(
+      lambda x: ts.Spec(x) if isinstance(x, dict) else x, tree, is_leaf=is_leaf
+  )
+
+
 class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
   """Implementation of PyTreeCheckpointHandler that accounts for legacy checkpoints."""
 
@@ -2058,13 +2088,16 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
     ser_item = jax.tree_util.tree_map(_get_leaf_for_aggregation, param_infos,
                                       save_args, item)
 
-    ser_item = {
+    ser_item = flax.serialization.to_state_dict({
         _VERSION_KEY: VERSION,
         _OPTIMIZER_KEY: ser_item,
-    }
+    })
 
-    await self._aggregate_handler.serialize(
-        directory / self._aggregate_filename, ser_item)
+    if jax.process_index() == 0:
+      msgpack = serialization.msgpack_serialize(ser_item)
+      await orbax.checkpoint.utils.async_write_bytes(
+          directory / self._aggregate_filename, msgpack
+      )
 
   def structure(self, directory: epath.Path) -> PyTree:
     """See superclass documentation.
@@ -2091,8 +2124,10 @@ class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
         leaf = orbax.checkpoint.utils.leaf_placeholder(leaf)
       return leaf
 
+    path = directory / _FLAX_CHECKPOINT_FILE
     if (directory / _FLAX_CHECKPOINT_FILE).exists():
-      result = super().structure(directory)
+      msgpack = path.read_bytes()
+      result = _rebuild_ts_specs(serialization.msgpack_restore(msgpack))
       result = jax.tree_map(tensorstore_spec_to_name, result)
     else:
       result = orbax.checkpoint.utils.pytree_structure(directory)
