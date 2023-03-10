@@ -72,7 +72,7 @@ class InteractiveModel(abc.ABC):
       output_dir: str,
       partitioner: partitioning.BasePartitioner,
       model: models.BaseTransformerModel,
-      dtype: str,
+      dtype: Optional[str],
       restore_mode: str,
       checkpoint_path: str,
       input_shapes: Mapping[str, utils.Array],
