@@ -1692,7 +1692,9 @@ async def _read_ts(
   else:
     # if provided, read as GDA
     arr = await gda_serialization.async_deserialize(
-        jax.sharding.NamedSharding(mesh, axes), tmp_ts_spec_dict)
+        jax.sharding.NamedSharding(mesh, axes),  # pytype: disable=wrong-arg-types
+        tmp_ts_spec_dict,
+    )
   return arr
 
 
