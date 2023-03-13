@@ -25,7 +25,7 @@ import os
 import re
 import time
 import typing
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union, cast
 import warnings
 
 from absl import flags
@@ -354,8 +354,8 @@ def create_checkpoint_manager(
       )
       raise ValueError(msg)
 
-  def _get_default_args(cls):
-    signature = inspect.signature(cls.__init__)
+  def _get_default_args(cls_or_fcn):
+    signature = inspect.signature(cls_or_fcn)
     # Only get certain parameters needed for BestCheckpointManager
     # configuration. These are the parameters of SaveBestCheckpointer that are
     # not shared by regular Checkpointer. This whole approach is very hacky, but
@@ -382,9 +382,27 @@ def create_checkpoint_manager(
   def _get_checkpoint_manager_cls(cfg):
     checkpoint_manager_cls = cfg.checkpoint_manager_cls
     extra_kwargs = {}
-    if issubclass(cfg.checkpointer_cls, checkpoints.SaveBestCheckpointer):
-      checkpoint_manager_cls = checkpoints.BestCheckpointManager
+
+    # Sometimes, the user pass in a `functools.partial` of
+    # `SaveBestCheckpointer` which will cause issubclass to raise an Exception
+    # since `functools.partial` is not a class.
+    if isinstance(cfg.checkpointer_cls, functools.partial):
+      func_to_check = cast(functools.partial, cfg.checkpointer_cls).func
+      if issubclass(
+          # pylint: disable-next=g-bare-generic
+          cast(type, func_to_check),
+          checkpoints.SaveBestCheckpointer,
+      ):
+        checkpoint_manager_cls = checkpoints.BestCheckpointManager
+      # Note, this is intentionally moved out of the above if statement compared
+      # to the condition below. This is because we need to handle the kwargs
+      # differently since it's a functools.partial.
       extra_kwargs = _get_default_args(cfg.checkpointer_cls)
+    else:
+      if issubclass(cfg.checkpointer_cls, checkpoints.SaveBestCheckpointer):
+        checkpoint_manager_cls = checkpoints.BestCheckpointManager
+        extra_kwargs = _get_default_args(cfg.checkpointer_cls.__init__)
+
     return checkpoint_manager_cls, extra_kwargs
 
   save_dtype = None

@@ -15,9 +15,10 @@
 """Tests for t5x.utils."""
 
 import dataclasses
+import functools
 import os
 import re
-from typing import Optional
+from typing import Mapping, Optional
 import unittest
 
 from absl import flags
@@ -615,28 +616,79 @@ class UtilsTest(parameterized.TestCase):
           model_dir=directory,
       )
 
-  def test_create_checkpoint_manager(self):
-    class FakeBestCheckpointManager(checkpoints.BestCheckpointManager):
-
-      def __init__(self, *args, **kwargs):
-        super().__init__(
-            *args,
-            metric_name_to_monitor="loss",
-            metric_mode="min",
-            force_keep_period=10,
-            keep_checkpoints_without_metrics=False,
-            **kwargs,
-        )
-
+  @parameterized.named_parameters(
+      dict(
+          testcase_name="using_best_checkpoint_manager",
+          checkpointer_cls=checkpoints.Checkpointer,
+          checkpoint_manager_cls=checkpoints.BestCheckpointManager,
+          metric_name_to_monitor={"train/accuracy": 0.8, "train/loss": 0.1},
+          expected_metric_mode="max",
+          expected_force_keep_period=None,
+          expected_keep_checkpoints_without_metrics=True,
+          expected_metric=0.8,
+      ),
+      dict(
+          testcase_name="using_functools_partial_for_checkpoint_manager_cls",
+          checkpointer_cls=checkpoints.Checkpointer,
+          checkpoint_manager_cls=functools.partial(
+              checkpoints.BestCheckpointManager,
+              metric_name_to_monitor="loss",
+              metric_mode="min",
+              force_keep_period=10,
+              keep_checkpoints_without_metrics=False,
+          ),
+          metric_name_to_monitor={"accuracy": 0.8, "loss": 0.1},
+          expected_metric_mode="min",
+          expected_force_keep_period=10,
+          expected_keep_checkpoints_without_metrics=False,
+          expected_metric=0.1,
+      ),
+      dict(
+          testcase_name="using_save_best_checkpointer",
+          checkpointer_cls=checkpoints.SaveBestCheckpointer,
+          checkpoint_manager_cls=checkpoints.CheckpointManager,
+          metric_name_to_monitor={"train/accuracy": 0.8, "train/loss": 0.1},
+          expected_metric_mode="max",
+          expected_force_keep_period=None,
+          expected_keep_checkpoints_without_metrics=True,
+          expected_metric=0.8,
+      ),
+      dict(
+          testcase_name="using_functools_partial_for_save_best_checkpointer",
+          checkpointer_cls=functools.partial(
+              checkpoints.SaveBestCheckpointer,
+              metric_name_to_monitor="train/loss",
+              metric_mode="min",
+              force_keep_period=20,
+              keep_checkpoints_without_metrics=False,
+          ),
+          checkpoint_manager_cls=checkpoints.CheckpointManager,
+          metric_name_to_monitor={"train/accuracy": 0.8, "train/loss": 0.1},
+          expected_metric_mode="min",
+          expected_force_keep_period=20,
+          expected_keep_checkpoints_without_metrics=False,
+          expected_metric=0.1,
+      ),
+  )
+  def test_create_checkpoint_manager(
+      self,
+      checkpointer_cls,
+      checkpoint_manager_cls,
+      metric_name_to_monitor: Mapping[str, float],
+      expected_metric_mode: str,
+      expected_force_keep_period: int,
+      expected_keep_checkpoints_without_metrics: bool,
+      expected_metric: float,
+  ):
     directory = self.create_tempdir(name="all_checkpoints")
     path = os.path.join(directory, "checkpoint")
     mock_data_layout = mock.Mock(
         shard_id=0, num_shards=1, is_first_host_in_replica_set=True
     )
     mock_partitioner = mock.Mock(get_data_layout=lambda: mock_data_layout)
-    best_checkpoint_manager_cls = FakeBestCheckpointManager
     save_cfg = utils.SaveCheckpointConfig(
-        checkpoint_manager_cls=best_checkpoint_manager_cls,
+        checkpointer_cls=checkpointer_cls,
+        checkpoint_manager_cls=checkpoint_manager_cls,
         dtype="float32",
         keep=5,
         period=2,
@@ -644,7 +696,8 @@ class UtilsTest(parameterized.TestCase):
     )
     restore_cfg = utils.RestoreCheckpointConfig(
         path=path,
-        checkpoint_manager_cls=best_checkpoint_manager_cls,
+        checkpointer_cls=checkpointer_cls,
+        checkpoint_manager_cls=checkpoint_manager_cls,
         dtype="bfloat16",
         restore_dataset=False,
     )
@@ -666,11 +719,16 @@ class UtilsTest(parameterized.TestCase):
     self.assertTrue(manager._should_write_dataset_ckpt)
 
     # Save best options.
-    self.assertEqual(manager._options.force_keep_period, 10)
-    self.assertEqual(manager._options.best_mode, "min")
-    self.assertFalse(manager._options.keep_checkpoints_without_metrics)
     self.assertEqual(
-        manager._options.best_fn({"accuracy": 0.8, "loss": 0.1}), 0.1
+        manager._options.force_keep_period, expected_force_keep_period
+    )
+    self.assertEqual(manager._options.best_mode, expected_metric_mode)
+    self.assertEqual(
+        manager._options.keep_checkpoints_without_metrics,
+        expected_keep_checkpoints_without_metrics,
+    )
+    self.assertEqual(
+        manager._options.best_fn(metric_name_to_monitor), expected_metric
     )
 
   @parameterized.parameters((True,), (False,))
