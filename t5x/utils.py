@@ -36,7 +36,6 @@ import flax.core
 from flax.core import scope as flax_scope
 from flax.linen import partitioning as flax_partitioning
 import jax
-from jax._src import sharding
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
 import numpy as np
@@ -637,12 +636,21 @@ class DatasetConfig:
   trim_output_features: bool = True
 
 
+def _hashed_index(x) -> int:
+  # This works for both `pjit`/`xmap` indices and `pmap` indices (which might
+  # have an integer instead of a slice).
+  assert all(v.step is None for v in x if isinstance(v, slice))
+  return hash(
+      tuple((v.start, v.stop) if isinstance(v, slice) else v for v in x)
+  )
+
+
 def _get_index_mappings(device_to_idxs):
   """Get device and host to index set mappings for GDA construction."""
   host_to_idxs = collections.defaultdict(list)
   idx_to_devices = collections.defaultdict(list)
   for d, idx in device_to_idxs.items():
-    hashed_idx = sharding._hashed_index(idx)  # pylint: disable=protected-access
+    hashed_idx = _hashed_index(idx)
     # Only need one copy of each idx, since they are unique. Need to maintain
     # original ordering though.
     if hashed_idx not in host_to_idxs[d.process_index]:
