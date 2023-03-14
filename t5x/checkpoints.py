@@ -1945,78 +1945,6 @@ class DatasetCheckpointHandler(orbax.checkpoint.CheckpointHandler):
 class TrainStateCheckpointHandler(orbax.checkpoint.PyTreeCheckpointHandler):
   """Implementation of PyTreeCheckpointHandler that accounts for legacy checkpoints."""
 
-  def restore(
-      self,
-      directory: epath.Path,
-      item: Optional[PyTree] = None,
-      restore_args: Optional[PyTree] = None,
-      transforms: Optional[PyTree] = None,
-      transforms_default_to_original: bool = True,
-      fallback_state: Optional[Mapping[str, Any]] = None,
-      state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
-  ) -> PyTree:
-    """See superclass documentation."""
-    if not directory.exists():
-      raise FileNotFoundError(
-          f'Requested directory for restore does not exist at {directory}'
-      )
-    # TODO(b/216650048) Consider allowing users to specify transforms instead.
-    if transforms is not None:
-      raise ValueError('Orbax-style `transforms` not yet supported.')
-    if restore_args is None:
-      raise ValueError('Expected `restore_args` to be set.')
-
-    ckpt_structure = self.structure(directory)
-    # After transforms, may be a subset of keys: only the ones we actually need
-    # to restore.
-    state_dict_to_restore = _get_optimizer_state_dict(
-        ckpt_structure, item, state_transformation_fns
-    )
-
-    # After transformations, state_dict_to_restore may still have extra keys
-    # relative to item (the eventual restoration structure). Extraneous keys
-    # need to be dropped.
-    state_dict_to_restore = state_utils.intersect_state(
-        state_dict_to_restore, item
-    )
-    # pylint: disable=protected-access
-    param_infos = orbax.checkpoint.pytree_checkpoint_handler._get_param_infos_from_structure(
-        directory, state_dict_to_restore
-    )
-    restore_args = state_utils.intersect_state(
-        restore_args, state_dict_to_restore
-    )
-
-    async def _async_restore(infos, values, args):
-      concurrent_bytes = self._concurrent_gb * 10**9
-      byte_limiter = gda_serialization._LimitInFlightBytes(concurrent_bytes)  # pylint: disable=protected-access
-      infos = jax.tree_util.tree_map(
-          functools.partial(dataclasses.replace, byte_limiter=byte_limiter),
-          infos,
-      )
-      future_arrays = jax.tree_map(self._maybe_deserialize, infos, values, args)
-      future_arrays, _ = jax.tree_util.tree_flatten(future_arrays)
-      return await asyncio.gather(*future_arrays)
-
-    result = asyncio.run(
-        _async_restore(param_infos, state_dict_to_restore, restore_args)
-    )
-    restored_state_dict_partial = jax.tree_util.tree_unflatten(
-        jax.tree_util.tree_structure(state_dict_to_restore), result
-    )
-
-    # If `fallback_state` was specified, then fill the missing parameters.
-    if fallback_state is not None:
-      restored_state_dict = state_utils.merge_state(
-          restored_state_dict_partial, fallback_state
-      )
-    else:
-      restored_state_dict = restored_state_dict_partial
-    orbax.checkpoint.utils.sync_global_devices(
-        'TrainStateCheckpointHandler:restore'
-    )
-    return restored_state_dict
-
   async def _write_aggregate_file(
       self,
       directory: epath.Path,
@@ -2369,22 +2297,64 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       )
 
     restore_args = jax.tree_util.tree_map(_restore_args, param_infos)
-    items = {_STATE_KEY: state_dict}
+
+    # After transforms, may be a subset of keys: only the ones we actually need
+    # to restore.
+    structure = self._checkpointers[_STATE_KEY].structure(
+        self._get_save_directory(step, directory, key_name=_STATE_KEY)
+    )
+    # Note: Ideally we would use Orbax's `transform_fn` to do this logic, but
+    # the problem is we need to modify `restore_args`, and there isn't a great
+    # way to do that within Orbax.
+    state_dict_to_restore = _get_optimizer_state_dict(
+        structure, state_dict, state_transformation_fns
+    )
+    # After transformations, state_dict_to_restore may still have extra keys
+    # relative to item (the eventual restoration structure). Extraneous keys
+    # need to be dropped.
+    state_dict_to_restore = state_utils.intersect_state(
+        state_dict_to_restore, state_dict
+    )
+    restore_args = state_utils.intersect_state(
+        restore_args, state_dict_to_restore
+    )
+
+    def _transform_fn(
+        item: PyTree, structure: PyTree, param_infos: PyTree
+    ) -> Tuple[PyTree, PyTree]:
+      # When this function is called from within PyTreeCheckpointHandler,
+      # transforms will already have been performed (see above), but use this
+      # function to hack param_infos to return the needed values.
+      # This structure is unneeded, because we already restored and transformed
+      # it.
+      del structure
+      # Construct param_infos from item because item is the transformed
+      # structure.
+      # pylint: disable=protected-access
+      param_infos = orbax.checkpoint.pytree_checkpoint_handler._get_param_infos_from_structure(
+          self._get_save_directory(step, directory, key_name=_STATE_KEY), item
+      )
+      return item, param_infos
+
+    items = {_STATE_KEY: state_dict_to_restore}
     if self._should_write_dataset_ckpt:
       items[_DATASET_KEY] = self._dataset_iterator
     restore_kwargs = {
         _STATE_KEY: {
             'restore_args': restore_args,
-            'state_transformation_fns': state_transformation_fns,
-            'fallback_state': fallback_state,
+            'transform_fn': _transform_fn,
         },
     }
-
     restored = super().restore(
         step, items, restore_kwargs=restore_kwargs, directory=directory)
     state_dict = restored[_STATE_KEY]
     if self._should_write_dataset_ckpt:
       self._dataset_iterator = restored[_DATASET_KEY]
+
+    # Merge restored state dict with fallback state to fill in any remaining
+    # params.
+    if fallback_state is not None:
+      state_dict = state_utils.merge_state(state_dict, fallback_state)
 
     # After restoration, some values may still be non-sharded arrays from
     # fallback state.
