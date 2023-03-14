@@ -310,10 +310,11 @@ class InteractiveModel(abc.ABC):
     """Train function.
 
     Args:
-      examples: a single batch of examples that should be transformed into a
-        tf.data.Dataset. The examples can either take the form of a string (ex:
-        a single input for inference), or a dictionary mapping "input"/"target"
-        to a string containing that element.
+      examples: examples that should be transformed into a tf.data.Dataset. The
+        examples can either take the form of a string (ex: a single input for
+        inference), or a dictionary mapping "input"/"target" to a string
+        containing that element. At least `self._batch_size` examples must be
+        provided.
 
     Raises:
       ValueError: the user provided less than `batch_size` examples, or
@@ -334,10 +335,11 @@ class InteractiveModel(abc.ABC):
     """Train function.
 
     Args:
-      examples: a single batch of examples that should be transformed into a
-        tf.data.Dataset. The examples can either take the form of a string (ex:
-        a single input for inference), or a dictionary mapping "input"/"target"
-        to a string containing that element.
+      examples: examples that should be transformed into a tf.data.Dataset. The
+        examples can either take the form of a string (ex: a single input for
+        inference), or a dictionary mapping "input"/"target" to a string
+        containing that element. At least `self._batch_size` examples must be
+        provided.
       preprocessors: list(callable), an optional list of functions that receive
         a tf.data.Dataset and return a tf.data.Dataset. These will be executed
         sequentially and the final dataset must include features matching
@@ -424,10 +426,10 @@ class InteractiveModel(abc.ABC):
     Args:
       mode: Either 'score' to compute the log likelihood of given targets, or
         'predict_with_aux' to score and decode targets.
-      examples: a single batch of examples that should be transformed into a
-        tf.data.Dataset. The examples can either take the form of a string (ex:
-        a single input for inference), or a dictionary mapping "input"/"target"
-        to a string containing that element.
+      examples: examples that should be transformed into a tf.data.Dataset. The
+        examples can either take the form of a string (ex: a single input for
+        inference), or a dictionary mapping "input"/"target" to a string
+        containing that element.
       preprocessors: list(callable), an optional list of functions that receive
         a tf.data.Dataset and return a tf.data.Dataset. These will be executed
         sequentially and the final dataset must include features matching
@@ -618,10 +620,10 @@ class InteractiveModel(abc.ABC):
     """Evaluation function.
 
     Args:
-      examples: a single batch of examples that should be transformed into a
-        tf.data.Dataset. The examples can either take the form of a string (ex:
-        a single input for inference), or a dictionary mapping "input"/"target"
-        to a string containing that element.
+      examples: examples that should be transformed into a tf.data.Dataset. The
+        examples can either take the form of a string (ex: a single input for
+        inference), or a dictionary mapping "input"/"target" to a string
+        containing that element.
       metric_fns: list(callable), an optional list of metric functions with a
         signature that matches one of three possible forms: - (targets, scores)
         - Note that `scores` refers to the score the model assigned the target
@@ -653,9 +655,9 @@ class InteractiveModel(abc.ABC):
     """Evaluation function.
 
     Args:
-      examples: a single batch of examples that should be transformed into a
-        tf.data.Dataset. The examples must take the form of a dictionary mapping
-        "input"/"target" to a string containing that element.
+      examples: examples that should be transformed into a tf.data.Dataset. The
+        examples must take the form of a dictionary mapping "input"/"target" to
+        a string containing that element.
       preprocessors: list(callable), an optional list of functions that receive
         a tf.data.Dataset and return a tf.data.Dataset. These will be executed
         sequentially and the final dataset must include features matching
