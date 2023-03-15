@@ -220,9 +220,18 @@ def _sync_global_devices(name: str) -> None:
   multihost_utils.sync_global_devices(name)
 
 
-def get_checkpoint_dir(checkpoints_dir: str, step: int) -> str:
+def get_checkpoint_dir(
+    checkpoints_dir: str,
+    step: int,
+    step_format_fixed_length: Optional[int] = None,
+) -> str:
   """Returns path to a checkpoint dir given a parent directory and step."""
-  return os.path.join(checkpoints_dir, f'checkpoint_{step}')
+  step_str = (
+      f'{step:0{step_format_fixed_length}d}'
+      if step_format_fixed_length is not None
+      else str(step)
+  )
+  return os.path.join(checkpoints_dir, f'checkpoint_{step_str}')
 
 
 def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
@@ -2099,6 +2108,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       keep_dataset_checkpoints: Optional[int] = None,
       force_keep_period: Optional[int] = None,
       options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None,
+      separate_item_subfolder: bool = False,
   ):
     self._train_state = train_state
     self._partitioner = partitioner
@@ -2106,6 +2116,10 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     self._save_dtype = save_dtype
     self._restore_dtype = restore_dtype
     self._tmp_directory: Optional[epath.PathLike] = None
+    # We should always turn this off for now, especially for saving. The only
+    # use case to turn it on is restoring a PAX checkpoint, which has separate
+    # subfolders for each item saved.
+    self._separate_item_subfolder = separate_item_subfolder
 
     data_layout = partitioner.get_data_layout()
     dataset_ckpt_name = (
@@ -2156,14 +2170,27 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     # `tmp` option is not handled here, since tmp directory creation is
     # handled differently in T5X.
     del tmp_directory
-    step_dir = epath.Path(get_checkpoint_dir(os.fspath(directory), step))
-    if (key_name is None or key_name == _STATE_KEY or
-        key_name == _DATASET_KEY or
-        key_name == orbax.checkpoint.checkpoint_manager.METRIC_ITEM_NAME):
+    step_dir = epath.Path(
+        get_checkpoint_dir(
+            os.fspath(directory),
+            step,
+            step_format_fixed_length=self._options.step_format_fixed_length,
+        )
+    )
+    if (
+        key_name is None
+        or key_name == _DATASET_KEY
+        or key_name == orbax.checkpoint.checkpoint_manager.METRIC_ITEM_NAME
+    ):
       return step_dir
+    elif key_name == _STATE_KEY:
+      return (
+          step_dir / _STATE_KEY if self._separate_item_subfolder else step_dir
+      )
     else:
       raise ValueError(
-          f'Checkpointing item {key_name} is not currently supported.')
+          f'Checkpointing item {key_name} is not currently supported.'
+      )
 
   def save(
       self,
