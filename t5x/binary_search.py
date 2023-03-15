@@ -98,7 +98,7 @@ def _monotonic_int32_to_float32_bit_pattern(x: int) -> int:
   return x
 
 
-def _monotonic_int32_to_float32(x: int) -> float:
+def _monotonic_int32_to_float32(x: int) -> jax.Array:
   """Converts an int32 to a float32 with consistent ordering.
 
   This function is the unique function that is monotonic with respect to the
