@@ -1037,9 +1037,11 @@ def get_seqio_task_from_examples(
     interactive_model: InteractiveModel,
     examples: Sequence[Union[str, dict[str, str]]],
     preprocessors: Sequence[Callable[..., tf.data.Dataset]],
-    metric_fns: Optional[Sequence[
-        seqio.dataset_providers.MetricFnCallable]] = None,
-    add_to_registry: bool = True) -> seqio.Task:
+    metric_fns: Optional[
+        Sequence[seqio.dataset_providers.MetricFnCallable]
+    ] = None,
+    add_to_registry: bool = True,
+) -> Union[seqio.Task, seqio.Mixture]:
   """Registers and returns a SeqIO task from the provided inputs.
 
   This function will be used to graduate people to the T5X/SeqIO-based
