@@ -54,7 +54,7 @@ def convert_checkpoint(model: models.BaseModel,
   """
 
   def initialize_train_state(rng):
-    initial_variables = model.get_initial_variables(
+    initial_variables = model.get_initial_variables(  # pytype: disable=wrong-arg-types  # jax-array
         rng=rng,
         input_shapes={
             'encoder_input_tokens': (1, 1),
