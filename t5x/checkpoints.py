@@ -2464,7 +2464,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
 
     return self._train_state.restore_state(state_dict)
 
-  def _finalize_checkpoint(self):
+  def _finalize_checkpoint(self, tmp_directory: epath.Path):
     """Moves tmp step checkpoint to final."""
     if jax.process_index() == 0:
       for tmp_file in orbax.checkpoint.utils.tmp_checkpoints(self.directory):
@@ -2475,6 +2475,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
                 self.directory,
             )
         )
+        # TODO(t5x-team): Refactor to use tmp_directory args.
         tmp_directory = os.fspath(self._tmp_directory)
         if final_directory.startswith('gs://'):
           subprocess.run(
@@ -2526,7 +2527,7 @@ class BestCheckpointManager(CheckpointManager):
 
     super().__init__(*args, **kwargs, options=options)
 
-  def _finalize(self):
+  def _finalize(self, temp_ckpt_dir: epath.Path):
     # Populate metrics before removing old checkpoints
     if self._metric_name_to_monitor is not None:
       step_to_metric = populate_metrics_for_steps(
@@ -2538,7 +2539,7 @@ class BestCheckpointManager(CheckpointManager):
           info.metrics = metrics
 
     # Remove old checkpoints.
-    super()._finalize()
+    super()._finalize(temp_ckpt_dir)
 
 
 class CheckpointManagerConstructor(typing_extensions.Protocol):
