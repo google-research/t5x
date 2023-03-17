@@ -557,7 +557,7 @@ class BaseTrainer(abc.ABC):
         utils.multihost_assert_equal(
             jnp.array(num_steps),
             "Eval step mismatch across hosts. Check for empty dataset shard.")
-        if jax.config.jax_array and jax.process_count() > 1:
+        if jax.process_count() > 1:
           batch = multihost_utils.host_local_array_to_global_array(
               batch, self._partitioner.mesh,
               self._partitioner.data_partition_spec)
@@ -599,7 +599,7 @@ class BaseTrainer(abc.ABC):
       tick = time.time()
       cache_key: BatchSpec = FrozenDict(jax.eval_shape(lambda: batch))  # pylint:disable=cell-var-from-loop
       if cache_key not in self._compiled_eval_step_cache:
-        if jax.config.jax_array and jax.process_count() > 1:
+        if jax.process_count() > 1:
           batch = multihost_utils.host_local_array_to_global_array(
               batch, self._partitioner.mesh,
               self._partitioner.data_partition_spec)

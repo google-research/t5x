@@ -46,7 +46,6 @@ from flax import serialization
 from flax import traverse_util
 import jax
 from jax import monitoring
-from jax import pxla
 import jax.config
 from jax.experimental import multihost_utils
 from jax.experimental.gda_serialization import serialization as gda_serialization
@@ -219,14 +218,8 @@ def latest_step(checkpoints_dir: str) -> Optional[int]:
 
 def get_local_data(x):
   """Get local buffer for input data."""
-  if jax.config.jax_array and isinstance(
-      x, jax.Array) and not isinstance(x, jax.core.Tracer):
+  if isinstance(x, jax.Array) and not isinstance(x, jax.core.Tracer):
     return x.addressable_data(0)
-  elif isinstance(x, pxla.ShardedDeviceArray):
-    val = x.device_buffers[0]  # pytype: disable=attribute-error  # jax-ndarray
-    if val.aval is None:
-      val.aval = jax.ShapedArray(val.shape, val.dtype)
-    return val
   else:
     return x
 
@@ -636,11 +629,7 @@ class Checkpointer(object):
 
     def _lazy_load_device_array(arr):
       if isinstance(arr, jax.Array):
-        if jax.config.jax_array:
-          if len(arr.sharding.device_set) == 1:
-            return LazyThreadPoolArray(arr.shape, arr.dtype,
-                                       lambda: np.array(arr))
-        else:
+        if len(arr.sharding.device_set) == 1:
           return LazyThreadPoolArray(arr.shape, arr.dtype,
                                      lambda: np.array(arr))
       return arr

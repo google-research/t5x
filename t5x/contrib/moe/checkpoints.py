@@ -81,13 +81,6 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
         keep. If more than this number of data iterators exist after a save, the
         oldest ones will be automatically deleted to save space.
     """
-    if not jax.config.jax_array:
-      raise ValueError(
-          'Sparse upcycling is currently only supported for '
-          'jax.Array(s). Please set `use_jax_array`=True in '
-          'the train library (train.py).'
-      )
-
     super().__init__(
         train_state=train_state,
         partitioner=partitioner,
@@ -161,18 +154,11 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
           )
         if restore_dtype is not None:
           arr = arr.astype(restore_dtype)
-        if jax.config.jax_array:
-          arr = jax.make_array_from_callback(
-              arr.shape,
-              jax.sharding.NamedSharding(mesh, axes),
-              lambda idx: arr[idx],
-          )
-        else:
-          arr = jax.make_array_from_callback(
-              arr.shape,
-              jax.sharding.NamedSharding(mesh, axes),
-              lambda idx: arr[idx],
-          )
+        arr = jax.make_array_from_callback(
+            arr.shape,
+            jax.sharding.NamedSharding(mesh, axes),
+            lambda idx: arr[idx],
+        )
       return arr
 
     return LazyAwaitableArray.from_tensor_store_spec_or_array(

@@ -1580,7 +1580,7 @@ def get_infer_fn(
       # partitioned_infer_step executes infer_step on sharded batched data, and
       # returns de-sharded batched indices and result replicated on all hosts.
 
-      if jax.config.jax_array and jax.process_count() > 1:
+      if jax.process_count() > 1:
         inputs = multihost_utils.host_local_array_to_global_array(
             (infer_batch, step_rng, index),
             partitioner.mesh,
