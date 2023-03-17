@@ -882,7 +882,9 @@ def _hardware_uniform(
 
 # For dropout-only hardware rng.
 def _hardware_bernoulli(
-    rng_key: Array, p: np.ndarray = np.float32(0.5), shape: Shape = ()
+    rng_key: Array,
+    p: Union[np.ndarray, np.floating] = np.float32(0.5),
+    shape: Shape = (),
 ) -> Array:
   del rng_key  # non-deterministic prng.
   return jax.lax.rng_uniform(0.0, 1.0, shape) < p
