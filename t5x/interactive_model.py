@@ -239,8 +239,9 @@ class InteractiveModel(abc.ABC):
             state_transformation_fns=state_transforms_for_restore))
 
     # Restore the model using a checkpoint.
-    valid_restore_cfg, restore_paths = utils.get_first_valid_restore_config_and_paths(
-        restore_cfgs)
+    valid_restore_cfg, restore_paths = (
+        utils.get_first_valid_restore_config_and_paths(restore_cfgs)
+    )
     self._train_state = self._checkpoint_manager.restore(
         restore_paths, valid_restore_cfg,
         utils.get_fallback_state(valid_restore_cfg, get_state, self._init_rng))
@@ -852,7 +853,7 @@ def get_dataset_from_natural_text_examples(
   # ------------------------------------------------------------------------
   # Construct a `tf.data.Dataset` from the provided examples
   # ------------------------------------------------------------------------
-  merged_examples = {"inputs": [], "targets": [], "answers": []}
+  merged_examples = {"inputs": [], "targets": []}
   for example in examples:
     # If the provided example is just a string, add an empty target string
     if isinstance(example, dict):
@@ -861,8 +862,6 @@ def get_dataset_from_natural_text_examples(
       example_dict = {"input": example, "target": ""}
     merged_examples["inputs"].append(example_dict["input"])
     merged_examples["targets"].append(example_dict["target"])
-    # Answers is a list of possible targets (in this case a single target).
-    merged_examples["answers"].append([example_dict["target"]])
   dataset = tf.data.Dataset.from_tensor_slices(merged_examples)
 
   # Define `ShardInfo` that doesn't shard the data pipeline.
@@ -986,12 +985,15 @@ def get_batches_from_seqio(
   task_or_mixture = seqio.get_mixture_or_task(task_or_mixture_name)
   total_examples_requested = batch_size * num_batches
   dataset = task_or_mixture.get_dataset(
-      sequence_length=sequence_length, split=split, **get_dataset_kwargs)
+      sequence_length=sequence_length, split=split, **get_dataset_kwargs
+  )
 
   all_batches = []
   current_batch = []
   input_key = "inputs_pretokenized" if get_pretokenized_examples else "inputs"
-  target_key = "targets_pretokenized" if get_pretokenized_examples else "targets"
+  target_key = (
+      "targets_pretokenized" if get_pretokenized_examples else "targets"
+  )
   total_examples_seen = 0
   # It should be noted that we could replace the following loop with tf.Dataset
   # operations (like
