@@ -53,7 +53,9 @@ import typing_extensions
 
 FLAGS = flags.FLAGS
 
-Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
+# Remove _ShardedDeviceArray when users of t5x have their types updated
+_ShardedDeviceArray = Any
+Array = Union[np.ndarray, jnp.ndarray, _ShardedDeviceArray, tf.Tensor]
 PyTree = Any
 PartitionSpec = partitioning.PartitionSpec
 DType = Union[np.dtype, type(jnp.bfloat16)]

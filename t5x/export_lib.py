@@ -102,18 +102,6 @@ class CreateDecodingStateCallbackFn(typing_extensions.Protocol):
     ...
 
 
-def convert_buffer_to_ndarray(v):
-  """Convert `v` to a np.ndarray.
-
-  Args:
-    v: the value to be converted. Can be sharded or fully replicated.
-
-  Returns:
-    A np.ndarray that represents the full array value of `v`.
-  """
-  return np.asarray(v)
-
-
 class ExportableModule(tf.Module):
   """Wrapper for TF function + parameters to be exported."""
 
@@ -139,7 +127,8 @@ class ExportableModule(tf.Module):
       flat_param_vars = {}
       for k, v in flax.traverse_util.flatten_dict(params).items():
         flat_param_vars[k] = tf.Variable(
-            convert_buffer_to_ndarray(v), trainable=False, name='__'.join(k))
+            np.asarray(v), trainable=False, name='__'.join(k)
+        )
       return flat_param_vars
 
     if use_gpu:

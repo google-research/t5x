@@ -40,7 +40,9 @@ from t5x import optimizers
 import tensorflow as tf
 import typing_extensions
 
-Array = Union[np.ndarray, jnp.ndarray, jax.pxla.ShardedDeviceArray, tf.Tensor]
+# Remove _ShardedDeviceArray when users of t5x have their types updated
+_ShardedDeviceArray = Any
+Array = Union[np.ndarray, jnp.ndarray, _ShardedDeviceArray, tf.Tensor]
 MetricsMap = metrics_lib.MetricsMap
 PyTree = Any
 PyTreeDef = jax.tree_util.PyTreeDef
