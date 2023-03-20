@@ -104,9 +104,6 @@ class CheckpointsTest(parameterized.TestCase):
   def setUp(self):
     super().setUp()
 
-    # Sparse upcycling uses JAX Arrays.
-    jax.config.update('jax_array', True)
-
     self.num_experts = 32
 
     # The dense model is the checkpointed model that we seek to restore as a

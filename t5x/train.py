@@ -208,9 +208,6 @@ def train(
         ' Please ensure that your workflow can use GDA.', DeprecationWarning)
   if use_jax_array and not use_gda:
     raise ValueError('Invalid configuration of `use_gda` and `use_jax_array`.')
-  if use_gda:
-    if use_jax_array:
-      jax.config.update('jax_array', True)
 
   if use_orbax:
     logging.info('Checkpointing with Orbax enabled.')
