@@ -351,7 +351,7 @@ def create_inference_function(
     model_fn = jax2tf.convert(
         model_fn,
         polymorphic_shapes=[None, polymorphic_shapes_inputs],
-        experimental_native_lowering=native_lowering,
+        native_serialization=native_lowering,
         enable_xla=enable_xla,
     )
 
