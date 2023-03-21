@@ -1,0 +1,9 @@
+VOCABULARY = @seqio.SentencePieceVocabulary()
+
+seqio.SentencePieceVocabulary.sentencepiece_model_file = "gs://t5-data/vocabs/umt5.256000/sentencepiece.model"
+
+seqio.SentencePieceVocabulary.extra_ids = 300
+
+# This macro should be used by each architecture gin file to configure the
+# actual model vocab size (e.g. `network.T5Config.vocab_size = %VOCAB_SIZE`)
+VOCAB_SIZE = 256384

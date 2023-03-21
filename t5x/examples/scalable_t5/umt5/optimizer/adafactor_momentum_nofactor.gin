@@ -1,0 +1,7 @@
+from t5x import adafactor
+
+OPTIMIZER = @adafactor.Adafactor()
+adafactor.Adafactor:
+  beta1 = 0.9
+  factored = False
+  global_norm_clip_threshold = 1.0

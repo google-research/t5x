@@ -1,0 +1,31 @@
+# Common configurations for fine-tuning runs.
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5x import utils
+
+include "t5x/configs/runs/finetune.gin"
+
+TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 512}
+TRAIN_STEPS = %gin.REQUIRED
+BATCH_SIZE = 64
+DROPOUT_RATE = 0.1
+RANDOM_SEED = 0
+LOSS_NORMALIZING_FACTOR = "NUM_REAL_TARGET_TOKENS"
+USE_CACHED_TASKS = False
+LEARNING_RATE = 0.0005
+
+train_script.train:
+  eval_period = 1000
+  stats_period = 1000
+  eval_steps = 20
+  random_seed = 0
+
+utils.SaveCheckpointConfig:
+  period = 1000
+  save_dataset = True
+  keep_dataset_checkpoints = 3
+
+train/utils.DatasetConfig.seed = 42
+
+utils.create_learning_rate_scheduler.base_learning_rate = %LEARNING_RATE

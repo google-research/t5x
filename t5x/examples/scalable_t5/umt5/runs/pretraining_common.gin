@@ -1,0 +1,39 @@
+# Common configurations for pretraining runs.
+from __gin__ import dynamic_registration
+
+import __main__ as train_script
+from t5x import utils
+
+include 't5x/configs/runs/pretrain_deterministic.gin'
+
+TASK_FEATURE_LENGTHS = None
+TRAIN_STEPS = 1_000_000
+BATCH_SIZE = 1024
+DROPOUT_RATE = 0.0
+RANDOM_SEED = 0
+LOSS_NORMALIZING_FACTOR = "NUM_REAL_TARGET_TOKENS"
+USE_CACHED_TASKS_TRAIN_EVAL = False
+
+train/utils.DatasetConfig:
+  pack = False
+  use_cached = True
+
+train_eval/utils.DatasetConfig:
+  mixture_or_task_name = %TRAIN_EVAL_MIXTURE_OR_TASK_NAME
+  pack = False
+  use_cached = %USE_CACHED_TASKS_TRAIN_EVAL
+
+train_script.train:
+  eval_period = 2000
+  stats_period = 500
+  eval_steps = 20
+  random_seed = 0
+  train_eval_get_dataset_fn = @utils.get_training_eval_datasets
+
+utils.get_training_eval_datasets:
+  deterministic = False
+
+utils.SaveCheckpointConfig:
+  period = 2000
+
+train/utils.DatasetConfig.seed = 42

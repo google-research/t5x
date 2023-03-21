@@ -1,0 +1,3 @@
+from t5x import adafactor
+
+OPTIMIZER = @adafactor.Adafactor()
