@@ -240,7 +240,7 @@ class Adafactor(OptimizerDef):
       dtype_momentum: dtype of momentum buffers.
       factor_map: hparam-map from key path to manual factorization rules.
       logical_factor_rules: factorization rules provided as a set of mappings
-        from logical axis name to ROW, COLUMN, BATCH, or NONE.  Supercedes
+        from logical axis name to ROW, COLUMN, BATCH, or NONE.  Supersedes
         factor_map if `set_param_axes` is called.
       weight_decay_rate_lr_exponent: If present, weight decay rate is computed
         as (learning_rate ** weight_decay_rate_lr_exponent).  If
@@ -250,8 +250,8 @@ class Adafactor(OptimizerDef):
       max_parameter_scale: If set, clips the parameter scale to a maximum value,
         which helps prevent parameters from growing without bound.
       skip_nan_updates: If set, any parameter that would have been updated by a
-        NaN value after a applying gradients will be kept with the earlier
-        value it had.
+        NaN value after a applying gradients will be kept with the earlier value
+        it had.
     """
     if not factored and factor_map is not None:
       raise ValueError('Adafactor factored is False but factorization rules '
@@ -274,6 +274,15 @@ class Adafactor(OptimizerDef):
         global_norm_clip_threshold, max_parameter_scale, skip_nan_updates)
     self.dtype_momentum = jax.dtypes.canonicalize_dtype(dtype_momentum)
     super().__init__(hyper_params)
+
+  def __eq__(self, other: 'Adafactor') -> bool:
+    return (
+        self.hyper_params == other.hyper_params
+        and self.dtype_momentum == other.dtype_momentum
+    )
+
+  def __hash__(self) -> int:
+    return id(self)
 
   @staticmethod
   def _decay_rate_pow(i: int, exponent: float = 0.8) -> float:
