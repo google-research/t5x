@@ -124,25 +124,33 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
   flax_mutables_axes: Optional[FrozenVariableDict] = None
 
   @classmethod
-  def create(cls, optimizer_def: optimizers.OptimizerDefType,
-             model_variables: FrozenVariableDict) -> 'FlaxOptimTrainState':
-    other_variables, params = model_variables.pop('params')
+  def create(
+      cls,
+      optimizer_def: optimizers.OptimizerDefType,
+      model_variables: FrozenVariableDict,
+  ) -> 'FlaxOptimTrainState':
+    other_variables, params = flax.core.pop(model_variables, 'params')
     if 'params_axes' in other_variables:
-      other_variables, params_axes = other_variables.pop('params_axes')
+      other_variables, params_axes = flax.core.pop(
+          other_variables, 'params_axes'
+      )
       _validate_params_axes(params_axes, params)
     else:
       params_axes = None
 
     # Split other_variables into mutables and their corresponding axes.
     flax_mutables, flax_mutables_axes = _split_variables_and_axes(
-        other_variables)
+        other_variables
+    )
 
     # If the optimizer supports `set_param_axes`, then assume that the model
     # code is emitting these axes and use it.
     if hasattr(optimizer_def, 'set_param_axes'):
       if params_axes is None:
-        raise ValueError('The optimizer supports params_axes for model-based '
-                         'partitioning, but the model is not emitting them.')
+        raise ValueError(
+            'The optimizer supports params_axes for model-based '
+            'partitioning, but the model is not emitting them.'
+        )
       # `get_axis_names` removes "_axes" suffix in the leaf name and replaces
       # `AxisMetadata` with `PartitionSpec`.
       axis_names = flax_partitioning.get_axis_names(params_axes)
@@ -226,23 +234,27 @@ class InferenceState(flax.struct.PyTreeNode):
 
   @classmethod
   def create(cls, model_variables: FrozenVariableDict) -> 'InferenceState':
-    other_variables, params = model_variables.pop('params')
+    other_variables, params = flax.core.pop(model_variables, 'params')
     if 'params_axes' in other_variables:
-      other_variables, params_axes = other_variables.pop('params_axes')
+      other_variables, params_axes = flax.core.pop(
+          other_variables, 'params_axes'
+      )
       _validate_params_axes(params_axes, params)
     else:
       params_axes = None
 
     # Split other_variables into mutables and their corresponding axes.
     flax_mutables, flax_mutables_axes = _split_variables_and_axes(
-        other_variables)
+        other_variables
+    )
     flax_mutables_axes = flax_mutables_axes or None
     return InferenceState(
         step=jnp.array(0),
         params=params,
         params_axes=params_axes,
         flax_mutables=flax_mutables,
-        flax_mutables_axes=flax_mutables_axes)
+        flax_mutables_axes=flax_mutables_axes,
+    )
 
   @property
   def param_states(self) -> FrozenVariableDict:
