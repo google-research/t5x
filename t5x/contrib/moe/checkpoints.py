@@ -21,6 +21,7 @@ import clu.data
 import jax
 import jax.config
 from jax.experimental.gda_serialization import serialization as gda_serialization
+from jax.experimental.pjit import pjit
 import jax.numpy as jnp
 import numpy as np
 from t5x import checkpoint_importer
@@ -310,10 +311,10 @@ async def _read_upcycle_ts(
 
       with mesh:
         upcycled_axes = axes
-        arr = partitioning.pjit(
+        arr = pjit(
             upcycle,
-            in_axis_resources=checkpoint_axes,
-            out_axis_resources=upcycled_axes,
+            in_shardings=checkpoint_axes,
+            out_shardings=upcycled_axes,
         )(arr)
 
   return arr

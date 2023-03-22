@@ -29,7 +29,7 @@ from jax import numpy as jnp
 from jax import random
 from jax.experimental import multihost_utils
 from jax.experimental.mesh_utils import create_hybrid_device_mesh
-from jax.experimental.pjit import pjit as jax_pjit
+from jax.experimental.pjit import pjit
 from jax.sharding import Mesh
 from jax.sharding import PartitionSpec
 import numpy as np
@@ -61,28 +61,6 @@ class AxisNames(tuple):
 
   def __repr__(self):
     return 'AxisNames%s' % tuple.__repr__(self)
-
-
-# pjit wrappers for cpu fallback.
-# ----------------------------------------------------------------------------
-# TODO(levskaya): This function is now no different than jax_pjit, but callers
-# currently depend on `backend` argument
-def pjit(
-    fun: Callable,  # pylint: disable=g-bare-generic
-    in_axis_resources,
-    out_axis_resources,
-    static_argnums: Union[int, Sequence[int]] = (),
-    donate_argnums: Union[int, Sequence[int]] = (),
-    backend: Optional[str] = None):
-  """Wrapper for pjit."""
-  del backend
-  return jax_pjit(
-      fun,
-      in_shardings=in_axis_resources,
-      out_shardings=out_axis_resources,
-      static_argnums=static_argnums,
-      donate_argnums=donate_argnums,
-  )
 
 
 def with_sharding_constraint(x, axis_resources):
@@ -802,7 +780,7 @@ class BasePjitPartitioner(BasePartitioner):
 
   def partition(
       self,
-      fn: PartitionedCallable,
+      fn: Callable,  # pylint: disable=g-bare-generic
       in_axis_resources,
       out_axis_resources,
       static_argnums: Union[int, Sequence[int]] = (),
@@ -810,11 +788,11 @@ class BasePjitPartitioner(BasePartitioner):
   ) -> PjittedFnWithContext:
     pjitted = pjit(
         fn,
-        in_axis_resources=in_axis_resources,
-        out_axis_resources=out_axis_resources,
+        in_shardings=in_axis_resources,
+        out_shardings=out_axis_resources,
         static_argnums=static_argnums,
         donate_argnums=donate_argnums,
-        backend=self._backend)
+    )
 
     return PjittedFnWithContext(pjitted, self.mesh)
 
@@ -891,11 +869,10 @@ class PjitPartitioner(BasePjitPartitioner):
     """Partitions the function using jax.pjit."""
     pjitted = pjit(
         fn,
-        in_axis_resources=in_axis_resources,
-        out_axis_resources=out_axis_resources,
+        in_shardings=in_axis_resources,
+        out_shardings=out_axis_resources,
         static_argnums=static_argnums,
         donate_argnums=donate_argnums,
-        backend=self._backend,
     )
 
     return PjittedFnWithContext(pjitted, self.mesh, self._logical_axis_rules)
