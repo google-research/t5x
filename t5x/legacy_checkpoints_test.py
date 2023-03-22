@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """Tests for t5x.checkpoints."""
-# TODO(b/234480674): Deprecate this test in favor of gda_checkpoints_test.
+# TODO(b/234480674): Deprecate this test.
 import concurrent.futures
 import functools
 import itertools
@@ -108,7 +108,7 @@ class CheckpointChunkShapeTest(absltest.TestCase):
     self.assertEqual([2731], checkpoints._choose_chunk_shape([8193], 4096))
 
 
-class CheckpointsTest(parameterized.TestCase):
+class LegacyCheckpointsTest(parameterized.TestCase):
 
   def setUp(self):
     super().setUp()
