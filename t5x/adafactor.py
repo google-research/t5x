@@ -275,7 +275,9 @@ class Adafactor(OptimizerDef):
     self.dtype_momentum = jax.dtypes.canonicalize_dtype(dtype_momentum)
     super().__init__(hyper_params)
 
-  def __eq__(self, other: 'Adafactor') -> bool:
+  def __eq__(self, other: Any) -> bool:
+    if not isinstance(other, Adafactor):
+      return False
     return (
         self.hyper_params == other.hyper_params
         and self.dtype_momentum == other.dtype_momentum
