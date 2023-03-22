@@ -78,33 +78,11 @@ def pjit(
   del backend
   return jax_pjit(
       fun,
-      in_axis_resources,
-      out_axis_resources,
+      in_shardings=in_axis_resources,
+      out_shardings=out_axis_resources,
       static_argnums=static_argnums,
-      donate_argnums=donate_argnums)
-
-
-# pjit wrappers for cpu fallback.
-# -----------------------------------------------------------------------------
-# TODO(levskaya): upstream this fallback behavior to jax pjit.
-def pjit_with_cpu_fallback(
-    fun: Callable,  # pylint: disable=g-bare-generic
-    in_axis_resources,
-    out_axis_resources,
-    static_argnums: Union[int, Sequence[int]] = (),
-    donate_argnums: Union[int, Sequence[int]] = (),
-    backend: Optional[str] = None):
-  """Wrapper for pjit that calls normal jit on cpu."""
-  if jax.devices(backend)[0].platform == 'cpu':
-    return jax.jit(
-        fun, static_argnums=static_argnums, donate_argnums=donate_argnums)
-  else:
-    return jax_pjit(
-        fun,
-        in_axis_resources,
-        out_axis_resources,
-        static_argnums=static_argnums,
-        donate_argnums=donate_argnums)
+      donate_argnums=donate_argnums,
+  )
 
 
 def with_sharding_constraint(x, axis_resources):
@@ -824,11 +802,11 @@ class BasePjitPartitioner(BasePartitioner):
 
   def partition(
       self,
-      fn: Callable,  # pylint: disable=g-bare-generic
+      fn: PartitionedCallable,
       in_axis_resources,
       out_axis_resources,
       static_argnums: Union[int, Sequence[int]] = (),
-      donate_argnums: Union[int, Sequence[int]] = ()
+      donate_argnums: Union[int, Sequence[int]] = (),
   ) -> PjittedFnWithContext:
     pjitted = pjit(
         fn,
@@ -848,13 +826,14 @@ class BasePjitPartitioner(BasePartitioner):
 class PjitPartitioner(BasePjitPartitioner):
   """Partitioner that uses named axes and jax.pjit."""
 
-  def __init__(self,
-               num_partitions: Optional[int] = None,
-               model_parallel_submesh: Optional[HardwareMesh] = None,
-               params_on_devices: bool = True,
-               backend: Optional[str] = None,
-               logical_axis_rules: Optional[LogicalAxisRules] = None,
-               use_cpu_pjit: Optional[bool] = False):
+  def __init__(
+      self,
+      num_partitions: Optional[int] = None,
+      model_parallel_submesh: Optional[HardwareMesh] = None,
+      params_on_devices: bool = True,
+      backend: Optional[str] = None,
+      logical_axis_rules: Optional[LogicalAxisRules] = None,
+  ):
     """PjitPartitioner constructor.
 
     See https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx/usage/partitioning for details.
@@ -863,7 +842,7 @@ class PjitPartitioner(BasePjitPartitioner):
       num_partitions: an integer that specifies the size of the model parallel
         submesh to be automatically selected for the current topology. See
         `model_parallel_submesh` for details on how this submesh is used.
-        Mutually exlusive with `model_parallel_submesh`.
+        Mutually exclusive with `model_parallel_submesh`.
       model_parallel_submesh: is a 4-tuple that specifies the `(x, y, z, c)`
         submesh model-parallel device tile, an axis of accelerator parallelism
         orthogonal to data parallelism. Array axes in a model's parameters or
@@ -881,15 +860,13 @@ class PjitPartitioner(BasePjitPartitioner):
         params stay in the host memory. Note that some partitioners might ignore
         this setting, for example if they don't support storing all params on
         device memory.
-      backend: get devices from the pinned backend, if specified. This is
-        useful for explicitly specifying the devices other than relying on
+      backend: get devices from the pinned backend, if specified. This is useful
+        for explicitly specifying the devices other than relying on
         jax_platform_name.
       logical_axis_rules: a priority-ordered sequence of KV tuples that maps
         logical axis names to either `None` (not sharded), 'model' (to shard
         across the model-parallel submesh), or 'data' (to shard across the
         data-parallel submesh).
-      use_cpu_pjit: enables wrapper function for pjit which just jits the
-        function if using CPU backend.
     """
     super().__init__(
         num_partitions=num_partitions,
@@ -899,9 +876,9 @@ class PjitPartitioner(BasePjitPartitioner):
     if logical_axis_rules is None:
       logical_axis_rules = standard_logical_axis_rules()
     self._logical_axis_rules = tuple(logical_axis_rules)
-    self._data_axis, = flax_partitioning.logical_to_mesh_axes(
-        ['batch'], logical_axis_rules)
-    self._use_cpu_pjit = use_cpu_pjit
+    (self._data_axis,) = flax_partitioning.logical_to_mesh_axes(
+        ['batch'], logical_axis_rules
+    )
 
   def partition(
       self,
@@ -912,17 +889,14 @@ class PjitPartitioner(BasePjitPartitioner):
       donate_argnums: Union[int, Sequence[int]] = ()
   ) -> PjittedFnWithContext:
     """Partitions the function using jax.pjit."""
-    if self._use_cpu_pjit:
-      pjit_fn = pjit_with_cpu_fallback
-    else:
-      pjit_fn = pjit
-    pjitted = pjit_fn(
+    pjitted = pjit(
         fn,
         in_axis_resources=in_axis_resources,
         out_axis_resources=out_axis_resources,
         static_argnums=static_argnums,
         donate_argnums=donate_argnums,
-        backend=self._backend)
+        backend=self._backend,
+    )
 
     return PjittedFnWithContext(pjitted, self.mesh, self._logical_axis_rules)
 
