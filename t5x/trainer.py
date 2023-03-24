@@ -273,7 +273,11 @@ class MetricsManager(object):
   You should call close() to wait for threads started by this class to finish.
   """
 
-  def __init__(self, name: str, summary_dir: Optional[str] = None):
+  def __init__(
+      self,
+      name: str,
+      summary_dir: Optional[str] = None,
+  ):
     """MetricsManager constructor.
 
     Constructs an empty MetricWriter on all but host 0.
@@ -288,7 +292,8 @@ class MetricsManager(object):
       self._writer = metric_writers.create_default_writer(
           summary_dir,
           collection=name,
-          asynchronous=True)
+          asynchronous=True,
+      )
     else:
       self._writer = metric_writers.MultiWriter([])
     self.summary_dir = os.path.join(summary_dir, name) if summary_dir else None
