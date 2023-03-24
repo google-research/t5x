@@ -196,23 +196,23 @@ class OptaxStatePartitionRules:
       amos.ScaleByAmosState:
           amos_helper.state_partition_rule,
       optax.AddNoiseState:
-          lambda state, params_axes: optax.AddNoiseState(
+          lambda state, params_axes: optax.AddNoiseState(  # pytype: disable=wrong-arg-types  # numpy-scalars
               count=None, rng_key=None),
       optax.DifferentiallyPrivateAggregateState:
           lambda state, params_axes: optax.DifferentiallyPrivateAggregateState(
               rng_key=None),
       optax.EmaState:
-          lambda state, params_axes: optax.EmaState(
+          lambda state, params_axes: optax.EmaState(  # pytype: disable=wrong-arg-types  # numpy-scalars
               count=None, ema=params_axes),
       optax.EmptyState:
           lambda state, params_axes: optax.EmptyState(),
       optax.TraceState:
           lambda state, params_axes: optax.TraceState(trace=params_axes),
       optax.ScaleByAdamState:
-          lambda state, params_axes: optax.ScaleByAdamState(
+          lambda state, params_axes: optax.ScaleByAdamState(  # pytype: disable=wrong-arg-types  # numpy-scalars
               count=None, mu=params_axes, nu=params_axes),
       optax.ScaleByBeliefState:
-          lambda state, params_axes: optax.ScaleByBeliefState(
+          lambda state, params_axes: optax.ScaleByBeliefState(  # pytype: disable=wrong-arg-types  # numpy-scalars
               count=None, mu=params_axes, nu=params_axes),
       optax.ScaleByRssState:
           lambda state, params_axes: optax.ScaleByRssState(
@@ -228,7 +228,7 @@ class OptaxStatePartitionRules:
       optax.ScaleByTrustRatioState:
           lambda state, params_axes: optax.ScaleByTrustRatioState(),
       optax.ScaleByScheduleState:
-          lambda state, params_axes: optax.ScaleByScheduleState(count=None),
+          lambda state, params_axes: optax.ScaleByScheduleState(count=None),  # pytype: disable=wrong-arg-types  # numpy-scalars
       optax.ZeroNansState:
           lambda state, params_axes: optax.ZeroNansState(found_nan=None),
       # FactoredState
