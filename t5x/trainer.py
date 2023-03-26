@@ -1022,13 +1022,17 @@ class EarlyStoppingAction(BaseAction):
 
     m = metrics_by_task[self._task][self._metric]
 
-    if not isinstance(m, clu.values.Scalar):
+    if isinstance(m, clu.values.Scalar):
+      self._metric_history.append(m.value)
+
+    # For metrics returned from action_mode=INFER_EVAL (i.e. seqio.Evaluator)
+    elif isinstance(m, float):
+      self._metric_history.append(m)
+    else:
       logging.warning("Metric %s does not have Scalar type. Found %s.",
                       self._metric, type(m))
       _warn_action_not_run(type(self), self._task, self._metric)
       return False
-
-    self._metric_history.append(m.value)
 
     # Not enough history.
     if len(self._metric_history) < self._patience:

@@ -477,16 +477,16 @@ class TrainerTest(parameterized.TestCase):
           'testcase_name': 'max_no_increase',
           'mode': 'max',
           'metrics': [1, 1, 1],
-          'atol': 0.,
-          'rtol': 0.,
+          'atol': 0.0,
+          'rtol': 0.0,
           'stop_training': True,
       },
       {
           'testcase_name': 'max_no_atol',
           'mode': 'max',
           'metrics': [1, 0.9, 0.8],
-          'atol': 0.,
-          'rtol': 0.,
+          'atol': 0.0,
+          'rtol': 0.0,
           'stop_training': True,
       },
       {
@@ -494,7 +494,7 @@ class TrainerTest(parameterized.TestCase):
           'mode': 'max',
           'metrics': [1, 1.09, 1.18],
           'atol': 0.1,
-          'rtol': 0.,
+          'rtol': 0.0,
           'stop_training': True,
       },
       {
@@ -502,7 +502,7 @@ class TrainerTest(parameterized.TestCase):
           'mode': 'max',
           'metrics': [1, 1.2, 1.4],
           'atol': 0.1,
-          'rtol': 0.,
+          'rtol': 0.0,
           'stop_training': False,
       },
       {
@@ -519,7 +519,7 @@ class TrainerTest(parameterized.TestCase):
           'testcase_name': 'max_not_enough_rtol',
           'mode': 'max',
           'metrics': [1, 1.2, 1.4],
-          'atol': 0.,
+          'atol': 0.0,
           'rtol': 0.2,
           'stop_training': True,
       },
@@ -527,16 +527,16 @@ class TrainerTest(parameterized.TestCase):
           'testcase_name': 'min_no_decrease',
           'mode': 'min',
           'metrics': [1, 1, 1],
-          'atol': 0.,
-          'rtol': 0.,
+          'atol': 0.0,
+          'rtol': 0.0,
           'stop_training': True,
       },
       {
           'testcase_name': 'min_no_atol',
           'mode': 'min',
           'metrics': [1, 1, 1],
-          'atol': 0.,
-          'rtol': 0.,
+          'atol': 0.0,
+          'rtol': 0.0,
           'stop_training': True,
       },
       {
@@ -544,7 +544,7 @@ class TrainerTest(parameterized.TestCase):
           'mode': 'min',
           'metrics': [1, 0.9, 0.71],
           'atol': 0.2,
-          'rtol': 0.,
+          'rtol': 0.0,
           'stop_training': True,
       },
       {
@@ -552,7 +552,7 @@ class TrainerTest(parameterized.TestCase):
           'mode': 'min',
           'metrics': [1, 0.8, 0.6],
           'atol': 0.15,
-          'rtol': 0.,
+          'rtol': 0.0,
           'stop_training': False,
       },
       {
@@ -578,25 +578,60 @@ class TrainerTest(parameterized.TestCase):
           'mode': 'min',
           'metrics': [1, 0.8, 0.7, 0.6],
           'atol': 0.15,
-          'rtol': 0.,
+          'rtol': 0.0,
           'stop_training': True,
-      }
+      },
   ])
-  def test_early_stopping_action(self, mode, metrics, atol, rtol,
-                                 stop_training):
+  def test_early_stopping_action(
+      self, mode, metrics, atol, rtol, stop_training
+  ):
     trainer = self.test_trainer
     metrics = [clu.values.Scalar(metric) for metric in metrics]
-    hook = trainer_lib.EarlyStoppingAction(('test_task', 'metric'),
-                                           mode=mode,
-                                           patience=3,
-                                           atol=atol,
-                                           rtol=rtol)
+    hook = trainer_lib.EarlyStoppingAction(
+        ('test_task', 'metric'), mode=mode, patience=3, atol=atol, rtol=rtol
+    )
 
     for metric in metrics:
-      trainer_stop_training = hook.run(trainer.train_state,
-                                       {'test_task': {
-                                           'metric': metric
-                                       }})
+      trainer_stop_training = hook.run(
+          trainer.train_state, {'test_task': {'metric': metric}}
+      )
+
+    self.assertEqual(trainer_stop_training, stop_training)
+
+  @parameterized.named_parameters([
+      {
+          'testcase_name': 'allow_clu_scalar_early_stopping',
+          'metrics': [
+              clu.values.Scalar(1),
+              clu.values.Scalar(0.9),
+              clu.values.Scalar(0.71),
+          ],
+          'atol': 0.2,
+          'stop_training': True,
+      },
+      {
+          'testcase_name': 'allow_float_early_stopping',
+          'metrics': [1.0, 0.9, 0.71],
+          'atol': 0.2,
+          'stop_training': True,
+      },
+      {
+          'testcase_name': 'error_for_other_type',
+          'metrics': [3, 2, 1],
+          'atol': 1.1,
+          'stop_training': False,
+      },
+  ])
+  def test_early_stopping_action_value(self, metrics, atol, stop_training):
+    trainer = self.test_trainer
+    hook = trainer_lib.EarlyStoppingAction(
+        ('test_task', 'metric'), mode='min', patience=3, atol=atol
+    )
+
+    for metric in metrics:
+      trainer_stop_training = hook.run(
+          trainer.train_state, {'test_task': {'metric': metric}}
+      )
 
     self.assertEqual(trainer_stop_training, stop_training)
 
@@ -612,12 +647,6 @@ class TrainerTest(parameterized.TestCase):
           'task': 'task',
           'metric': 'wrong_metric_name',
           'value': clu.values.Scalar(np.nan),
-      },
-      {
-          'testcase_name': 'invalid_value',
-          'task': 'task',
-          'metric': 'metric',
-          'value': 1.0,
       },
   ])
   def test_early_stopping_action_error(self, task, metric, value):
