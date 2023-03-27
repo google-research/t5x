@@ -22,4 +22,5 @@ setup(name='dummy_wikipedia_seqio',
       version='0.0.1',
       description='Dummy Wikipedia Seqio Task',
       author='The T5X Authors',
+      install_requires=['t5'],
      )
