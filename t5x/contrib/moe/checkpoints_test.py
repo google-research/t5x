@@ -50,7 +50,7 @@ def create_sharded_array(
   """Converts NumPy array into sharded JAX Array."""
   return jax.make_array_from_callback(
       arr.shape,
-      jax.sharding.MeshPspecSharding(global_mesh, mesh_axes),
+      jax.sharding.NamedSharding(global_mesh, mesh_axes),
       lambda idx: arr[idx],
   )
 
