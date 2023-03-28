@@ -24,6 +24,7 @@ Model             | Use Case
 [T5 1.1 LM-Adapted](#t5-11-lm-adapted-checkpoints)| Trained for 100k additional steps on the LM objective, per [prompt tuning paper](https://arxiv.org/abs/2104.08691).
 [mT5](#mt5-checkpoints)                     | Multilingual T5. Recommended for multilingual research. Note that at smaller scales (at least through XL), mT5 performance is lower than T5 on English tasks.
 [mT5 LM-Adapted](#mt5-lm-adapted-checkpoints)| Trained for 100k additional steps on the LM objective, per [zero-shot cross-lingual generation (XGen) paper](https://arxiv.org/abs/2205.12647).
+[umT5](#umt5-checkpoints)                   | umT5, an updated mT5 model trained using a more uniform language distribution, per [the UniMax paper](https://openreview.net/forum?id=kXwdL1cWOAi).
 [ByT5](#byt5-checkpoints)                   | ByT5. A "token-free" model that uses UTF-8 bytes for input and output. Recommended for tasks involving word-internal phenomena such as spelling, pronunciation, or morphology.
 [LongT5](#longt5-checkpoints)               | TBD
 [MoE](#mixture-of-experts-moe-checkpoints)  | Useful for MoE experimentation.
@@ -142,6 +143,26 @@ mT5 LM-Adapted Base | [mt5/base.gin](https://github.com/google-research/t5x/blob
 mT5 LM-Adapted Large | [mt5/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/large.gin) | [mt5_lm_adapted/large/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/large/checkpoint_1100000)
 mT5 LM-Adapted XL | [mt5/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xl.gin) | [mt5_lm_adapted/xl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/xl/checkpoint_1100000)
 mT5 LM-Adapted XXL | [mt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xxl.gin) | [mt5_lm_adapted/xxl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/xxl/checkpoint_1100000)
+
+#### umT5 Checkpoints
+
+These are the checkpoints described in the paper [UniMax: Fairer and More
+Effective Language Sampling for Large-Scale Multilingual
+Pretraining](https://openreview.net/forum?id=kXwdL1cWOAi). umT5 is similar to
+mT5 (see above); both are multilingual encoder-decoder models ranging from 300M
+to 13B parameters, trained on the mC4 corpus using a denoising objective. umT5
+is trained on a fresher version of the mC4 corpus (3.1.0), and with a more
+uniform language balancing strategy.
+
+**Vocabulary:**
+[umt5.256000](https://console.cloud.google.com/storage/browser/t5-data/vocabs/umt5.256000)
+
+Model                | Gin File Location                                                                                                   | Checkpoint Location
+-------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
+umT5 Small | [umt5/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/umt5/small.gin) | [umt5/small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/small/checkpoint_1000000)
+umT5 Base | [umt5/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/umt5/base.gin) | [umt5/base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/base/checkpoint_1000000)
+umT5 XL | [umt5/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/umt5/xl.gin) | [umt5/xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xl/checkpoint_1000000)
+umT5 XXL | [umt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/umt5/xxl.gin) | [umt5/xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xxl/checkpoint_1000000)
 
 #### ByT5 Checkpoints
 
