@@ -1,0 +1,4 @@
+from t5x.examples.scalable_t5 import network
+
+# This macro should be set in the vocabulary gin file
+network.T5Config.vocab_size = %VOCAB_SIZE

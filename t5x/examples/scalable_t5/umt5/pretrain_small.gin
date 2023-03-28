@@ -1,0 +1,25 @@
+# Model (has to be imported first so that optimizer and vocab can be overridden)
+include "t5x/examples/scalable_t5/mt5/small.gin"
+
+# Architecture-specific configs
+include "t5x/examples/scalable_t5/umt5/architectures/encoder_decoder.gin"
+
+# Run mode
+include "t5x/examples/scalable_t5/umt5/runs/pretraining_common.gin"
+
+# Optimizer
+include "t5x/examples/scalable_t5/umt5/optimizer/adafactor.gin"
+
+# Vocabulary
+include "t5x/examples/scalable_t5/umt5/vocab.gin"
+
+# Partitioning
+partitioning.PjitPartitioner:
+  model_parallel_submesh = (1, 1, 1, 1)  # Data-parallel only
+
+# Task configurations
+MIXTURE_OR_TASK_NAME = %gin.REQUIRED
+TRAIN_EVAL_MIXTURE_OR_TASK_NAME = %gin.REQUIRED
+TASK_FEATURE_LENGTHS = {"inputs": 1024, "targets": 229}
+USE_CACHED_TASKS = True
+TRAIN_STEPS = 1_000_000

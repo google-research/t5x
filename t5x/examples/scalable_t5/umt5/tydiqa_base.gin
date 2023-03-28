@@ -1,0 +1,33 @@
+# Runs TyDi QA fine-tuning
+from __gin__ import dynamic_registration
+from t5x import adafactor
+
+# Model (has to be imported first so that optimizer and vocab can be overridden)
+include "t5x/examples/scalable_t5/mt5/base.gin"
+
+# Architecture-specific configs
+include "t5x/examples/scalable_t5/umt5/architectures/encoder_decoder.gin"
+
+# Run mode
+include "t5x/examples/scalable_t5/umt5/runs/finetuning_common.gin"
+
+# Optimizer
+include "t5x/examples/scalable_t5/umt5/optimizer/adafactor.gin"
+
+# Vocabulary
+include "t5x/examples/scalable_t5/umt5/vocab.gin"
+
+# Partitioning
+partitioning.PjitPartitioner:
+  model_parallel_submesh = (1, 2, 1, 1)
+
+INITIAL_CHECKPOINT_PATH = "gs://t5-data/t5-data/pretrained_models/t5x/umt5_base/checkpoint_1000000"
+
+MIXTURE_OR_TASK_NAME = %gin.REQUIRED
+USE_CACHED_TASKS = False
+TRAIN_STEPS = 1_050_000  # 1_000_000 pretrained steps + 50_000 fine-tuning
+TASK_FEATURE_LENGTHS = {"inputs": 1024, "targets": 256}
+LEARNING_RATE = 0.00005
+BATCH_SIZE = 32
+
+adafactor.Adafactor.step_offset = 1_000_000

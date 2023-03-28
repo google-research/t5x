@@ -1,0 +1,32 @@
+from __gin__ import dynamic_registration
+
+from t5x import partitioning
+
+# Model (has to be imported first so that optimizer and vocab can be overridden)
+include "t5x/examples/scalable_t5/mt5/xxl.gin"
+
+# Architecture-specific configs
+include "t5x/examples/scalable_t5/umt5/architectures/encoder_decoder.gin"
+
+# Run mode
+include "t5x/examples/scalable_t5/umt5/runs/pretraining_common.gin"
+
+# Optimizer
+include "t5x/examples/scalable_t5/umt5/optimizer/adafactor_momentum_nofactor.gin"
+
+# Vocabulary
+include "t5x/examples/scalable_t5/umt5/vocab.gin"
+
+# Partitioning
+partitioning.PjitPartitioner:
+  model_parallel_submesh = (1, 1, 8, 1)
+
+# Task configurations
+MIXTURE_OR_TASK_NAME = %gin.REQUIRED
+TRAIN_EVAL_MIXTURE_OR_TASK_NAME = %gin.REQUIRED
+TASK_FEATURE_LENGTHS = {"inputs": 1024, "targets": 229}
+USE_CACHED_TASKS = True
+TRAIN_STEPS = 1_000_000
+
+partitioning.standard_logical_axis_rules.activation_partitioning_dims = 1
+partitioning.standard_logical_axis_rules.parameter_partitioning_dims = 2
