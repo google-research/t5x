@@ -1,0 +1,70 @@
+[build-system]
+requires = ["flit_core >=3.2,<4"]
+build-backend = "flit_core.buildapi"
+
+[project]
+name = "t5x"
+version = "0.0.0"
+description = "T5-eXtended in JAX"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    {name = "Google Inc.", email = "no-reply@google.com"},
+]
+dynamic=["dependencies", "optional-dependencies"]
+keywords = ["text", "nlp", "machinelearning"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "absl-py",
+    "cached_property",
+    "clu @ git+https://github.com/google/CommonLoopUtils#egg=clu",
+    "flax @ git+https://github.com/google/flax#egg=flax",
+    "fiddle >= 0.2.5",
+    "gin-config",
+    "jax >= 0.4.3",
+    "jaxlib >= 0.4.3",
+    "jestimator",
+    "numpy",
+    "orbax @ git+https://github.com/google/orbax#egg=orbax",
+    "seqio @ git+https://github.com/google/seqio#egg=seqio",
+    "tensorflow-cpu",
+    "tensorstore >= 0.1.20",
+]
+
+[project.urls]
+homepage = "http://github.com/google-research/t5x"
+repository = "http://github.com/google-research/t5x"
+
+[tool.setuptools.package-data]
+"*" = ["**/*.gin"]
+
+[project.optional-dependencies]
+gcp = [
+    "gevent",
+    "google-api-python-client",
+    "google-compute-engine",
+    "google-cloud-storage",
+    "oauth2client",
+]
+test = ["pytest", "t5"]
+tpu = ["jax[tpu]>=0.4.3"]
+gpu = [
+    "ipdb==0.13.9",
+    "fasttext==0.9.2",
+    "pysimdjson==5.0.2",
+    "pytablewriter==0.64.2",
+    "gdown==4.5.3",
+    "best-download==0.0.9",
+    "lm_dataformat==0.0.20",
+    "tfds-nightly==4.6.0.dev202210040045",
+]
+
+[tool.pytest.ini_options]
+python_files = "*_test.py"
+log_level = "INFO"
