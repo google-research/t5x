@@ -355,6 +355,62 @@ def create_inference_function(
   return inference_fn
 
 
+@dataclasses.dataclass(frozen=True)
+class VariableInputShapeConfig:
+  """Configuration for optimizing model performance given dynamic input shapes."""
+
+  # Whether to allow the sequence length to be dynamic at runtime. Otherwise,
+  # the sequence is generally padded to the maximum allowed sequence length.
+  allow_variable_sequence_length: bool = False
+  # Allowed sequence lengths that can be input to the model. This is used to pad
+  # the inputs to a set of fixed values so that the number of
+  # required XLA-compiled graphs does not grow uncontrollably.
+  # NOTE: This must be a tuple in order to be hashable by TF.
+  allowed_sequence_lengths: Optional[tuple[int]] = None
+
+
+@tf.function
+def _round_up_sequence_length(
+    shape_config: VariableInputShapeConfig, length: tf.Tensor
+) -> tf.Tensor:
+  """Rounds the input up to the closest value in `shape_config.allowed_sequence_lengths` that is greater than or equal to the input.
+
+  Args:
+    shape_config: A VariableInputShapeConfig specifying how to treat lengths
+      that vary at runtime.
+    length: A 0-d numeric tensor containing the length of a tensor being input
+      to the model.
+
+  Returns:
+    The closest higher length in `shape_config.allowed_sequence_lengths` as
+    a 0-d numeric tensor.
+  """
+  if not shape_config.allowed_sequence_lengths:
+    raise ValueError(
+        '`allowed_sequence_lengths` must be specified to round up sequence'
+        ' lengths.'
+    )
+  inf = length.dtype.max
+  allowed_lengths_tensor = tf.constant(shape_config.allowed_sequence_lengths)
+  allowed_length = tf.cast(allowed_lengths_tensor, length.dtype)
+  # For `allowed_length` less than `length`, sets to infinity, otherwise
+  # sets to the distance. This avoids rounding down the length when taking the
+  # argmin.
+  padding_amount = tf.where(
+      allowed_length < length,
+      inf,
+      allowed_length - length,
+  )
+  closest_length_idx = tf.math.argmin(padding_amount)
+  # If the input length is larger than the largest allowed seqlen,
+  # truncate it to the maximum allowed length.
+  return tf.cond(
+      tf.reduce_all(padding_amount[closest_length_idx] == inf),
+      lambda: tf.math.reduce_max(allowed_length),
+      lambda: allowed_length[closest_length_idx],
+  )
+
+
 def load_params_from_checkpoint(
     restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
     train_state_initializer: Optional[utils.TrainStateInitializer],
@@ -495,8 +551,12 @@ def create_dual_encoder_preprocessor(
     task_feature_lengths: Mapping[str, int],
     tokenized_inputs: bool = False,
     input_tensor_name: str = 'text_batch',
+    variable_shape_config: Optional[VariableInputShapeConfig] = None,
 ) -> Tuple[PreprocessorFn, Sequence[tf.TensorSpec]]:
   """Builds a function based on the config task to tokenize and batch the input text."""
+
+  if variable_shape_config is None:
+    variable_shape_config = VariableInputShapeConfig()
 
   def preprocess(input_texts: tf.Tensor) -> Mapping[str, tf.Tensor]:
     """TF-based preprocessor that takes a batch of text and converts it to model features."""
@@ -524,14 +584,45 @@ def create_dual_encoder_preprocessor(
       if output_features[k].add_eos:
         t = tf.concat([t[:length - 1], [vocab.eos_id]], axis=0)
       t = t[:length]
+      if variable_shape_config.allow_variable_sequence_length:
+        return t
+      # Otherwise, pad all inputs to the max length.
       t = tf.pad(t, [[0, length - tf.shape(t)[0]]])
       t.set_shape([length])
       return t
 
-    left_encoder_input_tokens = tf.map_fn(
-        functools.partial(featurize, k='inputs'),
-        features['inputs'],
-        fn_output_signature=(tf.int32))
+    if variable_shape_config.allow_variable_sequence_length:
+      left_encoder_input_tokens = tf.map_fn(
+          functools.partial(featurize, k='inputs'),
+          features['inputs'],
+          fn_output_signature=tf.RaggedTensorSpec(
+              shape=[None], dtype=tf.int32, ragged_rank=0
+          ),
+      )
+      # Note: `a, b = c` unpacking here is unsupported (iterating over a
+      # symbolic Tensor).
+      bounding_shape = left_encoder_input_tokens.bounding_shape()
+      batch_size = bounding_shape[0]
+      max_length_in_batch = bounding_shape[1]
+
+      if variable_shape_config.allowed_sequence_lengths:
+        rounded_length = _round_up_sequence_length(
+            variable_shape_config, max_length_in_batch
+        )
+        # Pad the RaggedTensor to fit the requested size.
+        left_encoder_input_tokens = left_encoder_input_tokens.to_tensor(
+            shape=(batch_size, rounded_length)
+        )
+      else:
+        # Don't constrain the input length; note: if XLA is enabled, a new
+        # graph will be compiled for each new input shape.
+        left_encoder_input_tokens = left_encoder_input_tokens.to_tensor()
+    else:
+      left_encoder_input_tokens = tf.map_fn(
+          functools.partial(featurize, k='inputs'),
+          features['inputs'],
+          fn_output_signature=(tf.int32),
+      )
     right_encoder_input_tokens = tf.map_fn(
         functools.partial(featurize, k='targets'),
         features['targets'],
@@ -1103,11 +1194,12 @@ def save(
         str
     ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
     create_fake_input_fn: Any = create_fake_input,
+    variable_shape_config: Optional[VariableInputShapeConfig] = None,
 ):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
   Args:
-    model:
+    model: The model to be exported.
     inference_mode: "predict", "score" or a CustomInferenceMode instance.
     restore_checkpoint_cfg: Configuration for restoring model from checkpoint.
     exportable_module_cls: A configured implementation of ExportableModule.
@@ -1154,7 +1246,14 @@ def save(
     create_fake_input_fn: Optional function to create fake inputs instead of
       relying on signautres which would create all zeros and some preprocessors
       might not work with zeros.
+    variable_shape_config: Optional configuration for optimizing inputs whose
+      shape varies at runtime. NOTE: This may cause
+      `jax._src.errors.ConcretizationTypeError` if the model contains operations
+      that require input shapes to be static.
   """
+  if variable_shape_config is None:
+    variable_shape_config = VariableInputShapeConfig()
+
   jax.monitoring.record_event('/jax/t5x/export/beacon')
   output_dirs = _standardize_output_dirs(output_dir)
   del output_dir
@@ -1202,9 +1301,17 @@ def save(
     features = preprocessor(*fake_inputs)
 
     # All the features have a leading batch dimension.
-    polymorphic_shapes_inputs = jax.tree_util.tree_map(lambda _: 'b, ...',
-                                                       features)
+    jax_polymorphic_shape_spec = (
+        'b, l, ...'
+        if variable_shape_config.allow_variable_sequence_length
+        else 'b, ...'
+    )
+    polymorphic_shapes_inputs = jax.tree_util.tree_map(
+        lambda _: jax_polymorphic_shape_spec, features
+    )
   else:
+    if variable_shape_config.allow_variable_sequence_length:
+      raise ValueError('Batching is unsupported for variable-length inputs.')
     polymorphic_shapes_inputs = None
 
   decoding_state_callback_fn = None
