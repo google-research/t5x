@@ -56,7 +56,7 @@ setuptools.setup(
         f'jaxlib >= {_jaxlib_version}',
         'jestimator',
         'numpy',
-        'orbax @ git+https://github.com/google/orbax#egg=orbax',
+        'orbax',
         'seqio @ git+https://github.com/google/seqio#egg=seqio',
         'tensorflow-cpu',
         'tensorstore >= 0.1.20',
