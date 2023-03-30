@@ -733,7 +733,11 @@ def accumulate_grads_microbatched(
     grad_accum_init = jax.tree_util.tree_map(
         lambda x: jnp.zeros(x.shape, accum_dtype), train_state.params)
     initial_metrics_shape, _, _ = jax.eval_shape(
-        metrics_and_grad, loop_cnt=0, dropout_rng=dropout_rng)
+        metrics_and_grad,
+        loop_cnt=0,
+        dropout_rng=dropout_rng,
+        flax_mutables=initial_flax_mutables,
+    )
 
     initial_metrics = {
         k: metrics_lib.shape_obj_to_defined_obj(v)

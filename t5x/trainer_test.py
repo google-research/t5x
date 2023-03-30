@@ -249,9 +249,7 @@ def fake_eval_fn_without_weight_sum(params, batch):
   return loss, {'loss': loss, 'accuracy': metrics_lib.Sum(i)}
 
 
-def fake_value_and_grad_fn_without_weight_sum(callable_fn, has_aux=False):
-  del callable_fn
-
+def build_fake_grad_fn_without_weight_sum(has_aux, require_flax_mutables):
   def fake_grad_fn_without_weight_sum(train_state_params,
                                       batch,
                                       dropout_rng,
@@ -276,7 +274,7 @@ def fake_value_and_grad_fn_without_weight_sum(callable_fn, has_aux=False):
     j = batch['j'].sum()
     metrics = {'loss': metrics_lib.Sum(j), 'accuracy': metrics_lib.Sum(j)}
 
-    if flax_mutables is not None:
+    if require_flax_mutables or flax_mutables is not None:
       aux = metrics, flax_mutables
     else:
       aux = metrics
@@ -287,6 +285,16 @@ def fake_value_and_grad_fn_without_weight_sum(callable_fn, has_aux=False):
       return None, grad_accum.params
 
   return fake_grad_fn_without_weight_sum
+
+
+def fake_value_and_grad_fn_without_weight_sum(callable_fn, has_aux=False):
+  del callable_fn
+  return build_fake_grad_fn_without_weight_sum(has_aux, False)
+
+
+def fake_value_and_grad_fn_wo_weight_sum_w_mutables(callable_fn, has_aux=False):
+  del callable_fn
+  return build_fake_grad_fn_without_weight_sum(has_aux, True)
 
 
 class TrainerTest(parameterized.TestCase):
@@ -1035,7 +1043,9 @@ class MutableTrainerTest(parameterized.TestCase):
     self.assertEqual(metrics['accuracy'].compute(), 2)
     self.assertIsNotNone(flax_mutables)
 
-  @mock.patch('jax.value_and_grad', fake_value_and_grad_fn_without_weight_sum)
+  @mock.patch(
+      'jax.value_and_grad', fake_value_and_grad_fn_wo_weight_sum_w_mutables
+  )
   def test_accumulate_grads_microbatched_without_weight_sum_multiple_batches(
       self):
     batch_iter = self.dataset.as_numpy_iterator()
