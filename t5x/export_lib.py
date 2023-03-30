@@ -1,4 +1,4 @@
-# Copyright 2022 The T5X Authors.
+# Copyright 2023 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1023,7 +1023,8 @@ def _standardize_output_features(
 
 
 def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
-  """standardize the format of output_dirs from user input."""
+  """Standardize the format of output_dirs from user input."""
+  logging.info('Standardizing the output_dir: %s', output_dir)
   if output_dir is None:
     raise ValueError('output_dir is mandatory')
   if isinstance(output_dir, str):
@@ -1043,6 +1044,7 @@ def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
     output_dirs['cpu'] = os.path.join(
         os.path.dirname(output_dirs['tpu']) + '_cpu', export_version
     )
+  logging.info('Result standardized output_dirs: %s', output_dirs)
   return output_dirs
 
 
