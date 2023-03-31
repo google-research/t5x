@@ -397,9 +397,16 @@ def _get_spec(directory: str, arr: Any, name: str,
   return ts.Spec(spec)
 
 
+def _sharding_matches(arr: Any, target_sharding: jax.sharding.Sharding) -> bool:
+  if not isinstance(arr, jax.Array):
+    return False
+  sharding = arr.sharding
+  return sharding.is_equivalent_to(target_sharding, arr.ndim)
+
+
 def _maybe_make_sharded_array(
     arr: Any,
-    mesh: Any,
+    mesh: Optional[Mesh],
     axes: Optional[PartitionSpec] = None,
     restore_dtype: Optional[jnp.dtype] = None,
     use_gda: bool = True,
@@ -416,16 +423,19 @@ def _maybe_make_sharded_array(
   Returns:
     Sharded or unsharded array.
   """
-  is_sharded_jax_array = isinstance(arr,
-                                    jax.Array) and not arr.is_fully_addressable
-  if use_gda and isinstance(
-      arr, (np.ndarray, jnp.ndarray)) and not is_sharded_jax_array:
-    if axes is None:
-      axes = PartitionSpec(None,)
+  if not use_gda:
+    return arr
+  if axes is None:
+    axes = PartitionSpec(None)
+  assert mesh is not None, 'Mesh should be provided.'
+  target_sharding = jax.sharding.NamedSharding(mesh, axes)
+  if _sharding_matches(arr, target_sharding):
+    return arr
+  if isinstance(arr, (np.ndarray, jnp.ndarray)):
     if restore_dtype is not None:
       arr = arr.astype(restore_dtype)
     arr = jax.make_array_from_callback(
-        arr.shape, jax.sharding.NamedSharding(mesh, axes), lambda idx: arr[idx]
+        arr.shape, target_sharding, lambda idx: arr[idx]
     )
   return arr
 
