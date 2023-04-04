@@ -795,7 +795,18 @@ def apply_grads(
 def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
               batch: jnp.ndarray) -> MetricMapType:
   """Default evaluation step."""
-  _, metrics = model.eval_fn(train_state.params, batch)  # pytype: disable=wrong-arg-types  # jax-ndarray
+  if not train_state.flax_mutables:
+    _, metrics = model.eval_fn(train_state.params, batch)  # pytype: disable=wrong-arg-types  # jax-ndarray
+  else:
+    # If the training state contains mutable variables, then we expect the
+    # model to accept this extra arguments in the eval function.
+    # pytype: disable=wrong-arg-count
+    # pytype: disable=wrong-arg-types
+    _, metrics = model.eval_fn(
+        train_state.params, batch, train_state.flax_mutables
+    )
+    # pytype: enable=wrong-arg-count
+    # pytype: enable=wrong-arg-types
   return metrics
 
 

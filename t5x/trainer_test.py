@@ -249,6 +249,16 @@ def fake_eval_fn_without_weight_sum(params, batch):
   return loss, {'loss': loss, 'accuracy': metrics_lib.Sum(i)}
 
 
+def fake_eval_fn_with_mutables(params, batch, flax_mutables):
+  assert flax_mutables is not None
+  del flax_mutables
+  del params
+  # Add `i` to each metric.
+  i = batch['i'].sum()
+  loss = metrics_lib.Sum(i)
+  return loss, {'loss': loss, 'accuracy': metrics_lib.Sum(i)}
+
+
 def build_fake_grad_fn_without_weight_sum(has_aux, require_flax_mutables):
   def fake_grad_fn_without_weight_sum(train_state_params,
                                       batch,
@@ -1051,15 +1061,32 @@ class MutableTrainerTest(parameterized.TestCase):
     batch_iter = self.dataset.as_numpy_iterator()
     batch = next(batch_iter)
     num_micro_batches = 2
-    grad_accum, metrics, flax_mutables = trainer_lib.accumulate_grads_microbatched(
-        self.test_trainer._model, self.init_train_state, batch,
-        self.test_trainer._base_rng, num_micro_batches)
+    grad_accum, metrics, flax_mutables = (
+        trainer_lib.accumulate_grads_microbatched(
+            self.test_trainer._model,
+            self.init_train_state,
+            batch,
+            self.test_trainer._base_rng,
+            num_micro_batches,
+        )
+    )
 
     expected_grad_accum = {'bias': jnp.ones(4), 'kernel': jnp.ones((2, 4))}
     chex.assert_trees_all_equal(expected_grad_accum, grad_accum)
     self.assertEqual(metrics['loss'].compute(), 2)
     self.assertEqual(metrics['accuracy'].compute(), 2)
     self.assertIsNotNone(flax_mutables)
+
+  def test_eval_step(self):
+    batch_iter = self.dataset.as_numpy_iterator()
+    batch = next(batch_iter)
+    self.test_trainer._model.eval_fn = fake_eval_fn_with_mutables
+    metrics = trainer_lib.eval_step(
+        self.test_trainer._model, self.init_train_state, batch
+    )
+
+    self.assertEqual(metrics['loss'].compute(), 1)
+    self.assertEqual(metrics['accuracy'].compute(), 1)
 
   def tearDown(self) -> None:
     # Manually close managers to avoid phantom threads crossing test cases.
