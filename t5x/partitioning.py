@@ -656,6 +656,10 @@ class BasePartitioner(metaclass=abc.ABCMeta):
   def params_on_devices(self):
     return self._params_on_devices
 
+  @params_on_devices.setter
+  def params_on_devices(self, value):
+    self._params_on_devices = value
+
   def move_params_to_devices(self, train_state: TrainState,
                              train_state_axes: TrainState) -> TrainState:
     """Moves the optimizer parameters to devices."""
