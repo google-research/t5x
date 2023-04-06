@@ -1073,9 +1073,13 @@ def create_fake_input(signature: Dict[str, tf.TensorSpec]) -> Any:
 
 
 def create_batch_polymorphic_shapes(
-    input_signature, preprocessor, *, create_fake_input_fn=create_fake_input
+    input_signature,
+    preprocessor,
+    *,
+    create_fake_input_fn=create_fake_input,
+    overrides=None,
 ):
-  """Creates batch polymorhic shapes for jax2tf."""
+  """Creates batch polymorhic shapes for jax2tf, and override specific shapes."""
   if all(
       s.shape.is_fully_defined()
       for s in jax.tree_util.tree_leaves(input_signature)
@@ -1086,7 +1090,10 @@ def create_batch_polymorphic_shapes(
   features = preprocessor(*fake_inputs)
 
   # All the features have a leading batch dimension.
-  return jax.tree_util.tree_map(lambda _: 'b, ...', features)
+  shapes = jax.tree_util.tree_map(lambda _: 'b, ...', features)
+  if overrides:
+    shapes.update(overrides)
+  return shapes
 
 
 def save(
