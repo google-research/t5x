@@ -1072,6 +1072,23 @@ def create_fake_input(signature: Dict[str, tf.TensorSpec]) -> Any:
   return jax.tree_util.tree_map(_gen_dummy_tensor, signature)
 
 
+def create_batch_polymorphic_shapes(
+    input_signature, preprocessor, *, create_fake_input_fn=create_fake_input
+):
+  """Creates batch polymorhic shapes for jax2tf."""
+  if all(
+      s.shape.is_fully_defined()
+      for s in jax.tree_util.tree_leaves(input_signature)
+  ):
+    return None
+
+  fake_inputs = create_fake_input_fn(input_signature)
+  features = preprocessor(*fake_inputs)
+
+  # All the features have a leading batch dimension.
+  return jax.tree_util.tree_map(lambda _: 'b, ...', features)
+
+
 def save(
     *,
     model: models.BaseTransformerModel,
@@ -1102,7 +1119,7 @@ def save(
     signature_name: Optional[
         str
     ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
-    create_fake_input_fn: Any = create_fake_input,
+    create_polymorphic_shapes_fn: Any = create_batch_polymorphic_shapes,
 ):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
 
@@ -1151,9 +1168,8 @@ def save(
       plain text. For standard T5X models this will always be 'targets', but may
       be different or empty for other models.
     signature_name: Optional name of the exported function.
-    create_fake_input_fn: Optional function to create fake inputs instead of
-      relying on signautres which would create all zeros and some preprocessors
-      might not work with zeros.
+    create_polymorphic_shapes_fn: Optional function to create polymorphic shapes
+      for input tensors to the JAX model function.
   """
   jax.monitoring.record_event('/jax/t5x/export/beacon')
   output_dirs = _standardize_output_dirs(output_dir)
@@ -1195,18 +1211,6 @@ def save(
 
   logging.info('Converting inference function...')
 
-  # The model_fn takes two arguments, the params and the inputs. The inputs are
-  # a pytree of arrays with the first dimension being the batch dimension.
-  if batch_size is None:
-    fake_inputs = create_fake_input_fn(input_signature)
-    features = preprocessor(*fake_inputs)
-
-    # All the features have a leading batch dimension.
-    polymorphic_shapes_inputs = jax.tree_util.tree_map(lambda _: 'b, ...',
-                                                       features)
-  else:
-    polymorphic_shapes_inputs = None
-
   decoding_state_callback_fn = None
   if create_decoding_state_callback_fn is not None:
     decoding_state_callback_fn = create_decoding_state_callback_fn(
@@ -1221,7 +1225,9 @@ def save(
       inference_mode=inference_mode,
       enable_jax2tf=True,
       enable_xla=enable_xla,
-      polymorphic_shapes_inputs=polymorphic_shapes_inputs,
+      polymorphic_shapes_inputs=create_polymorphic_shapes_fn(
+          input_signature, preprocessor
+      ),
       native_lowering=native_lowering,
   )
 
