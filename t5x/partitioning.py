@@ -63,14 +63,6 @@ class AxisNames(tuple):
     return 'AxisNames%s' % tuple.__repr__(self)
 
 
-def with_sharding_constraint(x, axis_resources):
-  """Wrapper for pjit with_sharding_constraint, no-op on cpu or outside pjit."""
-  if jax.devices()[0].platform == 'cpu' or not global_mesh_defined():
-    return x
-  else:
-    return jax.experimental.pjit.with_sharding_constraint(x, axis_resources)
-
-
 # pjit Mesh creation functions.
 # -----------------------------------------------------------------------------
 def bounds_from_last_device(last_device: jax.Device) -> HardwareMesh:

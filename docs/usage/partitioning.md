@@ -66,7 +66,7 @@ Tip: We recommend you use the *canonical* logical axis names listed
 To specify the logical axes for *activation partitioning*, provide the logical axes
 names to `flax.linen.partitioning.with_sharding_constraint` (instead of using
 `jax.pjit.with_sharding_constraint` or
-`t5x.partitioning.with_sharding_constraint`).
+`jax.experimental.pjit.with_sharding_constraint`).
 
 ```py
 from flax.linen import partitioning
