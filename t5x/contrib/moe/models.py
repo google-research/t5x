@@ -37,8 +37,13 @@ MetricsMap = metrics_lib.MetricsMap
 PyTree = base_models.PyTree
 Sum = metrics_lib.Sum
 
-MOE_METRICS = ('auxiliary_loss', 'router_z_loss', 'fraction_tokens_left_behind',
-               'expert_usage', 'router_confidence')
+MOE_METRICS = (
+    'auxiliary_loss',
+    'router_z_loss',
+    'fraction_tokens_left_behind',
+    'expert_usage',
+    'router_confidence',
+)
 
 
 class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
@@ -51,13 +56,17 @@ class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
       output_vocabulary: seqio.Vocabulary,
       optimizer_def: optimizers.OptimizerDefType,
       decode_fn: DecodeFnCallable = decoding.beam_search,
-      feature_converter_cls: Optional[Callable[...,
-                                               seqio.FeatureConverter]] = None,
+      feature_converter_cls: Optional[
+          Callable[..., seqio.FeatureConverter]
+      ] = None,
       label_smoothing: float = 0.0,
       z_loss: float = 0.0,
-      loss_normalizing_factor: Optional[float] = None,
-      aux_loss_factor: float = 0.,
-      router_z_loss_factor: float = 0.):
+      loss_normalizing_factor: Optional[
+          Union[float, int, str, losses.SpecialLossNormalizingFactor]
+      ] = None,
+      aux_loss_factor: float = 0.0,
+      router_z_loss_factor: float = 0.0,
+  ):
     super().__init__(
         module=module,
         input_vocabulary=input_vocabulary,
@@ -67,7 +76,8 @@ class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
         feature_converter_cls=feature_converter_cls,
         label_smoothing=label_smoothing,
         z_loss=z_loss,
-        loss_normalizing_factor=loss_normalizing_factor)
+        loss_normalizing_factor=loss_normalizing_factor,
+    )
     self._aux_loss_factor = aux_loss_factor
     self._router_z_loss_factor = router_z_loss_factor
 
@@ -89,10 +99,18 @@ class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
       - Metrics.
     """
     logits, state = self._compute_logits(
-        params, batch, dropout_rng, mutable=['intermediates'])
-    return _moe_loss_fn(batch, logits, state, self._label_smoothing,
-                        self._z_loss, self._loss_normalizing_factor,
-                        self._aux_loss_factor, self._router_z_loss_factor)
+        params, batch, dropout_rng, mutable=['intermediates']
+    )
+    return _moe_loss_fn(
+        batch,
+        logits,
+        state,
+        self._label_smoothing,
+        self._z_loss,
+        self._loss_normalizing_factor,
+        self._aux_loss_factor,
+        self._router_z_loss_factor,
+    )
 
   def predict_batch_with_aux(  # pylint: disable=useless-super-delegation
       self,
@@ -122,9 +140,15 @@ class MoeEncoderDecoderModel(base_models.EncoderDecoderModel):
       - Batch of predictions, with the entire beam if requested,
       - Auxiliary dictionary of decoder scores.
     """
-    return super().predict_batch_with_aux(params, batch, rng, decoder_params,
-                                          return_all_decodes, num_decodes,
-                                          prompt_with_targets)
+    return super().predict_batch_with_aux(
+        params,
+        batch,
+        rng,
+        decoder_params,
+        return_all_decodes,
+        num_decodes,
+        prompt_with_targets,
+    )
 
 
 class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
@@ -137,13 +161,17 @@ class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
       optimizer_def: optimizers.OptimizerDefType,
       decode_fn: DecodeFnCallable = decoding.temperature_sample,
       inputs_bidirectional_attention: bool = False,
-      feature_converter_cls: Optional[Callable[...,
-                                               seqio.FeatureConverter]] = None,
+      feature_converter_cls: Optional[
+          Callable[..., seqio.FeatureConverter]
+      ] = None,
       label_smoothing: float = 0.0,
       z_loss: float = 0.0,
-      loss_normalizing_factor: Optional[float] = None,
-      aux_loss_factor: float = 0.,
-      router_z_loss_factor: float = 0.):
+      loss_normalizing_factor: Optional[
+          Union[float, int, str, losses.SpecialLossNormalizingFactor]
+      ] = None,
+      aux_loss_factor: float = 0.0,
+      router_z_loss_factor: float = 0.0,
+  ):
     super().__init__(
         module=module,
         vocabulary=vocabulary,
@@ -153,7 +181,8 @@ class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
         feature_converter_cls=feature_converter_cls,
         label_smoothing=label_smoothing,
         z_loss=z_loss,
-        loss_normalizing_factor=loss_normalizing_factor)
+        loss_normalizing_factor=loss_normalizing_factor,
+    )
     self._aux_loss_factor = aux_loss_factor
     self._router_z_loss_factor = router_z_loss_factor
 
@@ -175,10 +204,18 @@ class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
       - Metrics.
     """
     logits, state = self._compute_logits(
-        params, batch, dropout_rng, mutable=['intermediates'])
-    return _moe_loss_fn(batch, logits, state, self._label_smoothing,
-                        self._z_loss, self._loss_normalizing_factor,
-                        self._aux_loss_factor, self._router_z_loss_factor)
+        params, batch, dropout_rng, mutable=['intermediates']
+    )
+    return _moe_loss_fn(
+        batch,
+        logits,
+        state,
+        self._label_smoothing,
+        self._z_loss,
+        self._loss_normalizing_factor,
+        self._aux_loss_factor,
+        self._router_z_loss_factor,
+    )
 
   def predict_batch_with_aux(  # pylint: disable=useless-super-delegation
       self,
@@ -213,20 +250,29 @@ class MoeDecoderOnlyModel(base_models.DecoderOnlyModel):
         rng,
         return_all_decodes=return_all_decodes,
         num_decodes=num_decodes,
-        decoder_params=decoder_params)
+        decoder_params=decoder_params,
+    )
 
 
-def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
-                 state: flax_scope.FrozenVariableDict, label_smoothing: float,
-                 z_loss: float, loss_normalizing_factor: Optional[float],
-                 aux_loss_factor: float,
-                 router_z_loss_factor: float) -> Tuple[jnp.ndarray, MetricsMap]:
+def _moe_loss_fn(
+    batch: Mapping[str, jnp.ndarray],
+    logits: jnp.ndarray,
+    state: flax_scope.FrozenVariableDict,
+    label_smoothing: float,
+    z_loss: float,
+    loss_normalizing_factor: Optional[float],
+    aux_loss_factor: float,
+    router_z_loss_factor: float,
+) -> Tuple[jnp.ndarray, MetricsMap]:
   """Computes combined cross-entropy and MoE auxiliary loss."""
-  loss_normalizing_factor: Optional[Union[float, int, str,
-                                          losses.SpecialLossNormalizingFactor]]
-  (loss_normalizing_factor,
-   weights) = losses.get_loss_normalizing_factor_and_weights(
-       loss_normalizing_factor, batch)
+  loss_normalizing_factor: Optional[
+      Union[float, int, str, losses.SpecialLossNormalizingFactor]
+  ]
+  (loss_normalizing_factor, weights) = (
+      losses.get_loss_normalizing_factor_and_weights(
+          loss_normalizing_factor, batch
+      )
+  )
 
   targets = batch['decoder_target_tokens']
   total_loss, z_loss, _ = losses.compute_weighted_cross_entropy(
@@ -235,13 +281,15 @@ def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
       weights=weights,
       label_smoothing=label_smoothing,
       z_loss=z_loss,
-      loss_normalizing_factor=loss_normalizing_factor)
+      loss_normalizing_factor=loss_normalizing_factor,
+  )
 
   # Extract and add MoE losses to total loss.
   diversity_metrics = _extract_diversity_metrics(state)
 
-  aux_loss, router_z_loss = _expert_losses(diversity_metrics, aux_loss_factor,
-                                           router_z_loss_factor)
+  aux_loss, router_z_loss = _expert_losses(
+      diversity_metrics, aux_loss_factor, router_z_loss_factor
+  )
   total_loss += aux_loss + router_z_loss
 
   metrics = base_models.compute_base_metrics(
@@ -249,7 +297,8 @@ def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
       targets=targets,
       mask=weights,
       loss=total_loss,
-      z_loss=z_loss)
+      z_loss=z_loss,
+  )
   metrics.update(
       _expert_metrics(  # pytype: disable=wrong-arg-types  # jax-ndarray
           diversity_metrics,
@@ -257,13 +306,16 @@ def _moe_loss_fn(batch: Mapping[str, jnp.ndarray], logits: jnp.ndarray,
           z_loss,
           aux_loss,
           router_z_loss,
-          num_tokens=targets.size))
+          num_tokens=targets.size,
+      )
+  )
 
   return total_loss, metrics
 
 
 def _extract_diversity_metrics(
-    state: flax_scope.FrozenVariableDict) -> Dict[str, jnp.ndarray]:
+    state: flax_scope.FrozenVariableDict,
+) -> Dict[str, jnp.ndarray]:
   """Extract average expert diversity metrics from sown state intermediates.
 
   Args:
@@ -279,7 +331,7 @@ def _extract_diversity_metrics(
 
   avg_metrics = {}
   for metric in MOE_METRICS:
-    summed_metric = 0.
+    summed_metric = 0.0
     count = 0
     for path, value in state_dict.items():
       if path[-1] == metric:
@@ -289,16 +341,19 @@ def _extract_diversity_metrics(
     if count == 0:
       raise ValueError(
           f'Unable to find expert metric: {metric}. Please check that MoE '
-          'metrics and losses are correctly sown.')
+          'metrics and losses are correctly sown.'
+      )
 
     avg_metrics[metric] = summed_metric / count
 
   return avg_metrics
 
 
-def _expert_losses(diversity_metrics: Mapping[str, jnp.ndarray],
-                   auxiliary_loss_factor: float,
-                   router_z_loss_factor: float) -> Tuple[float, float]:
+def _expert_losses(
+    diversity_metrics: Mapping[str, jnp.ndarray],
+    auxiliary_loss_factor: float,
+    router_z_loss_factor: float,
+) -> Tuple[float, float]:
   """Summarizes per-layer MoE auxiliary losses.
 
   For auxiliary losses, we take the mean across MoE layers.
@@ -316,14 +371,20 @@ def _expert_losses(diversity_metrics: Mapping[str, jnp.ndarray],
     - Router z-loss.
   """
   aux_loss = auxiliary_loss_factor * diversity_metrics['auxiliary_loss'].mean()
-  router_z_loss = router_z_loss_factor * diversity_metrics[
-      'router_z_loss'].mean()
+  router_z_loss = (
+      router_z_loss_factor * diversity_metrics['router_z_loss'].mean()
+  )
   return aux_loss, router_z_loss  # pytype: disable=bad-return-type  # jax-ndarray
 
 
-def _expert_metrics(diversity_metrics: Mapping[str, jnp.ndarray],
-                    total_loss: float, z_loss: float, auxiliary_loss: float,
-                    router_z_loss: float, num_tokens: int) -> MetricsMap:
+def _expert_metrics(
+    diversity_metrics: Mapping[str, jnp.ndarray],
+    total_loss: float,
+    z_loss: float,
+    auxiliary_loss: float,
+    router_z_loss: float,
+    num_tokens: int,
+) -> MetricsMap:
   """Summarizes per-layer expert metrics for the entire model.
 
   The return metrics map will also contain overrides for the cross entropy loss
@@ -342,23 +403,23 @@ def _expert_metrics(diversity_metrics: Mapping[str, jnp.ndarray],
   """
   cross_ent_loss = total_loss - z_loss - auxiliary_loss - router_z_loss
   return {
-      'experts/auxiliary_loss':
-          AveragePerStep.from_model_output(auxiliary_loss),
-      'experts/router_z_loss':
-          AveragePerStep.from_model_output(router_z_loss),
-      'experts/fraction_tokens_left_behind':
-          AveragePerStep.from_model_output(
-              diversity_metrics['fraction_tokens_left_behind'].mean()),
-      'experts/expert_usage':
-          AveragePerStep.from_model_output(
-              diversity_metrics['expert_usage'].mean()),
-      'experts/router_confidence':
-          AveragePerStep.from_model_output(
-              diversity_metrics['router_confidence'].mean()),
+      'experts/auxiliary_loss': AveragePerStep.from_model_output(
+          auxiliary_loss
+      ),
+      'experts/router_z_loss': AveragePerStep.from_model_output(router_z_loss),
+      'experts/fraction_tokens_left_behind': AveragePerStep.from_model_output(
+          diversity_metrics['fraction_tokens_left_behind'].mean()
+      ),
+      'experts/expert_usage': AveragePerStep.from_model_output(
+          diversity_metrics['expert_usage'].mean()
+      ),
+      'experts/router_confidence': AveragePerStep.from_model_output(
+          diversity_metrics['router_confidence'].mean()
+      ),
       # Override vanilla T5 cross entropy loss metrics with corrected loss that
       # accounts for MoE losses.
-      'cross_ent_loss':
-          metrics_lib.AveragePerStep(total=cross_ent_loss),
-      'cross_ent_loss_per_all_target_tokens':
-          clu_metrics.Average(total=jnp.sum(cross_ent_loss), count=num_tokens)
+      'cross_ent_loss': metrics_lib.AveragePerStep(total=cross_ent_loss),
+      'cross_ent_loss_per_all_target_tokens': clu_metrics.Average(
+          total=jnp.sum(cross_ent_loss), count=num_tokens
+      ),
   }
