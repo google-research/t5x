@@ -558,8 +558,8 @@ def create_decoder_preprocessor(
     task_feature_lengths: Mapping from 'inputs' and 'targets' to sequence
       lengths.
     tokenized_inputs: specifies whether the input is expected to be
-      pre-tokenized. If so, the preprocessor expects an int32 tensor of shape
-      [B, N] rather than a string tensor of shape [B].
+      pre-tokenized. If so, the preprocessor expects an int32 tensor padded with
+      0s to shape of [B, N] rather than a string tensor of shape [B].
   """
 
   def preprocess(input_texts: tf.Tensor) -> Mapping[str, tf.Tensor]:
@@ -586,26 +586,33 @@ def create_decoder_preprocessor(
     decoder_input_tokens = tf.map_fn(
         functools.partial(tokenize, k='inputs'),
         inputs,
-        fn_output_signature=(tf.int32))
+        fn_output_signature=(tf.int32),
+    )
 
     decoder_target_tokens = tf.map_fn(
         functools.partial(tokenize, k='targets'),
         targets,
-        fn_output_signature=(tf.int32))
+        fn_output_signature=(tf.int32),
+    )
 
     decoder_target_tokens = tf.concat(
-        [decoder_input_tokens, decoder_target_tokens], axis=-1)
+        [decoder_input_tokens, decoder_target_tokens], axis=-1
+    )
 
     # Create 'inputs_width' tensor in the same shape as decoder_target_tokens.
-    # It is the length of 'inputs' tiled across length dimension and
-    # 'inputs_width_add_pos' is the same except that it has one additional
-    # position tensor.
-    inputs_length = tf.shape(decoder_input_tokens)[-1]
+    # It is the length of 'inputs' (excluding padding 0 values) tiled across
+    # length dimension and 'inputs_width_add_pos' is the same except that it
+    # has one additional position tensor.
+    ragged_input_tokens = tf.RaggedTensor.from_tensor(
+        decoder_input_tokens, padding=0
+    )
+    inputs_length = tf.cast(ragged_input_tokens.row_lengths(), dtype=tf.int32)
+    inputs_length = tf.expand_dims(inputs_length, -1)
     if output_features['inputs'].add_eos:
       inputs_length -= 1
-    inputs_width = tf.fill(tf.shape(decoder_target_tokens), inputs_length)
-    inputs_width_add_pos = tf.fill(
-        tf.shape(decoder_target_tokens), inputs_length + 1)
+    ones_like_target = tf.ones(tf.shape(decoder_target_tokens), dtype=tf.int32)
+    inputs_width = tf.multiply(ones_like_target, inputs_length)
+    inputs_width_add_pos = tf.multiply(ones_like_target, inputs_length + 1)
 
     def featurize(text, length):
       text = text[:length]
