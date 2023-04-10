@@ -234,7 +234,7 @@ def get_train_state_initializer(
   for k, l in model_feature_lengths.items():
     input_shapes[k] = (p_batch_size, l)
     if feature_converter.MODEL_FEATURES[k].rank > 1:
-      if k not in trailing_shapes:
+      if trailing_shapes is None or k not in trailing_shapes:
         raise ValueError(
             'Must set the trailing shape--`...?` in '
             '`(batch_size, seqlen, ...?)`--for higher rank '
