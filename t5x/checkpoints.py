@@ -28,6 +28,7 @@ debugging and analysis of learned weights. However, this means that we cannot do
 partitioned reads so loading will be slower than that `Checkpointer` class.
 """
 import asyncio
+import collections
 import dataclasses
 import functools
 import os
@@ -405,6 +406,24 @@ def _sharding_matches(arr: Any, target_sharding: jax.sharding.Sharding) -> bool:
   return sharding.is_equivalent_to(target_sharding, arr.ndim)
 
 
+def hashed_index(x) -> int:
+  return hash(
+      tuple((v.start, v.stop) if isinstance(v, slice) else v for v in x)
+  )
+
+
+@functools.lru_cache(maxsize=4096)
+def device_replica_id_map(sharding, global_shape):
+  index_to_replica: Dict[int, int] = collections.Counter()
+  out = {}
+  for device, index in sharding.devices_indices_map(global_shape).items():
+    h_index = hashed_index(index)
+    replica_id = index_to_replica[h_index]
+    index_to_replica[h_index] += 1
+    out[device] = replica_id
+  return out
+
+
 async def _create_numpy_array(
     global_shape: Tuple[int, ...],
     in_sharding: jax.sharding.XLACompatibleSharding,
@@ -412,9 +431,7 @@ async def _create_numpy_array(
 ):
   """Creates a numpy array from a deserialization callback function."""
   device_to_index_map = in_sharding.devices_indices_map(global_shape)
-  device_to_replica_id_map = jax._src.sharding_impls.device_replica_id_map(  # pylint: disable=protected-access
-      in_sharding, global_shape
-  )
+  device_to_replica_id_map = device_replica_id_map(in_sharding, global_shape)
   da = in_sharding._device_assignment  # pylint: disable=protected-access
   future_arrays = [data_callback(device_to_index_map[d]) for d in da]
   global_arrays = await asyncio.gather(*future_arrays)
