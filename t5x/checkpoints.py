@@ -35,7 +35,7 @@ import re
 import subprocess
 import time
 import typing
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
+from typing import Any, Callable, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import warnings
 
 from absl import logging
@@ -46,6 +46,7 @@ from flax import serialization
 from flax import traverse_util
 import jax
 from jax import monitoring
+from jax._src.sharding_impls import device_replica_id_map
 import jax.config
 from jax.experimental import multihost_utils
 from jax.experimental.gda_serialization import serialization as gda_serialization
@@ -86,6 +87,7 @@ _DESIRED_CHUNK_SIZE_BYTES = 64 * 1024 * 1024
 _TRAIN_DS_PREFIX = 'train_ds'
 _READ_CHECKPOINT_EVENT: str = '/jax/checkpoint/read/durations_sec'
 _WRITE_CHECKPOINT_EVENT: str = '/jax/checkpoint/write/durations_sec'
+_TS_CONTEXT = ts.Context({'file_io_concurrency': {'limit': 128}})
 
 
 def _choose_chunk_shape(write_shape: Sequence[int],
@@ -404,12 +406,67 @@ def _sharding_matches(arr: Any, target_sharding: jax.sharding.Sharding) -> bool:
   return sharding.is_equivalent_to(target_sharding, arr.ndim)
 
 
+async def _create_numpy_array(
+    global_shape: Tuple[int, ...],
+    in_sharding: jax.sharding.XLACompatibleSharding,
+    data_callback: Callable[[Any], asyncio.Future],
+):
+  """Creates a numpy array from a deserialization callback function."""
+  device_to_index_map = in_sharding.devices_indices_map(global_shape)
+  device_to_replica_id_map = device_replica_id_map(in_sharding, global_shape)
+  da = in_sharding._device_assignment  # pylint: disable=protected-access
+  future_arrays = [data_callback(device_to_index_map[d]) for d in da]
+  global_arrays = await asyncio.gather(*future_arrays)
+
+  dtype = global_arrays[0].dtype
+  npy_value = np.empty(global_shape, dtype)
+  for (d, i), a in zip(device_to_index_map.items(), global_arrays):
+    if device_to_replica_id_map[d] == 0:
+      npy_value[i] = a
+  return npy_value
+
+
+async def _async_deserialize_to_host(
+    in_sharding: jax.sharding.XLACompatibleSharding,
+    tensorstore_spec: Dict[Any, Any],
+):
+  """Deserializes an array from disk to host using Tensorstore.
+
+  Largely copied from JAX's serialization library.
+
+  Args:
+    in_sharding: JAX sharding object.
+    tensorstore_spec: ts.Spec in dictionary format.
+
+  Returns:
+    Deserialized array on host.
+  """
+  t = await ts.open(ts.Spec(tensorstore_spec), open=True, context=_TS_CONTEXT)
+  shape = t.shape
+  new_shard_shape = in_sharding.shard_shape(tuple(shape))
+
+  async def cb(index):
+    # This may be needed because the shape the array was saved with is smaller
+    # than the requested shape of the array in which it will be reloaded. So
+    # the extra values will be filled with 0s.
+    out = np.zeros(new_shard_shape, dtype=t.dtype.numpy_dtype)
+    requested_domain = ts.IndexTransform(input_shape=shape)[index].domain
+    restricted_domain = t.domain.intersect(requested_domain)
+    await ts.array(out)[ts.d[:].translate_to[requested_domain.origin]][
+        restricted_domain
+    ].write(t[restricted_domain])
+    return out
+
+  return await _create_numpy_array(tuple(shape), in_sharding, cb)
+
+
 def _maybe_make_sharded_array(
     arr: Any,
     mesh: Optional[Mesh],
     axes: Optional[PartitionSpec] = None,
     restore_dtype: Optional[jnp.dtype] = None,
     use_gda: bool = True,
+    params_on_devices: bool = True,
 ) -> Any:
   """Makes a sharded array from non-sharded array if necessary.
 
@@ -419,6 +476,8 @@ def _maybe_make_sharded_array(
     axes: mesh_axes.
     restore_dtype: type to restore as.
     use_gda: Whether GDA is enabled.
+    params_on_devices: If true, the array will be placed on device. Otherwise,
+      it will be stored in the host(s) RAM.
 
   Returns:
     Sharded or unsharded array.
@@ -434,6 +493,8 @@ def _maybe_make_sharded_array(
   if isinstance(arr, (np.ndarray, jnp.ndarray)):
     if restore_dtype is not None:
       arr = arr.astype(restore_dtype)
+    if not params_on_devices:
+      return arr
     arr = jax.make_array_from_callback(
         arr.shape, target_sharding, lambda idx: arr[idx]
     )
@@ -1197,13 +1258,17 @@ class Checkpointer(object):
           ckpt_path=ckpt_path,
           restore_dtype=restore_dtype,
           mesh=mesh,
-          axes=axes)
+          axes=axes,
+          params_on_devices=self._partitioner.params_on_devices,
+      )
       return _maybe_make_sharded_array(
           arr,
           mesh,
           axes=axes,
           restore_dtype=restore_dtype,
-          use_gda=self._use_gda)
+          use_gda=self._use_gda,
+          params_on_devices=self._partitioner.params_on_devices,
+      )
 
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
@@ -1621,8 +1686,9 @@ async def _read_ts(
     maybe_tspec: Any,
     ckpt_path: str,
     restore_dtype: Optional[jnp.dtype] = None,
-    mesh: Optional[Tuple[int, ...]] = None,
+    mesh: Optional[Mesh] = None,
     axes: Optional[PartitionSpec] = None,
+    params_on_devices: bool = True,
 ):
   """Read from a tensorstore.
 
@@ -1649,6 +1715,8 @@ async def _read_ts(
     restore_dtype: type to restore as. None indicates that no cast is requested.
     mesh: Mesh object for GDA restoration.
     axes: MeshAxes object for GDA restoration.
+    params_on_devices: Whether parameters should be allowed to be deserialized
+      to devices.
 
   Returns:
     The array. Depending on the value `maybe_tspec` it might be read from
@@ -1715,11 +1783,15 @@ async def _read_ts(
       t = t[param_info.local_chunk_info.slice]
     arr = await t.read()
   else:
-    # if provided, read as GDA
-    arr = await gda_serialization.async_deserialize(
-        jax.sharding.NamedSharding(mesh, axes),  # pytype: disable=wrong-arg-types
-        tmp_ts_spec_dict,
-    )
+    if params_on_devices:
+      arr = await gda_serialization.async_deserialize(
+          jax.sharding.NamedSharding(mesh, axes),
+          tmp_ts_spec_dict,
+      )
+    else:
+      arr = await _async_deserialize_to_host(
+          jax.sharding.NamedSharding(mesh, axes), tmp_ts_spec_dict
+      )
   return arr
 
 
