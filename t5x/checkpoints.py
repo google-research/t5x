@@ -46,7 +46,6 @@ from flax import serialization
 from flax import traverse_util
 import jax
 from jax import monitoring
-from jax._src.sharding_impls import device_replica_id_map
 import jax.config
 from jax.experimental import multihost_utils
 from jax.experimental.gda_serialization import serialization as gda_serialization
@@ -413,7 +412,9 @@ async def _create_numpy_array(
 ):
   """Creates a numpy array from a deserialization callback function."""
   device_to_index_map = in_sharding.devices_indices_map(global_shape)
-  device_to_replica_id_map = device_replica_id_map(in_sharding, global_shape)
+  device_to_replica_id_map = jax._src.sharding_impls.device_replica_id_map(  # pylint: disable=protected-access
+      in_sharding, global_shape
+  )
   da = in_sharding._device_assignment  # pylint: disable=protected-access
   future_arrays = [data_callback(device_to_index_map[d]) for d in da]
   global_arrays = await asyncio.gather(*future_arrays)
