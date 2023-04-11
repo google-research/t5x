@@ -448,6 +448,11 @@ def create_preprocessor(
   Returns:
     The preprocessor function.
   """
+  # TODO(b/277107734): remove this constraint.
+  if bucket_keys and batch_size != 1:
+    raise ValueError(
+        f'Bucketization requires batch_size == 1. Got batch_size={batch_size}.'
+    )
 
   def preprocess(input_texts: tf.Tensor) -> Mapping[str, tf.Tensor]:
     """TF-based preprocessor that takes a batch of text and converts it to model features."""
