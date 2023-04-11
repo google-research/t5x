@@ -401,6 +401,21 @@ def create_single_tensor_input_signature(
     return (tf.TensorSpec([batch_size], tf.string, name=name),)
 
 
+def bucketize_tokenized_input(
+    input_tensor: tf.Tensor, bucket_keys: List[int]
+) -> tf.Tensor:
+  """Returns a scalar tf.Tensor indicates the bucketized length of the input_tensor.
+
+  Args:
+    input_tensor: A tokenized tf.Tensor.
+    bucket_keys: a bucket of sequence lengths, sorted ascendingly.
+  """
+  index = tf.searchsorted(bucket_keys, [tf.shape(input_tensor)[0]])
+  index = tf.math.minimum(index, len(bucket_keys) - 1)
+  index = tf.squeeze(index)
+  return tf.constant(bucket_keys)[index]
+
+
 # TODO(danielandor): More principled score-mode input format.
 def create_preprocessor(
     batch_size: Optional[int],
@@ -410,6 +425,7 @@ def create_preprocessor(
     *,
     input_tensor_name: str = 'text_batch',
     split_separator: Optional[str] = None,
+    bucket_keys: Optional[Mapping[str, List[int]]] = None,
 ) -> Tuple[PreprocessorFn, Sequence[tf.TensorSpec]]:
   """Builds a function based on the config task to tokenize and batch the input text.
 
@@ -427,6 +443,7 @@ def create_preprocessor(
       sets the target text for scoring to the second element. If None, the
       target is set to the empty string. The latter is appropriate for predict
       mode.
+    bucket_keys: If given, bucketizes the tensors according to bucket_keys.
 
   Returns:
     The preprocessor function.
@@ -462,9 +479,19 @@ def create_preprocessor(
         # which uses seqio.preprocessors.append_eos_after_trim, implemented at:
         # https://github.com/google/seqio/tree/main/seqio/preprocessors.py;l=250;rcl=480228505
         t = tf.concat([t[:length - 1], [vocab.eos_id]], axis=0)
+      bucketize = bucket_keys is not None and k in bucket_keys
+      if bucketize:
+        bucket_keys[k].sort()
+        if length != bucket_keys[k][-1]:
+          raise ValueError(
+              'Expect the largest bucket key to be the same as the task'
+              f' feature length {length} of {k}, but got {bucket_keys[k][-1]}.'
+          )
+        length = bucketize_tokenized_input(t, bucket_keys[k])
       t = t[:length]
       t = tf.pad(t, [[0, length - tf.shape(t)[0]]])
-      t.set_shape([length])
+      if not bucketize:
+        t.set_shape([length])
       ar_inputs = seqio.feature_converters.autoregressive_inputs(t)
       loss_weights = seqio.feature_converters.non_padding_position(t)
       return t, ar_inputs, loss_weights
@@ -472,11 +499,13 @@ def create_preprocessor(
     encoder_input_tokens, _, _ = tf.map_fn(
         functools.partial(featurize, k='inputs'),
         features['inputs'],
-        fn_output_signature=(tf.int32, tf.int32, tf.int32))
+        fn_output_signature=(tf.int32, tf.int32, tf.int32),
+    )
     decoder_target_tokens, decoder_input_tokens, loss_weights = tf.map_fn(
         functools.partial(featurize, k='targets'),
         features['targets'],
-        fn_output_signature=(tf.int32, tf.int32, tf.int32))
+        fn_output_signature=(tf.int32, tf.int32, tf.int32),
+    )
 
     return dict(
         encoder_input_tokens=encoder_input_tokens,
@@ -1087,7 +1116,7 @@ def create_batch_polymorphic_shapes(
     overrides=None,
 ):
   """Creates batch polymorhic shapes for jax2tf, and override specific shapes."""
-  if all(
+  if not overrides and all(
       s.shape.is_fully_defined()
       for s in jax.tree_util.tree_leaves(input_signature)
   ):

@@ -62,6 +62,7 @@ export_lib.save:
   exportable_module_cls = @export_lib.ExportableModule
   create_preprocessor_fn = @export_lib.create_preprocessor
   create_postprocessor_fn = @export_lib.create_postprocessor
+  create_polymorphic_shapes_fn = @export_lib.create_batch_polymorphic_shapes
   write_warmup_example_fn = @export_lib.write_warmup_examples
   partitioner = @partitioning.PjitPartitioner()
   output_features = %OUTPUT_FEATURES
