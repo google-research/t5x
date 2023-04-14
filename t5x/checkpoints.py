@@ -1972,6 +1972,7 @@ def load_t5x_checkpoint(
         restore_dtype=restore_dtype,
         mesh=mesh,
         axes=axes,
+        params_on_devices=False,
     )
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
         maybe_ts_spec, get_fn, dtype=restore_dtype)
