@@ -448,11 +448,6 @@ def create_preprocessor(
   Returns:
     The preprocessor function.
   """
-  # TODO(b/277107734): remove this constraint.
-  if bucket_keys and batch_size != 1:
-    raise ValueError(
-        f'Bucketization requires batch_size == 1. Got batch_size={batch_size}.'
-    )
 
   def preprocess(input_texts: tf.Tensor) -> Mapping[str, tf.Tensor]:
     """TF-based preprocessor that takes a batch of text and converts it to model features."""
@@ -501,16 +496,37 @@ def create_preprocessor(
       loss_weights = seqio.feature_converters.non_padding_position(t)
       return t, ar_inputs, loss_weights
 
+    encoder_input_tokens_shape = task_feature_lengths['inputs']
+    if bucket_keys and 'inputs' in bucket_keys:
+      encoder_input_tokens_shape = None
+    encoder_output_signature = tf.RaggedTensorSpec(
+        shape=[encoder_input_tokens_shape],
+        dtype=tf.int32,
+        ragged_rank=0,
+    )
     encoder_input_tokens, _, _ = tf.map_fn(
         functools.partial(featurize, k='inputs'),
         features['inputs'],
-        fn_output_signature=(tf.int32, tf.int32, tf.int32),
+        fn_output_signature=(encoder_output_signature,) * 3,
+    )
+    encoder_input_tokens = encoder_input_tokens.to_tensor()
+
+    decoder_target_tokens_shape = task_feature_lengths['targets']
+    if bucket_keys and 'targets' in bucket_keys:
+      decoder_target_tokens_shape = None
+    decoder_output_signature = tf.RaggedTensorSpec(
+        shape=[decoder_target_tokens_shape],
+        dtype=tf.int32,
+        ragged_rank=0,
     )
     decoder_target_tokens, decoder_input_tokens, loss_weights = tf.map_fn(
         functools.partial(featurize, k='targets'),
         features['targets'],
-        fn_output_signature=(tf.int32, tf.int32, tf.int32),
+        fn_output_signature=(decoder_output_signature,) * 3,
     )
+    decoder_target_tokens = decoder_target_tokens.to_tensor()
+    decoder_input_tokens = decoder_input_tokens.to_tensor()
+    loss_weights = loss_weights.to_tensor()
 
     return dict(
         encoder_input_tokens=encoder_input_tokens,
