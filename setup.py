@@ -60,6 +60,9 @@ setuptools.setup(
         'seqio @ git+https://github.com/google/seqio#egg=seqio',
         'tensorflow-cpu',
         'tensorstore >= 0.1.20',
+        # remove this when sentencepiece_model_pb2 is re-generated in the
+        # sentencepiece package.
+        'protobuf==3.20.3',
     ],
     extras_require={
         'gcp': [
