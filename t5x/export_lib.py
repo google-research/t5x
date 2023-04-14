@@ -410,7 +410,9 @@ def bucketize_tokenized_input(
     input_tensor: A tokenized tf.Tensor.
     bucket_keys: a bucket of sequence lengths, sorted ascendingly.
   """
-  index = tf.searchsorted(bucket_keys, [tf.shape(input_tensor)[0]])
+  index = tf.searchsorted(
+      bucket_keys, [tf.shape(input_tensor)[0]], side='right'
+  )
   index = tf.math.minimum(index, len(bucket_keys) - 1)
   index = tf.squeeze(index)
   return tf.constant(bucket_keys)[index]
