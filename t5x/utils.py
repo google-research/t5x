@@ -1396,6 +1396,7 @@ class InferStepWithRngCallable(typing_extensions.Protocol):
       params: Mapping[str, Any],
       batch: Mapping[str, jnp.ndarray],
       rng: jnp.ndarray = None,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+      flax_mutables: Optional[Mapping[str, Any]] = None,
   ) -> PyTree:
     """Runs an inference step returning a prediction or score."""
     ...
@@ -1404,7 +1405,10 @@ class InferStepWithRngCallable(typing_extensions.Protocol):
 class InferStepWithoutRngCallable(typing_extensions.Protocol):
 
   def __call__(
-      self, params: Mapping[str, Any], batch: Mapping[str, jnp.ndarray]
+      self,
+      params: Mapping[str, Any],
+      batch: Mapping[str, jnp.ndarray],
+      flax_mutables: Optional[Mapping[str, Any]] = None,
   ) -> PyTree:
     """Runs an inference step returning a prediction or score."""
     ...
@@ -1488,13 +1492,25 @@ def get_infer_fn(
       optimizer and runs the prediction.
   """
 
-  def infer_step_with_indices(params, batch, rng, indices):
+  def infer_step_with_indices(params, batch, rng, indices, flax_mutables):
     if 'rng' in inspect.signature(infer_step).parameters:
-      res = typing.cast(InferStepWithRngCallable, infer_step)(
-          params, batch, rng
-      )
+      if 'flax_mutables' in inspect.signature(infer_step).parameters:
+        res = typing.cast(InferStepWithRngCallable, infer_step)(
+            params, batch, rng, flax_mutables=flax_mutables
+        )
+      else:
+        res = typing.cast(InferStepWithRngCallable, infer_step)(
+            params, batch, rng
+        )
     else:
-      res = typing.cast(InferStepWithoutRngCallable, infer_step)(params, batch)
+      if 'flax_mutables' in inspect.signature(infer_step).parameters:
+        res = typing.cast(InferStepWithoutRngCallable, infer_step)(
+            params, batch, flax_mutables=flax_mutables
+        )
+      else:
+        res = typing.cast(InferStepWithoutRngCallable, infer_step)(
+            params, batch
+        )
     return indices, res
 
   partitioned_infer_step = partitioner.partition(
@@ -1504,6 +1520,7 @@ def get_infer_fn(
           partitioner.data_partition_spec,
           None,
           partitioner.data_partition_spec,
+          train_state_axes.flax_mutables,
       ),
       out_axis_resources=(None, None),
   )
@@ -1585,17 +1602,23 @@ def get_infer_fn(
       # returns de-sharded batched indices and result replicated on all hosts.
 
       if jax.process_count() > 1:
-        inputs = multihost_utils.host_local_array_to_global_array(
-            (infer_batch, step_rng, index),
-            partitioner.mesh,
-            (
-                partitioner.data_partition_spec,
-                None,
-                partitioner.data_partition_spec,
-            ),
+        infer_batch_p, step_rng_p, index_p = (
+            multihost_utils.host_local_array_to_global_array(
+                (infer_batch, step_rng, index),
+                partitioner.mesh,
+                (
+                    partitioner.data_partition_spec,
+                    None,
+                    partitioner.data_partition_spec,
+                ),
+            )
         )
         batch_indices, batch_result = partitioned_infer_step(
-            train_state.params, *inputs
+            train_state.params,
+            infer_batch_p,
+            step_rng_p,
+            index_p,
+            train_state.flax_mutables,
         )
         batch_indices, batch_result = (
             multihost_utils.global_array_to_host_local_array(
@@ -1604,7 +1627,11 @@ def get_infer_fn(
         )
       else:
         batch_indices, batch_result = partitioned_infer_step(
-            train_state.params, infer_batch, step_rng, index
+            train_state.params,
+            infer_batch,
+            step_rng,
+            index,
+            train_state.flax_mutables,
         )
         logging.info('Inference of batch %s done.', index)
 

@@ -27,6 +27,7 @@ from absl.testing import parameterized
 import flax.core
 from flax.linen import partitioning as flax_partitioning
 import jax
+from jax.experimental.pjit import pjit
 import numpy as np
 import seqio
 from t5x import checkpoints
@@ -40,6 +41,7 @@ mock = absltest.mock
 Evaluator = seqio.Evaluator
 PartitionSpec = partitioning.PartitionSpec
 AxisMetadata = flax_partitioning.AxisMetadata
+FlaxMutables = flax.core.FrozenDict
 
 # Parse absl flags test_srcdir and test_tmpdir.
 jax.config.parse_flags_with_absl()
@@ -47,14 +49,14 @@ jax.config.parse_flags_with_absl()
 FLAGS = flags.FLAGS
 
 
-def get_mock_train_state(params, param_states=None, step=0):
+def get_mock_train_state(params, param_states=None, step=0, flax_mutables=None):
   """Returns a mock TrainState."""
   step = np.array(step) if step is not None else None
   state = mock.Mock(param_states=param_states, step=step)
   state_dict = dict(
       target=params, state=dict(param_states=param_states, step=step)
   )
-  return mock.Mock(
+  args = dict(
       params=params,
       param_states=param_states,
       step=step,
@@ -62,7 +64,9 @@ def get_mock_train_state(params, param_states=None, step=0):
       optimizer=mock.Mock(
           target=params, state=state, state_dict=lambda: state_dict
       ),
+      flax_mutables=flax_mutables,
   )
+  return mock.Mock(**args)
 
 
 class UtilsTest(parameterized.TestCase):
@@ -992,6 +996,97 @@ class TrainStateInitializerTest(parameterized.TestCase):
         [empty_ckpt_cfg], init_rng=init_rng
     )
     self.assertTrue(initialized.from_scratch)
+
+
+class MutableGetInferFnTest(parameterized.TestCase):
+
+  @parameterized.parameters((True,), (False,))
+  def test_get_infer_fn_predict(self, use_flax_mutables):
+    batch_size = 2
+    weight_const = 7
+    mutable_const = 5 if use_flax_mutables else 0
+    global_mesh = test_utils.create_global_mesh(
+        (1, 1, 1), ("model", "data", "chips")
+    )
+
+    def predict_batch(params, batch, flax_mutables):
+      result = (
+          flax_mutables["mutable_w"] * batch["b"] if use_flax_mutables else 0
+      )
+      return result + (params["weight"] * batch["a"])
+
+    def get_data_layout(batch_size):
+      assert batch_size == 2  # total batch size, not per-shard
+      assert jax.process_index() == 0
+      return partitioning.DataLayout(
+          batch_size=2,
+          shard_id=0,
+          num_shards=1,
+          is_first_host_in_replica_set=True,
+      )
+
+    def partition(fn, in_axis_resources, out_axis_resources):
+      fn = pjit(
+          fn,
+          in_axis_resources=in_axis_resources,
+          out_axis_resources=out_axis_resources,
+      )
+      return partitioning.PjittedFnWithContext(fn, global_mesh)
+
+    if use_flax_mutables:
+      flax_mutables_train_state = {"mutable_w": np.full((1,), mutable_const)}
+      flax_mutables_train_state_axes = {"mutable_w": PartitionSpec("model")}
+    else:
+      flax_mutables_train_state = None
+      flax_mutables_train_state_axes = None
+
+    train_state = get_mock_train_state(
+        params={"weight": np.full((1,), weight_const)},
+        flax_mutables=flax_mutables_train_state,
+    )
+    train_state_axes = get_mock_train_state(
+        params={"weight": PartitionSpec("model")},
+        flax_mutables=flax_mutables_train_state_axes,
+    )
+
+    partitioner = mock.Mock()
+    partitioner.data_partition_spec = PartitionSpec(
+        "data",
+    )
+    partitioner.get_data_layout = get_data_layout
+    partitioner.partition = partition
+    partitioner.mesh = global_mesh
+
+    def as_sharded_array(arr, axes, mesh=None):
+      with mesh:
+        return pjit(
+            lambda x: x, in_axis_resources=None, out_axis_resources=axes
+        )(arr)
+
+    train_state.params = jax.tree_util.tree_map(
+        functools.partial(as_sharded_array, mesh=global_mesh),
+        train_state.params,
+        train_state_axes.params,
+    )
+
+    infer_fn = utils.get_infer_fn(
+        predict_batch, batch_size, train_state_axes, partitioner=partitioner
+    )
+
+    ds = tf.data.Dataset.from_tensor_slices({
+        "a": np.transpose(np.tile(np.arange(8), (2, 1))),
+        "b": np.transpose(np.tile(np.arange(8), (2, 1))),
+    }).enumerate()
+
+    all_indices, all_inferences = zip(*infer_fn(ds, train_state))
+
+    np.testing.assert_equal(all_indices, np.arange(8))
+    np.testing.assert_equal(
+        all_inferences,
+        np.transpose(
+            np.tile(np.arange(8) * (weight_const + mutable_const), (2, 1))
+        ),
+    )
 
 
 if __name__ == "__main__":
