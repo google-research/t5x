@@ -31,6 +31,7 @@ import warnings
 from absl import flags
 from absl import logging
 import clu.data
+import flax
 from flax import traverse_util
 import flax.core
 from flax.core import scope as flax_scope
@@ -2102,7 +2103,7 @@ def override_params_axes_names(
         "Model variables do not contain a 'params_axes' collection to apply an "
         'override to.'
     )
-  model_variables = model_variables.unfreeze()
+  model_variables = flax.core.unfreeze(model_variables)
   flat_params = traverse_util.flatten_dict(model_variables['params'])
   flat_params_axes = traverse_util.flatten_dict(model_variables['params_axes'])
 
