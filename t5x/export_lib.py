@@ -416,6 +416,29 @@ def bucketize_tokenized_input(
   return tf.constant(bucket_keys)[index]
 
 
+def truncate_and_pad_tokenized_input(
+    input_tensor: tf.Tensor,
+    max_length: int,
+    allowed_lengths: Optional[list[int]] = None,
+) -> tf.Tensor:
+  """Truncate the examples to the maximum feature length, and pad to bucketed sequence lengths."""
+  if allowed_lengths:
+    allowed_lengths.sort()
+    if max_length != allowed_lengths[-1]:
+      raise ValueError(
+          'Expected the largest allowed length to be the same as the task'
+          f' feature length {max_length}, but got {allowed_lengths[-1]}.'
+      )
+    max_length = bucketize_tokenized_input(input_tensor, allowed_lengths)
+  input_tensor = input_tensor[:max_length]
+  input_tensor = tf.pad(
+      input_tensor, [[0, max_length - tf.shape(input_tensor)[0]]]
+  )
+  if not allowed_lengths:
+    input_tensor.set_shape([max_length])
+  return input_tensor
+
+
 # TODO(danielandor): More principled score-mode input format.
 def create_preprocessor(
     batch_size: Optional[int],
@@ -479,19 +502,10 @@ def create_preprocessor(
         # which uses seqio.preprocessors.append_eos_after_trim, implemented at:
         # https://github.com/google/seqio/tree/main/seqio/preprocessors.py;l=250;rcl=480228505
         t = tf.concat([t[:length - 1], [vocab.eos_id]], axis=0)
-      bucketize = bucket_keys is not None and k in bucket_keys
-      if bucketize:
-        bucket_keys[k].sort()
-        if length != bucket_keys[k][-1]:
-          raise ValueError(
-              'Expect the largest bucket key to be the same as the task'
-              f' feature length {length} of {k}, but got {bucket_keys[k][-1]}.'
-          )
-        length = bucketize_tokenized_input(t, bucket_keys[k])
-      t = t[:length]
-      t = tf.pad(t, [[0, length - tf.shape(t)[0]]])
-      if not bucketize:
-        t.set_shape([length])
+      allowed_lengths = bucket_keys.get(k) if bucket_keys else None
+      t = truncate_and_pad_tokenized_input(
+          t, max_length=length, allowed_lengths=allowed_lengths
+      )
       ar_inputs = seqio.feature_converters.autoregressive_inputs(t)
       loss_weights = seqio.feature_converters.non_padding_position(t)
       return t, ar_inputs, loss_weights
@@ -545,6 +559,7 @@ def create_dual_encoder_preprocessor(
     task_feature_lengths: Mapping[str, int],
     tokenized_inputs: bool = False,
     input_tensor_name: str = 'text_batch',
+    bucket_keys: Optional[Mapping[str, List[int]]] = None,
 ) -> Tuple[PreprocessorFn, Sequence[tf.TensorSpec]]:
   """Builds a function based on the config task to tokenize and batch the input text."""
 
@@ -573,9 +588,11 @@ def create_dual_encoder_preprocessor(
         t = text
       if output_features[k].add_eos:
         t = tf.concat([t[:length - 1], [vocab.eos_id]], axis=0)
-      t = t[:length]
-      t = tf.pad(t, [[0, length - tf.shape(t)[0]]])
-      t.set_shape([length])
+      # TODO(karukas): Verify this implementation is XLA-compatible.
+      allowed_lengths = bucket_keys.get(k) if bucket_keys else None
+      t = truncate_and_pad_tokenized_input(
+          t, max_length=length, allowed_lengths=allowed_lengths
+      )
       return t
 
     left_encoder_input_tokens = tf.map_fn(
