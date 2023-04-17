@@ -300,7 +300,6 @@ def train(
   train_iter = utils.prepare_train_iter(
       train_iter,
       checkpoint_cfg=checkpoint_cfg,
-      use_gda=use_gda,
       partitioner=partitioner,
       data_layout=data_layout)
 

@@ -829,7 +829,6 @@ def prepare_train_iter(
         tf.data.Dataset, clu.data.dataset_iterator.DatasetIterator
     ],
     *,
-    use_gda: bool,
     partitioner,
     checkpoint_cfg,
     data_layout,
@@ -848,8 +847,7 @@ def prepare_train_iter(
   input_shapes = jax.tree_map(
       lambda x: (data_layout.batch_size, *x.shape[1:]), train_iter.element_spec
   )
-  if use_gda:
-    train_iter = ShardedDatasetIterator(train_iter, partitioner, input_shapes)
+  train_iter = ShardedDatasetIterator(train_iter, partitioner, input_shapes)
   return clu.data.dataset_iterator.PeekableDatasetIterator(train_iter)
 
 
