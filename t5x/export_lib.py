@@ -1154,17 +1154,22 @@ def create_batch_polymorphic_shapes(
     overrides=None,
 ):
   """Creates batch polymorhic shapes for jax2tf, and override specific shapes."""
-  if not overrides and all(
+  is_poly_batch = not all(
       s.shape.is_fully_defined()
       for s in jax.tree_util.tree_leaves(input_signature)
-  ):
+  )
+
+  # All shapes are static.
+  if not is_poly_batch and not overrides:
     return None
 
   fake_inputs = create_fake_input_fn(input_signature)
   features = preprocessor(*fake_inputs)
 
   # All the features have a leading batch dimension.
-  shapes = jax.tree_util.tree_map(lambda _: 'b, ...', features)
+  shapes = jax.tree_util.tree_map(
+      lambda _: 'b, ...' if is_poly_batch else None, features
+  )
   if overrides:
     shapes.update(overrides)
   return shapes
