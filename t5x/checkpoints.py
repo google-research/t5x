@@ -2176,25 +2176,31 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     data_layout = partitioner.get_data_layout()
     dataset_ckpt_name = (
         f'{_TRAIN_DS_PREFIX}-'
-        f'{data_layout.shard_id:03}-of-{data_layout.num_shards:03}')
+        f'{data_layout.shard_id:03}-of-{data_layout.num_shards:03}'
+    )
     self._should_write_dataset_ckpt = (
-        self._dataset_iterator and data_layout.is_first_host_in_replica_set)
+        self._dataset_iterator and data_layout.is_first_host_in_replica_set
+    )
 
     checkpointers = {
         _STATE_KEY: NonAtomicCheckpointer(TrainStateCheckpointHandler()),
     }
     if self._should_write_dataset_ckpt:
       checkpointers[_DATASET_KEY] = NonAtomicCheckpointer(
-          DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name))
+          DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name)
+      )
 
     if options is None:
-      options = orbax.checkpoint.CheckpointManagerOptions()
+      options = orbax.checkpoint.CheckpointManagerOptions(
+          cleanup_tmp_directories=True
+      )
     if options.max_to_keep is None:
       options.max_to_keep = keep
       options.save_interval_steps = period
       options.force_keep_period = force_keep_period
     super().__init__(
-        directory=directory, checkpointers=checkpointers, options=options)
+        directory=directory, checkpointers=checkpointers, options=options
+    )
 
   def all_steps(self, read: bool = False) -> Sequence[int]:
     """See superclass documentation."""
