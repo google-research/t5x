@@ -143,8 +143,6 @@ class SaveCheckpointConfig:
   state_transformation_fns: Sequence[checkpoints.SaveStateTransformationFn] = (
       dataclasses.field(default_factory=list)
   )
-  # Enable GDA in this Checkpointer.
-  use_gda: bool = True
   # CheckpointManager implementation to use.
   checkpoint_manager_cls: checkpoints.CheckpointManagerConstructor = (
       checkpoints.CheckpointManager
@@ -193,8 +191,6 @@ class RestoreCheckpointConfig:
   state_transformation_fns: Sequence[
       checkpoints.RestoreStateTransformationFn
   ] = ()
-  # Enable GDA in this Checkpointer.
-  use_gda: bool = True
   # CheckpointManager implementation to use.
   checkpoint_manager_cls: checkpoints.CheckpointManagerConstructor = (
       checkpoints.CheckpointManager
@@ -423,7 +419,7 @@ def create_checkpoint_manager(
   if restore_cfg is not None:
     should_save_restore_dataset |= restore_cfg.restore_dataset
     restore_dtype = restore_cfg.dtype
-    # If already set, configuration from save_cfg takes precendence. If
+    # If already set, configuration from save_cfg takes precedence. If
     # checkpoint_manager_cls is base CheckpointManager, give it a chance to be
     # reset to something more specialized.
     if (
@@ -466,7 +462,6 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
           Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]
       ] = None,
       model_dir: Optional[str] = None,
-      use_gda: Optional[bool] = True,
   ):
     if save_cfg is not None:
       if save_cfg.save_dataset:
@@ -478,7 +473,6 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
           dataset_iterator=ds_iter if save_cfg.save_dataset else None,
           save_dtype=save_cfg.dtype,
           keep=save_cfg.keep,
-          use_gda=save_cfg.use_gda,
           keep_dataset_checkpoints=save_cfg.keep_dataset_checkpoints,
       )
     else:
@@ -493,7 +487,6 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
           restore_dtype=jnp.dtype(restore_cfg.dtype)
           if restore_cfg.dtype
           else None,
-          use_gda=use_gda and restore_cfg.use_gda,
       )
       strict = restore_cfg.strict
     else:
@@ -1022,7 +1015,7 @@ def get_first_valid_restore_config_and_paths(
 
   Returns:
     Tuple of valid RestoreCheckpointConfig and a sequence of paths.
-    If the first config encountered has mode 'specfic', it is immediately
+    If the first config encountered has mode 'specific', it is immediately
     returned, along with its specified paths.
     If the mode is 'all' or 'latest', checks to ensure that there are valid
     checkpoints at each of the provided paths and filters the returned paths
@@ -1214,13 +1207,14 @@ class TrainStateInitializer:
     """
 
     def _restore_path(path, cfg):
+      if cfg is None:
+        raise ValueError('Expected valid `RestoreCheckpointConfig`.')
       restore_checkpointer = cfg.checkpointer_cls(
           train_state=self.global_train_state_shape,
           partitioner=self._partitioner,
           checkpoints_dir='',  # unused for restore
           dataset_iterator=ds_iter if cfg.restore_dataset else None,
           restore_dtype=jnp.dtype(cfg.dtype) if cfg.dtype else None,
-          use_gda=cfg.use_gda,
       )
 
       from_tensorflow = gfile.exists(path + '.index')

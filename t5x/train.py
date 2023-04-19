@@ -121,8 +121,6 @@ def train(
     train_state_initializer_cls: Type[
         utils.TrainStateInitializer
     ] = utils.TrainStateInitializer,
-    use_gda: bool = True,
-    use_jax_array: bool = True,
     use_orbax: bool = False,
     verify_matching_vocabs_fn: Optional[
         Callable[[utils.DatasetConfig, models.BaseTransformerModel], None]
@@ -183,10 +181,6 @@ def train(
       eval metrics before training begins.
     train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
       initializing partitioned TrainState from checkpoints or scratch.
-    use_gda: if True, uses jax.Array. Experimental feature.
-    use_jax_array: if True, uses jax.Array if use_gda is also True. Experimental
-      feature. Since GlobalDeviceArray is deprecated, this is ignored, as
-      jax.Array must always be used.
     use_orbax: if True, uses Orbax for checkpointing. Experimental feature.
     verify_matching_vocabs_fn: Function to validate whether the task vocabulary
       matches the model vocabulary. Should raise an exception on error.
@@ -200,19 +194,8 @@ def train(
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 
-  if use_gda:
-    logging.info('jax.Array enabled.')
-  else:
-    warnings.warn(
-        '`use_gda=False` is deprecated and will be removed on Feb-01-23.'
-        ' Please ensure that your workflow can use GDA.', DeprecationWarning)
-  if use_jax_array and not use_gda:
-    raise ValueError('Invalid configuration of `use_gda` and `use_jax_array`.')
-
   if use_orbax:
     logging.info('Checkpointing with Orbax enabled.')
-    if not use_gda:
-      raise ValueError('Must set of `use_gda` if `use_orbax` is enabled.')
     if (
         checkpoint_cfg.save
         and isinstance(
@@ -402,7 +385,7 @@ def train(
           partitioner=partitioner,
           ds_iter=train_iter,
           model_dir=model_dir,
-          use_gda=use_gda)
+      )
       train_state = checkpoint_manager.restore(
           restore_paths, valid_restore_cfg,
           utils.get_fallback_state(valid_restore_cfg, _init, init_rng))
@@ -602,11 +585,7 @@ def train(
     )
 
   # Construct dummy batch for compiling the model.
-  if use_gda:
-    dummy_batch = jax.tree_map(_as_gda, train_iter.element_spec)
-  else:
-    dummy_batch = jax.tree_map(lambda x: np.ones(x.shape, x.dtype),
-                               train_iter.element_spec)
+  dummy_batch = jax.tree_map(_as_gda, train_iter.element_spec)
   if not isinstance(dummy_batch, Mapping):
     raise ValueError('Training loop expects batches to have type '
                      f'Mapping[str, np.ndarray] but got {type(dummy_batch)}.')
