@@ -214,6 +214,9 @@ class OptaxStatePartitionRules:
       optax.ScaleByBeliefState:
           lambda state, params_axes: optax.ScaleByBeliefState(  # pytype: disable=wrong-arg-types  # numpy-scalars
               count=None, mu=params_axes, nu=params_axes),
+      optax.ScaleByLionState:
+          lambda state, params_axes: optax.ScaleByLionState(  # pytype: disable=wrong-arg-types  # numpy-scalars
+              count=None, mu=params_axes),
       optax.ScaleByRssState:
           lambda state, params_axes: optax.ScaleByRssState(
               sum_of_squares=params_axes),
@@ -500,6 +503,7 @@ amos = wrap_optax_optimizer(amos.amos)
 fromage = wrap_optax_optimizer(optax.fromage)
 lars = wrap_optax_optimizer(optax.lars)
 lamb = wrap_optax_optimizer(optax.lamb)
+lion = wrap_optax_optimizer(optax.lion)
 noisy_sgd = wrap_optax_optimizer(optax.noisy_sgd)
 radam = wrap_optax_optimizer(optax.radam)
 rmsprop = wrap_optax_optimizer(optax.rmsprop)
