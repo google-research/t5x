@@ -939,7 +939,9 @@ def create_postprocessor(
     vocab: seqio.Vocabulary,
     inference_mode: Union[str, CustomInferenceMode],
     decode_outputs: bool = True,
-    output_feature_names: Optional[List[str]] = None) -> PostprocessorFn:
+    output_feature_names: Optional[List[str]] = None,
+    add_token_length_to_output: Optional[bool] = False,
+) -> PostprocessorFn:
   """Creates a TF postprocessor function.
 
   Args:
@@ -950,6 +952,12 @@ def create_postprocessor(
       e.g., ['output_a', 'output_b'] will tag the savedmodel output to obtain
       two entries with 'output_a' and 'output_b'. The order must match the
       outputs from the module.
+    add_token_length_to_output: A boolean to indicate whether to include token
+      length infomation in the output. If True, will append 'num_tokens' and
+      'num_tokens_before_eos' to the output. 'num_tokens' indicates the length
+      of the decoder's output.  'num_tokens_before_eos' will count the tokens
+      until the first 'vocab.eos_id' (excluding the 'eos_id'), or the same as
+      'num_tokens' if 'vocab.eos_id' is None.
 
   Returns:
     A function that that post processing on inference outputs.
@@ -961,6 +969,32 @@ def create_postprocessor(
       tokens, scores = values
       if decode_outputs:
         decoded = vocab.decode_tf(tokens)
+        if add_token_length_to_output:
+          num_tokens = tf.reduce_sum(
+              tf.ones_like(tokens, dtype=tf.int32), axis=-1
+          )
+          if vocab.eos_id:
+            after_eos = tf.cumsum(
+                tf.cast(tf.equal(tokens, vocab.eos_id), tf.int32),
+                axis=-1,
+            )
+            before_eos = tf.cast(
+                tf.logical_not(tf.cast(after_eos, tf.bool)), tf.int32
+            )
+            num_tokens_before_eos = tf.reduce_sum(before_eos, axis=-1)
+          else:
+            num_tokens_before_eos = num_tokens
+          if isinstance(decoded, tf.RaggedTensor):
+            decoded = decoded.to_tensor()
+          return _maybe_name_outputs(
+              feature_values=(
+                  decoded,
+                  scores,
+                  num_tokens,
+                  num_tokens_before_eos,
+              ),
+              feature_names=output_feature_names,
+          )
         # If add_eos=False, vocab.decode_tf returns a tf.Tensor rather than
         # a tf.RaggedTensor.
         if isinstance(decoded, tf.RaggedTensor):
