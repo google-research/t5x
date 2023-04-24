@@ -35,6 +35,7 @@ from jax.sharding import Mesh
 from jax.sharding import PartitionSpec
 import numpy as np
 from t5x import train_state as train_state_lib
+from t5x.te_helper import TransformerEngineHelper
 
 JaxDevice = jax.Device
 TpuMesh = Tuple[int, int, int, int]  # (x, y, z, num_cores).
@@ -620,6 +621,8 @@ def standard_logical_axis_rules(
 
   if additional_rules:
     rules.extend(additional_rules)
+
+  rules = TransformerEngineHelper.extend_logical_axis_rules(rules)
 
   return rules
 

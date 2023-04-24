@@ -48,17 +48,27 @@ T5X_WORKSPACE_DIR=/t5x_home/workspace
 MOUNTS="--container-mounts=$BASE_T5X_DIR:/$T5X_DIR,$BASE_TFDS_DATA_DIR:/$TFDS_DATA_DIR,$BASE_T5X_WORKSPACE_DIR:$T5X_WORKSPACE_DIR"
 
 # Add T5x/JAX specific exports
-EXPORTS="--export=ALL,TFDS_DATA_DIR=${TFDS_DATA_DIR},T5X_DIR=${T5X_DIR},T5X_WORKSPACE_DIR=${T5X_WORKSPACE_DIR}"
+EXPORTS="--export=ALL,TFDS_DATA_DIR=${TFDS_DATA_DIR},T5X_DIR=${T5X_DIR},T5X_WORKSPACE_DIR=${T5X_WORKSPACE_DIR},PYTHONPATH=${T5X_DIR}"
 #-------------------------------------------------------------------------------
 
 # Command line arguments needed by the underlying scripts
-T5_SIZE=$1          # small, base, large, xl, xxl
-PREC="$2"           # bfloat16, float32
-GPUS_PER_NODE=$3    # usually 8
-BSIZE_PER_GPU=$4    # local batch size/gpu
-MODEL_DIR_LOCAL=$5  # directory to save checkpoints and config dump to
-NUM_MICROBATCHES=$6 # number of gradient accumulation steps
-MP=$7               # tensor parallel count
+PREC=${PREC:="bfloat16"}
+T5_SIZE=${T5_SIZE:="large"}
+BSIZE_PER_GPU=${BSIZE_PER_GPU:=32}
+ENC_SL=${ENC_SL:=512}
+DEC_SL=${DEC_SL:=128}
+TRAIN_STEPS=${TRAIN_STEPS:=500}
+NUM_MICROBATCHES=${NUM_MICROBATCHES:=1}
+ENABLE_FP8=${ENABLE_FP8:=1} # Uses TransformerEngine FP8
+TP_SIZE=${TP_SIZE:=1}
+TRANSPOSE_BS=${TRANSPOSE_BS:=1} # An optimization for GPUs
+MODEL_DIR=${MODEL_DIR}
+FUSE_QKV=${FUSE_QKV:=1} # Used with TransformerEngine
+PACK=${PACK:=0} # Not supported with TransformerEngine
+
+export GPUS_PER_NODE=${1:-8}
+export BASE_SCRIPT=${2:-"${T5X_DIR}/t5x/contrib/gpu/scripts_gpu/multiprocess_pretrain_pile.sh"}
+export WITH_MP=1
 
 NUM_GPUS=$(( GPUS_PER_NODE * SLURM_JOB_NUM_NODES ))
 
@@ -66,17 +76,17 @@ NUM_GPUS=$(( GPUS_PER_NODE * SLURM_JOB_NUM_NODES ))
 # You can add binding to the command below with the following line (after nvidia-smi). Remove the '&&' on the next bash line.
 # && bash <<path_to_bind_script>>/bind.sh --cpu=exclusive --ib=single -- \
 read -r -d '' cmd <<EOF
-echo "*******STARTING********" \
-&& nvidia-smi \
-&& bash ${T5X_DIR}/t5x/scripts_gpu/multiprocess_pretrain_pile.sh ${T5_SIZE} ${PREC} ${GPUS_PER_NODE} ${BSIZE_PER_GPU} ${MODEL_DIR_LOCAL} ${NUM_MICROBATCHES} ${MP}
+cd ${T5X_BASE_DIR}
+TFDS_DATA_DIR=${TFDS_DATA_DIR} MODEL_DIR=${MODEL_DIR} PREC=${PREC} T5_SIZE=${T5_SIZE} BSIZE_PER_GPU=${BSIZE_PER_GPU} ENC_SL=${ENC_SL} DEC_SL=${DEC_SL} TRAIN_STEPS=${TRAIN_STEPS} NUM_MICROBATCHES=${NUM_MICROBATCHES} ENABLE_FP8=${ENABLE_FP8} TP_SIZE=${TP_SIZE} TRANSPOSE_BS=${TRANSPOSE_BS} FUSE_QKV=${FUSE_QKV} PACK=${PACK} bash $BASE_SCRIPT
 EOF
 
 # create run specific output directory for ease of analysis
-mkdir -p "${BASE_T5X_WORKSPACE_DIR}/outputs/multinode/t5_${T5_SIZE}-prec_${PREC}-nodes_${SLURM_JOB_NUM_NODES}-gpus_${NUM_GPUS}-bs_${BSIZE_PER_GPU}-sl_${SL}-mp_${MP}"
+FOLDER="${BASE_T5X_DIR}/outputs/multinode/PRETRAIN-${T5_SIZE}-${PREC}-N${SLURM_JOB_NUM_NODES}-n${NUM_GPUS}-Step${TRAIN_STEPS}-BS${BSIZE_PER_GPU}-MBS${NUM_MICROBATCHES}-SL${ENC_SL}_${DEC_SL}-TP${TP_SIZE}-FP8${ENABLE_FP8}"
+mkdir -p ${FOLDER}
 
 # redirect both stdout and stderr in the same file for ease of analysis
-OUTFILE="${BASE_T5X_WORKSPACE_DIR}/outputs/multinode/t5_${T5_SIZE}-prec_${PREC}-nodes_${SLURM_JOB_NUM_NODES}-gpus_${NUM_GPUS}-bs_${BSIZE_PER_GPU}-sl_${SL}-mp_${MP}/output-%j-%t.txt"
+OUTFILE="${FOLDER}/output-%j-%t.txt"
+
 echo $cmd
 srun --ntasks-per-node=${GPUS_PER_NODE} -o $OUTFILE -e $OUTFILE --container-image="$CONTAINER" $MOUNTS $EXPORTS bash -c "${cmd}"
 set +x
-
