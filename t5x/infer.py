@@ -683,12 +683,12 @@ if __name__ == '__main__':
   # pylint:disable=g-import-not-at-top
   from absl import app
   from absl import flags
+  import fiddle as fdl
   import gin
+  from t5x import config_utils
   # pylint:enable=g-import-not-at-top
 
   FLAGS = flags.FLAGS
-
-  jax.config.parse_flags_with_absl()
 
   flags.DEFINE_integer(
       'shard_id',
@@ -735,39 +735,58 @@ if __name__ == '__main__':
       seqio.set_tfds_data_dir_override(FLAGS.tfds_data_dir)
 
 
-    # Create gin-configurable version of `infer`.
-    infer_using_gin = gin.configurable(infer)
-
-    gin_utils.parse_gin_flags(
-        # User-provided gin paths take precedence if relative paths conflict.
-        FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
-        FLAGS.gin_file,
-        FLAGS.gin_bindings)
-
-    # See http://yaqs/7882016229479677952 for further gin-config discussion.
-    def _get_gin_parameter(key: str) -> Any:
-      value = gin.query_parameter(key)
-      if isinstance(value, gin.config.ConfigurableReference):
-        if value.evaluate:
-          return value.scoped_configurable_fn()
-        return value.scoped_configurable_fn
-      return value
-
-    shard_id = (
-        FLAGS.shard_id
-        if FLAGS.shard_id is not None else _get_gin_parameter('infer.shard_id'))
-    if shard_id == 0:
-      gin_utils.summarize_gin_config(
-          model_dir=_get_gin_parameter('infer.output_dir'),
-          summary_writer=None,
-          step=0)
-    if FLAGS.shard_id is not None:
-      # We fall back to this flag since XM does not support sweeps over flags
-      # with '.' in them (it treats them like nested dictionaries).
-      # TODO(adarob): Figure out a workaround so we can deprecate this flag.
-      infer_using_gin(shard_id=FLAGS.shard_id)
+    if config_utils.using_fdl():
+      config = config_utils.config_with_fiddle(infer)
+      shard_id = FLAGS.shard_id
+      if shard_id is not None:
+        config.shard_id = shard_id
+      infer_with_fiddle = fdl.build(config)
+      if shard_id == 0:
+        config_utils.direct_summarize_fiddle_config(
+            model_dir=infer_with_fiddle.output_dir,
+            summary_writer=None,
+            step=0,
+            get_current_fiddle_config=lambda: infer_with_fiddle,
+        )
+      infer_with_fiddle()
     else:
-      infer_using_gin()
+      # Create gin-configurable version of `infer`.
+      infer_using_gin = gin.configurable(infer)
+
+      gin_utils.parse_gin_flags(
+          # User-provided gin paths take precedence if relative paths conflict.
+          FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
+          FLAGS.gin_file,
+          FLAGS.gin_bindings,
+      )
+
+      # See http://yaqs/7882016229479677952 for further gin-config discussion.
+      def _get_gin_parameter(key: str) -> Any:
+        value = gin.query_parameter(key)
+        if isinstance(value, gin.config.ConfigurableReference):
+          if value.evaluate:
+            return value.scoped_configurable_fn()
+          return value.scoped_configurable_fn
+        return value
+
+      shard_id = (
+          FLAGS.shard_id
+          if FLAGS.shard_id is not None
+          else _get_gin_parameter('infer.shard_id')
+      )
+      if shard_id == 0:
+        gin_utils.summarize_gin_config(
+            model_dir=_get_gin_parameter('infer.output_dir'),
+            summary_writer=None,
+            step=0,
+        )
+      if FLAGS.shard_id is not None:
+        # We fall back to this flag since XM does not support sweeps over flags
+        # with '.' in them (it treats them like nested dictionaries).
+        # TODO(adarob): Figure out a workaround so we can deprecate this flag.
+        infer_using_gin(shard_id=FLAGS.shard_id)
+      else:
+        infer_using_gin()
 
 
-  gin_utils.run(main)
+  config_utils.run(main)

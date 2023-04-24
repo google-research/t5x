@@ -19,7 +19,6 @@ r"""Runs training- and inference-evaluation on a T5X-compatible model.
 """
 # pyformat: enable
 # pylint:enable=line-too-long
-
 import functools
 import os
 import re
@@ -369,12 +368,11 @@ if __name__ == '__main__':
   # pylint:disable=g-import-not-at-top
   from absl import app
   from absl import flags
+  import fiddle as fdl
   import gin
-  # pylint:enable=g-import-not-at-top
+  from t5x import config_utils
 
   FLAGS = flags.FLAGS
-
-  jax.config.parse_flags_with_absl()
 
   flags.DEFINE_multi_string(
       'gin_file',
@@ -414,14 +412,20 @@ if __name__ == '__main__':
     if FLAGS.tfds_data_dir:
       seqio.set_tfds_data_dir_override(FLAGS.tfds_data_dir)
 
-    # Create gin-configurable version of `eval`.
-    evaluate_using_gin = gin.configurable(evaluate)
+    if config_utils.using_fdl():
+      config = config_utils.config_with_fiddle(evaluate)
+      evaluate_using_fiddle = fdl.build(config)
+      evaluate_using_fiddle()
+    else:
+      # Create gin-configurable version of `eval`.
+      evaluate_using_gin = gin.configurable(evaluate)
 
-    gin_utils.parse_gin_flags(
-        # User-provided gin paths take precedence if relative paths conflict.
-        FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
-        FLAGS.gin_file,
-        FLAGS.gin_bindings)
-    evaluate_using_gin()
+      gin_utils.parse_gin_flags(
+          # User-provided gin paths take precedence if relative paths conflict.
+          FLAGS.gin_search_paths + _DEFAULT_GIN_SEARCH_PATHS,
+          FLAGS.gin_file,
+          FLAGS.gin_bindings,
+      )
+      evaluate_using_gin()
 
-  gin_utils.run(main)
+  config_utils.run(main)

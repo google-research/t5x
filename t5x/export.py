@@ -25,20 +25,19 @@ from absl import logging
 # pylint:disable=g-import-not-at-top
 os.environ.setdefault('FLAX_PROFILE', 'true')
 
-import jax
 from t5x import export_lib
 
 if __name__ == '__main__':
   # pylint:disable=g-import-not-at-top
   from absl import app
   from absl import flags
+  import fiddle as fdl
   import gin
+  from t5x import config_utils
   from t5x import gin_utils
   # pylint:enable=g-import-not-at-top
 
   FLAGS = flags.FLAGS
-
-  jax.config.parse_flags_with_absl()
 
 
   flags.DEFINE_multi_string(
@@ -70,11 +69,17 @@ if __name__ == '__main__':
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
 
-    save_with_gin = gin.configurable(export_lib.save)
+    if config_utils.using_fdl():
+      config = config_utils.config_with_fiddle(export_lib.save)
+      export_with_fiddle = fdl.build(config)
+      export_with_fiddle()
+    else:
+      save_with_gin = gin.configurable(export_lib.save)
 
-    gin_utils.parse_gin_flags(FLAGS.gin_search_paths, FLAGS.gin_file,
-                              FLAGS.gin_bindings)
-    logging.info('Creating inference function...')
-    save_with_gin()
+      gin_utils.parse_gin_flags(
+          FLAGS.gin_search_paths, FLAGS.gin_file, FLAGS.gin_bindings
+      )
+      logging.info('Creating inference function...')
+      save_with_gin()
 
-  gin_utils.run(main)
+  config_utils.run(main)

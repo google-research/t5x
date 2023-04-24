@@ -215,7 +215,7 @@ class ExportableModule(tf.Module):
 
 def get_train_state_initializer(
     model: models.BaseTransformerModel,
-    partitioner: partitioning.BasePartitioner,
+    partitioner: Optional[partitioning.BasePartitioner],
     task_feature_lengths: Mapping[str, int],
     batch_size: Optional[int],
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
@@ -305,8 +305,9 @@ def create_inference_function(
     else:
       raise ValueError(
           '`inference_mode` must be a string in '
-          f'{list(_BUILTIN_INFERENCE_MODES.keys())} or a `CustomInferenceMode`. '
-          f'Got inference_mode={inference_mode}.')
+          f'{list(_BUILTIN_INFERENCE_MODES.keys())} or a '
+          f'`CustomInferenceMode`. Got inference_mode={inference_mode}.'
+      )
 
   inference_mode = typing.cast(CustomInferenceMode, inference_mode)
 
@@ -699,11 +700,13 @@ def create_decoder_preprocessor(
         functools.partial(featurize, length=targets_length),
         inputs_width_add_pos,
         fn_output_signature=(tf.int32, tf.int32, tf.int32))
-    decoder_target_tokens, decoder_input_tokens, decoder_loss_weights = tf.map_fn(
-        functools.partial(featurize, length=targets_length),
-        decoder_target_tokens,
-        fn_output_signature=(tf.int32, tf.int32, tf.int32))
-
+    decoder_target_tokens, decoder_input_tokens, decoder_loss_weights = (
+        tf.map_fn(
+            functools.partial(featurize, length=targets_length),
+            decoder_target_tokens,
+            fn_output_signature=(tf.int32, tf.int32, tf.int32),
+        )
+    )
     positions = tf.range(tf.shape(decoder_target_tokens)[-1])
     positions = tf.repeat([positions],
                           tf.shape(decoder_target_tokens)[0],
@@ -1217,7 +1220,7 @@ def save(
     exportable_module_cls: Type[ExportableModule],
     create_preprocessor_fn: CreatePreprocessorFn = create_preprocessor,
     create_postprocessor_fn: CreatePostprocessorFn = create_postprocessor,
-    partitioner: Optional[partitioning.BasePartitioner],
+    partitioner: Optional[partitioning.BasePartitioner] = None,
     create_decoding_state_callback_fn: Optional[
         CreateDecodingStateCallbackFn
     ] = None,
@@ -1228,7 +1231,7 @@ def save(
     model_name: str,
     warmup_examples: Optional[WarmupExamples] = None,
     tokenized_inputs: bool = False,
-    write_warmup_example_fn=write_warmup_examples,
+    write_warmup_example_fn: Callable[..., None] = write_warmup_examples,
     mixture_or_task_name: Optional[str] = None,
     validation_examples: Optional[List[Any]] = None,
     native_lowering: bool = False,

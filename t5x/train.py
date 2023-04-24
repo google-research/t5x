@@ -32,8 +32,6 @@ os.environ['FLAX_PROFILE'] = 'true'
 os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
-import fiddle as fdl
-from fiddle import absl_flags
 import jax
 from jax import random
 from jax.experimental import multihost_utils
@@ -371,8 +369,9 @@ def train(
       partitioner=partitioner)
 
   # May be None, empty
-  valid_restore_cfg, restore_paths = utils.get_first_valid_restore_config_and_paths(
-      restore_cfgs)
+  valid_restore_cfg, restore_paths = (
+      utils.get_first_valid_restore_config_and_paths(restore_cfgs)
+  )
   if len(restore_paths) > 1:
     raise ValueError('Multiple restore paths not permitted in training.')
 
@@ -730,13 +729,13 @@ if __name__ == '__main__':
   # pylint: disable=g-import-not-at-top
   from absl import app
   from absl import flags
+  import fiddle as fdl
   import gin
+  from t5x import config_utils
   from t5x import gin_utils
   # pylint: enable=g-import-not-at-top
 
   FLAGS = flags.FLAGS
-
-  jax.config.parse_flags_with_absl()
 
   flags.DEFINE_multi_string(
       'gin_file',
@@ -799,13 +798,6 @@ if __name__ == '__main__':
     tf.config.experimental.set_visible_devices([], 'GPU')
 
 
-    if FLAGS.fdl_config_file and FLAGS.gin_file:
-      raise ValueError(
-          'Must pass only one of `--fdl_config_file` or `--gin_file`. Got: '
-          f'--fdl_config_file={FLAGS.fdl_config_file} '
-          f'--gin_file={FLAGS.gin_file}.'
-      )
-
     if FLAGS.multiprocess_gpu:
       logging.info(
           'Initializing distributed system for multi-host GPU:\n'
@@ -820,8 +812,11 @@ if __name__ == '__main__':
 
     seqio.add_global_cache_dirs(FLAGS.seqio_additional_cache_dirs)
 
-    if FLAGS.fdl_config_file:
-      raise NotImplementedError('Fiddle support is not implemented yet')
+
+    if config_utils.using_fdl():
+      config = config_utils.config_with_fiddle(train)
+      train_using_fiddle = fdl.build(config)
+      train_using_fiddle()
     else:
       # Create gin-configurable version of `train`.
       train_using_gin = gin.configurable(train)
@@ -833,12 +828,8 @@ if __name__ == '__main__':
           FLAGS.gin_bindings,
       )
       train_using_gin()
+
     jax.effects_barrier()
 
 
-  if FLAGS.fdl_config_file:
-    logging.info('Training using Fiddle.')
-    app.run(main, flags_parser=absl_flags.flags_parser)
-  else:
-    logging.info('Training using gin.')
-    gin_utils.run(main)
+  config_utils.run(main)
