@@ -56,10 +56,12 @@ def get_gpu_mesh() -> Mesh:
   return Mesh(devices, ['data', 'expert', 'model'])
 
 
-def default_moe_mesh(num_expert_partitions: int,
-                     num_partitions: Optional[int] = None,
-                     model_parallel_submesh: Optional[HardwareMesh] = None,
-                     backend: Optional[str] = None) -> Mesh:
+def default_moe_mesh(
+    num_expert_partitions: int,
+    num_partitions: Optional[int] = None,
+    model_parallel_submesh: Optional[HardwareMesh] = None,
+    backend: Optional[str] = None,
+) -> Mesh:
   """Construct default xmap/pjit mesh for MoE.
 
   Unlike the vanilla T5X mesh, this mesh has three resource axes:
@@ -90,9 +92,9 @@ def default_moe_mesh(num_expert_partitions: int,
   """
   # Base mesh has shape ('data', 'model').
   logging.info('For MoE, first construct vanilla T5X (data, model) mesh.')
-  base_default_mesh = base_partitioning.default_mesh(num_partitions,
-                                                     model_parallel_submesh,
-                                                     backend)
+  base_default_mesh = base_partitioning.default_mesh(
+      num_partitions, model_parallel_submesh, backend
+  )
   data_axis_size, model_axis_size = base_default_mesh.devices.shape
 
   # Factor out the largest divisor of 'data' axis satisfying <=
@@ -102,14 +104,17 @@ def default_moe_mesh(num_expert_partitions: int,
     expert_axis_size -= 1
 
   # Reshape mesh to ('data', 'expert', 'model').
-  devices = base_default_mesh.devices.reshape(-1, expert_axis_size,
-                                              model_axis_size)
+  devices = base_default_mesh.devices.reshape(
+      -1, expert_axis_size, model_axis_size
+  )
   global_mesh = Mesh(devices, ['data', 'expert', 'model'])
-  logging.info('Overridden MoE global_mesh axes_names: %s',
-               global_mesh.axis_names)
+  logging.info(
+      'Overridden MoE global_mesh axes_names: %s', global_mesh.axis_names
+  )
   logging.info('Overridden MoE global_mesh devices: %s', global_mesh.devices)
-  logging.info('Overridden MoE global_mesh shape: %s',
-               global_mesh.devices.shape)
+  logging.info(
+      'Overridden MoE global_mesh shape: %s', global_mesh.devices.shape
+  )
   return global_mesh
 
 
@@ -126,13 +131,15 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
   'expert' axis annotation from the model params; see get_logical_axes().
   """
 
-  def __init__(self,
-               num_expert_partitions: int,
-               num_partitions: Optional[int] = None,
-               model_parallel_submesh: Optional[HardwareMesh] = None,
-               params_on_devices: bool = True,
-               logical_axis_rules: Optional[LogicalAxisRules] = None,
-               state_filter_fn: Optional[Callable[[str], bool]] = None):
+  def __init__(
+      self,
+      num_expert_partitions: int,
+      num_partitions: Optional[int] = None,
+      model_parallel_submesh: Optional[HardwareMesh] = None,
+      params_on_devices: bool = True,
+      logical_axis_rules: Optional[LogicalAxisRules] = None,
+      state_filter_fn: Optional[Callable[[str], bool]] = None,
+  ):
     """Configures the partitioner.
 
     TODO(jamesleethorp): Rename num_partitions -> num_model_partitions.
@@ -166,7 +173,8 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
         num_partitions=num_partitions,
         model_parallel_submesh=model_parallel_submesh,
         params_on_devices=params_on_devices,
-        logical_axis_rules=logical_axis_rules)
+        logical_axis_rules=logical_axis_rules,
+    )
 
     self._num_expert_partitions = num_expert_partitions
     self._state_filter_fn = state_filter_fn
@@ -180,17 +188,23 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
     Returns:
       Mesh dependent partition spec.
     """
-    return PartitionSpec(('expert', 'data'),)
+    return PartitionSpec(
+        ('expert', 'data'),
+    )
 
   @cached_property.cached_property
   def mesh(self) -> Mesh:
     """Overrides default T5X mesh with ('data', 'expert', 'model') mesh."""
-    return default_moe_mesh(self._num_expert_partitions, self._num_partitions,
-                            self._model_parallel_submesh, self._backend)
+    return default_moe_mesh(
+        self._num_expert_partitions,
+        self._num_partitions,
+        self._model_parallel_submesh,
+        self._backend,
+    )
 
-  def get_data_layout(self,
-                      batch_size: Optional[int] = None,
-                      host_index: Optional[int] = None) -> DataLayout:
+  def get_data_layout(
+      self, batch_size: Optional[int] = None, host_index: Optional[int] = None
+  ) -> DataLayout:
     """Returns filled `DataLayout` based on the partitioned model layout.
 
     Overrides default data layout for MoE, where we treat 'data' and 'expert'
@@ -219,28 +233,38 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
       raise ValueError(
           f'Batch size ({batch_size}) must be divisible by entire data mesh '
           f'size ({data_mesh_size}). Note that for MoE, the data mesh spans '
-          'both the "expert" and "data" virtual mesh axes.')
+          'both the "expert" and "data" virtual mesh axes.'
+      )
 
-    num_shards = self._local_chunker.num_chunks[
-        'data'] * self._local_chunker.num_chunks['expert']
+    num_shards = (
+        self._local_chunker.num_chunks['data']
+        * self._local_chunker.num_chunks['expert']
+    )
     if batch_size % num_shards:
       raise ValueError(
           f'Batch size ({batch_size}) must be divisible by total number of '
-          f'shards ({num_shards}) across "data" and "expert" mesh axes.')
+          f'shards ({num_shards}) across "data" and "expert" mesh axes.'
+      )
 
     # Partition the batch over both of the 'expert' and 'data' axes.
-    global_array_shape = (num_expert_partitions,
-                          batch_size // num_expert_partitions)
+    global_array_shape = (
+        num_expert_partitions,
+        batch_size // num_expert_partitions,
+    )
     replica_id = self._local_chunker.get_local_chunk_info(
-        global_array_shape, ('expert', 'data')).replica_id
+        global_array_shape, ('expert', 'data')
+    ).replica_id
 
     return DataLayout(
         batch_size=batch_size,
-        shard_id=(self._local_chunker.chunk_ids['data'] +
-                  self._local_chunker.chunk_ids['expert'] *
-                  self._local_chunker.num_chunks['data']),
+        shard_id=(
+            self._local_chunker.chunk_ids['data']
+            + self._local_chunker.chunk_ids['expert']
+            * self._local_chunker.num_chunks['data']
+        ),
         num_shards=num_shards,
-        is_first_host_in_replica_set=(replica_id == 0))
+        is_first_host_in_replica_set=(replica_id == 0),
+    )
 
   def get_logical_axes(  # pytype: disable=signature-mismatch  # overriding-parameter-type-checks
       self, train_state: Union[FlaxOptimTrainState, InferenceState]
@@ -268,18 +292,25 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
     else:
       train_state: FlaxOptimTrainState
 
-    state_filter_fn = (
-        self._state_filter_fn or _infer_state_filter_fn(train_state))
+    state_filter_fn = self._state_filter_fn or _infer_state_filter_fn(
+        train_state
+    )
     if state_filter_fn is None:
       # No state updates required.
       return logical_axes
 
-    prepend_expert = lambda x: PartitionSpec(  # pylint: disable=g-long-lambda
-        *('expert',) + x) if x else PartitionSpec('expert',)
+    prepend_expert = (  # pylint: disable=g-long-ternary
+        lambda x: PartitionSpec(*('expert',) + x)  # pylint: disable=g-long-lambda disable=g-long-ternary
+        if x
+        else PartitionSpec(
+            'expert',
+        )
+    )
     optimizer_axes = logical_axes._optimizer  # pylint: disable=protected-access
     state_dict = flax_core.unfreeze(optimizer_axes.state_dict())
     state_dict['state']['param_states'] = training_utils.tree_map_with_names(
-        prepend_expert, state_dict['state']['param_states'], state_filter_fn)
+        prepend_expert, state_dict['state']['param_states'], state_filter_fn
+    )
 
     return train_state.restore_state(state_dict)
 
@@ -289,7 +320,7 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
       in_axis_resources: Pytree,
       out_axis_resources: Pytree,
       static_argnums: Union[int, Sequence[int]] = (),
-      donate_argnums: Union[int, Sequence[int]] = ()
+      donate_argnums: Union[int, Sequence[int]] = (),
   ) -> base_partitioning.PjittedFnWithContext:
     """Partitions the computation using pjit.
 
@@ -324,14 +355,16 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
         donate_argnums=donate_argnums,
     )
 
-    return base_partitioning.PjittedFnWithContext(pjitted, self.mesh,
-                                                  self._logical_axis_rules)
+    return base_partitioning.PjittedFnWithContext(
+        pjitted, self.mesh, self._logical_axis_rules
+    )
 
 
 def standard_logical_axis_rules(
-    activation_partitioning_dims: int = 1,
+    activation_partitioning_dims: int = 2,
     parameter_partitioning_dims: int = 1,
-    additional_rules: Optional[LogicalAxisRules] = None):
+    additional_rules: Optional[LogicalAxisRules] = None,
+):
   """Returns partitioning rules for MoE models.
 
   MoE params and state are partitioned along the 'expert' axis. Data is
@@ -339,7 +372,10 @@ def standard_logical_axis_rules(
 
   The partitioning rules vary based on whether the expert and data axes need to
   be decoupled; see also MoePjitPartitioner for details of when expert and data
-  axes need to be decouple.
+  axes need to be decoupled.
+
+  Defaults to 2-D activation sharding for efficiency; see
+  https://arxiv.org/abs/2211.05102.
 
   Buyer beware: 2D parameter sharding (`parameter_partitioning_dims=2`) is
   technically supported but untested.
@@ -358,10 +394,12 @@ def standard_logical_axis_rules(
   if parameter_partitioning_dims == 2:
     raise logging.warning(
         '2D parameter sharding (`parameter_partitioning_dims=2`) is supported '
-        'but untested for MoE.')
+        'but untested for MoE.'
+    )
 
   default_rules = base_partitioning.standard_logical_axis_rules(
-      activation_partitioning_dims, parameter_partitioning_dims)
+      activation_partitioning_dims, parameter_partitioning_dims
+  )
   moe_rules = [
       ('expert', 'expert'),  # Shard experts along the expert axis
       ('expert_mlp', 'model'),  # Expert MLPs partitioned along model axis
@@ -386,7 +424,8 @@ def standard_logical_axis_rules(
 
 def compute_num_model_partitions(
     num_model_partitions: Optional[int],
-    model_parallel_submesh: Optional[HardwareMesh]) -> int:
+    model_parallel_submesh: Optional[HardwareMesh],
+) -> int:
   """Returns number of model partitions.
 
   Args:
@@ -402,16 +441,19 @@ def compute_num_model_partitions(
     specified, or if they are inconsistent.
   """
   if num_model_partitions is None and model_parallel_submesh is None:
-    raise ValueError('At least one of num_model_partitions and '
-                     'model_parallel_submesh must be specified.')
+    raise ValueError(
+        'At least one of num_model_partitions and '
+        'model_parallel_submesh must be specified.'
+    )
 
   if num_model_partitions is not None:
-    if (model_parallel_submesh is not None and
-        num_model_partitions != np.prod(model_parallel_submesh)):
+    if model_parallel_submesh is not None and num_model_partitions != np.prod(
+        model_parallel_submesh
+    ):
       raise ValueError(
           'num_model_partitions and model_parallel_submesh are inconsistent. '
-          'Received: %s and %s' %
-          (num_model_partitions, model_parallel_submesh))
+          'Received: %s and %s' % (num_model_partitions, model_parallel_submesh)
+      )
     return num_model_partitions
   else:
     return np.prod(model_parallel_submesh)
@@ -438,9 +480,13 @@ def override_partition_specs(resources: Pytree):
 
   def _maybe_override_spec(axis_resource: Pytree):
     """Overrides raw "data" partition specs; leaves others unchanged."""
-    if axis_resource == PartitionSpec('data',):
+    if axis_resource == PartitionSpec(
+        'data',
+    ):
       # Shard all data across 'data' and 'expert' axes.
-      return PartitionSpec(('expert', 'data'),)
+      return PartitionSpec(
+          ('expert', 'data'),
+      )
     else:
       return axis_resource
 
@@ -456,7 +502,8 @@ def override_partition_specs(resources: Pytree):
 
 
 def _infer_state_filter_fn(
-    train_state: FlaxOptimTrainState) -> Optional[Callable[[str], bool]]:
+    train_state: FlaxOptimTrainState,
+) -> Optional[Callable[[str], bool]]:
   """Infers relevant regex matching sharded expert model state for train state.
 
   The model state generally inherits the correct partitioning specs from the
@@ -486,20 +533,26 @@ def _infer_state_filter_fn(
 
     all_same_type = all(
         type(opt) is type(opt_def.sub_optimizers[0])
-        for opt in opt_def.sub_optimizers)
+        for opt in opt_def.sub_optimizers
+    )
     if not all_same_type:
-      raise ValueError('optimizers.MultiOptimizer is only supported in cases '
-                       'where all suboptimizers are of the same type.')
+      raise ValueError(
+          'optimizers.MultiOptimizer is only supported in cases '
+          'where all suboptimizers are of the same type.'
+      )
 
     if isinstance(opt_def.sub_optimizers[0], adafactor.Adafactor):
-      all_same_factoring = all(opt.hyper_params.factored ==
-                               opt_def.sub_optimizers[0].hyper_params.factored
-                               for opt in opt_def.sub_optimizers)
+      all_same_factoring = all(
+          opt.hyper_params.factored
+          == opt_def.sub_optimizers[0].hyper_params.factored
+          for opt in opt_def.sub_optimizers
+      )
       if not all_same_factoring:
         raise ValueError(
             'If using adafactor.Adafactor as the suboptimizer in '
             'optimizers.MultiOptimizer, all suboptimizers must be either '
-            'factored or unfactored (cannot use mixed factoring).')
+            'factored or unfactored (cannot use mixed factoring).'
+        )
 
     # Use first suboptimizer as representative.
     opt_def = opt_def.sub_optimizers[0]
@@ -510,9 +563,11 @@ def _infer_state_filter_fn(
     return None
 
   if not isinstance(opt_def, adafactor.Adafactor):
-    raise ValueError('Unrecognized optimizer type. Expecting '
-                     'optimizers.OptaxWrapper or adafactor.Adafactor. '
-                     f'Received: {opt_def}')
+    raise ValueError(
+        'Unrecognized optimizer type. Expecting '
+        'optimizers.OptaxWrapper or adafactor.Adafactor. '
+        f'Received: {opt_def}'
+    )
 
   if opt_def.hyper_params.factored:
     # Factored kernel terms (`v_col` and `v_row`) need to be identified for
