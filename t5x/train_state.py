@@ -222,7 +222,8 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
         _optimizer=self._optimizer.optimizer_def.derive_logical_axes(
             self._optimizer,
             flax_partitioning.get_axis_names(self.params_axes)),
-        flax_mutables=flax_partitioning.get_axis_names(flax_mutables_axes))
+        flax_mutables=flax_partitioning.get_axis_names(flax_mutables_axes),
+        flax_mutables_axes=self.flax_mutables_axes)
 
 
 class InferenceState(flax.struct.PyTreeNode):
