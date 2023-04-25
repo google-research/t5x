@@ -49,7 +49,8 @@ PyTree = Any
 ConfigDict = ml_collections.ConfigDict
 DecoderParamsSpec = Sequence[Tuple[str, tf.DType, Sequence[int]]]
 PreprocessorFn = Callable[..., Mapping[str, tf.Tensor]]
-WarmupExamples = List[Union[Union[str, bytes], List[int]]]
+WarmupExample = Union[Union[str, bytes], List[int]]
+WarmupExamples = List[WarmupExample]
 PostprocessorFn = Callable[[Tuple[Any, Any]], Union[Tuple[Any, Any],
                                                     Mapping[str, Any]]]
 
@@ -1058,12 +1059,32 @@ def _request_to_prediction_log(
   )
 
 
+def generate_examples_with_sequence_lengths(
+    sequence_lengths: list[int], single_token_example: WarmupExample = 'Q'
+) -> list[WarmupExamples]:
+  """Creates synthetic sequences of specified sizes by repeating a single token.
+
+  Args:
+    sequence_lengths: The sequence lengths to generate examples for.
+    single_token_example: An example such that `N*ex` is always `N` tokens long.
+      This is used to build sequences of a specified size. Defaults to `'Q'`,
+      which satisfies this property for the tokenizer used by pretrained T5X
+      models.
+
+  Returns:
+    A list of WarmupExamples batches with lengths in tokens equal to
+    `sequence_lengths`.
+  """
+  return [[single_token_example * l] for l in sequence_lengths]
+
+
 def write_warmup_examples(
     text_batch: WarmupExamples,
     output_dir: str,
     model_name: str,
     signature_name: str,
     *,
+    generate_examples_fn: Optional[Callable[[], list[WarmupExamples]]] = None,
     batch_sizes: List[Optional[int]],
     input_tensor_name: str = 'text_batch',
     decoder_params_spec: Optional[DecoderParamsSpec] = None,
@@ -1084,6 +1105,12 @@ def write_warmup_examples(
     output_dir: The directory for writing the warmup examples to.
     model_name: The name of the savedmodel spec.
     signature_name: Optional name of the exported function.
+    generate_examples_fn: An optional no-arg function that generates a list of
+      synthetic warmup batches. If provided, `text_batch` will be ignored, and
+      all synthetic batches will be written out, for all batch sizes. NOTE: This
+      differs from `text_batch`, which only supplies a single batch of examples
+      that are written together, instead of many batches that are written
+      separately.
     batch_sizes: A list of batch sizes to warmup with. The written number of
       tfrecords will be equal to the size of batch_sizes. The list might contain
       None entries, and the warmup examples for the None entry won't be padded
@@ -1095,22 +1122,32 @@ def write_warmup_examples(
     request_to_prediction_log: A function that creates a PredictionLog from a
       given request.
   """
+  if generate_examples_fn:
+    logging.warning(
+        'Ignoring provided warmup batch. Using `generate_examples_fn` to'
+        ' generate warmup examples instead.'
+    )
+    warmup_examples = generate_examples_fn()
+  else:
+    warmup_examples = [text_batch]
+
   assets_extra = os.path.join(output_dir, 'assets.extra')
   tf.io.gfile.makedirs(assets_extra)
   warmup_output = os.path.join(assets_extra, 'tf_serving_warmup_requests')
   with tf.io.TFRecordWriter(warmup_output) as writer:
-    for batch_size in batch_sizes:
-      logging.info('Writing warmup data for batch size: %s ...', batch_size)
-      request = _request_for_batch(
-          text_batch,
-          model_name,
-          input_tensor_name,
-          signature_name,
-          batch_size,
-          decoder_params_spec,
-      )
-      log = request_to_prediction_log(request)
-      writer.write(log.SerializeToString())
+    for warmup_example in warmup_examples:
+      for batch_size in batch_sizes:
+        logging.info('Writing warmup data for batch size: %s ...', batch_size)
+        request = _request_for_batch(
+            warmup_example,
+            model_name,
+            input_tensor_name,
+            signature_name,
+            batch_size,
+            decoder_params_spec,
+        )
+        log = request_to_prediction_log(request)
+        writer.write(log.SerializeToString())
 
 
 
