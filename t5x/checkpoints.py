@@ -28,7 +28,6 @@ debugging and analysis of learned weights. However, this means that we cannot do
 partitioned reads so loading will be slower than that `Checkpointer` class.
 """
 import asyncio
-import collections
 import dataclasses
 import functools
 import os
@@ -36,7 +35,7 @@ import re
 import subprocess
 import time
 import typing
-from typing import Any, Callable, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 import warnings
 
 from absl import logging
@@ -404,78 +403,6 @@ def _sharding_matches(arr: Any, target_sharding: jax.sharding.Sharding) -> bool:
     return False
   sharding = arr.sharding
   return sharding.is_equivalent_to(target_sharding, arr.ndim)
-
-
-def hashed_index(x) -> int:
-  return hash(
-      tuple((v.start, v.stop) if isinstance(v, slice) else v for v in x)
-  )
-
-
-@functools.lru_cache(maxsize=4096)
-def device_replica_id_map(sharding, global_shape):
-  index_to_replica: Dict[int, int] = collections.Counter()
-  out = {}
-  for device, index in sharding.devices_indices_map(global_shape).items():
-    h_index = hashed_index(index)
-    replica_id = index_to_replica[h_index]
-    index_to_replica[h_index] += 1
-    out[device] = replica_id
-  return out
-
-
-async def _create_numpy_array(
-    global_shape: Tuple[int, ...],
-    in_sharding: jax.sharding.XLACompatibleSharding,
-    data_callback: Callable[[Any], asyncio.Future],
-):
-  """Creates a numpy array from a deserialization callback function."""
-  device_to_index_map = in_sharding.devices_indices_map(global_shape)
-  device_to_replica_id_map = device_replica_id_map(in_sharding, global_shape)
-  da = in_sharding._device_assignment  # pylint: disable=protected-access
-  future_arrays = [data_callback(device_to_index_map[d]) for d in da]
-  global_arrays = await asyncio.gather(*future_arrays)
-
-  dtype = global_arrays[0].dtype
-  npy_value = np.empty(global_shape, dtype)
-  for (d, i), a in zip(device_to_index_map.items(), global_arrays):
-    if device_to_replica_id_map[d] == 0:
-      npy_value[i] = a
-  return npy_value
-
-
-async def _async_deserialize_to_host(
-    in_sharding: jax.sharding.XLACompatibleSharding,
-    tensorstore_spec: Dict[Any, Any],
-):
-  """Deserializes an array from disk to host using Tensorstore.
-
-  Largely copied from JAX's serialization library.
-
-  Args:
-    in_sharding: JAX sharding object.
-    tensorstore_spec: ts.Spec in dictionary format.
-
-  Returns:
-    Deserialized array on host.
-  """
-  t = await ts.open(ts.Spec(tensorstore_spec), open=True, context=_TS_CONTEXT)
-  shape = t.shape
-  new_shard_shape = in_sharding.shard_shape(tuple(shape))
-
-  async def cb(index):
-    # This may be needed because the shape the array was saved with is smaller
-    # than the requested shape of the array in which it will be reloaded. So
-    # the extra values will be filled with 0s.
-    out = np.zeros(new_shard_shape, dtype=t.dtype.numpy_dtype)
-    requested_domain = ts.IndexTransform(input_shape=shape)[index].domain
-    restricted_domain = t.domain.intersect(requested_domain)
-    await ts.array(out)[ts.d[:].translate_to[requested_domain.origin]][
-        restricted_domain
-    ].write(t[restricted_domain])
-    return out
-
-  return await _create_numpy_array(tuple(shape), in_sharding, cb)
 
 
 def _maybe_make_sharded_array(
@@ -1793,6 +1720,7 @@ async def _read_ts(
         'dtype': jnp.dtype(restore_dtype).name
     }
 
+  # TODO(b/261498407) Only used in `use_gda=False` case. Remove.
   if mesh is None or axes is None:
     # Read the array.
     t = await ts.open(tmp_ts_spec_dict, open=True)
@@ -1807,9 +1735,8 @@ async def _read_ts(
           tmp_ts_spec_dict,
       )
     else:
-      arr = await _async_deserialize_to_host(
-          jax.sharding.NamedSharding(mesh, axes), tmp_ts_spec_dict
-      )
+      t = await ts.open(tmp_ts_spec_dict, open=True)
+      arr = await t.read()
   return arr
 
 
@@ -1903,6 +1830,7 @@ def load_t5x_checkpoint(
   Returns:
     A nested dictionary of weights and parameter states from the checkpoint.
   """
+  del use_gda
   start_time = time.time()
   path = find_checkpoint(path, step)
   logging.info('Restoring from checkpoint: %s', path)
@@ -1959,19 +1887,12 @@ def load_t5x_checkpoint(
   def _create_lazy_awaitable_array(
       param_info: _ParameterInfo, maybe_ts_spec: Any, ckpt_path: str,
       restore_dtype: Optional[jnp.dtype]) -> LazyAwaitableArray:
-    mesh = None
-    axes = None
-    if use_gda:
-      mesh = Mesh(jax.devices(), ('x',))
-      axes = (None,)
     get_fn = functools.partial(
         _read_ts,
         param_info,
         maybe_ts_spec,
         ckpt_path=ckpt_path,
         restore_dtype=restore_dtype,
-        mesh=mesh,
-        axes=axes,
         params_on_devices=False,
     )
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
