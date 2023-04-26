@@ -741,6 +741,8 @@ class EncoderDecoderModel(BaseTransformerModel):
         )[0]
         * weights
     )
+    if return_intermediates:
+      intermediates['decoder']['token_scores'] = (token_scores,)
 
     sequence_scores = token_scores.sum(-1)
 
@@ -933,6 +935,9 @@ class DecoderOnlyModel(BaseTransformerModel):
         )[0]
         * weights
     )
+    if return_intermediates:
+      intermediates['decoder']['token_scores'] = (token_scores,)
+
     sequence_scores = token_scores.sum(-1)
 
     if return_intermediates:
