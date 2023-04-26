@@ -46,6 +46,7 @@ parameters.
 """
 import enum
 import re
+import typing
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 from absl import logging
@@ -82,7 +83,7 @@ class HeuristicRule(enum.Enum):
 
 
 HEURISTIC_RULE = HeuristicRule.token
-FactorRule = Union[HeuristicRule, Tuple[FactorDim]]
+FactorRule = Union[HeuristicRule, Tuple[FactorDim, ...]]
 
 
 def _restore(target, flat):
@@ -396,6 +397,12 @@ class Adafactor(OptimizerDef):
     if factored_dims is HEURISTIC_RULE:
       factored_dims = self._factored_dims(shape)
     if factored_dims is not None:
+      # We have ruled out the types None and HeuristicRule, so there's only one
+      # remaining type. (This line is a no-op but is helpful for static type
+      # analyzers.)
+      factored_dims = typing.cast(
+          Tuple[Tuple[int, ...], Tuple[int, ...]], factored_dims
+      )
       d1, d0 = factored_dims
       vr_shape = np.delete(shape, d0)
       vc_shape = np.delete(shape, d1)
@@ -469,6 +476,12 @@ class Adafactor(OptimizerDef):
     if factored_dims is HEURISTIC_RULE:
       factored_dims = self._factored_dims(param.shape)
     if factored_dims is not None:
+      # We have ruled out the types None and HeuristicRule, so there's only one
+      # remaining type. (This line is a no-op but is helpful for static type
+      # analyzers.)
+      factored_dims = typing.cast(
+          Tuple[Tuple[int, ...], Tuple[int, ...]], factored_dims
+      )
       d1, d0 = factored_dims
       new_v_row = (
           decay_rate * state.v_row + mixing_rate * jnp.mean(grad_sqr, axis=d0))
