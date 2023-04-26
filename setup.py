@@ -56,6 +56,7 @@ setuptools.setup(
         f'jaxlib >= {_jaxlib_version}',
         'jestimator',
         'numpy',
+        'optax @ git+https://github.com/deepmind/optax#egg=optax',
         'orbax-checkpoint',
         'seqio @ git+https://github.com/google/seqio#egg=seqio',
         'tensorflow-cpu',
