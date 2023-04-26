@@ -1875,7 +1875,7 @@ def get_dataset(
 
   if seed is None:
     # Use a shared timestamp across devices as the seed.
-    seed = np.int32(multihost_utils.broadcast_one_to_all(np.int32(time.time())))
+    seed = int(multihost_utils.broadcast_one_to_all(np.int32(time.time())))
 
   return get_dataset_inner(
       cfg, shard_info, feature_converter_cls, seed, num_epochs
