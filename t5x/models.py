@@ -428,17 +428,19 @@ class EncoderDecoderModel(BaseTransformerModel):
       )
     else:
       decoder_segment_ids = None
-    initial_variables = self.module.init(
-        rng,
-        jnp.ones(encoder_shape, encoder_type),
-        jnp.ones(decoder_shape, decoder_type),
-        jnp.ones(decoder_shape, decoder_type),
-        encoder_positions=encoder_positions,
-        decoder_positions=decoder_positions,
-        encoder_segment_ids=encoder_segment_ids,
-        decoder_segment_ids=decoder_segment_ids,
-        decode=False,
-        enable_dropout=False,
+    initial_variables = flax_scope.freeze(
+        self.module.init(
+            rng,
+            jnp.ones(encoder_shape, encoder_type),
+            jnp.ones(decoder_shape, decoder_type),
+            jnp.ones(decoder_shape, decoder_type),
+            encoder_positions=encoder_positions,
+            decoder_positions=decoder_positions,
+            encoder_segment_ids=encoder_segment_ids,
+            decoder_segment_ids=decoder_segment_ids,
+            decode=False,
+            enable_dropout=False,
+        )
     )
     return initial_variables
 
@@ -538,7 +540,7 @@ class EncoderDecoderModel(BaseTransformerModel):
     # Our initial index is None since we do not prefill based on a prompt.
     initial_index = None
 
-    return initial_variables['cache'], initial_index
+    return flax_scope.freeze(initial_variables['cache']), initial_index
 
   def predict_batch_with_aux(
       self,
@@ -810,11 +812,13 @@ class DecoderOnlyModel(BaseTransformerModel):
     input_types = {} if input_types is None else input_types
     decoder_shape = input_shapes['decoder_input_tokens']
     decoder_type = input_types.get('decoder_input_tokens', jnp.float32)
-    initial_variables = self.module.init(
-        rng,
-        jnp.ones(decoder_shape, decoder_type),
-        jnp.ones(decoder_shape, decoder_type),
-        enable_dropout=False,
+    initial_variables = flax_scope.freeze(
+        self.module.init(
+            rng,
+            jnp.ones(decoder_shape, decoder_type),
+            jnp.ones(decoder_shape, decoder_type),
+            enable_dropout=False,
+        )
     )
     return initial_variables
 
@@ -975,6 +979,7 @@ class DecoderOnlyModel(BaseTransformerModel):
         decode=True,
         mutable=['cache'],
     )
+    initial_variables = flax_scope.freeze(initial_variables)
     cache = initial_variables['cache']
     if 'cache_axes' in initial_variables:
       cache_axes = initial_variables['cache_axes']
