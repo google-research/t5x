@@ -63,9 +63,9 @@ For an example in context, see [`layers.py`][param_with_axes].
 Tip: We recommend you use the *canonical* logical axis names listed
 [below](#canonical-logical-axis-names).
 
-To specify the logical axes for *activation partitioning*, provide the logical axes
-names to `flax.linen.partitioning.with_sharding_constraint` (instead of using
-`jax.pjit.with_sharding_constraint` or
+To specify the logical axes for *activation partitioning*, provide the logical
+axes names to `flax.linen.partitioning.with_sharding_constraint` (instead of
+using `jax.pjit.with_sharding_constraint` or
 `t5x.partitioning.with_sharding_constraint`).
 
 ```py
@@ -91,12 +91,11 @@ referring to the default mappings for data- and model-parallelism.
 
 > **Note:** You are actually free to map model parameters or activations across
 > the `'data'` axis. In fact, this is what is done in 2D parameter/activation
-> sharding.  To see how this works in practice, see:
+> sharding. To see how this works in practice, see:
 >
 > *   [The example mappings](#example-configurations) below
 > *   [`t5x.partitioning.standard_logical_axis_rules`][standard-rules]
 >     implementation
-
 
 
 #### Configuring `PjitPartitioner`
@@ -189,8 +188,8 @@ array with logical axes `('vocab', 'embed')` will receive the mapping `(None,
 
 T5X provides the `t5x.partitioning.standard_logical_axis_rules()` function to
 generate canonical logical axis rule sets depending on how many mesh dimensions
-you wish to shard. This assumes that you are using [canonical logical axis
-names](#canonical-logical-axis-names).
+you wish to shard. This assumes that you are using
+[canonical logical axis names](#canonical-logical-axis-names).
 
 For details, see
 [`t5x.partitioning.standard_logical_axis_rules()`][standard-rules].
@@ -270,9 +269,8 @@ of axis rules to the `PjitPartitioner`.
 ### Automatic - Full 2D partitioning
 
 You can override the default 1D sharding configuration by modifying the
-arguments to
-[`t5x.partitioning.standard_logical_axis_rules`][standard-rules]. For example,
-for full parameter and activation 2D partitioning you can set:
+arguments to [`t5x.partitioning.standard_logical_axis_rules`][standard-rules].
+For example, for full parameter and activation 2D partitioning you can set:
 
 ```py
 from t5x import partitioning
@@ -296,10 +294,8 @@ following options:
 
 *   [Data-only parallelism](#data-only-parallelism)
 *   [Data parallel with parameter gather](#data-parallel-with-parameter-gather)
-*   [Data and model parallel with replicated
-    activations](#data-and-model-parallel-with-replicated-activations)
-*   [Data and model parallel with sharded
-    activations](#data-and-model-parallel-with-sharded-activations)
+*   [Data and model parallel with replicated activations](#data-and-model-parallel-with-replicated-activations)
+*   [Data and model parallel with sharded activations](#data-and-model-parallel-with-sharded-activations)
 *   [Full 2D sharding](#full-2d-sharding)
 
 #### Data-only parallelism
@@ -417,6 +413,10 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 ]
 ```
 
+# Recommended reading
+
+[Basic model and data partitioning for inference in P5X](https://docs.google.com/document/d/1bU8IuufbgkY0Wg8okyrEPnu3S5rfYGqVPMbUmeorFVo/edit)
+by brandonthorpe@, luyaoxu@
 
 <!-- Reference links -->
 
