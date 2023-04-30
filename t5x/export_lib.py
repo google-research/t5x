@@ -53,6 +53,7 @@ WarmupExample = Union[Union[str, bytes], List[int]]
 WarmupExamples = List[WarmupExample]
 PostprocessorFn = Callable[[Tuple[Any, Any]], Union[Tuple[Any, Any],
                                                     Mapping[str, Any]]]
+InferenceFn = Callable[[Mapping[str, Any], Any], PyTree]
 
 
 class CreatePreprocessorFnNew(typing_extensions.Protocol):
@@ -284,6 +285,7 @@ def create_inference_function(
     enable_xla: bool = True,
     polymorphic_shapes_inputs: Optional[Any] = None,
     native_lowering: bool = False,
+    model_fn_extra_kwargs: Optional[Mapping[str, Any]] = None,
 ) -> Callable[[Mapping[str, Any], Any], PyTree]:
   """Fetches a model and returns the inference function based on inference_mode."""
   if partitioner and train_state_initializer:
@@ -330,6 +332,8 @@ def create_inference_function(
       kwargs = {}
       if decoder_params:
         kwargs['decoder_params'] = decoder_params
+      if model_fn_extra_kwargs:
+        kwargs.update(model_fn_extra_kwargs)
       # pytype: disable=wrong-keyword-args
       return model.predict_batch_with_aux(params, batch, **kwargs)
       # pytype: enable=wrong-keyword-args
@@ -1256,6 +1260,9 @@ def save(
     restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
     exportable_module_cls: Type[ExportableModule],
     create_preprocessor_fn: CreatePreprocessorFn = create_preprocessor,
+    create_inference_function_fn: Callable[
+        ..., InferenceFn
+    ] = create_inference_function,
     create_postprocessor_fn: CreatePostprocessorFn = create_postprocessor,
     partitioner: Optional[partitioning.BasePartitioner] = None,
     create_decoding_state_callback_fn: Optional[
@@ -1289,6 +1296,7 @@ def save(
     restore_checkpoint_cfg: Configuration for restoring model from checkpoint.
     exportable_module_cls: A configured implementation of ExportableModule.
     create_preprocessor_fn: Configurable func. to create the PreprocessorFn.
+    create_inference_function_fn: Configurable func. to create the InferenceFn.
     create_postprocessor_fn: Configurable func. to create the PostprocessorFn.
     partitioner: Partitioner, usually for Pjit.
     create_decoding_state_callback_fn: Configurable func. to create an optional
@@ -1377,7 +1385,7 @@ def save(
         vocab=output_vocab
     )
 
-  model_tf_fn = create_inference_function(
+  model_tf_fn = create_inference_function_fn(
       model=model,
       train_state_initializer=train_state_initializer,
       decoding_state_callback_fn=decoding_state_callback_fn,
