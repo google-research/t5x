@@ -1597,16 +1597,17 @@ def _get_optimizer_state_dict(
     ckpt_contents: PyTree,
     optimizer_state: Mapping[str, Any],
     state_transformation_fns: Sequence[RestoreStateTransformationFn],
+    use_orbax_format: bool = False,
 ):
   """Extracts optimizer state dict contents and applies assignment map."""
   version = ckpt_contents.get('version', 0)
-  if version == 0:
+  if version == 0 or use_orbax_format:
     # This is a standard Flax checkpoint and may require remapping below.
     ckpt_optimizer_state = ckpt_contents
   else:
     ckpt_optimizer_state = ckpt_contents['optimizer']
 
-  if version >= 2:
+  if version >= 2 or use_orbax_format:
     for fn in state_transformation_fns:
       ckpt_optimizer_state = fn(ckpt_optimizer_state, optimizer_state)
     return ckpt_optimizer_state
@@ -2137,6 +2138,152 @@ class NonAtomicCheckpointer(orbax.checkpoint.Checkpointer):
     _sync_global_devices('Checkpointer:write')
 
 
+def _step_from_train_state(train_state: train_state_lib.TrainState) -> int:
+  step = train_state.step
+  step = step.get() if isinstance(step, LazyArray) else step
+  step = get_local_data(step)
+  # Integer, to avoid side effects in the checkpoint path.
+  return int(step)
+
+
+def _construct_save_args(
+    param_info: _OrbaxParamInfo, dtype: jnp.dtype
+) -> orbax.checkpoint.SaveArgs:
+  """Create SaveArgs for Orbax saving."""
+  if param_info.name.split('.')[0] != 'target':
+    dtype = None
+  return orbax.checkpoint.SaveArgs(
+      aggregate=param_info.mesh_axes is None, dtype=dtype
+  )
+
+
+def _construct_restore_args(
+    param_info: _OrbaxParamInfo,
+    dtype: jnp.dtype,
+    mesh: Mesh,
+    lazy_parameters: bool,
+) -> orbax.checkpoint.RestoreArgs:
+  """Create RestoreArgs for Orbax restoration."""
+  if not isinstance(param_info, _OrbaxParamInfo):  # from fallback
+    return orbax.checkpoint.RestoreArgs(dtype=dtype, lazy=lazy_parameters)
+  if param_info.name.split('.')[0] != 'target':
+    dtype = None
+  if param_info.mesh_axes is None:
+    return orbax.checkpoint.RestoreArgs(dtype=dtype, lazy=lazy_parameters)
+  return orbax.checkpoint.ArrayRestoreArgs(
+      restore_type=jax.Array,
+      mesh=mesh,
+      mesh_axes=param_info.mesh_axes,
+      dtype=dtype,
+      lazy=lazy_parameters,
+  )
+
+
+def _construct_orbax_param_infos(
+    train_state: train_state_lib.TrainState,
+    partitioner: partitioning.BasePartitioner,
+) -> PyTree:
+  """Construct _OrbaxParamInfo tree for TrainState parameters."""
+  param_names = traverse_util.unflatten_dict(
+      {
+          k: '/'.join(k)
+          for k in traverse_util.flatten_dict(
+              train_state.state_dict(), keep_empty_nodes=True
+          )
+      }
+  )
+  mesh_axes = partitioner.get_mesh_axes(train_state).state_dict()
+  return jax.tree_util.tree_map(_OrbaxParamInfo, param_names, mesh_axes)
+
+
+def _construct_orbax_restoration_transforms(
+    manager: orbax.checkpoint.CheckpointManager,
+    step: int,
+    directory: epath.Path,
+    state_dict: PyTree,
+    state_transformation_fns: Sequence[RestoreStateTransformationFn],
+    restore_args: PyTree,
+) -> Tuple[PyTree, Any, PyTree]:
+  """Construct transformations and restoration arguments for Orbax classes."""
+  # After transforms, may be a subset of keys: only the ones we actually need
+  # to restore.
+  state_subdir = manager._get_save_directory(  # pylint: disable=protected-access
+      step, directory, key_name=_STATE_KEY
+  )
+  assert state_subdir.is_dir()
+  use_orbax_format = state_subdir.stem == _STATE_KEY  # Standard Orbax format
+  structure = manager._checkpointers[_STATE_KEY].structure(state_subdir)  # pylint: disable=protected-access
+  # Note: Ideally we would use Orbax's `transform_fn` to do this logic, but
+  # the problem is we need to modify `restore_args`, and there isn't a great
+  # way to do that within Orbax.
+  state_dict_to_restore = _get_optimizer_state_dict(
+      structure,
+      state_dict,
+      state_transformation_fns,
+      use_orbax_format=use_orbax_format,
+  )
+  # After transformations, state_dict_to_restore may still have extra keys
+  # relative to item (the eventual restoration structure). Extraneous keys
+  # need to be dropped.
+  state_dict_to_restore = state_utils.intersect_state(
+      state_dict_to_restore, state_dict
+  )
+  restore_args = state_utils.intersect_state(
+      restore_args, state_dict_to_restore
+  )
+
+  def _transform_fn(
+      item: PyTree, structure: PyTree, param_infos: PyTree
+  ) -> Tuple[PyTree, PyTree]:
+    # When this function is called from within PyTreeCheckpointHandler,
+    # transforms will already have been performed (see above), but use this
+    # function to hack param_infos to return the needed values.
+    # This structure is unneeded, because we already restored and transformed
+    # it.
+    del structure
+    # Construct param_infos from item because item is the transformed
+    # structure.
+    # pylint: disable=protected-access
+    param_infos = orbax.checkpoint.pytree_checkpoint_handler._get_param_infos_from_structure(
+        manager._get_save_directory(step, directory, key_name=_STATE_KEY), item
+    )
+    return item, param_infos
+
+  return state_dict_to_restore, restore_args, _transform_fn
+
+
+def _restore_from_tf_checkpoint(
+    full_state_dict: PyTree,
+    param_infos: PyTree,
+    train_state: train_state_lib.TrainState,
+    partitioner: partitioning.BasePartitioner,
+    restore_dtype: jnp.dtype,
+) -> train_state_lib.TrainState:
+  """Restore from a TensorFlow-based T5 checkpoint."""
+  full_state_dict = dict(full_state_dict)
+
+  def _partition_parameter(maybe_arr: Any, param_info: _OrbaxParamInfo):
+    if isinstance(maybe_arr, np.ndarray) and param_info:
+      arr = maybe_arr
+      to_sharded = partitioner.partition(
+          lambda x: x,
+          in_axis_resources=None,
+          out_axis_resources=param_info.mesh_axes,
+      )
+      return to_sharded(arr)
+    return maybe_arr
+
+  if restore_dtype is not None:
+    full_state_dict['target'] = _cast(full_state_dict['target'], restore_dtype)
+  state_dict = jax.tree_util.tree_map(
+      _partition_parameter,
+      full_state_dict,
+      param_infos,
+  )
+
+  return train_state.restore_state(state_dict)
+
+
 # TODO(b/216649487) Support tracking best checkpoints by metrics.
 class CheckpointManager(orbax.checkpoint.CheckpointManager):
   """Implementation of CheckpointManager interface for T5X."""
@@ -2191,7 +2338,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     if options.max_to_keep is None:
       options.max_to_keep = keep
       options.save_interval_steps = period
-      options.force_keep_period = force_keep_period
+      options.keep_period = force_keep_period
     super().__init__(
         directory=directory, checkpointers=checkpointers, options=options
     )
@@ -2201,15 +2348,6 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     if read:
       return all_steps(os.fspath(self.directory))
     return super().all_steps(read=False)
-
-  def _parameter_infos(self, train_state: train_state_lib.TrainState) -> PyTree:
-    """Construct _OrbaxParamInfo tree for TrainState parameters."""
-    param_names = traverse_util.unflatten_dict({
-        k: '/'.join(k) for k in traverse_util.flatten_dict(
-            train_state.state_dict(), keep_empty_nodes=True)
-    })
-    mesh_axes = self._partitioner.get_mesh_axes(train_state).state_dict()
-    return jax.tree_util.tree_map(_OrbaxParamInfo, param_names, mesh_axes)
 
   def _get_save_directory(
       self,
@@ -2265,36 +2403,26 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       Whether the save was performed or not.
     """
     start_time = time.time()
-    step = train_state.step
-    step = step.get() if isinstance(step, LazyArray) else step
-    step = get_local_data(step)
-    # Integer, to avoid side effects in the checkpoint path.
-    step = int(step)
+    step = _step_from_train_state(train_state)
     if not force and not self.should_save(step):
       return False
 
     # TODO(b/216649487) Test state_transformation_fns.
     state_dict, param_infos = _transform_state_and_infos(
         train_state.state_dict(),
-        self._parameter_infos(self._train_state),
+        _construct_orbax_param_infos(self._train_state, self._partitioner),
         state_transformation_fns,
     )
 
-    def _save_args(param_info):
-      dtype = None
-      if param_info.name.split('.')[0] == 'target':
-        dtype = self._save_dtype
-      return orbax.checkpoint.SaveArgs(
-          aggregate=param_info.mesh_axes is None, dtype=dtype)
-
-    def _gda_to_local_data(value, args):
-      if args.aggregate:
-        return get_local_data(value)
-      return value
-
-    save_args = jax.tree_util.tree_map(_save_args, param_infos)
-    state_dict = jax.tree_util.tree_map(_gda_to_local_data, state_dict,
-                                        save_args)
+    save_args = jax.tree_util.tree_map(
+        functools.partial(_construct_save_args, dtype=self._save_dtype),
+        param_infos,
+    )
+    state_dict = jax.tree_util.tree_map(
+        lambda v, arg: get_local_data(v) if arg.aggregate else v,
+        state_dict,
+        save_args,
+    )
 
     items = {_STATE_KEY: state_dict}
     if self._should_write_dataset_ckpt:
@@ -2357,63 +2485,28 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
 
     state_dict = self._train_state.state_dict()
     # Returns a state dict rather than a train state.
-    param_infos = self._parameter_infos(self._train_state)
-
-    def _restore_args(param_info):
-      dtype = None
-      if not isinstance(param_info, _OrbaxParamInfo):  # from fallback
-        return orbax.checkpoint.RestoreArgs(dtype=dtype, lazy=lazy_parameters)
-      if param_info.name.split('.')[0] == 'target':
-        dtype = self._restore_dtype
-      if param_info.mesh_axes is None:
-        return orbax.checkpoint.RestoreArgs(dtype=dtype, lazy=lazy_parameters)
-      return orbax.checkpoint.ArrayRestoreArgs(
-          restore_type=jax.Array,
-          mesh=self._partitioner.mesh,
-          mesh_axes=param_info.mesh_axes,
-          dtype=dtype,
-          lazy=lazy_parameters,
-      )
-
-    restore_args = jax.tree_util.tree_map(_restore_args, param_infos)
-
-    # After transforms, may be a subset of keys: only the ones we actually need
-    # to restore.
-    structure = self._checkpointers[_STATE_KEY].structure(
-        self._get_save_directory(step, directory, key_name=_STATE_KEY)
+    param_infos = _construct_orbax_param_infos(
+        self._train_state, self._partitioner
     )
-    # Note: Ideally we would use Orbax's `transform_fn` to do this logic, but
-    # the problem is we need to modify `restore_args`, and there isn't a great
-    # way to do that within Orbax.
-    state_dict_to_restore = _get_optimizer_state_dict(
-        structure, state_dict, state_transformation_fns
+    restore_args = jax.tree_util.tree_map(
+        functools.partial(
+            _construct_restore_args,
+            dtype=self._restore_dtype,
+            mesh=self._partitioner.mesh,
+            lazy_parameters=lazy_parameters,
+        ),
+        param_infos,
     )
-    # After transformations, state_dict_to_restore may still have extra keys
-    # relative to item (the eventual restoration structure). Extraneous keys
-    # need to be dropped.
-    state_dict_to_restore = state_utils.intersect_state(
-        state_dict_to_restore, state_dict
+    state_dict_to_restore, restore_args, transform_fn = (
+        _construct_orbax_restoration_transforms(
+            self,
+            step,
+            directory,
+            state_dict,
+            state_transformation_fns,
+            restore_args,
+        )
     )
-    restore_args = state_utils.intersect_state(
-        restore_args, state_dict_to_restore
-    )
-
-    def _transform_fn(
-        item: PyTree, structure: PyTree, param_infos: PyTree
-    ) -> Tuple[PyTree, PyTree]:
-      # When this function is called from within PyTreeCheckpointHandler,
-      # transforms will already have been performed (see above), but use this
-      # function to hack param_infos to return the needed values.
-      # This structure is unneeded, because we already restored and transformed
-      # it.
-      del structure
-      # Construct param_infos from item because item is the transformed
-      # structure.
-      # pylint: disable=protected-access
-      param_infos = orbax.checkpoint.pytree_checkpoint_handler._get_param_infos_from_structure(
-          self._get_save_directory(step, directory, key_name=_STATE_KEY), item
-      )
-      return item, param_infos
 
     items = {_STATE_KEY: state_dict_to_restore}
     if self._should_write_dataset_ckpt:
@@ -2421,7 +2514,7 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
     restore_kwargs = {
         _STATE_KEY: {
             'restore_args': restore_args,
-            'transform_fn': _transform_fn,
+            'transform_fn': transform_fn,
         },
     }
     restored = super().restore(
@@ -2469,28 +2562,13 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
         strict=strict,
         translator=translator,
     )
-    full_state_dict = dict(full_state_dict)
-
-    def _partition_parameter(maybe_arr: Any, param_info: _OrbaxParamInfo):
-      if isinstance(maybe_arr, np.ndarray) and param_info:
-        arr = maybe_arr
-        to_gda = self._partitioner.partition(
-            lambda x: x,
-            in_axis_resources=None,
-            out_axis_resources=param_info.mesh_axes)
-        return to_gda(arr)
-      return maybe_arr
-
-    if self._restore_dtype is not None:
-      full_state_dict['target'] = _cast(full_state_dict['target'],
-                                        self._restore_dtype)
-    state_dict = jax.tree_util.tree_map(
-        _partition_parameter,
+    return _restore_from_tf_checkpoint(
         full_state_dict,
-        self._parameter_infos(self._train_state),
+        _construct_orbax_param_infos(self._train_state, self._partitioner),
+        self._train_state,
+        self._partitioner,
+        self._restore_dtype,
     )
-
-    return self._train_state.restore_state(state_dict)
 
   def _finalize_checkpoint(self, tmp_directory: epath.Path):
     """Moves tmp step checkpoint to final."""
@@ -2592,3 +2670,261 @@ class CheckpointManagerConstructor(typing_extensions.Protocol):
   ) -> CheckpointManager:
     """CheckpointManager constructor."""
     pass
+
+
+class OrbaxCheckpointManagerInterface:
+  """Wrapper for orbax.checkpoint.CheckpointManager."""
+
+  def __init__(
+      self,
+      directory: str,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      dataset_iterator: Optional[tf.data.Iterator] = None,
+      save_dtype: Optional[jnp.dtype] = None,
+      restore_dtype: Optional[jnp.dtype] = None,
+      keep: Optional[int] = None,
+      period: Optional[int] = 1,
+      keep_dataset_checkpoints: Optional[int] = None,
+      force_keep_period: Optional[int] = None,
+  ):
+    """Performs Orbax setup given standard arguments from T5X."""
+    del keep_dataset_checkpoints
+    self._train_state = train_state
+    self._partitioner = partitioner
+    self._dataset_iterator = dataset_iterator
+    self._save_dtype = save_dtype
+    self._restore_dtype = restore_dtype
+    self._tmp_directory: Optional[epath.PathLike] = None
+
+    data_layout = partitioner.get_data_layout()
+    dataset_ckpt_name = (
+        f'{_TRAIN_DS_PREFIX}-'
+        f'{data_layout.shard_id:03}-of-{data_layout.num_shards:03}'
+    )
+    self._should_write_dataset_ckpt = (
+        self._dataset_iterator and data_layout.is_first_host_in_replica_set
+    )
+
+    checkpointers = {
+        _STATE_KEY: orbax.checkpoint.Checkpointer(
+            orbax.checkpoint.PyTreeCheckpointHandler()
+        ),
+    }
+    if self._should_write_dataset_ckpt:
+      checkpointers[_DATASET_KEY] = orbax.checkpoint.Checkpointer(
+          DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name)
+      )
+
+    options = orbax.checkpoint.CheckpointManagerOptions(
+        max_to_keep=keep,
+        save_interval_steps=period,
+        keep_period=force_keep_period,
+        # Metrics are not available immediately, so checkpoints should always be
+        # kept.
+        keep_checkpoints_without_metrics=True,
+        cleanup_tmp_directories=True,
+    )
+    self._manager = orbax.checkpoint.CheckpointManager(
+        directory=directory, checkpointers=checkpointers, options=options
+    )
+
+  @property
+  def directory(self) -> epath.Path:
+    return self._manager.directory
+
+  def all_steps(self) -> Sequence[int]:
+    return self._manager.all_steps()
+
+  def latest_step(self) -> Optional[int]:
+    return self._manager.latest_step()
+
+  def save(
+      self,
+      train_state: train_state_lib.TrainState,
+      force: bool = True,
+  ) -> bool:
+    """Saves a checkpoint for the given train state.
+
+    Args:
+      train_state: the train state to save. May contain a combination of
+        LazyArray objects and arrays (e.g., np.ndarray, jax.DeviceArray)
+      force: Saves regardless of whether should_save is False. True by default
+        because should_save logic is handled externally to this class in T5X.
+        This is because of a feature that decouples actual step and step offset.
+
+    Returns:
+      Whether the save was performed or not.
+    """
+    start_time = time.time()
+    step = _step_from_train_state(train_state)
+    if not force and not self._manager.should_save(step):
+      return False
+
+    state_dict = train_state.state_dict()
+    param_infos = _construct_orbax_param_infos(
+        self._train_state, self._partitioner
+    )
+    # Arguments for saving interpretable by Orbax.
+    save_args = jax.tree_util.tree_map(
+        functools.partial(_construct_save_args, dtype=self._save_dtype),
+        param_infos,
+    )
+    # If the params are to be aggregated, then get locally addressable data.
+    state_dict = jax.tree_util.tree_map(
+        lambda v, arg: get_local_data(v) if arg.aggregate else v,
+        state_dict,
+        save_args,
+    )
+
+    # Separate savable items.
+    items = {_STATE_KEY: state_dict}
+    if self._should_write_dataset_ckpt:
+      items[_DATASET_KEY] = self._dataset_iterator
+    save_kwargs = {
+        _STATE_KEY: {
+            'save_args': save_args,
+        },
+    }
+    saved = self._manager.save(
+        step, items, save_kwargs=save_kwargs, force=force
+    )
+
+    # Record JAX montioring events.
+    end_time = time.time()
+    monitoring.record_event_duration_secs(
+        _WRITE_CHECKPOINT_EVENT, end_time - start_time
+    )
+    orbax.checkpoint.utils.record_saved_duration(start_time)
+
+    return saved
+
+  def restore(
+      self,
+      step: Optional[int] = None,
+      path: Optional[str] = None,
+      fallback_state: Optional[Mapping[str, Any]] = None,
+      state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
+      lazy_parameters: Optional[bool] = False,
+  ) -> train_state_lib.TrainState:
+    """Restores a TrainState from the given step or path.
+
+    Note: can only provide one of `step` or `path`.
+
+    Args:
+      step: the step number to restore from.
+      path: the full path to restore from.
+      fallback_state: a state dict of an optimizer to fall back to for loading
+        params that do not exist in the checkpoint (after applying all
+        `state_transformation_fns`), but do exist in `Checkpointer.optimizer`.
+        The union of `fallback_state` and state loaded from the checkpoint must
+        match `Checkpointer.optimizer`.
+      state_transformation_fns: Transformations to apply, in order, to the state
+        after reading.
+      lazy_parameters: whether to load the parameters as LazyArrays to preserve
+        memory.
+
+    Returns:
+      The restored train state.
+    """
+    start_time = time.time()
+    if step is not None and path is not None:
+      raise ValueError('Can only provide `step` or `path` but not both.')
+    directory = self.directory
+    if path is not None:
+      directory, step = get_step_from_checkpoint_dir(os.fspath(path))
+
+    state_dict = self._train_state.state_dict()
+    # Returns a state dict rather than a train state.
+    param_infos = _construct_orbax_param_infos(
+        self._train_state, self._partitioner
+    )
+    # Construct restoration arguments interpretable by Orbax.
+    restore_args = jax.tree_util.tree_map(
+        functools.partial(
+            _construct_restore_args,
+            dtype=self._restore_dtype,
+            mesh=self._partitioner.mesh,
+            lazy_parameters=lazy_parameters,
+        ),
+        param_infos,
+    )
+    # Handle T5X transformation functions, since they are specified differently
+    # than native Orbax transformation functions.
+    state_dict_to_restore, restore_args, transform_fn = (
+        _construct_orbax_restoration_transforms(
+            self._manager,
+            step,
+            directory,
+            state_dict,
+            state_transformation_fns,
+            restore_args,
+        )
+    )
+
+    # Construct separate items to restore.
+    items = {_STATE_KEY: state_dict_to_restore}
+    if self._should_write_dataset_ckpt:
+      items[_DATASET_KEY] = self._dataset_iterator
+    restore_kwargs = {
+        _STATE_KEY: {
+            'restore_args': restore_args,
+            'transform_fn': transform_fn,
+        },
+    }
+    restored = self._manager.restore(
+        step, items, restore_kwargs=restore_kwargs, directory=directory
+    )
+    state_dict = restored[_STATE_KEY]
+    if self._should_write_dataset_ckpt:
+      self._dataset_iterator = restored[_DATASET_KEY]
+
+    # Merge restored state dict with fallback state to fill in any remaining
+    # params.
+    if fallback_state is not None:
+      state_dict = state_utils.merge_state(state_dict, fallback_state)
+
+    # After restoration, some values may still be non-sharded arrays from
+    # fallback state.
+    def _maybe_make_sharded_array_helper(arr, info):
+      return _maybe_make_sharded_array(
+          arr,
+          self._partitioner.mesh,
+          axes=info.mesh_axes,
+          restore_dtype=self._restore_dtype,
+      )
+
+    state_dict = jax.tree_util.tree_map(
+        _maybe_make_sharded_array_helper, state_dict, param_infos
+    )
+
+    train_state = self._train_state.restore_state(state_dict)
+
+    end_time = time.time()
+    monitoring.record_event_duration_secs(
+        _READ_CHECKPOINT_EVENT, end_time - start_time
+    )
+
+    return train_state
+
+  def restore_from_tf_checkpoint(
+      self,
+      path_or_dir: str,
+      strict: bool = True,
+      translator: Optional[checkpoint_importer.CheckpointTranslator] = None,
+  ) -> train_state_lib.TrainState:
+    """Restore from a TensorFlow-based T5 checkpoint."""
+    full_state_dict = checkpoint_importer.restore_from_t5_checkpoint(
+        self._train_state.state_dict(),
+        path_or_dir,
+        lazy_parameters=False,
+        strict=strict,
+        translator=translator,
+    )
+    return _restore_from_tf_checkpoint(
+        full_state_dict,
+        _construct_orbax_param_infos(self._train_state, self._partitioner),
+        self._train_state,
+        self._partitioner,
+        self._restore_dtype,
+    )

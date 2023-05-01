@@ -723,9 +723,7 @@ class UtilsTest(parameterized.TestCase):
     self.assertTrue(manager._should_write_dataset_ckpt)
 
     # Save best options.
-    self.assertEqual(
-        manager._options.force_keep_period, expected_force_keep_period
-    )
+    self.assertEqual(manager._options.keep_period, expected_force_keep_period)
     self.assertEqual(manager._options.best_mode, expected_metric_mode)
     self.assertEqual(
         manager._options.keep_checkpoints_without_metrics,
@@ -786,7 +784,7 @@ class UtilsTest(parameterized.TestCase):
     self.assertTrue(manager._should_write_dataset_ckpt)
 
     # Save best options.
-    self.assertIsNone(manager._options.force_keep_period, None)
+    self.assertIsNone(manager._options.keep_period, None)
     self.assertEqual(manager._options.best_mode, "max")
     self.assertTrue(manager._options.keep_checkpoints_without_metrics)
     self.assertEqual(
