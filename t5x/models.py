@@ -572,6 +572,7 @@ class EncoderDecoderModel(BaseTransformerModel):
     If `return_all_decodes = True`, the return tuple contains the predictions
     with a shape [batch, num_decodes, max_decode_len] and the scores (i.e., log
     probability of the generated sequence) with a shape [batch, num_decodes].
+    The beam dimension is sorted in increasing order of log-probability.
 
     If `return_all_decodes = False`, the return tuple contains the predictions
     with a shape [batch, max_decode_len] and the scores with a shape [batch].
@@ -1109,8 +1110,9 @@ class DecoderOnlyModel(BaseTransformerModel):
         'decode_rng' to the decoding function.
       return_all_decodes: if True, will return all batch_size * num_decodes
         samples from the model as an array of shape [batch_size, num_decodes,
-        sequence_length]. Otherwise returns only the most likely samples as an
-        array of shape [batch_size, sequence_length].
+        sequence_length]. In this case the `num_decodes` dimension is sorted in
+        increasing order of log-probability. Otherwise returns only the most
+        likely samples as an array of shape [batch_size, sequence_length].
       num_decodes: number of decoded sequences to be returned.
       decoder_params: additional (model-independent) parameters for the decoder.
 
