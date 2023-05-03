@@ -2339,6 +2339,8 @@ class CheckpointManager(orbax.checkpoint.CheckpointManager):
       options.max_to_keep = keep
       options.save_interval_steps = period
       options.keep_period = force_keep_period
+
+
     super().__init__(
         directory=directory, checkpointers=checkpointers, options=options
     )
