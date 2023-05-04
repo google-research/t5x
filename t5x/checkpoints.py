@@ -1925,6 +1925,7 @@ _VERSION_KEY = 'version'
 _CHECKPOINTS_SUBDIR = 'checkpoints'
 _STATE_KEY = 'state'
 _DATASET_KEY = 'dataset'
+_METRICS_KEY = 'metrics'
 _FLAX_CHECKPOINT_FILE = 'checkpoint'
 
 
@@ -2284,7 +2285,6 @@ def _restore_from_tf_checkpoint(
   return train_state.restore_state(state_dict)
 
 
-# TODO(b/216649487) Support tracking best checkpoints by metrics.
 class CheckpointManager(orbax.checkpoint.CheckpointManager):
   """Implementation of CheckpointManager interface for T5X."""
 
@@ -2677,6 +2677,24 @@ class CheckpointManagerConstructor(typing_extensions.Protocol):
 class OrbaxCheckpointManagerInterface:
   """Wrapper for orbax.checkpoint.CheckpointManager."""
 
+  class _CheckpointManagerImpl(orbax.checkpoint.CheckpointManager):
+    """CheckpointManager implementation to deal with metrics update."""
+
+    def _remove_old_checkpoints(self):
+      """Update metrics for Orbax management, if available."""
+      if self._track_best:
+        metric_name_to_monitor = self._options.metric_name_to_monitor  # pytype: disable=attribute-error
+        step_to_metric = populate_metrics_for_steps(
+            os.fspath(self.directory),
+            metric_name_to_monitor,
+            self.all_steps(),
+        )
+        for info in self._checkpoints:
+          if info.step in step_to_metric:
+            metrics = {metric_name_to_monitor: step_to_metric[info.step]}
+            info.metrics = metrics
+      super()._remove_old_checkpoints()
+
   def __init__(
       self,
       directory: str,
@@ -2689,6 +2707,9 @@ class OrbaxCheckpointManagerInterface:
       period: Optional[int] = 1,
       keep_dataset_checkpoints: Optional[int] = None,
       force_keep_period: Optional[int] = None,
+      metric_name_to_monitor: Optional[str] = None,
+      metric_mode: str = 'max',
+      keep_checkpoints_without_metrics: bool = True,
   ):
     """Performs Orbax setup given standard arguments from T5X."""
     del keep_dataset_checkpoints
@@ -2718,16 +2739,20 @@ class OrbaxCheckpointManagerInterface:
           DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name)
       )
 
+    def best_fn(metrics):
+      return metrics[metric_name_to_monitor]
+
     options = orbax.checkpoint.CheckpointManagerOptions(
         max_to_keep=keep,
         save_interval_steps=period,
         keep_period=force_keep_period,
-        # Metrics are not available immediately, so checkpoints should always be
-        # kept.
-        keep_checkpoints_without_metrics=True,
+        best_fn=best_fn if metric_name_to_monitor is not None else None,
+        best_mode=metric_mode,
+        keep_checkpoints_without_metrics=keep_checkpoints_without_metrics,
         cleanup_tmp_directories=True,
     )
-    self._manager = orbax.checkpoint.CheckpointManager(
+    options.metric_name_to_monitor = metric_name_to_monitor
+    self._manager = self._CheckpointManagerImpl(
         directory=directory, checkpointers=checkpointers, options=options
     )
 
