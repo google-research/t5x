@@ -1231,7 +1231,7 @@ def compute_weighted_accuracy(
     logits: jnp.ndarray,
     targets: jnp.ndarray,
     weights: Optional[jnp.ndarray] = None,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+) -> jnp.ndarray:
   """Compute weighted accuracy for log probs and targets.
 
   Args:
