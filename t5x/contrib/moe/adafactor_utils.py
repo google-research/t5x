@@ -27,6 +27,7 @@ def logical_factor_rules() -> FrozenDict:
   rules.update({
       'expert': FactorDim.BATCH,
       'expert_mlp': FactorDim.COLUMN,
-      'unmodeled': FactorDim.NONE
+      'unmodeled': FactorDim.NONE,
+      'mlp_embed': FactorDim.ROW,  # Same factoring as 'embed'
   })
   return flax_core.freeze(rules)
