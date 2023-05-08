@@ -314,7 +314,7 @@ def default_mesh(num_partitions: int,
 
   if platform == 'cpu':
     return get_cpu_mesh()
-  elif platform == 'gpu':
+  elif platform == 'gpu' or platform == 'xpu':
     return get_gpu_mesh(num_partitions)
 
   mps = None
