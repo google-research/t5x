@@ -2750,6 +2750,7 @@ class OrbaxCheckpointManagerInterface:
         best_mode=metric_mode,
         keep_checkpoints_without_metrics=keep_checkpoints_without_metrics,
         cleanup_tmp_directories=True,
+        step_prefix='checkpoint',
     )
     options.metric_name_to_monitor = metric_name_to_monitor
     self._manager = self._CheckpointManagerImpl(
