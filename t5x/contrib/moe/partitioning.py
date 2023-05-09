@@ -311,6 +311,8 @@ class MoePjitPartitioner(base_partitioning.PjitPartitioner):
     state_dict['state']['param_states'] = training_utils.tree_map_with_names(
         prepend_expert, state_dict['state']['param_states'], state_filter_fn
     )
+    if logical_axes.flax_mutables:
+      state_dict['flax_mutables'] = logical_axes.flax_mutables
 
     return train_state.restore_state(state_dict)
 

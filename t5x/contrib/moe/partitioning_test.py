@@ -44,9 +44,11 @@ PartitionSpec = moe_partitioning.PartitionSpec
 PRNGKey = Any
 
 
-def create_model_variables() -> FrozenVariableDict:
+def create_model_variables(
+    add_flax_mutables: bool = False,
+) -> FrozenVariableDict:
   """Creates simple model variables."""
-  return flax_core.freeze({
+  variables = {
       'params': {
           'logits_dense': np.ones((16, 16), np.float32),
           'mlp': {'wo': {'kernel': np.ones((32, 16), np.float32)}},
@@ -55,13 +57,26 @@ def create_model_variables() -> FrozenVariableDict:
           'logits_dense_axes': AxisMetadata(names=('vocab', 'embed')),
           'mlp': {'wo': {'kernel_axes': AxisMetadata(names=('embed', 'mlp'))}},
       },
-  })
+  }
+  if add_flax_mutables:
+    variables.update({
+        'other': {
+            'variables': np.ones((16, 16), np.float32),
+        },
+        'other_axes': {
+            'variables_axes': AxisMetadata(names=('vocab', 'embed')),
+        },
+    })
+
+  return flax_core.freeze(variables)
 
 
-def create_train_state() -> FlaxOptimTrainState:
+def create_train_state(add_flax_mutables: bool = False) -> FlaxOptimTrainState:
   """Creates simple Adam optimizer train state."""
   optimizer_def = optimizers.adamw(learning_rate=1e-4)
-  return FlaxOptimTrainState.create(optimizer_def, create_model_variables())
+  return FlaxOptimTrainState.create(
+      optimizer_def, create_model_variables(add_flax_mutables)
+  )
 
 
 def create_adafactor_train_state(factored: bool = True) -> FlaxOptimTrainState:
@@ -322,6 +337,67 @@ class PartitioningTest(absltest.TestCase):
                 'wo': {
                     'kernel': PartitionSpec('embed', 'mlp'),
                 },
+            },
+        }),
+    )
+
+  def test_logical_axes_for_moe_partitioner_with_flax_mutables(self):
+    partitioner = moe_partitioning.MoePjitPartitioner(
+        num_expert_partitions=8,
+        num_partitions=1,
+        state_filter_fn=training_utils.match_fn(r'no_state_matching'),
+    )
+
+    train_state = create_train_state(add_flax_mutables=True)
+    logical_axes = partitioner.get_logical_axes(train_state)
+
+    # No updates to state.
+    self.assertEqual(
+        logical_axes.param_states,
+        (
+            optax.ScaleByAdamState(
+                count=None,
+                mu=FrozenDict({
+                    'logits_dense': PartitionSpec('vocab', 'embed'),
+                    'mlp': {
+                        'wo': {
+                            'kernel': PartitionSpec('embed', 'mlp'),
+                        },
+                    },
+                }),
+                nu=FrozenDict({
+                    'logits_dense': PartitionSpec('vocab', 'embed'),
+                    'mlp': {
+                        'wo': {
+                            'kernel': PartitionSpec('embed', 'mlp'),
+                        },
+                    },
+                }),
+            ),
+            optax.EmptyState(),
+            optax.EmptyState(),
+        ),
+    )
+
+    # Target (params) should be unchanged.
+    self.assertEqual(
+        logical_axes.params,
+        FrozenDict({
+            'logits_dense': PartitionSpec('vocab', 'embed'),
+            'mlp': {
+                'wo': {
+                    'kernel': PartitionSpec('embed', 'mlp'),
+                },
+            },
+        }),
+    )
+
+    # Should preserve flax_mutables.
+    self.assertEqual(
+        logical_axes.flax_mutables,
+        FrozenDict({
+            'other': {
+                'variables': PartitionSpec('vocab', 'embed'),
             },
         }),
     )
