@@ -511,7 +511,6 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     trainer.train(ds_iter, 1)
     logging.info('optimizer after first step %s', trainer.train_state.params)
 
-
   @parameterized.parameters(
       {'decode_fn': decoding.beam_search},
       {'decode_fn': functools.partial(decoding.temperature_sample, topk=4)})
@@ -710,23 +709,192 @@ class EncoderDecoderModelTest(parameterized.TestCase):
 
 class DecoderOnlyModelTest(parameterized.TestCase):
 
+  def test_predict_batch_loop_and_cache_index_aligned(self):
+    batch_size = 2
+    seq_len = 10
+    vocab_size = 50
+    lengths = np.array([[6], [3]])
+    batch = {
+        'decoder_input_tokens':
+            np.tile(
+                np.expand_dims(np.arange(seq_len), axis=0), (batch_size, 1)),
+        'decoder_causal_attention':
+            (lengths > np.arange(seq_len)).astype(np.int32)
+    }
 
+    model = test_utils.get_tiny_model(
+        f'NUM_LAYERS=2\nNUM_EMBEDDING={vocab_size}'
+    )
+    module = model.module
+    params = module.init(
+        jax.random.PRNGKey(0),
+        jnp.ones((batch_size, seq_len)),
+        jnp.ones((batch_size, seq_len)),
+        enable_dropout=False)['params']
+
+    def mock_init(self):
+      self.module = module
+      # Set the EOS token to be larger then the vocabulary size. This forces the
+      # model to decode all the way to `max_decode_length`, allowing us to test
+      # behavior when one element reaches the end before the others.
+      self._output_vocabulary = mock.Mock(eos_id=vocab_size + 12)
+      self._decode_fn = functools.partial(decoding.temperature_sample, topk=4)
+      self._inputs_bidirectional_attention = False
+
+    with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
+      model = models.DecoderOnlyModel()
+
+    with mock.patch.object(
+        model, '_compute_logits_from_slice',
+        autospec=True) as tokens_to_logits_mock:
+      # Make the side effect of the mock, call the method on the class, with the
+      # instance partialed in as `self`. This lets us call the actual code,
+      # while recording the inputs, without an infinite loop you would get
+      # calling `instance.method`
+      tokens_to_logits_mock.side_effect = functools.partial(
+          models.DecoderOnlyModel._compute_logits_from_slice, model)
+      # Disable jit, so that the `lax.while_loop` isn't traced, as the
+      # collection of tracers in the mock call_args would generally trigger a
+      # tracer leak error.
+      with jax.disable_jit():
+        outputs = model.predict_batch(params, batch)
+
+    # Collect all the input tokens to our tokens_to_logits function
+    all_inputs = []
+    all_cache_indices = []  # Collect all the cache inputs
+    # Given that we can't have EOS early stopping, we should have hit
+    # `max_decode_length` for all examples. This means we should have had
+    # `max_decode_length` - min(lengths) + 1 (because we length gives us the
+    # last prefix token, which we do feed) calls to our tokens -> logits func.
+    self.assertLen(tokens_to_logits_mock.call_args_list,
+                   seq_len - np.min(lengths) + 1)
+    for tokens_call in tokens_to_logits_mock.call_args_list:
+      decoding_state: decoding.DecodingState = tokens_call[0][0]
+      # Inputs: [B, 1]
+      inputs = decoding_state.cur_token
+      cache = decoding_state.cache
+      cache = flax.core.unfreeze(cache)
+      # Cache: [B, 1] * #Layers
+      cache_indices = [
+          v for k, v in traverse_util.flatten_dict(cache).items()
+          if k[-1] == 'cache_index'
+      ]
+      all_inputs.append(inputs)
+      all_cache_indices.append(cache_indices)
+    # Convert inputs to a single block [B, S]
+    all_inputs = np.concatenate(all_inputs, axis=1)
+    # Convert caches into a single block per layer [B, S] * L
+    all_cache_indices = [np.stack(c, axis=1) for c in zip(*all_cache_indices)]
+    # Make sure all the caches match.
+    for cache1, cache2 in zip(all_cache_indices, all_cache_indices[1:]):
+      np.testing.assert_array_equal(cache1, cache2)
+    for b, output in enumerate(outputs):
+      # Although the outputs will start at `0`, they are really starting at
+      # `lengths`. The tokens were originally at that offset, but the
+      # `remove_prefix` function shifted them to the start.
+      prefix_position = lengths[b][0] - 1
+      # All caches are the same, so just check the values of one.
+      cache = all_cache_indices[0]
+      for i, input_token in enumerate(all_inputs[b]):
+        real_idx = i + prefix_position
+        # In the first call, we just verify that token inputs are the last
+        # item of the prefix, and that the cache index is the prefix length.
+        if i == 0:
+          # Subtract 1 to convert length to index.
+          self.assertEqual(cache[b][i], prefix_position)
+          self.assertEqual(input_token,
+                           batch['decoder_input_tokens'][b][prefix_position])
+        # For later calls, we verify that the input at this timestep t is
+        # equal to the output at timestep t-1
+        else:
+          # When our example is less than max_decode_len, we will be writing
+          # outputs into the output array, there for those should show up as
+          # the input to the next timestep.
+          if real_idx <= seq_len:
+            self.assertEqual(input_token, output[i - 1])
+          # Once an example has hit the max decode length, the decode function
+          # should throw away the output somehow, as it would no longer fit
+          # into the output array. If we are indexing into the array, but
+          # logically have gone past the end, we expect our position to end up
+          # as `0` because we end up as part of the output that gets zeroed
+          # out by the removal of the prefix.
+          else:
+            self.assertEqual(output[i], 0)
+        # Unlike position indices in the inputs/outputs, the cache index
+        # actually includes the length of the prefix, so make sure that is
+        # equal.
+        self.assertEqual(cache[b][i], real_idx)
+
+  def test_predict_batch_max_decode_steps(self):
+    batch_size = 2
+    seq_len = 10
+    vocab_size = 50
+    max_decode_steps = 4
+    lengths = np.array([[6], [3]])
+    batch = {
+        'decoder_input_tokens':
+            np.tile(
+                np.expand_dims(np.arange(seq_len), axis=0), (batch_size, 1)),
+        'decoder_causal_attention':
+            (lengths > np.arange(seq_len)).astype(np.int32)
+    }
+
+    model = test_utils.get_tiny_model(
+        f'NUM_LAYERS=2\nNUM_EMBEDDING={vocab_size}'
+    )
+    module = model.module
+    params = module.init(
+        jax.random.PRNGKey(0),
+        jnp.ones((batch_size, seq_len)),
+        jnp.ones((batch_size, seq_len)),
+        enable_dropout=False)['params']
+
+    def mock_init(self):
+      self.module = module
+
+      self._output_vocabulary = mock.Mock(eos_id=vocab_size + 12)
+      self._decode_fn = functools.partial(
+          decoding.temperature_sample,
+          topk=4,
+          max_decode_steps=max_decode_steps)
+      self._inputs_bidirectional_attention = False
+
+    with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
+      model = models.DecoderOnlyModel()
+
+    with mock.patch.object(
+        decoding,
+        '_temperature_sample_single_trial',
+    ) as mocked:
+      expanded_decodes = np.zeros((batch_size, seq_len), dtype=np.int32)
+      # expanded_log_prob: [batch * num_decodes]
+      expanded_log_prob = np.zeros((batch_size,), dtype=np.float32)
+      mocked.return_value = expanded_decodes, expanded_log_prob
+
+      with jax.disable_jit():
+        model.predict_batch(params, batch)
+
+      self.assertEqual(
+          mocked.call_args[1]['max_decode_steps'], max_decode_steps
+      )
 
   def test_predict_batch_visible_in_prefill(self):
     batch_size = 2
     seq_len = 10
     lengths = np.array([[6], [3]])
     batch = {
-        'decoder_input_tokens':
-            np.tile(
-                np.expand_dims(np.arange(seq_len, dtype=np.int32), axis=0),
-                (batch_size, 1)),
-        'decoder_causal_attention':
-            (lengths > np.arange(seq_len)).astype(np.int32)
+        'decoder_input_tokens': np.tile(
+            np.expand_dims(np.arange(seq_len, dtype=np.int32), axis=0),
+            (batch_size, 1),
+        ),
+        'decoder_causal_attention': (lengths > np.arange(seq_len)).astype(
+            np.int32
+        ),
     }
 
     dummy_logits = jnp.expand_dims(
-        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1)
+        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1
+    )
 
     mock_module = mock.Mock()
     mock_module.apply.return_value = (dummy_logits, {'cache': {}})
@@ -765,13 +933,93 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     np.testing.assert_array_equal(
         np.max(inputs, axis=1), np.squeeze(lengths - 1, axis=-1))
 
+  def test_predict_batch_cache_past_unchanging(self):
+    batch_size = 2
+    seq_len = 10
+    vocab_size = 50
+    lengths = np.array([[6], [3]])
+    batch = {
+        'decoder_input_tokens':
+            np.tile(
+                np.expand_dims(np.arange(seq_len), axis=0), (batch_size, 1)),
+        'decoder_causal_attention':
+            (lengths > np.arange(seq_len)).astype(np.int32)
+    }
+
+    model = test_utils.get_tiny_model(
+        f'NUM_LAYERS=2\nNUM_EMBEDDING={vocab_size}'
+    )
+    module = model.module
+    params = module.init(
+        jax.random.PRNGKey(0),
+        jnp.ones((batch_size, seq_len)),
+        jnp.ones((batch_size, seq_len)),
+        enable_dropout=False)['params']
+
+    def mock_init(self):
+      self.module = module
+      # Set the EOS token to be larger then the vocabulary size. This forces the
+      # model to decode all the way to `max_decode_length`, allowing us to test
+      # behavior when one element reaches the end before the others.
+      self._output_vocabulary = mock.Mock(eos_id=vocab_size + 12)
+      self._decode_fn = functools.partial(decoding.temperature_sample, topk=4)
+      self._inputs_bidirectional_attention = False
+
+    with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
+      model = models.DecoderOnlyModel()
+
+    with mock.patch.object(
+        model, '_compute_logits_from_slice',
+        autospec=True) as tokens_to_logits_mock:
+      # Make the side effect of the mock, call the method on the class, with the
+      # instance partialed in as `self`. The lets us call the actual code, while
+      # recording the inputs, without an infinite loop you would get calling
+      # `instance.method`
+      tokens_to_logits_mock.side_effect = functools.partial(
+          models.DecoderOnlyModel._compute_logits_from_slice, model)
+      # Disable jit, so that the `lax.while_loop` isn't traced, as the
+      # collection of tracers in the mock call_args would generally trigger a
+      # tracer leak error.
+      with jax.disable_jit():
+        _ = model.predict_batch(params, batch)
+
+      # Extract keys and values for the first cache we are given.
+      prev_cache = flax.core.unfreeze(
+          tokens_to_logits_mock.call_args_list[0][0][0].cache)
+      prev_cache = {
+          k: v
+          for k, v in traverse_util.flatten_dict(prev_cache).items()
+          if k[-1] != 'cache_index'
+      }
+      # Check that each incoming cache is the same as the previous cache, up
+      # until the current position.
+      for i, token_call in enumerate(tokens_to_logits_mock.call_args_list[1:]):
+        for b, prefix_length in enumerate(lengths):
+          # We have prefilled the cache so make sure that is considered.
+          l = i + prefix_length[0]
+          cache = flax.core.unfreeze(token_call[0][0].cache)
+          cache = {
+              k: v
+              for k, v in traverse_util.flatten_dict(cache).items()
+              if k[-1] != 'cache_index'
+          }
+          for k, v in cache.items():
+            # Index with `...` to allow for swapping in something like
+            # `MultiQueryAttention` which has fewer dims.
+            np.testing.assert_allclose(
+                v[b, ..., : l - 1].astype(jnp.float32),
+                prev_cache[k][b, ..., : l - 1].astype(jnp.float32),
+            )
+        prev_cache = cache
 
   def test_predict_batch(self):
     batch = {
-        'decoder_input_tokens':
-            np.array([[0, 3, 4, 5, 6, 0, 0], [0, 7, 8, 9, 0, 0, 0]]),
-        'decoder_causal_attention':
-            np.array([[1, 1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0]])
+        'decoder_input_tokens': np.array(
+            [[0, 3, 4, 5, 6, 0, 0], [0, 7, 8, 9, 0, 0, 0]]
+        ),
+        'decoder_causal_attention': np.array(
+            [[1, 1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0]]
+        ),
     }
 
     # These dummy logits represent the probability distribution where all the
