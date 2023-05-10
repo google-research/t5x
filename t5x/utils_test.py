@@ -606,7 +606,7 @@ class UtilsTest(parameterized.TestCase):
     directory = "path/to/dir"
     path = os.path.join(directory, "checkpoint")
     save_cfg = utils.SaveCheckpointConfig(
-        checkpoint_manager_cls=checkpoints.BestCheckpointManager
+        checkpoint_manager_cls=checkpoints.OrbaxCheckpointManagerInterface
     )
     restore_cfg = utils.RestoreCheckpointConfig(
         path=path, checkpoint_manager_cls=None
@@ -624,24 +624,24 @@ class UtilsTest(parameterized.TestCase):
       dict(
           testcase_name="using_best_checkpoint_manager",
           checkpointer_cls=checkpoints.Checkpointer,
-          checkpoint_manager_cls=checkpoints.BestCheckpointManager,
-          metric_name_to_monitor={"train/accuracy": 0.8, "train/loss": 0.1},
+          checkpoint_manager_cls=checkpoints.OrbaxCheckpointManagerInterface,
+          metrics=None,
           expected_metric_mode="max",
           expected_force_keep_period=None,
           expected_keep_checkpoints_without_metrics=True,
-          expected_metric=0.8,
+          expected_metric=None,
       ),
       dict(
           testcase_name="using_functools_partial_for_checkpoint_manager_cls",
           checkpointer_cls=checkpoints.Checkpointer,
           checkpoint_manager_cls=functools.partial(
-              checkpoints.BestCheckpointManager,
+              checkpoints.OrbaxCheckpointManagerInterface,
               metric_name_to_monitor="loss",
               metric_mode="min",
               force_keep_period=10,
               keep_checkpoints_without_metrics=False,
           ),
-          metric_name_to_monitor={"accuracy": 0.8, "loss": 0.1},
+          metrics={"accuracy": 0.8, "loss": 0.1},
           expected_metric_mode="min",
           expected_force_keep_period=10,
           expected_keep_checkpoints_without_metrics=False,
@@ -650,8 +650,8 @@ class UtilsTest(parameterized.TestCase):
       dict(
           testcase_name="using_save_best_checkpointer",
           checkpointer_cls=checkpoints.SaveBestCheckpointer,
-          checkpoint_manager_cls=checkpoints.CheckpointManager,
-          metric_name_to_monitor={"train/accuracy": 0.8, "train/loss": 0.1},
+          checkpoint_manager_cls=checkpoints.OrbaxCheckpointManagerInterface,
+          metrics={"train/accuracy": 0.8, "train/loss": 0.1},
           expected_metric_mode="max",
           expected_force_keep_period=None,
           expected_keep_checkpoints_without_metrics=True,
@@ -666,8 +666,8 @@ class UtilsTest(parameterized.TestCase):
               force_keep_period=20,
               keep_checkpoints_without_metrics=False,
           ),
-          checkpoint_manager_cls=checkpoints.CheckpointManager,
-          metric_name_to_monitor={"train/accuracy": 0.8, "train/loss": 0.1},
+          checkpoint_manager_cls=checkpoints.OrbaxCheckpointManagerInterface,
+          metrics={"train/accuracy": 0.8, "train/loss": 0.1},
           expected_metric_mode="min",
           expected_force_keep_period=20,
           expected_keep_checkpoints_without_metrics=False,
@@ -678,7 +678,7 @@ class UtilsTest(parameterized.TestCase):
       self,
       checkpointer_cls,
       checkpoint_manager_cls,
-      metric_name_to_monitor: Mapping[str, float],
+      metrics: Mapping[str, float],
       expected_metric_mode: str,
       expected_force_keep_period: int,
       expected_keep_checkpoints_without_metrics: bool,
@@ -715,23 +715,29 @@ class UtilsTest(parameterized.TestCase):
         model_dir=directory,
     )
 
-    self.assertIsInstance(manager, checkpoints.BestCheckpointManager)
-    self.assertEqual(manager._options.max_to_keep, 5)
-    self.assertEqual(manager._options.save_interval_steps, 2)
+    self.assertIsInstance(manager, checkpoints.OrbaxCheckpointManagerInterface)
+    self.assertEqual(manager._manager._options.max_to_keep, 5)
+    self.assertEqual(manager._manager._options.save_interval_steps, 2)
     self.assertEqual(manager._save_dtype, "float32")
     self.assertEqual(manager._restore_dtype, "bfloat16")
     self.assertTrue(manager._should_write_dataset_ckpt)
 
     # Save best options.
-    self.assertEqual(manager._options.keep_period, expected_force_keep_period)
-    self.assertEqual(manager._options.best_mode, expected_metric_mode)
     self.assertEqual(
-        manager._options.keep_checkpoints_without_metrics,
+        manager._manager._options.keep_period, expected_force_keep_period
+    )
+    self.assertEqual(manager._manager._options.best_mode, expected_metric_mode)
+    self.assertEqual(
+        manager._manager._options.keep_checkpoints_without_metrics,
         expected_keep_checkpoints_without_metrics,
     )
-    self.assertEqual(
-        manager._options.best_fn(metric_name_to_monitor), expected_metric
-    )
+    if expected_metric is None:
+      self.assertIsNone(manager._manager._options.best_fn)
+    else:
+      self.assertEqual(
+          manager._manager._options.best_fn(metrics),
+          expected_metric,
+      )
 
   @parameterized.parameters((True,), (False,))
   def test_create_checkpoint_manager_from_checkpointer(
@@ -776,19 +782,21 @@ class UtilsTest(parameterized.TestCase):
         model_dir=directory,
     )
 
-    self.assertIsInstance(manager, checkpoints.BestCheckpointManager)
-    self.assertEqual(manager._options.max_to_keep, 5)
-    self.assertEqual(manager._options.save_interval_steps, 2)
+    self.assertIsInstance(manager, checkpoints.OrbaxCheckpointManagerInterface)
+    self.assertEqual(manager._manager._options.max_to_keep, 5)
+    self.assertEqual(manager._manager._options.save_interval_steps, 2)
     self.assertEqual(manager._save_dtype, "float32")
     self.assertEqual(manager._restore_dtype, "bfloat16")
     self.assertTrue(manager._should_write_dataset_ckpt)
 
     # Save best options.
-    self.assertIsNone(manager._options.keep_period, None)
-    self.assertEqual(manager._options.best_mode, "max")
-    self.assertTrue(manager._options.keep_checkpoints_without_metrics)
+    self.assertIsNone(manager._manager._options.keep_period, None)
+    self.assertEqual(manager._manager._options.best_mode, "max")
+    self.assertTrue(manager._manager._options.keep_checkpoints_without_metrics)
     self.assertEqual(
-        manager._options.best_fn({"train/accuracy": 0.8, "train/loss": 0.1}),
+        manager._manager._options.best_fn(
+            {"train/accuracy": 0.8, "train/loss": 0.1}
+        ),
         0.8,
     )
 

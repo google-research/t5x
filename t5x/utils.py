@@ -25,7 +25,7 @@ import os
 import re
 import time
 import typing
-from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union, cast
+from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
 import warnings
 
 from absl import flags
@@ -147,7 +147,7 @@ class SaveCheckpointConfig:
   use_gda: bool = True
   # CheckpointManager implementation to use.
   checkpoint_manager_cls: checkpoints.CheckpointManagerConstructor = (
-      checkpoints.CheckpointManager
+      checkpoints.OrbaxCheckpointManagerInterface
   )
 
   def __post_init__(self):
@@ -197,7 +197,7 @@ class RestoreCheckpointConfig:
   use_gda: bool = True
   # CheckpointManager implementation to use.
   checkpoint_manager_cls: checkpoints.CheckpointManagerConstructor = (
-      checkpoints.CheckpointManager
+      checkpoints.OrbaxCheckpointManagerInterface
   )
 
   def __post_init__(self):
@@ -382,31 +382,20 @@ def create_checkpoint_manager(
         # parameters being passed, which would give an error.
     }
 
-  def _get_checkpoint_manager_cls(cfg):
-    checkpoint_manager_cls = cfg.checkpoint_manager_cls
+  def _get_extra_kwargs(cfg):
     extra_kwargs = {}
-
     # Sometimes, the user pass in a `functools.partial` of
     # `SaveBestCheckpointer` which will cause issubclass to raise an Exception
     # since `functools.partial` is not a class.
     if isinstance(cfg.checkpointer_cls, functools.partial):
-      func_to_check = cast(functools.partial, cfg.checkpointer_cls).func
-      if issubclass(
-          # pylint: disable-next=g-bare-generic
-          cast(type, func_to_check),
-          checkpoints.SaveBestCheckpointer,
-      ):
-        checkpoint_manager_cls = checkpoints.BestCheckpointManager
       # Note, this is intentionally moved out of the above if statement compared
       # to the condition below. This is because we need to handle the kwargs
       # differently since it's a functools.partial.
       extra_kwargs = _get_default_args(cfg.checkpointer_cls)
     else:
       if issubclass(cfg.checkpointer_cls, checkpoints.SaveBestCheckpointer):
-        checkpoint_manager_cls = checkpoints.BestCheckpointManager
         extra_kwargs = _get_default_args(cfg.checkpointer_cls.__init__)
-
-    return checkpoint_manager_cls, extra_kwargs
+    return extra_kwargs
 
   save_dtype = None
   restore_dtype = None
@@ -414,25 +403,25 @@ def create_checkpoint_manager(
   keep = None
   should_save_restore_dataset = False
   checkpoint_manager_cls = None
+  extra_kwargs = {}
   if save_cfg is not None:
     should_save_restore_dataset |= save_cfg.save_dataset
     save_dtype = save_cfg.dtype
     keep = save_cfg.keep
     period = save_cfg.period
-    checkpoint_manager_cls, extra_kwargs = _get_checkpoint_manager_cls(save_cfg)
+    checkpoint_manager_cls = save_cfg.checkpoint_manager_cls
+    extra_kwargs = _get_extra_kwargs(save_cfg)
   if restore_cfg is not None:
     should_save_restore_dataset |= restore_cfg.restore_dataset
     restore_dtype = restore_cfg.dtype
-    # If already set, configuration from save_cfg takes precendence. If
-    # checkpoint_manager_cls is base CheckpointManager, give it a chance to be
-    # reset to something more specialized.
-    if (
-        checkpoint_manager_cls is None
-        or checkpoint_manager_cls == checkpoints.CheckpointManager
-    ):
-      checkpoint_manager_cls, extra_kwargs = _get_checkpoint_manager_cls(
-          restore_cfg
-      )
+    # Doesn't matter if we reset this, since they're required to be the same
+    # anyway.
+    checkpoint_manager_cls = restore_cfg.checkpoint_manager_cls
+    # If already set, configuration from save_cfg takes precendence. Give
+    # extra_kwargs a chance to be reset to something more specialized, if not
+    # specified in save_cfg
+    if not extra_kwargs:
+      extra_kwargs = _get_extra_kwargs(restore_cfg)
   ds_iter = ds_iter if should_save_restore_dataset else None
 
   return checkpoint_manager_cls(
@@ -574,7 +563,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
 
 
 def restore(
-    checkpoint_manager: checkpoints.CheckpointManager,
+    checkpoint_manager: checkpoints.OrbaxCheckpointManagerInterface,
     paths: Sequence[str],
     restore_cfg: RestoreCheckpointConfig,
     fallback_state: Optional[Mapping[str, Any]] = None,
@@ -584,7 +573,7 @@ def restore(
   Determines whether the indicated path is a Tensorflow checkpoint.
 
   Args:
-    checkpoint_manager: Orbax CheckpointManager
+    checkpoint_manager: OrbaxCheckpointManagerInterface
     paths: A sequence of paths to restore from.
     restore_cfg: RestoreCheckpointConfig specifying restoration information.
     fallback_state: a state dict of an optimizer to fall back to for loading

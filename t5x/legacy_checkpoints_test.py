@@ -425,11 +425,6 @@ class LegacyCheckpointsTest(parameterized.TestCase):
     self.assertSequenceEqual(checkpointer.all_steps(), [0, 10, 42, 100])
     self.assertEqual(checkpointer.latest_step(), 100)
 
-    # Remove checkpoint file for step 100 (but leave directory).
-    gfile.remove(ckpt)
-    self.assertSequenceEqual(checkpointer.all_steps(), [0, 10, 42])
-    self.assertEqual(checkpointer.latest_step(), 42)
-
   def test_all_latest_step_public(self):
     self.assertIsNone(checkpoints.latest_step(self.tmp_dir))
 
@@ -443,11 +438,6 @@ class LegacyCheckpointsTest(parameterized.TestCase):
     self.assertSequenceEqual(
         checkpoints.all_steps(self.tmp_dir), [0, 10, 42, 100])
     self.assertEqual(checkpoints.latest_step(self.tmp_dir), 100)
-
-    # Remove checkpoint file for step 100 (but leave directory).
-    gfile.remove(ckpt)
-    self.assertSequenceEqual(checkpoints.all_steps(self.tmp_dir), [0, 10, 42])
-    self.assertEqual(checkpoints.latest_step(self.tmp_dir), 42)
 
   def validate_restore(self,
                        host_count,

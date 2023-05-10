@@ -222,11 +222,10 @@ def train(
             checkpoint_cfg.restore.checkpointer_cls, pw_checkpoints.Checkpointer
         )
     ):
-      warnings.warn(
+      raise ValueError(
           'Requested use_orbax with Pathways checkpointing, which is currently'
-          ' unsupported. Setting use_orbax=False.'
+          ' unsupported.'
       )
-      use_orbax = False
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.

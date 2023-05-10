@@ -192,9 +192,9 @@ def _run_future_tree(future_tree):
 
 def all_steps(checkpoints_dir: str) -> Sequence[int]:
   """Returns list of available step numbers in ascending order."""
-  glob_pattern = os.path.join(checkpoints_dir, 'checkpoint_*', 'checkpoint')
+  glob_pattern = os.path.join(checkpoints_dir, 'checkpoint_*')
   checkpoint_paths = gfile.glob(glob_pattern)
-  re_pattern = re.compile(r'.*/checkpoint_(\d+)/checkpoint$')
+  re_pattern = re.compile(r'.*/checkpoint_(\d+)$')
   matches = [re_pattern.match(ckpt) for ckpt in checkpoint_paths]
   return sorted(int(match.group(1)) for match in matches if match)
 
@@ -2650,30 +2650,6 @@ class BestCheckpointManager(CheckpointManager):
     super()._finalize(temp_ckpt_dir)
 
 
-class CheckpointManagerConstructor(typing_extensions.Protocol):
-  """A function that returns a checkpoints.CheckpointManager.
-
-  This type annotation allows users to partially bind args to the constructors
-  of CheckpointManager subclasses without triggering type errors.
-  """
-
-  def __call__(
-      self,
-      directory: str,
-      train_state: train_state_lib.TrainState,
-      partitioner: partitioning.BasePartitioner,
-      dataset_iterator: Optional[tf.data.Iterator] = None,
-      save_dtype: Optional[jnp.dtype] = None,
-      restore_dtype: Optional[jnp.dtype] = None,
-      keep: Optional[int] = None,
-      period: Optional[int] = None,
-      force_keep_period: Optional[int] = None,
-      options: Optional[orbax.checkpoint.CheckpointManagerOptions] = None,
-  ) -> CheckpointManager:
-    """CheckpointManager constructor."""
-    pass
-
-
 class OrbaxCheckpointManagerInterface:
   """Wrapper for orbax.checkpoint.CheckpointManager."""
 
@@ -2767,9 +2743,13 @@ class OrbaxCheckpointManagerInterface:
   def latest_step(self) -> Optional[int]:
     return self._manager.latest_step()
 
+  def should_save(self, step: int) -> bool:
+    return self._manager.should_save(step)
+
   def save(
       self,
       train_state: train_state_lib.TrainState,
+      state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
       force: bool = True,
   ) -> bool:
     """Saves a checkpoint for the given train state.
@@ -2777,6 +2757,8 @@ class OrbaxCheckpointManagerInterface:
     Args:
       train_state: the train state to save. May contain a combination of
         LazyArray objects and arrays (e.g., np.ndarray, jax.DeviceArray)
+      state_transformation_fns: Transformations to apply, in order, to the state
+        before writing.
       force: Saves regardless of whether should_save is False. True by default
         because should_save logic is handled externally to this class in T5X.
         This is because of a feature that decouples actual step and step offset.
@@ -2789,10 +2771,13 @@ class OrbaxCheckpointManagerInterface:
     if not force and not self._manager.should_save(step):
       return False
 
-    state_dict = train_state.state_dict()
-    param_infos = _construct_orbax_param_infos(
-        self._train_state, self._partitioner
+    # TODO(b/216649487) Test save-time state_transformation_fns.
+    state_dict, param_infos = _transform_state_and_infos(
+        train_state.state_dict(),
+        _construct_orbax_param_infos(self._train_state, self._partitioner),
+        state_transformation_fns,
     )
+
     # Arguments for saving interpretable by Orbax.
     save_args = jax.tree_util.tree_map(
         functools.partial(_construct_save_args, dtype=self._save_dtype),
@@ -2956,3 +2941,26 @@ class OrbaxCheckpointManagerInterface:
         self._partitioner,
         self._restore_dtype,
     )
+
+
+class CheckpointManagerConstructor(typing_extensions.Protocol):
+  """A function that returns a checkpoints.CheckpointManager.
+
+  This type annotation allows users to partially bind args to the constructors
+  of CheckpointManager subclasses without triggering type errors.
+  """
+
+  def __call__(
+      self,
+      directory: str,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      dataset_iterator: Optional[tf.data.Iterator] = None,
+      save_dtype: Optional[jnp.dtype] = None,
+      restore_dtype: Optional[jnp.dtype] = None,
+      keep: Optional[int] = None,
+      period: Optional[int] = None,
+      force_keep_period: Optional[int] = None,
+  ) -> OrbaxCheckpointManagerInterface:
+    """CheckpointManager constructor."""
+    pass
