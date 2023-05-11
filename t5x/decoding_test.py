@@ -217,8 +217,7 @@ class DecodeTest(parameterized.TestCase):
       for j in range(max_decode_len):
         rng1, rng = jax.random.split(rng)
         # We want to sift out `j` for which rng1 == rng_input
-        # rngs are a pair of ints. So sum the bool and divide by 2.
-        k += j * (rng1 == rng_input).sum() // 2
+        k += j * (rng1 == rng_input).all()
       # `k` at this point is equal to the while loop variable `i` of the caller.
       return ret[k]
 
@@ -296,8 +295,7 @@ class DecodeTest(parameterized.TestCase):
       for j in range(max_decode_len):
         rng1, rng = jax.random.split(rng)
         # We want to sift out `j` for which rng1 == rng_input
-        # rngs are a pair of ints. So sum the bool and divide by 2.
-        k += j * (rng1 == rng_input).sum() // 2
+        k += j * (rng1 == rng_input).all()
       # `k` at this point is equal to the while loop variable `i` of the caller.
       return ret[k]
 

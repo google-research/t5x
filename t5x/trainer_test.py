@@ -921,7 +921,7 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
       del model, batch, num_microbatches, data_partition_spec
       # Add 1, which will increment the step as a side effect.
       grad_accum = jax.tree_map(lambda x: 1, optimizer)
-      m = {'rng': metrics_lib.Sum(jnp.sum(rng))}
+      m = {'rng': metrics_lib.Sum(jnp.sum(jax.random.key_data(rng)))}
       return grad_accum, m, None
 
     mock_accum_grads.side_effect = fake_accum_grads_rng
@@ -938,8 +938,12 @@ class TrainerRngDeterminismTest(parameterized.TestCase):
     metrics = trainer.train(iter(ds), num_steps=end_step - start_step)
     base_rng = jax.random.PRNGKey(random_seed)
     expected_rng_sum = np.sum(
-        [jax.random.fold_in(base_rng, i) for i in range(start_step, end_step)],
-        dtype=np.uint32)
+        [
+            jax.random.key_data(jax.random.fold_in(base_rng, i))
+            for i in range(start_step, end_step)
+        ],
+        dtype=np.uint32,
+    )
     np.testing.assert_array_equal(metrics.result()['rng'].value,
                                   expected_rng_sum)
 
