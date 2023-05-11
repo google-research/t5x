@@ -442,7 +442,9 @@ def infer(
   if dataset_cfg.module:
     utils.import_module(dataset_cfg.module)
   host_shard_info = seqio.ShardInfo(index=shard_id, num_shards=num_shards)
-  task_or_mixture = seqio.get_mixture_or_task(dataset_cfg.mixture_or_task_name)
+  task_or_mixture = seqio.maybe_get_mixture_or_task(
+      dataset_cfg.mixture_or_task_name
+  )
 
   feature_converter = model.FEATURE_CONVERTER_CLS(pack=False)
 
