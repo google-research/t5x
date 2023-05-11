@@ -818,7 +818,7 @@ class MockCheckpointer(checkpoints.Checkpointer):
     return MockTrainState(path=path, from_scratch=False)
 
 
-class MockCheckpointManager(checkpoints.CheckpointManager):
+class MockCheckpointManager(checkpoints.OrbaxCheckpointManagerInterface):
 
   def __init__(self, *args, **kwargs):
     pass
