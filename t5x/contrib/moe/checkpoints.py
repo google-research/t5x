@@ -20,7 +20,7 @@ from typing import Any, Optional, Union
 import clu.data
 import jax
 import jax.config
-from jax.experimental.gda_serialization import serialization as gda_serialization
+from jax.experimental.array_serialization import serialization as array_serialization
 from jax.experimental.pjit import pjit
 import jax.numpy as jnp
 import numpy as np
@@ -287,7 +287,7 @@ async def _read_upcycle_ts(
     else:
       checkpoint_axes = axes
 
-    arr = await gda_serialization.async_deserialize(
+    arr = await array_serialization.async_deserialize(
         jax.sharding.NamedSharding(mesh, checkpoint_axes), tmp_ts_spec_dict
     )
 
