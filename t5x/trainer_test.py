@@ -14,7 +14,6 @@
 
 """Tests for t5x.trainer_lib."""
 import collections
-import contextlib
 import os
 
 from absl.testing import absltest
@@ -25,7 +24,6 @@ import clu.metrics
 import clu.values
 import flax
 import jax
-from jax._src import dispatch as jax_dispatch
 import jax.numpy as jnp
 import numpy as np
 from t5x import metrics as metrics_lib
@@ -42,15 +40,6 @@ mock = absltest.mock
 jax.config.parse_flags_with_absl()
 
 FlaxMutables = flax.core.FrozenDict
-
-
-# Make `log_elapsed_time` a no-op to simplify mocking of `time.time()`.
-@contextlib.contextmanager
-def fake_log_elapsed_time(fmt, fun_name, event=None):  # pylint: disable=unused-argument
-  yield
-
-
-jax_dispatch.log_elapsed_time = fake_log_elapsed_time
 
 
 def _validate_events(test_case, summary_dir, expected_metrics, steps):
@@ -160,11 +149,9 @@ class MetricsManagerTest(absltest.TestCase):
         'steps_per_second': clu.values.Scalar(0.05),
         'text': clu.values.Text('test metric')
     }
-    with mock.patch(
-        'jax.process_index', return_value=0), mock.patch(
-            'time.time',
-            side_effect=[0, 40]  # start_time, end_time
-        ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+    with mock.patch('jax.process_index', return_value=0), mock.patch(
+        't5x.trainer._time', side_effect=[0, 40]  # start_time, end_time
+    ):
       mm = trainer_lib.MetricsManager('eval', summary_dir=self.model_dir)
       mm.start_duration_timer()
       summary = mm.write_metrics_summary(
@@ -197,9 +184,9 @@ class MetricsManagerTest(absltest.TestCase):
 
     n = 10
     with mock.patch(
-        'time.time',
-        side_effect=range(2 * n)  # start_time, end_time
-    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+        't5x.trainer._time',
+        side_effect=range(2 * n),  # start_time, end_time
+    ):
       for _ in range(n):
         mm.start_duration_timer()
         summary = mm.write_metrics_summary({'time': metrics_lib.Time()}, 0, 1)
@@ -331,10 +318,7 @@ class TrainerTest(parameterized.TestCase):
     self.dataset = tf.data.Dataset.range(6).map(mapfn).batch(
         2, drop_remainder=True)
 
-    with mock.patch(
-        'time.time',
-        side_effect=[0]  # trainer init
-    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+    with mock.patch('t5x.trainer._time', side_effect=[0]):  # trainer init
       self.test_trainer = trainer_lib.Trainer(
           mock.create_autospec(models_lib.BaseModel, instance=True),
           self.init_train_state,
@@ -358,9 +342,10 @@ class TrainerTest(parameterized.TestCase):
 
     if precompile:
       with mock.patch(
-          'time.time',
-          side_effect=[0, 1]  # compile start, end
-      ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+          't5x.trainer._time', side_effect=[0, 1]  # compile start, end
+      ), mock.patch(
+          'absl.logging.log'
+      ):  # avoids hidden calls to time.time()
         trainer.compile_train(next(self.dataset.as_numpy_iterator()))
       trainer._compiled_train_step = mock.Mock(
           side_effect=trainer._compiled_train_step)
@@ -370,9 +355,9 @@ class TrainerTest(parameterized.TestCase):
 
     num_steps = 2
     with mock.patch(
-        'time.time',
-        side_effect=[1, 5, 6]  # start_time, uptime logged, end_time
-    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+        't5x.trainer._time',
+        side_effect=[1, 5, 6],  # start_time, uptime logged, end_time
+    ):
       trainer.train(self.dataset.as_numpy_iterator(), num_steps).result()
 
     initial_metrics = {
@@ -431,9 +416,11 @@ class TrainerTest(parameterized.TestCase):
     if precompile:
       # [task1 start, task1 end, task2 start, task2 end]
       with mock.patch(
-          'time.time',
-          side_effect=[0, 1, 2, 3]  # [t1 start, t1 end, t2 start, t2 end]
-      ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+          't5x.trainer._time',
+          side_effect=[0, 1, 2, 3],  # [t1 start, t1 end, t2 start, t2 end]
+      ), mock.patch(
+          'absl.logging.log'
+      ):  # avoids hidden calls to time.time()
         trainer.compile_eval({
             task: next(ds.as_numpy_iterator())
             for task, ds in task_datasets.items()
@@ -447,9 +434,9 @@ class TrainerTest(parameterized.TestCase):
         side_effect=trainer._partitioned_eval_step)
 
     with mock.patch(
-        'time.time',
-        side_effect=[1, 5, 5, 8]  # t1 start, t1 end, t2 start, t2 end]
-    ), mock.patch('absl.logging.log'):  # avoids hidden calls to time.time()
+        't5x.trainer._time',
+        side_effect=[1, 5, 5, 8],  # t1 start, t1 end, t2 start, t2 end]
+    ):
       trainer.eval(
           {task: ds.as_numpy_iterator() for task, ds in task_datasets.items()})
 
@@ -756,7 +743,7 @@ class TrainerTest(parameterized.TestCase):
         'j': np.ones((), dtype=np.float32)
     }
     # compile start, compile end
-    with mock.patch('time.time', side_effect=[1, 5]):
+    with mock.patch('t5x.trainer._time', side_effect=[1, 5]):
       trainer.compile_train(batch)
 
     trainer.train_metrics_manager.write_scalar.assert_called_with(
@@ -796,7 +783,9 @@ class TrainerTest(parameterized.TestCase):
     }
 
     # eval1 start/end, eval2 start/end, eval3 start/end, eval 4 start/end
-    with mock.patch('time.time', side_effect=[1, 5, 6, 9, 10, 11, 12, 13]):
+    with mock.patch(
+        't5x.trainer._time', side_effect=[1, 5, 6, 9, 10, 11, 12, 13]
+    ):
       trainer.compile_eval(collections.OrderedDict(sorted(batches.items())))
 
     trainer.eval_metrics_managers['eval1'].write_scalar.assert_called_with(
@@ -1011,7 +1000,7 @@ class MutableTrainerTest(parameterized.TestCase):
         learning_rate_fn=lambda step: 2 * (step + 1),
         num_microbatches=None)
 
-  @mock.patch('time.time')
+  @mock.patch('t5x.trainer._time')
   @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_mut_accum_grads)
   @mock.patch('t5x.trainer.apply_grads', fake_mut_apply_grads)
   # avoids calls time.time() during logging

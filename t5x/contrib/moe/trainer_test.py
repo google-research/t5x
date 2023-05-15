@@ -14,11 +14,8 @@
 
 """Tests for trainer."""
 
-import contextlib
-
 from absl.testing import absltest
 import jax
-from jax._src import dispatch as jax_dispatch
 import numpy as np
 from t5x import metrics as metrics_lib
 from t5x import models as models_lib
@@ -30,15 +27,6 @@ import tensorflow as tf
 
 mock = absltest.mock
 jax.config.parse_flags_with_absl()
-
-
-# Make `log_elapsed_time` a no-op to simplify mocking of `time.time()`.
-@contextlib.contextmanager
-def fake_log_elapsed_time(_, event=None):  # pylint: disable=unused-argument
-  yield
-
-
-jax_dispatch.log_elapsed_time = fake_log_elapsed_time
 
 
 def fake_accum_grads(model, optimizer, batch, rng, num_microbatches,
@@ -107,10 +95,9 @@ class MoeTrainerTest(absltest.TestCase):
         num_microbatches=None,
         num_expert_partitions=num_expert_partitions)
 
-  @mock.patch('time.time')
+  @mock.patch('t5x.trainer._time')
   @mock.patch('t5x.trainer.accumulate_grads_microbatched', fake_accum_grads)
   @mock.patch('t5x.trainer.apply_grads', fake_apply_grads)
-  @mock.patch('absl.logging.log', lambda *_: None)  # avoids time.time() calls
   def _test_train(self, precompile, mock_time=None):
     trainer = self.test_trainer
     initial_rng = trainer._base_rng

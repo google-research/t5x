@@ -72,6 +72,11 @@ def _merge_metrics(a, b):
       lambda a, b: a.merge(b), a, b, is_leaf=metrics_lib.is_metric_obj)
 
 
+def _time() -> float:
+  """Indirection to `time.time` for mocking."""
+  return time.time()
+
+
 # Merges two metrics pytrees (mapping of metric_name (str) to clu.Metric object)
 def merge_metrics(a, b):
   a, b = jax.tree_util.tree_map(utils.get_local_data, (a, b))
@@ -242,7 +247,7 @@ class _AsyncTimer(object):
                                       "called on deleted or donated buffer")
         if str(e) not in (buffer_deleted_message, gda_buffer_deleted_message):
           raise
-      return time.time()
+      return _time()
 
     return self._pool(_get_completion_time)()
 
@@ -446,7 +451,7 @@ class BaseTrainer(abc.ABC):
     self.stop_training = False
 
     # Time since the trainer was made, this will record the "uptime" of the job.
-    self._trainer_init_time = time.time()
+    self._trainer_init_time = _time()
 
     # The training metrics combine metrics added by the Model (e.g., loss and
     # accuracy) and Trainer (e.g., learning rate).
@@ -516,7 +521,8 @@ class BaseTrainer(abc.ABC):
 
     if metrics is not None:
       metrics["timing/uptime"] = clu.metrics.LastValue.from_model_output(
-          jnp.asarray([time.time() - self._trainer_init_time]))
+          jnp.asarray([_time() - self._trainer_init_time])
+      )
 
     return self.train_metrics_manager.write_metrics_summary(
         metrics, start_step + num_steps, num_steps)
@@ -534,10 +540,10 @@ class BaseTrainer(abc.ABC):
       batch: A sample batch that may contain dummy values, but with correct
         shapes and dtypes.
     """
-    tick = time.time()
+    tick = _time()
     self._compiled_train_step = self._partitioner.compile(
         self._partitioned_train_step, self.train_state, batch)
-    tock = time.time()
+    tock = _time()
     self.train_metrics_manager.write_scalar("timing/compilation_seconds",  # pytype: disable=wrong-arg-types  # jax-ndarray
                                             tock - tick, self.train_state.step)
 
@@ -601,7 +607,7 @@ class BaseTrainer(abc.ABC):
         correct.
     """
     for eval_name, batch in batches.items():
-      tick = time.time()
+      tick = _time()
       cache_key: BatchSpec = FrozenDict(jax.eval_shape(lambda: batch))  # pylint:disable=cell-var-from-loop
       if cache_key not in self._compiled_eval_step_cache:
         if jax.process_count() > 1:
@@ -612,7 +618,7 @@ class BaseTrainer(abc.ABC):
             self._partitioned_eval_step, self.train_state, batch)
       self._compiled_eval_steps[eval_name] = self._compiled_eval_step_cache[
           cache_key]
-      tock = time.time()
+      tock = _time()
       self.eval_metrics_managers[eval_name].write_scalar(  # pytype: disable=wrong-arg-types  # jax-ndarray
           "timing/compilation_seconds", tock - tick, self.train_state.step)
 
