@@ -27,8 +27,8 @@ from version import __version__  # pylint: disable=g-import-not-at-top
 with open('README.md') as fp:
   _LONG_DESCRIPTION = fp.read()
 
-_jax_version = '0.4.6'
-_jaxlib_version = '0.4.6'
+_jax_version = '0.4.10'
+_jaxlib_version = '0.4.10'
 
 setuptools.setup(
     name='t5x',
