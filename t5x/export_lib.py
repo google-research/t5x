@@ -1309,8 +1309,10 @@ def save(
       the final TPU-converted saved model. The CPU saved model will be saved to
       ${BASE}_cpu/${VERSION}, such that "_cpu" is appended to the base path but
       the numeric version is preserved. (b) A dict with key 'cpu' and as value
+      the path to write the CPU model to.
     model_name: Name of model, like "/ml/user/half_plus_two".
     warmup_examples: Optional list of warmup examples. If proveded, they will be
+      written in Predict mode to assets.extra.
     tokenized_inputs: if True, inputs are expected to be pre-tokenized before
       being passed to the Jax2TF converted model, e.g. an int32 tensor of type
       [B, L]. If False, inputs is expected to be a string tensor of shape [B].
@@ -1323,6 +1325,7 @@ def save(
       In order to set this output_features must be None.
     validation_examples: Optional list of validation examples. If proveded, they
       will be used to validate the latency and numeric accuracy of the TPU saved
+      model.
     native_lowering: for experimental purposes only -- if True, don't convert
       Jax fns to TF fns.
     enable_xla: Defaults to true. If false, jax2tf conversion only emits non-XLA
@@ -1338,7 +1341,7 @@ def save(
     signature_name: Optional name of the exported function.
     create_polymorphic_shapes_fn: Optional function to create polymorphic shapes
       for input tensors to the JAX model function.
-  """
+  """  # fmt: skip
   jax.monitoring.record_event('/jax/t5x/export/beacon')
   output_dirs = _standardize_output_dirs(output_dir)
   del output_dir
