@@ -31,6 +31,7 @@ dependencies = [
     "jaxlib >= 0.4.3",
     "jestimator",
     "numpy",
+    "optax @ git+https://github.com/deepmind/optax#egg=optax",
     "orbax @ git+https://github.com/google/orbax#egg=orbax",
     "seqio @ git+https://github.com/google/seqio#egg=seqio",
     "tensorflow-cpu",
