@@ -22,11 +22,13 @@ from typing import Generator, List, Sequence, Tuple
 import unittest
 
 import jax
+from jax.experimental.pjit import pjit
 from jax.sharding import Mesh
 import numpy as np
 import seqio
 from t5x import adafactor
 from t5x import models
+from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x.checkpoint_importer import LazyArray
 from t5x.examples.t5 import network
@@ -261,3 +263,71 @@ def get_train_state_from_variables(variables,
   """Returns a default Train State with Adafactor optimizer."""
   optimizer = optimizer_def.create(variables['params'])
   return train_state_lib.FlaxOptimTrainState(optimizer)
+
+
+def create_sharded_array(arr, global_shape, global_mesh, mesh_axes):
+  def cb(index):
+    return arr[index]
+
+  if np.isscalar(arr):
+    return arr
+  return jax.make_array_from_callback(
+      global_shape, jax.sharding.NamedSharding(global_mesh, mesh_axes), cb
+  )
+
+
+class FakePartitioner(partitioning.BasePartitioner):
+  """Fake Partitioner for testing."""
+
+  def __init__(self, mesh, mesh_axes, params_on_devices=True):
+    super().__init__(num_partitions=1)
+    self._global_mesh = mesh
+    self._mesh_axes = mesh_axes
+    self._local_chunker = partitioning.LocalChunker(self.mesh)
+    self._params_on_devices = params_on_devices
+
+  def get_data_layout(self, batch_size=None, host_index=None):
+    return partitioning.DataLayout(
+        batch_size=1,
+        shard_id=1,
+        num_shards=1,
+        is_first_host_in_replica_set=True,
+    )
+
+  @property
+  def mesh(self):
+    return self._global_mesh
+
+  @property
+  def params_on_devices(self):
+    return self._params_on_devices
+
+  def move_params_to_devices(self, train_state, train_state_axes):
+    return train_state
+
+  def get_mesh_axes(self, train_state):
+    mesh_axes = jax.tree_map(lambda _: self._mesh_axes, train_state)
+    return mesh_axes.replace_step(None)
+
+  def _local_chunker(self):
+    return self._local_chunker
+
+  def partition(
+      self,
+      fn,
+      in_axis_resources,
+      out_axis_resources,
+      static_argnums=(),
+      donate_argnums=(),
+  ):
+    pjitted = pjit(
+        fn,
+        in_axis_resources=in_axis_resources,
+        out_axis_resources=out_axis_resources,
+        static_argnums=static_argnums,
+        donate_argnums=donate_argnums,
+    )
+    return partitioning.PjittedFnWithContext(pjitted, self.mesh)
+
+  def compile(self, partitioned_fn, *args):
+    return None
