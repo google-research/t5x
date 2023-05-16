@@ -791,10 +791,16 @@ def get_zeros_batch_like_dataset(
     dataset: tf.data.Dataset, batch_size=None
 ) -> Mapping[str, jnp.ndarray]:
   reshape = lambda s: (batch_size,) + s[1:] if batch_size else tuple(s)
-  batch_spec = {
-      k: jax.ShapeDtypeStruct(reshape(t.shape), t.dtype.as_numpy_dtype)
-      for k, t in dataset.element_spec.items()
-  }
+  if isinstance(dataset, tf.data.Dataset):
+    batch_spec = {
+        k: jax.ShapeDtypeStruct(reshape(t.shape), t.dtype.as_numpy_dtype)
+        for k, t in dataset.element_spec.items()
+    }
+  else:
+    batch_spec = {
+        k: jax.ShapeDtypeStruct(reshape(t.shape), t.dtype)
+        for k, t in dataset.element_spec.items()
+    }
   return get_zeros_batch_like_spec(batch_spec)
 
 
