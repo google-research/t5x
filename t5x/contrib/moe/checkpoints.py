@@ -58,6 +58,7 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
       keep: Optional[int] = None,
       save_dtype: jnp.dtype = np.float32,
       restore_dtype: Optional[jnp.dtype] = None,
+      use_gda: Optional[bool] = True,
       keep_dataset_checkpoints: Optional[int] = None,
   ):
     """Checkpointer constructor.
@@ -78,10 +79,18 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
       save_dtype: Dtype to cast targets to before saving.
       restore_dtype: Optional dtype to cast targets to after restoring. If None,
         no parameter casting is performed.
+      use_gda: if True, enabled jax.Array. Note: this is currently an
+        experimental feature under development.
       keep_dataset_checkpoints: An optional maximum number of data iterators to
         keep. If more than this number of data iterators exist after a save, the
         oldest ones will be automatically deleted to save space.
     """
+    if not use_gda:
+      raise ValueError(
+          'Sparse upcycling is only supported with GDA. Please set'
+          ' `use_gda`=True.'
+      )
+
     super().__init__(
         train_state=train_state,
         partitioner=partitioner,
@@ -90,6 +99,7 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
         keep=keep,
         save_dtype=save_dtype,
         restore_dtype=restore_dtype,
+        use_gda=use_gda,
         keep_dataset_checkpoints=keep_dataset_checkpoints,
     )
 
