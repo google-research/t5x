@@ -129,9 +129,11 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
       optimizer_def: optimizers.OptimizerDefType,
       model_variables: FrozenVariableDict,
   ) -> 'FlaxOptimTrainState':
-    other_variables, params = flax.core.pop(model_variables, 'params')
+    other_variables, params = flax.core.frozen_dict.pop(
+        model_variables, 'params'
+    )
     if 'params_axes' in other_variables:
-      other_variables, params_axes = flax.core.pop(
+      other_variables, params_axes = flax.core.frozen_dict.pop(
           other_variables, 'params_axes'
       )
       _validate_params_axes(params_axes, params)
@@ -234,9 +236,11 @@ class InferenceState(flax.struct.PyTreeNode):
 
   @classmethod
   def create(cls, model_variables: FrozenVariableDict) -> 'InferenceState':
-    other_variables, params = flax.core.pop(model_variables, 'params')
+    other_variables, params = flax.core.frozen_dict.pop(
+        model_variables, 'params'
+    )
     if 'params_axes' in other_variables:
-      other_variables, params_axes = flax.core.pop(
+      other_variables, params_axes = flax.core.frozen_dict.pop(
           other_variables, 'params_axes'
       )
       _validate_params_axes(params_axes, params)
