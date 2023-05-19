@@ -325,7 +325,7 @@ class MetricsManager(object):
           self._writer = None
 
   @property
-  def summary_writer(self) -> metric_writers.MetricWriter:
+  def summary_writer(self) -> Optional[metric_writers.MetricWriter]:
     """Returns the MetricWriter used by this class."""
     # TODO(adarob): Make returned writer threadsafe.
     return self._writer
@@ -341,7 +341,7 @@ class MetricsManager(object):
     """Writes scalar value to metric writers in a threadsafe manner."""
     step = utils.get_local_data(step)
     with self._writer_lock:
-      self._writer.write_scalars(step, scalars)
+      self._writer.write_scalars(step, scalars)  # pytype: disable=attribute-error
 
   def start_duration_timer(self, block_on: PyTree = ()):
     """Starts the duration timer."""
@@ -403,7 +403,7 @@ class MetricsManager(object):
     try:
       self._summary_pool.join()
     finally:
-      self._writer.flush()
+      self._writer.flush()  # pytype: disable=attribute-error
 
 
 class PreemptionError(Exception):
