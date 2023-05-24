@@ -122,7 +122,7 @@ the TPU VM instance unless otherwise stated.
 
 6.  (optional) If you prefer working with Jupyter/Colab style environment
     you can setup a custom Colab runtime by following steps from
-    [t5x/notebooks](t5x/notebooks/README.md).
+    [t5x/notebooks](https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx-notebooks-readme).
 
 ## Example: English to German translation
 
