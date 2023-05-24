@@ -817,7 +817,7 @@ class DecoderOnlyModel(BaseTransformerModel):
         jnp.ones(decoder_shape, decoder_type),
         enable_dropout=False,
     )
-    return initial_variables
+    return flax_core.freeze(initial_variables)
 
   def _get_decoder_causal_attention(self, batch):
     """Returns decoder causal attention from the batch or None."""
