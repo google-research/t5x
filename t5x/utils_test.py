@@ -602,7 +602,7 @@ class UtilsTest(parameterized.TestCase):
         }),
     )
 
-  def test_create_checkpoint_manager_validate(self):
+  def test_create_orbax_checkpoint_manager_validate(self):
     directory = "path/to/dir"
     path = os.path.join(directory, "checkpoint")
     save_cfg = utils.SaveCheckpointConfig(
@@ -612,7 +612,7 @@ class UtilsTest(parameterized.TestCase):
         path=path, checkpoint_manager_cls=None
     )
     with self.assertRaises(ValueError):
-      utils.create_checkpoint_manager(
+      utils.create_orbax_checkpoint_manager(
           save_cfg=save_cfg,
           restore_cfg=restore_cfg,
           train_state=mock.Mock(),
@@ -674,7 +674,7 @@ class UtilsTest(parameterized.TestCase):
           expected_metric=0.1,
       ),
   )
-  def test_create_checkpoint_manager(
+  def test_create_orbax_checkpoint_manager(
       self,
       checkpointer_cls,
       checkpoint_manager_cls,
@@ -706,7 +706,7 @@ class UtilsTest(parameterized.TestCase):
         restore_dataset=False,
     )
 
-    manager = utils.create_checkpoint_manager(
+    manager = utils.create_orbax_checkpoint_manager(
         save_cfg=save_cfg,
         restore_cfg=restore_cfg,
         train_state=mock.Mock(),
@@ -740,7 +740,7 @@ class UtilsTest(parameterized.TestCase):
       )
 
   @parameterized.parameters((True,), (False,))
-  def test_create_checkpoint_manager_from_checkpointer(
+  def test_create_orbax_checkpoint_manager_from_checkpointer(
       self, set_save_checkpointer_cls
   ):
     directory = self.create_tempdir(name="all_checkpoints")
@@ -773,7 +773,7 @@ class UtilsTest(parameterized.TestCase):
         restore_dataset=False,
     )
 
-    manager = utils.create_checkpoint_manager(
+    manager = utils.create_orbax_checkpoint_manager(
         save_cfg=save_cfg,
         restore_cfg=restore_cfg,
         train_state=mock.Mock(),

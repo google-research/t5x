@@ -207,6 +207,7 @@ def evaluate(
     ] = utils.TrainStateInitializer,
     train_eval_get_dataset_fn: utils.GetEvalDatasetCallable = utils.get_training_eval_datasets,
     fallback_init_rng: Optional[int] = None,
+    use_orbax: bool = False,
 ):
   """Evaluation function.
 
@@ -233,6 +234,7 @@ def evaluate(
       model re-loading when utils.RestoreCheckpointConfig.fallback_to_scratch is
       set to True. If None, parameter initialization is not allowed during model
       loading and having fallback_to_scratch enabled will result in an error.
+    use_orbax: if True, uses Orbax for checkpointing. Experimental feature.
   """
   jax.monitoring.record_event('/jax/t5x/evaluate/beacon')
   logging.info('Process ID: %d', jax.process_index())
@@ -340,8 +342,20 @@ def evaluate(
 
   if fallback_init_rng is not None:
     fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
-  for train_state, ckpt_path in train_state_initializer.from_checkpoints(
-      [restore_checkpoint_cfg], init_rng=fallback_init_rng):
+  restore_cfg, ckpt_paths = utils.get_first_valid_restore_config_and_paths(
+      [restore_checkpoint_cfg]
+  )
+  for ckpt_path in ckpt_paths:
+    train_state, _ = utils.create_checkpoint_manager_and_restore(
+        train_state_initializer,
+        partitioner,
+        restore_cfg,
+        ckpt_path,
+        fallback_init_rng,
+        use_orbax=use_orbax,
+    )
+    if train_state is None:
+      raise ValueError('Failed to restore checkpoint.')
 
     # ----------------------------------------------------------------------------
     # Main evaluation loop

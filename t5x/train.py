@@ -356,36 +356,22 @@ def train(
   if len(restore_paths) > 1:
     raise ValueError('Multiple restore paths not permitted in training.')
 
-  def _init(rng):
-    return train_state_initializer.from_scratch(rng).state_dict()
-
   # Skip initialization if neither save nor restore is requested.
   train_state = None
   if valid_restore_cfg or checkpoint_period:
-    if use_orbax:
-      checkpoint_manager = utils.create_checkpoint_manager(
-          save_cfg=checkpoint_cfg.save,
-          restore_cfg=valid_restore_cfg,
-          train_state=train_state_initializer.global_train_state_shape,
-          partitioner=partitioner,
-          ds_iter=train_iter,
-          model_dir=model_dir,
-      )
-      train_state = utils.restore(
-          checkpoint_manager, restore_paths, valid_restore_cfg,
-          utils.get_fallback_state(valid_restore_cfg, _init, init_rng))
-    else:
-      checkpoint_manager = utils.LegacyCheckpointManager(
-          save_cfg=checkpoint_cfg.save,
-          restore_cfg=valid_restore_cfg,
-          train_state_shape=train_state_initializer.global_train_state_shape,
-          partitioner=partitioner,
-          ds_iter=train_iter,
-          model_dir=model_dir,
-      )
-      train_state = checkpoint_manager.restore(
-          restore_paths, valid_restore_cfg,
-          utils.get_fallback_state(valid_restore_cfg, _init, init_rng))
+    train_state, checkpoint_manager = (
+        utils.create_checkpoint_manager_and_restore(
+            train_state_initializer,
+            partitioner,
+            valid_restore_cfg,
+            restore_paths[0] if restore_paths else None,
+            init_rng,
+            save_checkpoint_cfg=checkpoint_cfg.save,
+            model_dir=model_dir,
+            ds_iter=train_iter,
+            use_orbax=use_orbax,
+        )
+    )
 
   # Start warming up the input pipeline in the background. This must happen
   # after input pipeline checkpoints were restored.

@@ -374,6 +374,7 @@ def infer(
     output_vocab_feature_name: str = 'targets',
     file_extension: str = 'jsonl',
     keep_aux_as_numpy: bool = False,
+    use_orbax: bool = False,
 ):
   """Infer function.
 
@@ -417,6 +418,7 @@ def infer(
     file_extension: str. file extension used for file names
     keep_aux_as_numpy: bool. whether to leave aux values as numpy arrays; can be
       used to save space when saving bfloat16s
+    use_orbax: if True, uses Orbax for checkpointing. Experimental feature.
   """
   jax.monitoring.record_event('/jax/t5x/infer/beacon')
   logging.info('Process ID: %d', jax.process_index())
@@ -492,11 +494,20 @@ def infer(
 
   # Disable strictness since we are dropping the optimizer state.
   restore_checkpoint_cfg.strict = False
-
   if fallback_init_rng is not None:
     fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
-  train_state = train_state_initializer.from_checkpoint(
-      [restore_checkpoint_cfg], init_rng=fallback_init_rng)
+
+  train_state, _ = utils.create_checkpoint_manager_and_restore(
+      train_state_initializer,
+      partitioner,
+      restore_checkpoint_cfg,
+      restore_checkpoint_cfg.path,
+      fallback_init_rng,
+      use_orbax=use_orbax,
+  )
+  if train_state is None:
+    raise ValueError('TrainState was not found or could not be restored.')
+
   if mode == 'predict':
     infer_step = model.predict_batch
   elif mode == 'predict_with_aux':
