@@ -891,8 +891,7 @@ class TrainStateInitializerTest(parameterized.TestCase):
           ),
       }
 
-    init_fn = mock.Mock()
-    init_fn.__call__ = _init_fn
+    init_fn = mock.Mock(side_effect=_init_fn)
     init_fn.__self__ = None
 
     self.train_state_init = utils.TrainStateInitializer(

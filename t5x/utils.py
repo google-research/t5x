@@ -1014,8 +1014,8 @@ class TrainStateInitializer:
     """
 
     def initialize_train_state(rng: Array):
-      initial_variables = init_fn(
-          rng=rng, input_shapes=input_shapes, input_types=input_types
+      initial_variables = flax.core.freeze(
+          init_fn(rng=rng, input_shapes=input_shapes, input_types=input_types)
       )
       if optimizer_def:
         return train_state_lib.FlaxOptimTrainState.create(
