@@ -128,6 +128,8 @@ class SaveCheckpointConfig:
   dtype: str = 'float32'
   # Number of steps between writing checkpoints.
   period: Optional[int] = None
+  # List of training steps (inputted as integers) to save checkpoints for
+  checkpoint_steps: Optional[Sequence[int]] = None
   # Number of most recent checkpoints to keep, or None to keep them all.
   keep: Optional[int] = None
   # Number of dataset checkpoints to keep, or None to keep them all.
@@ -2182,5 +2184,94 @@ def override_params_axes_names(
       flat_params_axes
   )
   return flax.core.freeze(model_variables)
+
+
+def find_next_checkpoint_step(
+    checkpoint_steps_index: int,
+    inner_num_steps: int,
+    is_checkpoint_step: bool,
+    host_step: int,
+    checkpoint_steps: Sequence[int],
+    epoch_end_step: int,
+    checkpoint_period: int,
+    first_step: int,
+):
+  """Finds next valid checkpoint step in checkpoint_steps list parameter to stop scalar training and save a checkpoint at.
+
+  Checkpoint step is considered valid if it is less than the epoch end step,
+  not at a concurrent checkpoint_period step, greater than the epoch first step.
+
+  Args:
+    checkpoint_steps_index: Current index in checkpoint_steps list while
+      training.
+    inner_num_steps: Number of scalar steps to iterate through in training.
+    is_checkpoint_step: Dictates whether the current subset of scalar steps
+      contains a valid checkpoint_step to save.
+    host_step: Host step of training.
+    checkpoint_steps: List of checkpoint_stems passed in as parameter in
+      checkpoint_cfg.save.
+    epoch_end_step: Last training step in epoch.
+    checkpoint_period: Period value passed in as parameter in
+      checkpoint_cfg.save.
+    first_step: First step in epoch while training.
+
+  Returns:
+    Tuple containing (possibly) halted inner_num_steps value and
+    is_checkpoint_step if checkpoint step value was found.
+  """
+  # checks to see if inner_num_steps + host_step will out-pace current
+  # checkpoint steps index that should be saved
+  while (
+      checkpoint_steps
+      and (inner_num_steps + host_step)
+      > checkpoint_steps[checkpoint_steps_index]
+  ):
+    curr_checkpoint_step = checkpoint_steps[checkpoint_steps_index]
+    if (
+        ((curr_checkpoint_step - first_step) % checkpoint_period != 0)
+        and checkpoint_steps_index > first_step
+        and curr_checkpoint_step < epoch_end_step
+    ):
+      inner_num_steps = curr_checkpoint_step - host_step
+      is_checkpoint_step = True
+      return (inner_num_steps, is_checkpoint_step)
+    if (
+        not is_checkpoint_step
+        and checkpoint_steps_index == len(checkpoint_steps) - 1
+    ):
+      return (inner_num_steps, is_checkpoint_step)
+  return (inner_num_steps, is_checkpoint_step)
+
+
+def find_first_checkpoint_step(
+    checkpoint_steps_index: int,
+    checkpoint_steps: Sequence[int],
+    first_step: int,
+    host_step: int,
+) -> int:
+  """Finds the first valid step in checkpoint_step list parameter to save a checkpoint at.
+
+  Args:
+    checkpoint_steps_index: Current index in checkpoint_steps list while
+      training.
+    checkpoint_steps: List of checkpoint_stems passed in as parameter in
+      checkpoint_cfg.save.
+    first_step: First step in epoch while training.
+    host_step: Host step of training.
+
+  Returns:
+    Integer containing first valid checkpoint step index to start off epoch
+    training on.
+  """
+  while (
+      checkpoint_steps
+      and checkpoint_steps_index < len(checkpoint_steps) - 1
+      and (
+          host_step > checkpoint_steps[checkpoint_steps_index]
+          or checkpoint_steps[checkpoint_steps_index] == first_step
+      )
+  ):
+    checkpoint_steps_index += 1
+  return checkpoint_steps_index
 
 

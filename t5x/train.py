@@ -216,6 +216,10 @@ def train(
   eval_enabled = (train_eval_dataset_cfg or infer_eval_dataset_cfg)
   eval_period = eval_period if eval_enabled else 0
   checkpoint_period = checkpoint_cfg.save.period if checkpoint_cfg.save else 0
+  checkpoint_steps = (
+      checkpoint_cfg.save.checkpoint_steps if checkpoint_cfg.save else []
+  )
+
   if eval_period or checkpoint_period or gc_period:
     steps_per_epoch = min(eval_period or np.inf, checkpoint_period or np.inf,
                           gc_period or np.inf)
@@ -358,7 +362,7 @@ def train(
 
   # Skip initialization if neither save nor restore is requested.
   train_state = None
-  if valid_restore_cfg or checkpoint_period:
+  if valid_restore_cfg or checkpoint_period or checkpoint_steps:
     train_state, checkpoint_manager = (
         utils.create_checkpoint_manager_and_restore(
             train_state_initializer,
@@ -510,7 +514,7 @@ def train(
       logging.info('Saving checkpoint before the training loop starts.')
       checkpoint_manager.save(
           trainer.train_state,
-          checkpoint_cfg.save.state_transformation_fns,
+          checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
       )
 
   # If we take manual control of the garbage collector, we need to disable it
@@ -593,6 +597,10 @@ def train(
       '/jax/t5x/train/time_before_first_step_secs',
       time.time() - _IMPORT_TIME)
 
+  # Current index within checkpoint_steps list for faster lookup runtime and
+  # for creating a checkpoint if needed between stats_period iterations.
+  checkpoint_steps_index = 0
+
   # Main Loop over "epochs".
   for epoch in range(first_epoch, num_epochs):
     final_epoch = epoch == num_epochs - 1
@@ -614,24 +622,61 @@ def train(
             logging.info('Saving a checkpoint before early stopping...')
             checkpoint_manager.save(
                 trainer.train_state,
-                checkpoint_cfg.save.state_transformation_fns,
+                checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
             )
           logging.info('Stopping training loop early since `stop_training` is '
                        'requested.')
           break
-
         inner_num_steps = min(epoch_end_step - host_step, stats_period)
+
+        # first index in checkpoint_steps list will not always be 0 (in cases
+        # where first_step is non-zero, for example), so we must iterate to the
+        # first un-trained step in checkpoint_steps list to not re-train /
+        # save old steps
+        checkpoint_steps_index = utils.find_first_checkpoint_step(
+            checkpoint_steps_index, checkpoint_steps, first_step, host_step
+        )
+        # check if inner_num_steps will skip a checkpoint_step that must be
+        # saved, if so, then iterate only to that step and save a checkpoint
+        # at that step and then continue with further iterations
+        is_checkpoint_step = False
+        (inner_num_steps, is_checkpoint_step) = utils.find_next_checkpoint_step(
+            checkpoint_steps_index,
+            inner_num_steps,
+            is_checkpoint_step,
+            host_step,
+            checkpoint_steps,
+            epoch_end_step,
+            checkpoint_period,
+            first_step,
+        )
+
         train_summary = trainer.train(
-            train_iter, inner_num_steps, start_step=host_step)
+            train_iter, inner_num_steps, start_step=host_step
+        )
         if not concurrent_metrics:
           # Note that we always pass the dictionary of `tasks` -> summary so
-          # that the actions can be performed without special casing. The only
-          # caveat is that train would need its own special `key` given no
-          # `task` will be applied.
+          # that the actions can be performed without special casing. The
+          # only caveat is that train would need its own special `key`
+          # given no `task` will be applied.
           trainer.stop_training = run_actions(  # pytype: disable=wrong-arg-types  # jax-ndarray
-              trainer_lib.ActionMode.TRAIN, actions, trainer.train_state,
-              {TRAIN_METRIC_KEY: train_summary.result()})
+              trainer_lib.ActionMode.TRAIN,
+              actions,
+              trainer.train_state,
+              {TRAIN_METRIC_KEY: train_summary.result()},
+          )
 
+        if is_checkpoint_step:
+          logging.info('Saving a checkpoint at specified checkpoint step')
+          checkpoint_manager.save(
+              trainer.train_state,
+              checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
+          )
+        if (
+            checkpoint_steps
+            and checkpoint_steps_index < len(checkpoint_steps) - 1
+        ):
+          checkpoint_steps_index += 1
         host_step += inner_num_steps
       logging.info('END Train loop.')
     except trainer_lib.PreemptionError as e:
@@ -639,7 +684,7 @@ def train(
         logging.info('Saving emergency checkpoint.')
         checkpoint_manager.save(
             trainer.train_state,
-            checkpoint_cfg.save.state_transformation_fns,
+            checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
         )
         logging.info('Saving emergency checkpoint done.')
       raise e
@@ -649,16 +694,17 @@ def train(
     if gc_period and (final_epoch or step_offset % gc_period == 0):
       gc.collect()
 
-    # Maybe save a checkpoint.
-    if checkpoint_period and (final_epoch or
-                              step_offset % checkpoint_period == 0):
-      # Make sure last train step has completed before starting the clock.
+    # Maybe save a checkpoint if step is at period.
+    if checkpoint_period and (
+        final_epoch or step_offset % checkpoint_period == 0
+    ):
       train_summary.result()
       logging.info('Saving checkpoint.')
       checkpoint_tick = time.time()
+      # Make sure last train step has completed before starting the clock.
       checkpoint_manager.save(
           trainer.train_state,
-          checkpoint_cfg.save.state_transformation_fns,
+          checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
       )
       checkpoint_tock = time.time()
       train_metrics.write_scalar('timing/checkpoint_seconds',

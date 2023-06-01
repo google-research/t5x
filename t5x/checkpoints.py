@@ -2084,6 +2084,7 @@ class OrbaxCheckpointManagerInterface:
       restore_dtype: Optional[jnp.dtype] = None,
       keep: Optional[int] = None,
       period: Optional[int] = 1,
+      checkpoint_steps: Optional[Sequence[int]] = None,
       keep_dataset_checkpoints: Optional[int] = None,
       force_keep_period: Optional[int] = None,
       metric_name_to_monitor: Optional[str] = None,
@@ -2091,6 +2092,7 @@ class OrbaxCheckpointManagerInterface:
       keep_checkpoints_without_metrics: bool = True,
   ):
     """Performs Orbax setup given standard arguments from T5X."""
+    del checkpoint_steps
     del keep_dataset_checkpoints
     self._train_state = train_state
     self._partitioner = partitioner
@@ -2364,6 +2366,7 @@ class CheckpointManagerConstructor(typing_extensions.Protocol):
       keep: Optional[int] = None,
       period: Optional[int] = None,
       force_keep_period: Optional[int] = None,
+      checkpoint_steps: Optional[Sequence[int]] = None,
   ) -> OrbaxCheckpointManagerInterface:
     """CheckpointManager constructor."""
     pass
