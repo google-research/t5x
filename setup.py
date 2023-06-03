@@ -27,8 +27,8 @@ from version import __version__  # pylint: disable=g-import-not-at-top
 with open('README.md') as fp:
   _LONG_DESCRIPTION = fp.read()
 
-_jax_version = '0.4.10'
-_jaxlib_version = '0.4.10'
+_jax_version = '0.4.11'
+_jaxlib_version = '0.4.11'
 
 setuptools.setup(
     name='t5x',
@@ -54,7 +54,10 @@ setuptools.setup(
         'gin-config',
         f'jax >= {_jax_version}',
         f'jaxlib >= {_jaxlib_version}',
-        'jestimator',
+        (
+            'jestimator @'
+            ' git+https://github.com/google-research/jestimator#egg=jestimator'
+        ),
         'numpy',
         'optax @ git+https://github.com/deepmind/optax#egg=optax',
         'orbax-checkpoint',
