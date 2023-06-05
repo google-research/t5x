@@ -100,6 +100,7 @@ class CreateDecodingStateCallbackFn(typing_extensions.Protocol):
       vocab: seqio.Vocabulary,
       num_decodes: int = 1,
       output_feature_names: Optional[List[str]] = None,
+      call_tf_graph: bool = False,
   ) -> decoding.StateCallbackFn:
     ...
 
@@ -1385,7 +1386,8 @@ def save(
   decoding_state_callback_fn = None
   if create_decoding_state_callback_fn is not None:
     decoding_state_callback_fn = create_decoding_state_callback_fn(
-        vocab=output_vocab
+        vocab=output_vocab,
+        call_tf_graph=native_lowering,
     )
 
   model_tf_fn = create_inference_function_fn(
