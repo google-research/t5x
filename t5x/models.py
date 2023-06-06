@@ -1351,6 +1351,29 @@ def compute_base_metrics(
     Dict of metrics.
   """
   num_examples = jnp.array(targets.shape[0])
+  metrics = {}
+  if segment_ids is not None:
+    total_tokens = 0
+    total_non_padding_tokens = 0
+    for feature, feature_segment_ids in segment_ids.items():
+      if feature_segment_ids is None or feature_segment_ids.shape[1] == 0:
+        continue
+      # Since this is [B, L] with the segment ids in axis = 1.
+      num_examples = count_packed_examples(feature_segment_ids)
+      metrics[f'effective_batch_size/{feature}'] = metrics_lib.AveragePerStep(
+          total=num_examples
+      )
+      # 0s is padding
+      feature_non_padding = jnp.sum(feature_segment_ids != 0)
+      feature_size = feature_segment_ids.size
+      total_tokens += feature_size
+      total_non_padding_tokens += feature_non_padding
+      metrics[f'non_padding_fraction/{feature}'] = clu_metrics.Average(
+          total=feature_non_padding, count=feature_size
+      )
+    metrics['non_padding_fraction/overall'] = clu_metrics.Average(
+        total=total_non_padding_tokens, count=total_tokens
+    )
   num_tokens = jnp.array(targets.size)
   num_devices = jax.device_count()
   assert num_devices, 'JAX is reporting no devices, but it should.'
@@ -1358,11 +1381,15 @@ def compute_base_metrics(
   # This is needed to divide by mask sum, but should not affect correctness of
   # the numerator.
   nonpadding_tokens = jnp.sum(mask) if mask is not None else targets.size
-  metrics = {
+  metrics.update({
       'accuracy': clu_metrics.Accuracy.from_model_output(
           logits=logits, labels=targets.astype(jnp.int32), mask=mask
       ),
       'loss': metrics_lib.AveragePerStep(total=loss),
+      'avg_loss': clu_metrics.Average(total=loss, count=num_examples),
+      'loss_per_target_token': clu_metrics.Average(
+          total=loss, count=targets.size
+      ),
       'loss_per_nonpadding_target_token': clu_metrics.Average(
           total=loss, count=nonpadding_tokens
       ),
@@ -1389,7 +1416,7 @@ def compute_base_metrics(
       'non_padding_fraction/loss_weights': clu_metrics.Average(
           total=nonpadding_tokens, count=num_tokens
       ),
-  }
+  })
   if z_loss is not None:
     metrics.update({
         'z_loss': metrics_lib.AveragePerStep(total=z_loss),
