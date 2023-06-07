@@ -1,0 +1,8 @@
+sphinx>=4.4.0
+myst_parser>=0.16.1
+myst_nb
+sphinx-design
+sphinx-book-theme
+
+# Must install t5x itself for notebook execution and autodocs to work.
+.
