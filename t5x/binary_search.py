@@ -289,5 +289,12 @@ def topp_mask(logits: jnp.ndarray, p: float,
   threshold = float32_bsearch(batch_shape, predicate)
   # threshold: [batch..., 1]
   threshold = lax.expand_dims(threshold, (threshold.ndim,))
-  return jnp.where(probs >= threshold, logits,
-                   jnp.full_like(logits, replace_val))
+  masked_logits = jnp.where(
+      probs >= threshold, logits, jnp.full_like(logits, replace_val)
+  )
+  # Explicitly unmasking the largest logit. We avoid comparing to a threshold,
+  # because XLA is allowed to increase the precision on a computation path.
+  argmax = jnp.argmax(logits, axis=-1, keepdims=True)
+  return jnp.where(
+      jnp.arange(logits.shape[-1]) == argmax, logits, masked_logits
+  )
