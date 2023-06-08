@@ -84,6 +84,11 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 html_theme = 'sphinx_book_theme'
 html_css_files = ['css/t5x_theme.css']
 
+# The name of an image file (relative to this directory) to place at the top
+# of the sidebar.
+html_logo = './t5x.png'
+html_favicon = './t5x.png'
+
 # title of the website
 html_title = ''
 

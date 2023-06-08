@@ -1,8 +1,6 @@
-[TOC]
-
 # T5X Introductory Tutorial Series
 
-## Welcome!
+## Overview
 
 This series of guides is a self-contained introduction to T5X, a modular,
 composable, research-friendly framework for high-performance, configurable,

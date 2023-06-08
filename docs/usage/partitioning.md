@@ -413,7 +413,7 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 ]
 ```
 
-# Recommended reading
+## Recommended reading
 
 [Basic model and data partitioning for inference in P5X](https://docs.google.com/document/d/1bU8IuufbgkY0Wg8okyrEPnu3S5rfYGqVPMbUmeorFVo/edit)
 by brandonthorpe@, luyaoxu@
