@@ -21,3 +21,4 @@ It is essentially a new and improved implementation of the
    Usage Guides <usage/index>
    Models <models>
    api_reference/index
+   contributions

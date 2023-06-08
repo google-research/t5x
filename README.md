@@ -1,5 +1,7 @@
 # T5X
 
+*Go to [T5X ReadTheDocs Documentation Page](https://t5x.readthedocs.io/).*
+
 T5X is a modular, composable, research-friendly framework for high-performance,
 configurable, self-service training, evaluation, and inference of sequence
 models (starting with language) at many scales.
