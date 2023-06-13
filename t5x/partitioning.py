@@ -357,8 +357,14 @@ def default_mesh(num_partitions: int,
         mps = (2, 2, 4, 1)
 
   if mps is None:
-    raise ValueError('No default mesh for this configuration: specify '
-                     'config.model_parallel_submesh explicitly.')
+    raise ValueError(
+        'No default mesh for this configuration: specify '
+        'config.model_parallel_submesh explicitly. \n'
+        f'Platform: {platform}\n'
+        f'Device kind: {device_kind}\n'
+        f'Num partitions: {num_partitions}\n'
+        f'Bounds: {bounds}'
+    )
   return get_mesh(mps, backend=backend)
 
 
