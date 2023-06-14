@@ -123,6 +123,7 @@ class ExportableModule(tf.Module):
       jit_compile: bool = True,
       use_batch_function: bool = False,
       use_gpu: bool = False,
+      enable_large_batch_splitting: bool = True,
   ):
     super().__init__()
 
@@ -167,6 +168,7 @@ class ExportableModule(tf.Module):
     self._allowed_batch_sizes = allowed_batch_sizes
     self._use_batch_function = use_batch_function
     self._max_batch_size = max_batch_size
+    self._enable_large_batch_splitting = enable_large_batch_splitting
 
   @functools.partial(tf.function, autograph=False, jit_compile=False)
   def __call__(self, *input_batches) -> Tuple[Any, Any]:
@@ -192,6 +194,7 @@ class ExportableModule(tf.Module):
         max_batch_size=max_batch_size,
         batch_timeout_micros=self._batch_timeout_micros,
         allowed_batch_sizes=allowed_batch_sizes,
+        enable_large_batch_splitting=self._enable_large_batch_splitting,
     )
     flattended, tree_def = jax.tree_util.tree_flatten(input_batches)
     return batch_wrapper(functools.partial(self._call, tree_def=tree_def))(
