@@ -1650,7 +1650,8 @@ def get_infer_fn(
                 partitioner.mesh,
                 (
                     partitioner.data_partition_spec,
-                    None,
+                    # Use empty partition spec instead of None
+                    jax.sharding.PartitionSpec(),
                     partitioner.data_partition_spec,
                 ),
             )
@@ -1664,7 +1665,10 @@ def get_infer_fn(
         )
         batch_indices, batch_result = (
             multihost_utils.global_array_to_host_local_array(
-                (batch_indices, batch_result), partitioner.mesh, (None, None)
+                (batch_indices, batch_result),
+                partitioner.mesh,
+                # Use empty partition spec instead of None
+                (jax.sharding.PartitionSpec(), jax.sharding.PartitionSpec()),
             )
         )
       else:
