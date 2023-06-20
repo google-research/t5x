@@ -223,6 +223,31 @@ the params configured in `pretrain.gin`, you need to add the following configs:
     overridden using `train/DatasetConfig.batch_size` and is set to `128` by
     default).
 
+Disabling any combinations of these parameters can lead to non-determinism or
+data repetition upon preemption, which can cause unpredictable outcomes during
+training. The primary sources of non-determinism are:
+
+1.  the dataset order changing upon preemption (for example, if shuffling is
+    enabled).
+2.  seqio preprocessors with non-deterministic behavior (for example,
+    `span_corruption` masking).
+3.  the dataset repeating data upon preemption (for example, if it restarts at
+    the beginning when checkpointing is disabled).
+
+A rough flowchart of this behavior is as follows:
+
+1.  if `save_dataset` is set, the dataset will resume correctly at the example
+    where it left off. If a `random_seed` is *not* set, the order of examples or
+    the behavior of stochastic preprocessors may change.
+1.  if `save_dataset` is not set, the dataset will always resume from the
+    beginning on preemption. If shuffling is disabled (or a `random_seed` is
+    set), the dataset will be traversed in the same order. If no `random_seed`
+    is set, the dataset will be shuffled in a different order and stochastic
+    preprocessors will behave differently.
+
+Generally, any of these sources of non-determinism can cause issues in model
+training, especially for models that are more susceptible to memorization.
+
 
 ### Defining a custom SeqIO Task/Mixture to pretrain on {.no-toc}
 
