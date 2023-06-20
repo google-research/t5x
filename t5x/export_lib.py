@@ -1033,12 +1033,15 @@ def _request_for_batch(
     signature_name: str,
     batch_size: Optional[int],
     decoder_params_spec: Optional[DecoderParamsSpec] = None,
+    input_tensor_dtype: Optional[tf.DType] = None,
 ) -> predict_pb2.PredictRequest:
   """Adds a single batch of Predict warmup data."""
   request = predict_pb2.PredictRequest()
   request.model_spec.name = model_name
   request.model_spec.signature_name = signature_name
-  if text_batch and isinstance(text_batch[0], (str, bytes)):
+  if input_tensor_dtype is not None:
+    dtype = input_tensor_dtype
+  elif text_batch and isinstance(text_batch[0], (str, bytes)):
     dtype = tf.string
   else:
     dtype = tf.int32
@@ -1099,6 +1102,7 @@ def write_warmup_examples(
     request_to_prediction_log: Callable[
         [predict_pb2.PredictRequest], prediction_log_pb2.PredictionLog
     ] = _request_to_prediction_log,
+    input_tensor_dtype: Optional[tf.DType] = None,
 ):
   """Writes warmup examples for all batch_sizes requested.
 
@@ -1129,6 +1133,7 @@ def write_warmup_examples(
       examples.
     request_to_prediction_log: A function that creates a PredictionLog from a
       given request.
+    input_tensor_dtype: The dtype of the input tensor.
   """
   if generate_examples_fn:
     logging.warning(
@@ -1153,6 +1158,7 @@ def write_warmup_examples(
             signature_name,
             batch_size,
             decoder_params_spec,
+            input_tensor_dtype,
         )
         log = request_to_prediction_log(request)
         writer.write(log.SerializeToString())
