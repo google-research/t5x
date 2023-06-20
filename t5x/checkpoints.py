@@ -1262,13 +1262,15 @@ class Checkpointer(object):
       *,
       state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
       concurrent_gb: int = 16,
-      translator: Optional[checkpoint_importer.CheckpointTranslator] = None):
+      translator: Optional[checkpoint_importer.CheckpointTranslator] = None,
+      moe_block_size: Optional[int] = None):
     """Convert from a TensorFlow-based T5 checkpoint."""
     full_state_dict = checkpoint_importer.restore_from_t5_checkpoint(
         self._train_state.state_dict(),
         path_or_dir,
         lazy_parameters=True,
-        translator=translator)
+        translator=translator,
+        moe_block_size=moe_block_size)
     train_state = self._train_state.restore_state(full_state_dict)
     self.save(
         train_state,

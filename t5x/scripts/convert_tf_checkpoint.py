@@ -29,6 +29,8 @@ python -m t5x.convert_tf_checkpoint \
  --gin.convert_checkpoint.output_dir=\"/tmp/t5x_checkpoints/t5_small\"\
  --logtostderr
 """
+from typing import Optional
+
 import jax
 import jax.numpy as jnp
 from t5x import checkpoints
@@ -40,6 +42,7 @@ from t5x import train_state as train_state_lib
 def convert_checkpoint(model: models.BaseModel,
                        tf_checkpoint_path: str,
                        output_dir: str,
+                       moe_block_size: Optional[int] = None,
                        save_dtype: jnp.dtype = jnp.float32,
                        concurrent_gb: int = 16):
   """Converts a TensorFlow checkpoint to a P5X checkpoint.
@@ -48,6 +51,10 @@ def convert_checkpoint(model: models.BaseModel,
     model:
     tf_checkpoint_path: Path to a TensorFlow checkpoint to convert.
     output_dir: Path to a directory to write the converted checkpoint.
+    moe_block_size: If specified, treat this checkpoint as an MoE model
+      checkpoint, with every MTF block containing moe_block_size layers (1 of
+      which will be an MoE layer). Note that MoE checkpoints use a slightly
+      different numbering system for blocks and layers.
     save_dtype: What dtype to store the target parameters as.
     concurrent_gb: Number of gigabtes of parameters to convert in parallel.
       Actual RAM usage may be 4X this number.
@@ -71,7 +78,9 @@ def convert_checkpoint(model: models.BaseModel,
       train_state, partitioner, output_dir, save_dtype=jnp.dtype(save_dtype))
 
   checkpointer.convert_from_tf_checkpoint(
-      tf_checkpoint_path, concurrent_gb=concurrent_gb)
+      tf_checkpoint_path,
+      concurrent_gb=concurrent_gb,
+      moe_block_size=moe_block_size)
 
 
 if __name__ == '__main__':
