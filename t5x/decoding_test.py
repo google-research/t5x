@@ -988,6 +988,44 @@ class DecodeTest(parameterized.TestCase):
                          [[2, 3, 3, 3, 3], [3, 3, 3, 3, 3]]])
     np.testing.assert_array_equal(expected, beam_search_sequences)
 
+  def test_beam_search_with_logit_callback(self):
+    beam_size = 2
+
+    # The callback will mask out tokens 2 and 3 for batch elements 0 and 1,
+    # respectively, when state.cur_index is odd.
+    def logit_callback_fn(logits: jnp.ndarray,
+                          state: decoding.DecodingState) -> jnp.ndarray:
+      should_mask = jnp.mod(state.cur_index, 2)
+      mask = np.array([[0, 0, 1, 0], [0, 0, 1, 0], [0, 0, 0, 1], [0, 0, 0, 1]])
+      return jax.nn.log_softmax(logits - (mask * should_mask * 1e20))
+
+    def token_to_logits(decoding_state: decoding.DecodingState):
+      # Combined with the callback, this will give token 2 highest probability
+      # on odd steps and token 3 on even steps for batch element 0, and vice
+      # versa for batch element 1.
+      del decoding_state
+      logits = np.repeat(
+          np.expand_dims(
+              np.array([[-1e7, -1e10, -0.1, -0.9], [-1e7, -1e10, -0.9, -0.1]],
+                       dtype=np.float32),
+              axis=1), [beam_size],
+          axis=1)
+      logits = decoding.flatten_beam_dim(logits)
+      return logits, {}
+
+    inputs = np.array([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], dtype=np.int32)
+    beam_search_sequences, decoding_scores = decoding.beam_search(
+        inputs, {},
+        token_to_logits,
+        EOS_ID,
+        num_decodes=beam_size,
+        logit_callback_fn=logit_callback_fn)
+
+    self.assertTrue(np.all(np.diff(decoding_scores) >= 0))
+    expected = np.array([[[3, 3, 2, 3, 2], [2, 3, 2, 3, 2]],
+                         [[2, 2, 3, 2, 3], [3, 2, 3, 2, 3]]])
+    np.testing.assert_array_equal(expected, beam_search_sequences)
+
 
 if __name__ == '__main__':
   absltest.main()
