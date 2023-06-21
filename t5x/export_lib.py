@@ -496,7 +496,6 @@ def create_preprocessor(
           input_texts, sep=split_separator, maxsplit=1)
       split = ragged_split.to_tensor(shape=[tf.shape(input_texts)[0], 2])
       inputs, targets = split[:, 0], split[:, 1]
-    features = dict(inputs=inputs, targets=targets)
 
     # TODO(b/188656799): Generalize this code to work with arbitrary models.
     def featurize(text, k):
@@ -530,7 +529,7 @@ def create_preprocessor(
     )
     encoder_input_tokens, _, _ = tf.map_fn(
         functools.partial(featurize, k='inputs'),
-        features['inputs'],
+        inputs,
         fn_output_signature=(encoder_output_signature,) * 3,
     )
     encoder_input_tokens = encoder_input_tokens.to_tensor()
@@ -545,7 +544,7 @@ def create_preprocessor(
     )
     decoder_target_tokens, decoder_input_tokens, loss_weights = tf.map_fn(
         functools.partial(featurize, k='targets'),
-        features['targets'],
+        targets,
         fn_output_signature=(decoder_output_signature,) * 3,
     )
     decoder_target_tokens = decoder_target_tokens.to_tensor()
@@ -582,11 +581,6 @@ def create_dual_encoder_preprocessor(
     else:
       targets = tf.broadcast_to(tf.constant(''), tf.shape(input_texts))
 
-    features = dict(
-        inputs=inputs,
-        targets=targets,
-    )
-
     # TODO(b/188656799): Generalize this code to work with arbitrary models.
     def featurize(text, k):
       """Replicates what tokenization + nlp.nlx.t5x_retrieval.DualEncoderFeatureConverter does, without Dataset."""
@@ -607,12 +601,14 @@ def create_dual_encoder_preprocessor(
 
     left_encoder_input_tokens = tf.map_fn(
         functools.partial(featurize, k='inputs'),
-        features['inputs'],
-        fn_output_signature=(tf.int32))
+        inputs,
+        fn_output_signature=(tf.int32),
+    )
     right_encoder_input_tokens = tf.map_fn(
         functools.partial(featurize, k='targets'),
-        features['targets'],
-        fn_output_signature=(tf.int32))
+        targets,
+        fn_output_signature=(tf.int32),
+    )
 
     return dict(
         left_encoder_input_tokens=left_encoder_input_tokens,
