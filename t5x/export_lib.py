@@ -1293,9 +1293,7 @@ def save(
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
     output_vocab_feature_name: Optional[str] = 'targets',
-    signature_name: Optional[
-        str
-    ] = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
+    signature_name: str = tf.saved_model.DEFAULT_SERVING_SIGNATURE_DEF_KEY,
     create_polymorphic_shapes_fn: Any = create_batch_polymorphic_shapes,
 ):
   """Saves the passed EncoderDecoderModel as a TPU-enabled TF SavedModel.
@@ -1348,7 +1346,7 @@ def save(
     output_vocab_feature_name: The vocabulary feature which maps decoded ids to
       plain text. For standard T5X models this will always be 'targets', but may
       be different or empty for other models.
-    signature_name: Optional name of the exported function.
+    signature_name: Name of the exported function.
     create_polymorphic_shapes_fn: Optional function to create polymorphic shapes
       for input tensors to the JAX model function.
   """  # fmt: skip
