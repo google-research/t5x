@@ -1026,7 +1026,10 @@ class Checkpointer(object):
 
     if gfile.isdir(ckpt_path):
       ckpt_dir = ckpt_path
-      ckpt_path = os.path.join(ckpt_path, 'checkpoint')
+      if gfile.isdir(os.path.join(ckpt_dir, _STATE_KEY)):
+        ckpt_path = os.path.join(ckpt_path, _STATE_KEY, 'checkpoint')
+      else:
+        ckpt_path = os.path.join(ckpt_path, 'checkpoint')
     else:
       ckpt_dir = os.path.dirname(ckpt_path)
 
@@ -1538,6 +1541,28 @@ class SaveBestCheckpointer(Checkpointer):
       checkpoint_utils.remove_checkpoint_dir(self._get_checkpoint_dir(step))
 
 
+def _no_optimizer_state(ckpt_contents: PyTree, use_orbax_format: bool) -> bool:
+  if use_orbax_format:
+    return True
+  try:
+    version = ckpt_contents.get('version', 0)
+    return version == 0
+  except Exception as e:
+    raise ValueError('Failed to get version') from e
+
+
+def _should_apply_transform_fns(
+    ckpt_contents: PyTree, use_orbax_format: bool
+) -> bool:
+  if use_orbax_format:
+    return True
+  try:
+    version = ckpt_contents.get('version', 0)
+    return version >= 2
+  except Exception as e:
+    raise ValueError('Failed to get version') from e
+
+
 def _get_optimizer_state_dict(
     ckpt_contents: PyTree,
     optimizer_state: Mapping[str, Any],
@@ -1545,18 +1570,18 @@ def _get_optimizer_state_dict(
     use_orbax_format: bool = False,
 ):
   """Extracts optimizer state dict contents and applies assignment map."""
-  version = ckpt_contents.get('version', 0)
-  if version == 0 or use_orbax_format:
+  if _no_optimizer_state(ckpt_contents, use_orbax_format):
     # This is a standard Flax checkpoint and may require remapping below.
     ckpt_optimizer_state = ckpt_contents
   else:
     ckpt_optimizer_state = ckpt_contents['optimizer']
 
-  if version >= 2 or use_orbax_format:
+  if _should_apply_transform_fns(ckpt_contents, use_orbax_format):
     for fn in state_transformation_fns:
       ckpt_optimizer_state = fn(ckpt_optimizer_state, optimizer_state)
     return ckpt_optimizer_state
   else:
+    version = ckpt_contents.get('version', 0)  # pylint: disable=unreachable
     raise ValueError('Checkpoint versions earlier than 2 are not supported. '  # pylint: disable=unreachable
                      f'Got version: {version}')
 
