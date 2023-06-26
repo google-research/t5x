@@ -58,6 +58,7 @@ Raman, Yi Sun, Ali Elqursh, Reuben La Haye,Adam Fahrenkopf, Alex Polozov, Vinay
 Ramasesh, Ian Tenney.
 
 Thanks to NVIDIA for GPU contributions: Sahil Jain, Terry Kong, Yu-Hang Tang, 
-Ming Huang, Frederic Bastien, Sharath Turuvekere Sreenivas, Xiaowei Ren
+Ming Huang, Frederic Bastien, Sharath Turuvekere Sreenivas, Xiaowei Ren, Ryan Jeng,
+ Reese Wang
 
 Thanks to Douglas Eck and Zoubin Ghahramani for sponsoring the project.
