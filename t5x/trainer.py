@@ -34,7 +34,6 @@ import clu.metrics
 import clu.values
 from flax.core import FrozenDict
 import jax
-from jax.experimental import multihost_utils
 import jax.lax
 import jax.numpy as jnp
 import jax.random
@@ -569,9 +568,11 @@ class BaseTrainer(abc.ABC):
             jnp.array(num_steps),
             "Eval step mismatch across hosts. Check for empty dataset shard.")
         if jax.process_count() > 1:
-          batch = multihost_utils.host_local_array_to_global_array(
-              batch, self._partitioner.mesh,
-              self._partitioner.data_partition_spec)
+          batch = partitioning.host_local_array_to_global_array(
+              batch,
+              self._partitioner.mesh,
+              self._partitioner.data_partition_spec,
+          )
         metrics_update = eval_step_fn(train_state, batch)
         if metrics:
           metrics = merge_metrics(metrics, metrics_update)
@@ -611,9 +612,11 @@ class BaseTrainer(abc.ABC):
       cache_key: BatchSpec = FrozenDict(jax.eval_shape(lambda: batch))  # pylint:disable=cell-var-from-loop
       if cache_key not in self._compiled_eval_step_cache:
         if jax.process_count() > 1:
-          batch = multihost_utils.host_local_array_to_global_array(
-              batch, self._partitioner.mesh,
-              self._partitioner.data_partition_spec)
+          batch = partitioning.host_local_array_to_global_array(
+              batch,
+              self._partitioner.mesh,
+              self._partitioner.data_partition_spec,
+          )
         self._compiled_eval_step_cache[cache_key] = self._partitioner.compile(
             self._partitioned_eval_step, self.train_state, batch)
       self._compiled_eval_steps[eval_name] = self._compiled_eval_step_cache[

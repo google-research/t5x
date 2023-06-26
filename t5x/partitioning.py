@@ -675,8 +675,9 @@ class BasePartitioner(metaclass=abc.ABCMeta):
         out_axis_resources=(train_state_axes, None),
         donate_argnums=(0,))
     if jax.process_count() > 1:
-      train_state = multihost_utils.host_local_array_to_global_array(
-          train_state, self.mesh, train_state_axes)
+      train_state = host_local_array_to_global_array(
+          train_state, self.mesh, train_state_axes
+      )
     train_state, _ = p_id_fn(train_state, jnp.ones((), dtype=jnp.uint32))
     return train_state
 
@@ -919,3 +920,16 @@ class PjitPartitioner(BasePjitPartitioner):
 
     return logical_axes.restore_state(
         traverse_util.unflatten_dict(flat_mesh_axes, sep='/'))
+
+
+# arr_tree is a PyTree of jax.Array or np.ndarray and
+# pspecs is PyTree[jax.sharding.PartitionSpec]
+def host_local_array_to_global_array(arr_tree, mesh: jax.sharding.Mesh, pspecs):
+  pspecs = jax.tree_map(
+      lambda x: PartitionSpec() if x is None else x,
+      pspecs,
+      is_leaf=lambda x: x is None,
+  )
+  return multihost_utils.host_local_array_to_global_array(
+      arr_tree, mesh, pspecs
+  )
