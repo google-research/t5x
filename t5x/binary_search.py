@@ -48,11 +48,12 @@ def int32_bsearch(batch_shape: Sequence[int], predicate: Callable[[jnp.ndarray],
   current_bits = jnp.zeros(batch_shape, dtype=jnp.int32)
 
   # bit 31 is special, because it compares in the opposite order of all other
-  # bits
+  # bits. we use uint32 due to numpy promotion/casting rules.
   midpoint = current_bits
   predicate_satisfied = predicate(midpoint)
-  current_bits = current_bits | jnp.where(predicate_satisfied,
-                                          jnp.int32(1 << 31), jnp.int32(0))
+  current_bits = current_bits | jnp.where(
+      predicate_satisfied, jnp.uint32(1 << 31), jnp.uint32(0)
+  )
   del midpoint, predicate_satisfied
 
   def loop_body(i, current_bits):
