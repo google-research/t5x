@@ -21,12 +21,14 @@ import operator
 from typing import Generator, List, Sequence, Tuple
 import unittest
 
+from absl import logging
 import jax
 from jax.experimental.pjit import pjit
 from jax.sharding import Mesh
 import numpy as np
 import seqio
 from t5x import adafactor
+from t5x import gin_utils
 from t5x import models
 from t5x import partitioning
 from t5x import train_state as train_state_lib
