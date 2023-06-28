@@ -331,7 +331,7 @@ class BaseTransformerModel(BaseModel):
         z_loss=z_loss,
         segment_ids=segment_ids,
     )
-    return loss, metrics
+    return loss, metrics  # comment-only change
 
   def _compute_metrics(
       self,
