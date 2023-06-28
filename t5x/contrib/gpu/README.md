@@ -1,5 +1,12 @@
 # GPU Scripts
-This directory contains scripts optimized for GPU usage. 
+
+# Warning!
+An updated version of T5x with optimized GPU performance and new features, including FP8 with [Transformer Engine](https://github.com/NVIDIA/TransformerEngine) and H100 support can be found here: [NVIDIA Rosetta](https://github.com/NVIDIA/JAX-Toolbox/tree/main/rosetta/rosetta/projects/t5x).
+-----
+**NVIDIA no longer recommends using this repository and won't be updating it further.**
+-----
+
+The [t5x/contrib/gpu/scripts_gpu](scripts_gpu) directory contains scripts optimized for GPU usage.
 
 Install with `pip install -r pile_requirements.txt` to get all pile dependencies.
 
