@@ -428,17 +428,19 @@ class EncoderDecoderModel(BaseTransformerModel):
       )
     else:
       decoder_segment_ids = None
-    initial_variables = self.module.init(
-        rng,
-        jnp.ones(encoder_shape, encoder_type),
-        jnp.ones(decoder_shape, decoder_type),
-        jnp.ones(decoder_shape, decoder_type),
-        encoder_positions=encoder_positions,
-        decoder_positions=decoder_positions,
-        encoder_segment_ids=encoder_segment_ids,
-        decoder_segment_ids=decoder_segment_ids,
-        decode=False,
-        enable_dropout=False,
+    initial_variables = flax_core.freeze(
+        self.module.init(
+            rng,
+            jnp.ones(encoder_shape, encoder_type),
+            jnp.ones(decoder_shape, decoder_type),
+            jnp.ones(decoder_shape, decoder_type),
+            encoder_positions=encoder_positions,
+            decoder_positions=decoder_positions,
+            encoder_segment_ids=encoder_segment_ids,
+            decoder_segment_ids=decoder_segment_ids,
+            decode=False,
+            enable_dropout=False,
+        )
     )
     return initial_variables
 
