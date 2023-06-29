@@ -191,88 +191,127 @@ class OptaxStatePartitionRules:
   # pylint: disable=g-long-lambda
 
   _RULES = {
-
       # Leaf Optax States:
-      amos.ScaleByAmosState:
-          amos_helper.state_partition_rule,
-      optax.AddNoiseState:
-          lambda state, params_axes: optax.AddNoiseState(  # pytype: disable=wrong-arg-types  # numpy-scalars
-              count=None, rng_key=None),
-      optax.DifferentiallyPrivateAggregateState:
+      amos.ScaleByAmosState: amos_helper.state_partition_rule,
+      optax.AddNoiseState: lambda state, params_axes: optax.AddNoiseState(  # pytype: disable=wrong-arg-types  # numpy-scalars
+          count=None, rng_key=None
+      ),
+      optax.DifferentiallyPrivateAggregateState: (
           lambda state, params_axes: optax.DifferentiallyPrivateAggregateState(
-              rng_key=None),
-      optax.EmaState:
-          lambda state, params_axes: optax.EmaState(  # pytype: disable=wrong-arg-types  # numpy-scalars
-              count=None, ema=params_axes),
-      optax.EmptyState:
-          lambda state, params_axes: optax.EmptyState(),
-      optax.TraceState:
-          lambda state, params_axes: optax.TraceState(trace=params_axes),
-      optax.ScaleByAdamState:
-          lambda state, params_axes: optax.ScaleByAdamState(  # pytype: disable=wrong-arg-types  # numpy-scalars
-              count=None, mu=params_axes, nu=params_axes),
-      optax.ScaleByBeliefState:
+              rng_key=None
+          )
+      ),
+      optax.EmaState: lambda state, params_axes: optax.EmaState(  # pytype: disable=wrong-arg-types  # numpy-scalars
+          count=None,
+          ema=OptaxStatePartitionRules.derive_params_axes(
+              state.ema, params_axes
+          ),
+      ),
+      optax.EmptyState: lambda state, params_axes: optax.EmptyState(),
+      optax.TraceState: lambda state, params_axes: optax.TraceState(
+          trace=OptaxStatePartitionRules.derive_params_axes(
+              state.trace, params_axes
+          )
+      ),
+      optax.ScaleByAdamState: lambda state, params_axes: optax.ScaleByAdamState(  # pytype: disable=wrong-arg-types  # numpy-scalars
+          count=None,
+          mu=OptaxStatePartitionRules.derive_params_axes(state.mu, params_axes),
+          nu=OptaxStatePartitionRules.derive_params_axes(state.nu, params_axes),
+      ),
+      optax.ScaleByBeliefState: (
           lambda state, params_axes: optax.ScaleByBeliefState(  # pytype: disable=wrong-arg-types  # numpy-scalars
-              count=None, mu=params_axes, nu=params_axes),
-      optax.ScaleByLionState:
-          lambda state, params_axes: optax.ScaleByLionState(  # pytype: disable=wrong-arg-types  # numpy-scalars
-              count=None, mu=params_axes),
-      optax.ScaleByRssState:
-          lambda state, params_axes: optax.ScaleByRssState(
-              sum_of_squares=params_axes),
-      optax.ScaleByRmsState:
-          lambda state, params_axes: optax.ScaleByRmsState(nu=params_axes),
-      optax.ScaleByRStdDevState:
+              count=None,
+              mu=OptaxStatePartitionRules.derive_params_axes(
+                  state.mu, params_axes
+              ),
+              nu=OptaxStatePartitionRules.derive_params_axes(
+                  state.nu, params_axes
+              ),
+          )
+      ),
+      optax.ScaleByLionState: lambda state, params_axes: optax.ScaleByLionState(  # pytype: disable=wrong-arg-types  # numpy-scalars
+          count=None,
+          mu=OptaxStatePartitionRules.derive_params_axes(state.mu, params_axes),
+      ),
+      optax.ScaleByRssState: lambda state, params_axes: optax.ScaleByRssState(
+          sum_of_squares=OptaxStatePartitionRules.derive_params_axes(
+              state.sum_of_squares, params_axes
+          )
+      ),
+      optax.ScaleByRmsState: lambda state, params_axes: optax.ScaleByRmsState(
+          nu=OptaxStatePartitionRules.derive_params_axes(state.nu, params_axes)
+      ),
+      optax.ScaleByRStdDevState: (
           lambda state, params_axes: optax.ScaleByRStdDevState(
-              mu=params_axes, nu=params_axes),
-      optax.ScaleBySM3State:
-          lambda state, params_axes: optax.ScaleBySM3State(
-              mu=params_axes, nu=params_axes),
-      optax.ScaleByTrustRatioState:
-          lambda state, params_axes: optax.ScaleByTrustRatioState(),
-      optax.ScaleByScheduleState:
-          lambda state, params_axes: optax.ScaleByScheduleState(count=None),  # pytype: disable=wrong-arg-types  # numpy-scalars
-      optax.ZeroNansState:
-          lambda state, params_axes: optax.ZeroNansState(found_nan=None),
+              mu=OptaxStatePartitionRules.derive_params_axes(
+                  state.mu, params_axes
+              ),
+              nu=OptaxStatePartitionRules.derive_params_axes(
+                  state.nu, params_axes
+              ),
+          )
+      ),
+      optax.ScaleBySM3State: lambda state, params_axes: optax.ScaleBySM3State(
+          mu=OptaxStatePartitionRules.derive_params_axes(state.mu, params_axes),
+          nu=OptaxStatePartitionRules.derive_params_axes(state.nu, params_axes),
+      ),
+      optax.ScaleByTrustRatioState: (
+          lambda state, params_axes: optax.ScaleByTrustRatioState()
+      ),
+      optax.ScaleByScheduleState: (
+          lambda state, params_axes: optax.ScaleByScheduleState(count=None)  # pytype: disable=wrong-arg-types  # numpy-scalars
+      ),
+      optax.ZeroNansState: lambda state, params_axes: optax.ZeroNansState(
+          found_nan=None
+      ),
       # FactoredState
-
       # Recursive, Combinator Optax States:
-
       # MaskedState
-      optax.MaskedState:
-          lambda state, params_axes: optax.MaskedState(
-              inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
-                  state.inner_state, params_axes)),
-      optax.InjectHyperparamsState:
+      optax.MaskedState: lambda state, params_axes: optax.MaskedState(
+          inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
+              state.inner_state, params_axes
+          )
+      ),
+      optax.InjectHyperparamsState: (
           lambda state, params_axes: optax.InjectHyperparamsState(  # pytype: disable=wrong-arg-types  # jax-ndarray
               count=None,
               hyperparams=jax.tree_map(lambda x: None, state.hyperparams),
               inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
-                  state.inner_state, params_axes)),
-      optax.MultiStepsState:
-          lambda state, params_axes: optax.MultiStepsState(  # pytype: disable=wrong-arg-types  # jax-ndarray
-              mini_step=None,
-              gradient_step=None,
-              inner_opt_state=OptaxStatePartitionRules.
-              derive_optax_logical_axes(  # pylint: disable=line-too-long
-                  state.inner_opt_state, params_axes),
-              acc_grads=params_axes),
-      optax.ApplyIfFiniteState:
+                  state.inner_state, params_axes
+              ),
+          )
+      ),
+      optax.MultiStepsState: lambda state, params_axes: optax.MultiStepsState(  # pytype: disable=wrong-arg-types  # jax-ndarray
+          mini_step=None,
+          gradient_step=None,
+          inner_opt_state=OptaxStatePartitionRules.derive_optax_logical_axes(  # pylint: disable=line-too-long
+              state.inner_opt_state, params_axes
+          ),
+          acc_grads=params_axes,
+      ),
+      optax.ApplyIfFiniteState: (
           lambda state, params_axes: optax.ApplyIfFiniteState(
               notfinite_count=None,
               last_finite=None,
               total_notfinite=None,
               inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
-                  state.inner_state, params_axes)),
-      optax.MaybeUpdateState:
-          lambda state, params_axes: optax.MaybeUpdateState(  # pytype: disable=wrong-arg-types  # jax-ndarray
-              inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
-                  state.inner_state, params_axes),
-              step=None),
-      optax.MultiTransformState:
+                  state.inner_state, params_axes
+              ),
+          )
+      ),
+      optax.MaybeUpdateState: lambda state, params_axes: optax.MaybeUpdateState(  # pytype: disable=wrong-arg-types  # jax-ndarray
+          inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
+              state.inner_state, params_axes
+          ),
+          step=None,
+      ),
+      optax.MultiTransformState: (
           lambda state, params_axes: optax.MultiTransformState(
               inner_states=OptaxStatePartitionRules.derive_optax_logical_axes(
-                  state.inner_states, params_axes)),
+                  state.inner_states, params_axes
+              )
+          )
+      ),
       # LookaheadState
       # SplitRealAndImaginaryState
   }
@@ -317,6 +356,16 @@ class OptaxStatePartitionRules:
     flattened_axes = [derive_fn(x) for x in flattened_state]
     derived_axes = jax.tree_util.tree_unflatten(tree_def, flattened_axes)
     return derived_axes
+
+  @classmethod
+  def derive_params_axes(cls, optax_params, params_axes):
+    """Derive axes for params inside optax state."""
+    # Params masked by optax should not have a corresponding PartitionSpec.
+    return jax.tree_util.tree_map(
+        lambda x, y: x if not isinstance(y, optax.MaskedNode) else y,
+        params_axes,
+        optax_params,
+    )
 
 
 @struct.dataclass

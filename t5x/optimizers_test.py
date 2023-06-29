@@ -104,6 +104,25 @@ def get_t5_test_model(optimizer_def,
       optimizer_def=optimizer_def)
 
 
+def sgd_with_multi_transform():
+  """Uses optax.multi_transform to train only decoder parameters."""
+
+  def _mask_fn(params):
+    mask = jax.tree_util.tree_map(lambda _: False, params)
+    mask = mask.copy(
+        {'decoder': jax.tree_util.tree_map(lambda _: True, mask['decoder'])}
+    )
+    return mask
+
+  return optax.multi_transform(
+      {
+          False: optax.set_to_zero(),
+          True: optax.sgd(1e-2, 0.0),
+      },
+      _mask_fn,
+  )
+
+
 class BasicTest(chex.TestCase):
 
   @classmethod
@@ -309,6 +328,7 @@ class OptaxWrapperTest(chex.TestCase):
       ('adabelief', lambda: optax.adabelief(1e-1)),
       # ('radam', lambda: optax.radam(1e-1)),
       ('yogi', lambda: optax.yogi(1.0)),
+      ('multi_transform', sgd_with_multi_transform),
   )
   def test_optimizer(self, opt_name, opt_fn):
     opt = opt_fn()
