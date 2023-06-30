@@ -2137,7 +2137,8 @@ class OrbaxCheckpointManagerInterface:
 
     checkpointers = {
         _STATE_KEY: orbax.checkpoint.Checkpointer(
-            orbax.checkpoint.PyTreeCheckpointHandler()
+            # TODO(b/273803615) Enable OCDBT.
+            orbax.checkpoint.PyTreeCheckpointHandler(use_ocdbt=False)
         ),
     }
     if self._should_write_dataset_ckpt:
