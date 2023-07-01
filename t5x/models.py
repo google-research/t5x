@@ -502,7 +502,7 @@ class EncoderDecoderModel(BaseTransformerModel):
     )
     # Remove sequence length dimension since it's always 1 during decoding.
     flat_logits = jnp.squeeze(flat_logits, axis=1)
-    new_flat_cache = new_vars['cache']
+    new_flat_cache = flax_core.freeze(new_vars['cache'])
     return flat_logits, new_flat_cache
 
   def _compute_kv_cache(
@@ -540,7 +540,9 @@ class EncoderDecoderModel(BaseTransformerModel):
     # Our initial index is None since we do not prefill based on a prompt.
     initial_index = None
 
-    return initial_variables['cache'], initial_index
+    if initial_variables['cache'] is None:
+      return None, initial_index
+    return flax_core.freeze(initial_variables['cache']), initial_index
 
   def predict_batch_with_aux(
       self,
