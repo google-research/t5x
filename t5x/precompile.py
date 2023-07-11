@@ -124,6 +124,10 @@ def precompile(
   compiled = lowered.compile()
   output_path = os.path.join(model_dir, 'lowered_hlo_post_optimization')
   with tf.io.gfile.GFile(output_path, 'w') as f:
-    f.write(compiled.compiler_ir()[0].as_serialized_hlo_module_proto())
+    f.write(
+        compiled.runtime_executable()
+        .hlo_modules()[0]
+        .as_serialized_hlo_module_proto()
+    )
   with tf.io.gfile.GFile(os.path.join(model_dir, 'assignment'), 'wb') as f:
     np.save(f, partitioner.mesh.device_ids)
