@@ -405,18 +405,21 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       model = models.EncoderDecoderModel()
       res = model.score_batch(params, batch)
 
-    mock_transformer.apply.assert_called_with({'params': params},
-                                              encoder_input_tokens,
-                                              decoder_input_tokens,
-                                              decoder_target_tokens,
-                                              encoder_segment_ids=None,
-                                              decoder_segment_ids=None,
-                                              encoder_positions=None,
-                                              decoder_positions=None,
-                                              decode=False,
-                                              enable_dropout=False,
-                                              rngs=None,
-                                              mutable=False)
+    mock_transformer.apply.assert_called_with(
+        {'params': params},
+        encoder_input_tokens,
+        decoder_input_tokens,
+        decoder_target_tokens,
+        encoder_segment_ids=None,
+        decoder_segment_ids=None,
+        encoder_positions=None,
+        decoder_positions=None,
+        decode=False,
+        enable_dropout=False,
+        update_mask=False,
+        rngs=None,
+        mutable=False,
+    )
     np.testing.assert_allclose(res, [-3.222973, -1.815315], rtol=1e-4)
 
   def test_score_batch_can_return_intermediates(self):
@@ -449,18 +452,21 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       scores, intermediates = model.score_batch(
           params, batch, return_intermediates=True)
 
-    mock_transformer.apply.assert_called_with({'params': params},
-                                              encoder_input_tokens,
-                                              decoder_input_tokens,
-                                              decoder_target_tokens,
-                                              encoder_segment_ids=None,
-                                              decoder_segment_ids=None,
-                                              encoder_positions=None,
-                                              decoder_positions=None,
-                                              decode=False,
-                                              enable_dropout=False,
-                                              rngs=None,
-                                              mutable=['intermediates'])
+    mock_transformer.apply.assert_called_with(
+        {'params': params},
+        encoder_input_tokens,
+        decoder_input_tokens,
+        decoder_target_tokens,
+        encoder_segment_ids=None,
+        decoder_segment_ids=None,
+        encoder_positions=None,
+        decoder_positions=None,
+        decode=False,
+        enable_dropout=False,
+        update_mask=False,
+        rngs=None,
+        mutable=['intermediates'],
+    )
     np.testing.assert_allclose(scores, [-3.222973, -1.815315], rtol=1e-4)
     # Incumbent intermediates are passed out unchanged.
     np.testing.assert_allclose(intermediates['bar'], jnp.ones(5))
@@ -688,22 +694,16 @@ class EncoderDecoderModelTest(parameterized.TestCase):
 
     cache_init_call = model.module.call_args_list[1]
     self.assertEqual(cache_init_call['args'][0], {'params': {}})
-    call_kwargs = cache_init_call['kwargs']
-    np.testing.assert_allclose(
-        call_kwargs.pop('encoder_input_tokens'), fake_inputs
-    )
-    np.testing.assert_allclose(
-        call_kwargs.pop('decoder_input_tokens'), fake_target
-    )
-    np.testing.assert_allclose(
-        call_kwargs.pop('decoder_target_tokens'), fake_target
-    )
+    np.testing.assert_allclose(cache_init_call['args'][1], fake_inputs)
+    np.testing.assert_allclose(cache_init_call['args'][2], fake_target)
+    np.testing.assert_allclose(cache_init_call['args'][3], fake_target)
     self.assertEqual(
-        call_kwargs,
+        cache_init_call['kwargs'],
         {
             'decode': True,
             'enable_dropout': False,
-            'mutable': ['cache'],
+            'mutable': True,
+            'update_mask': False,
         },
     )
 
@@ -953,11 +953,14 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     self.assertEqual(cache_init_call[0][0], {'params': {}})
     np.testing.assert_allclose(cache_init_call[0][1], fake_target)
     np.testing.assert_allclose(cache_init_call[0][2], fake_target)
-    self.assertEqual(cache_init_call[1], {
-        'decode': True,
-        'enable_dropout': False,
-        'mutable': ['cache']
-    })
+    self.assertEqual(
+        cache_init_call[1],
+        {
+            'decode': True,
+            'enable_dropout': False,
+            'mutable': ['cache', 'sparsity'],
+        },
+    )
 
   @parameterized.named_parameters(
       dict(
