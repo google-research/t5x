@@ -8,10 +8,7 @@ An updated version of T5x with optimized GPU performance (18-80% perf gains!) an
 
 The [t5x/contrib/gpu](../../t5x/contrib/gpu) directory contains scripts optimized for GPU usage.
 
-To get all dependencies for the Pile dataset, install with the `gpu` extra:
-```bash
-pip install '.[gpu]'
-```
+Install with `pip install -r pile_requirements.txt` to get all pile dependencies.
 
 ## Building the container
 The Dockerfile in `t5x/contrib/gpu` given will build a container with all gpu/pile dependencies. It can be built with `t5x/contrib/gpu/docker/build.sh <name>` 

@@ -87,9 +87,7 @@ setuptools.setup(
             'gdown==4.5.3',
             'best-download==0.0.9',
             'lm_dataformat==0.0.20',
-            'dllogger@git+https://github.com/NVIDIA/dllogger#egg=dllogger',
             'tfds-nightly==4.6.0.dev202210040045',
-            't5==0.9.4',
         ],
     },
     classifiers=[
