@@ -26,6 +26,7 @@ from jax.experimental.pjit import pjit
 from jax.sharding import Mesh
 import numpy as np
 import seqio
+import t5.data
 from t5x import adafactor
 from t5x import models
 from t5x import partitioning
