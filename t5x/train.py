@@ -435,8 +435,7 @@ def train(
           train_state_shape=train_state_initializer.global_train_state_shape,
           partitioner=partitioner,
           ds_iter=train_iter,
-          model_dir=model_dir,
-          use_gda=use_gda)
+          model_dir=model_dir)
 
   # Start warming up the input pipeline in the background. This must happen
   # after input pipeline checkpoints were restored.
