@@ -211,7 +211,10 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         scaled_query_init=True,
         fuse_qkv_params=config.fuse_qkv_params,
         relative_embedding=relative_embedding,
-        dtype=config.dtype, layer_type=te.TransformerLayerType.ENCODER, name=name)
+        dtype=config.dtype,
+        layer_type=te.TransformerLayerType.ENCODER,
+        self_attn_mask_type='padding',
+        name=name)
 
   @staticmethod
   def get_decoder_layer(config, relative_embedding, name, original_cls):
@@ -231,7 +234,10 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         scaled_query_init=True,
         fuse_qkv_params=config.fuse_qkv_params,
         relative_embedding=relative_embedding,
-        dtype=config.dtype, layer_type=te.TransformerLayerType.DECODER, name=name)
+        dtype=config.dtype,
+        layer_type=te.TransformerLayerType.DECODER,
+        self_attn_mask_type='causal',
+        name=name)
 
 
 class TransformerEngineHelper(TransformerEngineHelperBase):
