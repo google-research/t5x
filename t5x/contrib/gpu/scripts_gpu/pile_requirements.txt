@@ -1,9 +1,0 @@
-ipdb==0.13.9
-fasttext==0.9.2
-pysimdjson==5.0.2
-pytablewriter==0.64.2
-gdown==4.5.3
-best-download==0.0.9 
-lm_dataformat==0.0.20
-dllogger@git+https://github.com/NVIDIA/dllogger#egg=dllogger
-tfds-nightly==4.6.0.dev202210040045
