@@ -323,8 +323,8 @@ class FakePartitioner(partitioning.BasePartitioner):
   ):
     pjitted = pjit(
         fn,
-        in_axis_resources=in_axis_resources,
-        out_axis_resources=out_axis_resources,
+        in_shardings=in_axis_resources,
+        out_shardings=out_axis_resources,
         static_argnums=static_argnums,
         donate_argnums=donate_argnums,
     )

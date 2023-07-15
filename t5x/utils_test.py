@@ -1033,8 +1033,8 @@ class MutableGetInferFnTest(parameterized.TestCase):
     def partition(fn, in_axis_resources, out_axis_resources):
       fn = pjit(
           fn,
-          in_axis_resources=in_axis_resources,
-          out_axis_resources=out_axis_resources,
+          in_shardings=in_axis_resources,
+          out_shardings=out_axis_resources,
       )
       return partitioning.PjittedFnWithContext(fn, global_mesh)
 
@@ -1064,9 +1064,7 @@ class MutableGetInferFnTest(parameterized.TestCase):
 
     def as_sharded_array(arr, axes, mesh=None):
       with mesh:
-        return pjit(
-            lambda x: x, in_axis_resources=None, out_axis_resources=axes
-        )(arr)
+        return pjit(lambda x: x, in_shardings=None, out_shardings=axes)(arr)
 
     train_state.params = jax.tree_util.tree_map(
         functools.partial(as_sharded_array, mesh=global_mesh),
