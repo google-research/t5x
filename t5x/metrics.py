@@ -158,11 +158,12 @@ class Time(clu_metrics.Metric):
     return self
 
   def compute(self) -> Scalar:
-    if self.duration is None:
+    duration = self.duration
+    if duration is None:
       raise ValueError(
           "`Time` `duration` must be set by calling `replace_duration` before computing."
       )
-    return self.duration
+    return duration
 
   def replace_duration(self, duration: Scalar) -> "Time":
     """Replaces duration with the given value.

@@ -293,6 +293,8 @@ async def _read_upcycle_ts(
 
   if (not m_or_v) and is_expert_param:
     if mesh is not None and axes is not None:
+      if param_info.local_chunk_info is None:
+        raise ValueError('local_chunk_info is None for expert params')
 
       def upcycle(arr):
         """Reads slice from numpy array and broadcasts to experts.
