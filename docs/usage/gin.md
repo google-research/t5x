@@ -374,13 +374,14 @@ inference evaluation you may add `--gin.train.infer_eval_dataset_cfg=None`.
 At the beginning of the primer, we saw a fully-specified run config. We can do
 something similar with the previous example to create a self-contained run
 configuration.
-[t5_1_1/examples/base_wmt_finetune.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin)
+[t5_1_1/examples/small_wmt_finetune.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin)
 is just such an example that allows you to exactly duplicate the previous launch
 command simply by calling:
 
 ```sh
 python -m t5x.train \
   --gin_file=t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin \
+  --gin.MODEL_DIR=\"/tmp/t5_1_1_small_finetune_gin\" \
   --logtostderr
 ```
 
