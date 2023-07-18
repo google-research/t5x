@@ -62,5 +62,5 @@ python3 -u ${T5X_DIR}/t5x/train.py \
   --gin.te_helper.TransformerEngineConfig.fp8_format=\"hybrid\" \
   --gin.network.T5Config.transpose_batch_sequence=${TRANSPOSE_BS} \
   --gin.network.T5Config.fuse_qkv_params=${FUSE_QKV} \
-  &> \
+  2>&1 | tee \
   ${LOG_DIR}/${T5_SIZE}_gpu_${NUM_GPUS}_${PREC}_gbs_${BSIZE}_fp8_${ENABLE_FP8}_fuseqkv_${FUSE_QKV}_transbs_${TRANSPOSE_BS}.log
