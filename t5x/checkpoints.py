@@ -2035,7 +2035,7 @@ def _construct_orbax_restoration_transforms(
     # Construct param_infos from item because item is the transformed
     # structure.
     # pylint: disable=protected-access
-    param_infos = ocp.pytree_checkpoint_handler._get_needed_restore_parameters(
+    param_infos, _ = ocp.pytree_checkpoint_handler._get_restore_parameters(
         manager._get_save_directory(step, directory, key_name=_STATE_KEY),
         None,
         item,
