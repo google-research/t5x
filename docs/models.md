@@ -159,10 +159,10 @@ uniform language balancing strategy.
 
 Model                | Gin File Location                                                                                                   | Checkpoint Location
 -------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
-umT5 Small | [umt5/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/umt5/small.gin) | [umt5/small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/small/checkpoint_1000000)
-umT5 Base | [umt5/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/umt5/base.gin) | [umt5/base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/base/checkpoint_1000000)
-umT5 XL | [umt5/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/umt5/xl.gin) | [umt5/xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xl/checkpoint_1000000)
-umT5 XXL | [umt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/umt5/xxl.gin) | [umt5/xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xxl/checkpoint_1000000)
+umT5 Small | [umt5/pretrain_small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_small.gin) | [umt5/small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/small/checkpoint_1000000)
+umT5 Base | [umt5/pretrain_base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_base.gin) | [umt5/base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/base/checkpoint_1000000)
+umT5 XL | [umt5/pretrain_xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_xl.gin) | [umt5/xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xl/checkpoint_1000000)
+umT5 XXL | [umt5/pretrain_xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_xxl.gin) | [umt5/xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xxl/checkpoint_1000000)
 
 #### ByT5 Checkpoints
 
