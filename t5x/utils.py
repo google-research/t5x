@@ -72,7 +72,7 @@ class EvaluatorConstructor(typing_extensions.Protocol):
 
   This protocol represents the actual callsite for the seqio.Evaluator c'tor
   in this file. It allows users to bind additional args with partial() and
-  pass that partial into the fn without causing type check issues.
+  pass that partial into the fn without causing type check issues hello.
   """
 
   def __call__(

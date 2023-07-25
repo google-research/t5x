@@ -311,9 +311,11 @@ class OptaxWrapperTest(chex.TestCase):
 
     # check save/restore structural equality
     restored_instance = trainer_instance.train_state.restore_state(
-        trainer_instance.train_state.state_dict())
-    chex.assert_tree_all_equal_structs(trainer_instance.train_state,
-                                       restored_instance)
+        trainer_instance.train_state.state_dict()
+    )
+    chex.assert_trees_all_equal_structs(
+        trainer_instance.train_state, restored_instance
+    )
 
   # NOTE(levskaya): these are surprisingly slow tests on CPU.
   @parameterized.parameters(

@@ -26,6 +26,7 @@ from jax.experimental.pjit import pjit
 from jax.sharding import Mesh
 import numpy as np
 import seqio
+import t5.data
 from t5x import adafactor
 from t5x import models
 from t5x import partitioning
@@ -322,8 +323,8 @@ class FakePartitioner(partitioning.BasePartitioner):
   ):
     pjitted = pjit(
         fn,
-        in_axis_resources=in_axis_resources,
-        out_axis_resources=out_axis_resources,
+        in_shardings=in_axis_resources,
+        out_shardings=out_axis_resources,
         static_argnums=static_argnums,
         donate_argnums=donate_argnums,
     )
