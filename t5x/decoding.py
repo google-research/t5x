@@ -511,12 +511,15 @@ def _temperature_sample_single_trial(
     # Split RNG for sampling.
     rng1, rng2 = random.split(state.rng)
     # Call fast-decoder model on current tokens to get next-position logits.
+    frozen = isinstance(state.cache, flax.core.FrozenDict)
     decoding_state = DecodingState(
         cur_index=state.cur_index,
         sequences=state.sequences[:, :-extra_input_tokens],
         cur_token=state.cur_token,
         cache=state.cache)
     logits, new_cache = tokens_to_logits(decoding_state)
+    if frozen:
+      new_cache = flax.core.freeze(new_cache)
     # Sample next token from logits.
 
     if logit_callback_fn is not None:
