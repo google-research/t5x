@@ -1951,21 +1951,19 @@ def _construct_restore_args(
     param_info: _OrbaxParamInfo,
     dtype: jnp.dtype,
     mesh: jax.sharding.Mesh,
-    lazy_parameters: bool,
 ) -> ocp.RestoreArgs:
   """Create RestoreArgs for Orbax restoration."""
   if not isinstance(param_info, _OrbaxParamInfo):  # from fallback
-    return ocp.RestoreArgs(dtype=dtype, lazy=lazy_parameters)
+    return ocp.RestoreArgs(dtype=dtype)
   if param_info.name.split('.')[0] != 'target':
     dtype = None
   if param_info.mesh_axes is None:
-    return ocp.RestoreArgs(dtype=dtype, lazy=lazy_parameters)
+    return ocp.RestoreArgs(dtype=dtype)
   return ocp.ArrayRestoreArgs(
       restore_type=jax.Array,
       mesh=mesh,
       mesh_axes=param_info.mesh_axes,
       dtype=dtype,
-      lazy=lazy_parameters,
   )
 
 
@@ -2272,6 +2270,8 @@ class OrbaxCheckpointManagerInterface:
     Returns:
       The restored train state.
     """
+    if lazy_parameters:
+      logging.warning('Orbax does not support lazy restoration.')
     start_time = time.time()
     if step is not None and path is not None:
       raise ValueError('Can only provide `step` or `path` but not both.')
@@ -2290,7 +2290,6 @@ class OrbaxCheckpointManagerInterface:
             _construct_restore_args,
             dtype=self._restore_dtype,
             mesh=self._partitioner.mesh,
-            lazy_parameters=lazy_parameters,
         ),
         param_infos,
     )
@@ -2362,7 +2361,6 @@ class OrbaxCheckpointManagerInterface:
     full_state_dict = checkpoint_importer.restore_from_t5_checkpoint(
         self._train_state.state_dict(),
         path_or_dir,
-        lazy_parameters=False,
         strict=strict,
         translator=translator,
     )

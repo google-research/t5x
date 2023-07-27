@@ -24,7 +24,6 @@ from flax import traverse_util
 import jax
 from jax import numpy as jnp
 import numpy as np
-from orbax.checkpoint import lazy_utils
 import tensorflow as tf
 import tensorstore as ts
 
@@ -32,7 +31,7 @@ ArrayType = Union[np.ndarray, jnp.ndarray, jax.Array]
 ScalarOrArrayType = Union[int, float, ArrayType]
 
 
-class LazyArray(lazy_utils.LazyValue, metaclass=abc.ABCMeta):
+class LazyArray(metaclass=abc.ABCMeta):
   """Lazily and asynchronously loads an array.
 
   LazyArray behaves in the same way as a `numpy` or `jax.numpy` array
