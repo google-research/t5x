@@ -449,6 +449,36 @@ def truncate_and_pad_tokenized_input(
   return input_tensor
 
 
+def _build_ragged_feature_length_spec(
+    feature_key: str,
+    bucket_keys: Optional[Mapping[str, list[int]]],
+    task_feature_lengths: Mapping[str, int],
+) -> tf.RaggedTensorSpec:
+  """Build a spec of the feature tensor's sequence length after preprocessing.
+
+  The sequence length will be dynamic when polymorphic sequence length buckets
+  are configured for the given feature.
+  Args:
+    feature_key: The name of an input feature tensor.
+    bucket_keys: A mapping from feature key to allowed sequence lengths.
+    task_feature_lengths: A mapping from feature key to fixed sequence length.
+
+  Returns:
+    A RaggedTensorSpec representing the sequence length dimension of the
+    feature tensor.
+  """
+  if bucket_keys and feature_key in bucket_keys:
+    # Polymorphic sequence length.
+    feature_length = None
+  else:
+    feature_length = task_feature_lengths[feature_key]
+  return tf.RaggedTensorSpec(
+      shape=[feature_length],
+      dtype=tf.int32,
+      ragged_rank=0,
+  )
+
+
 # TODO(danielandor): More principled score-mode input format.
 def create_preprocessor(
     batch_size: Optional[int],
@@ -519,13 +549,8 @@ def create_preprocessor(
       loss_weights = seqio.feature_converters.non_padding_position(t)
       return t, ar_inputs, loss_weights
 
-    encoder_input_tokens_shape = task_feature_lengths['inputs']
-    if bucket_keys and 'inputs' in bucket_keys:
-      encoder_input_tokens_shape = None
-    encoder_output_signature = tf.RaggedTensorSpec(
-        shape=[encoder_input_tokens_shape],
-        dtype=tf.int32,
-        ragged_rank=0,
+    encoder_output_signature = _build_ragged_feature_length_spec(
+        'inputs', bucket_keys, task_feature_lengths
     )
     encoder_input_tokens, _, _ = tf.map_fn(
         functools.partial(featurize, k='inputs'),
@@ -534,13 +559,8 @@ def create_preprocessor(
     )
     encoder_input_tokens = encoder_input_tokens.to_tensor()
 
-    decoder_target_tokens_shape = task_feature_lengths['targets']
-    if bucket_keys and 'targets' in bucket_keys:
-      decoder_target_tokens_shape = None
-    decoder_output_signature = tf.RaggedTensorSpec(
-        shape=[decoder_target_tokens_shape],
-        dtype=tf.int32,
-        ragged_rank=0,
+    decoder_output_signature = _build_ragged_feature_length_spec(
+        'targets', bucket_keys, task_feature_lengths
     )
     decoder_target_tokens, decoder_input_tokens, loss_weights = tf.map_fn(
         functools.partial(featurize, k='targets'),
@@ -592,7 +612,6 @@ def create_dual_encoder_preprocessor(
         t = text
       if output_features[k].add_eos:
         t = tf.concat([t[:length - 1], [vocab.eos_id]], axis=0)
-      # TODO(karukas): Verify this implementation is XLA-compatible.
       allowed_lengths = bucket_keys.get(k) if bucket_keys else None
       t = truncate_and_pad_tokenized_input(
           t, max_length=length, allowed_lengths=allowed_lengths
@@ -602,13 +621,18 @@ def create_dual_encoder_preprocessor(
     left_encoder_input_tokens = tf.map_fn(
         functools.partial(featurize, k='inputs'),
         inputs,
-        fn_output_signature=(tf.int32),
-    )
+        fn_output_signature=_build_ragged_feature_length_spec(
+            'inputs', bucket_keys, task_feature_lengths
+        ),
+    ).to_tensor()
+
     right_encoder_input_tokens = tf.map_fn(
         functools.partial(featurize, k='targets'),
         targets,
-        fn_output_signature=(tf.int32),
-    )
+        fn_output_signature=_build_ragged_feature_length_spec(
+            'targets', bucket_keys, task_feature_lengths
+        ),
+    ).to_tensor()
 
     return dict(
         left_encoder_input_tokens=left_encoder_input_tokens,
