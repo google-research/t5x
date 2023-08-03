@@ -179,6 +179,8 @@ class TEInstalledHelper(TransformerEngineHelperBase):
 
   @staticmethod
   def check_dataset_cfg(config):
+    if not hasattr(config, 'pack'):
+        return
     assert not config.pack, \
         "Transformer Engine does not support dataset.packing, please turn it off."
 
