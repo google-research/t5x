@@ -1123,7 +1123,6 @@ class Checkpointer(object):
     end_time = time.time()
     monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
                                           end_time - start_time)
-
     return restored_train_state
 
   def _restore_train_state(
