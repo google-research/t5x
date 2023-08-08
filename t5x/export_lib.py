@@ -748,8 +748,9 @@ def create_decoder_preprocessor(
     padding_mask = tf.cast(decoder_loss_weights, dtype=tf.bool)
 
     decoder_loss_weights = tf.cast(
-        tf.math.logical_xor(inputs, padding_mask),
-        dtype=decoder_target_tokens.dtype)
+        tf.math.logical_or(inputs, padding_mask),
+        dtype=decoder_target_tokens.dtype,
+    )
 
     return dict(
         decoder_input_tokens=decoder_input_tokens,
@@ -934,7 +935,10 @@ def create_preprocessor_with_decoder_params(
     # Splice the args into inputs and decoder params.
     num_decoder_params = len(decoder_params_spec)
     decoder_params_values = args[-num_decoder_params:]
-    inputs = args[:-num_decoder_params]
+    if num_decoder_params:
+      inputs = args[:-num_decoder_params]
+    else:
+      inputs = args
 
     features = dict(preprocessor(*inputs))
 
