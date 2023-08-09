@@ -228,10 +228,10 @@ def _sync_global_devices(name: str) -> None:
 
 
 def get_checkpoint_dir(
-    checkpoints_dir: str,
+    checkpoints_dir: epath.PathLike,
     step: int,
     step_format_fixed_length: Optional[int] = None,
-) -> str:
+) -> epath.PathLike:
   """Returns path to a checkpoint dir given a parent directory and step."""
   step_str = (
       f'{step:0{step_format_fixed_length}d}'
@@ -366,7 +366,7 @@ def _get_spec(directory: str, arr: Any, name: str,
               metadata: Dict[str, Any]) -> ts.Spec:
   """Get ts.Spec from array and name information."""
 
-  if directory.startswith('gs://'):
+  if os.fspath(directory).startswith('gs://'):
     spec = {
         'driver': 'zarr',
         'dtype': jnp.dtype(arr.dtype).name,
@@ -555,18 +555,20 @@ class Checkpointer(object):
       oldest ones will be automatically deleted to save space.
   """
 
-  def __init__(self,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               checkpoints_dir: str,
-               dataset_iterator: Optional[
-                   Union[tf.data.Iterator,
-                         clu.data.dataset_iterator.DatasetIterator]] = None,
-               *,
-               keep: Optional[int] = None,
-               save_dtype: jnp.dtype = np.float32,
-               restore_dtype: Optional[jnp.dtype] = None,
-               keep_dataset_checkpoints: Optional[int] = None):
+  def __init__(
+      self,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      checkpoints_dir: epath.PathLike,
+      dataset_iterator: Optional[
+          Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]
+      ] = None,
+      *,
+      keep: Optional[int] = None,
+      save_dtype: jnp.dtype = np.float32,
+      restore_dtype: Optional[jnp.dtype] = None,
+      keep_dataset_checkpoints: Optional[int] = None,
+  ):
     """Checkpointer constructor.
 
     Args:
@@ -708,7 +710,7 @@ class Checkpointer(object):
         self._get_state_dict_for_save(self._train_state.state_dict()),
         self._partitioner.get_mesh_axes(self._train_state).state_dict())
 
-  def _get_checkpoint_dir(self, step: int) -> str:
+  def _get_checkpoint_dir(self, step: int) -> epath.PathLike:
     return get_checkpoint_dir(self.checkpoints_dir, step)
 
   def all_steps(self) -> Sequence[int]:
@@ -1035,25 +1037,30 @@ class Checkpointer(object):
     if not gfile.exists(ckpt_path) or gfile.isdir(ckpt_path):
       raise ValueError(f'Path is not a valid T5X checkpoint: {ckpt_path}')
 
+    ckpt_type = checkpoint_utils.detect_checkpoint_type(
+        ckpt_path, expected=checkpoint_utils.CheckpointTypes.T5X
+    )
+    if ckpt_type is checkpoint_utils.CheckpointTypes.T5X_TF:
+      raise ValueError(
+          'Attempting to restore a TensorFlow checkpoint as a native T5X '
+          'checkpoint. Use `restore_from_tf_checkpoint` instead. Path: '
+          f'{ckpt_path}'
+      )
+    # Don't error out here for Orbax-detected checkpoint (there are edge cases
+    # where all values are stored in the msgpack and the checkpoint file can be
+    # loaded by both the Orbax and T5X checkpointer).
     logging.info('Restoring from checkpoint: %s', ckpt_path)
 
     with gfile.GFile(ckpt_path, 'rb') as fp:
       # TODO(adarob): Use threaded reading as in flax.checkpoints.
-      raw_contents = fp.read()
-      if raw_contents.startswith(b'model_checkpoint_path'):
-        raise ValueError(
-            'Attempting to restore a TensorFlow checkpoint as a native T5X '
-            'checkpoint. Use `restore_from_tf_checkpoint` instead. Path: ' +
-            ckpt_path)
-
       # `ckpt_contents['optimizer']` is a pytree with a realized np.array for
       # leaves (params or states) written as msgpack and a ts.Spec (in a dict)
       # for leaves written by TensorStore.
-      ckpt_contents = serialization.msgpack_restore(raw_contents)
+      ckpt_contents = serialization.msgpack_restore(fp.read())
 
     # If reading a ckpt that was written with gfile driver but the current
     # session uses the gcs driver, convert the ckpt's driver to gcs.
-    if ckpt_dir.startswith('gs://'):
+    if os.fspath(ckpt_dir).startswith('gs://'):
       ckpt_contents = _maybe_update_ts_from_file_to_gcs(ckpt_contents)
     # If a ckpt was saved in gcs and is being loaded locally, then convert the
     # driver to file or gfile. If the ckpt was not saved in gcs, do not change.
@@ -1716,7 +1723,9 @@ def fake_param_info(maybe_tspec: Any) -> Optional[_ParameterInfo]:
       axes=None)
 
 
-def find_checkpoint(path: str, step: Optional[int] = None) -> str:
+def find_checkpoint(
+    path: epath.PathLike, step: Optional[int] = None
+) -> epath.PathLike:
   """Find the checkpoint file based on paths and steps.
 
   Args:
@@ -1791,7 +1800,7 @@ def load_t5x_checkpoint(
 
   # If reading a ckpt that was written with gfile driver but the current
   # session uses the gcs driver, convert the ckpt's driver to gcs.
-  if path.startswith('gs://'):
+  if os.fspath(path).startswith('gs://'):
     ckpt_contents = _maybe_update_ts_from_file_to_gcs(ckpt_contents)
   # If a ckpt was saved in gcs and is being loaded locally, then convert the
   # driver to file or gfile. If the ckpt was not saved in gcs, do not change.
@@ -2195,6 +2204,9 @@ class OrbaxCheckpointManagerInterface:
         step_prefix='checkpoint',
     )
     options.metric_name_to_monitor = metric_name_to_monitor
+
+    if not gfile.isdir(directory):
+      directory = os.path.dirname(directory)
     self._manager = self._CheckpointManagerImpl(
         directory=directory, checkpointers=checkpointers, options=options
     )
@@ -2314,6 +2326,36 @@ class OrbaxCheckpointManagerInterface:
     directory = self.directory
     if path is not None:
       directory, step = get_step_from_checkpoint_dir(os.fspath(path))
+
+    # Check for legacy T5X checkpoint: If so, use legacy T5X
+    # checkpointer to restore the state. The following exclusive features of T5X
+    # checkpoint are skipped: DatasetIterator, [add more here when discovered]
+    try:
+      ckpt_path = find_checkpoint(directory, step)
+    except ValueError:
+      # `find_checkpoint` fails if the `.checkpoint` file isn't directly in
+      # the checkpoint directory. In this case, leave path as None and skip
+      # the legacy T5X checkpoint check.
+      ckpt_path = None
+
+    if ckpt_path is not None:
+      ckpt_type = checkpoint_utils.detect_checkpoint_type(
+          ckpt_path, expected=checkpoint_utils.CheckpointTypes.ORBAX
+      )
+      if ckpt_type is checkpoint_utils.CheckpointTypes.T5X_TF:
+        raise ValueError(
+            'Attempting to restore a TensorFlow checkpoint as a native T5X '
+            'checkpoint. Use `restore_from_tf_checkpoint` instead. Path: '
+            + ckpt_path
+        )
+      elif ckpt_type is checkpoint_utils.CheckpointTypes.T5X:
+        legacy_checkpointer = Checkpointer(
+            self._train_state,
+            self._partitioner,
+            self.directory,
+            restore_dtype=self._restore_dtype,
+        )
+        return legacy_checkpointer.restore(path=path)
 
     state_dict = self._train_state.state_dict()
     # Returns a state dict rather than a train state.

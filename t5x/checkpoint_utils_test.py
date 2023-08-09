@@ -145,5 +145,46 @@ class CheckpointsUtilsTest(absltest.TestCase):
     self.assertTrue(gfile.exists(self.train_ds_file))
     self.assertTrue(gfile.exists(self.ckpt_dir_path))
 
+  def test_detect_checkpoint_type(self):
+    tf_ckpt = os.path.join(TESTDATA, "mtf_tiny_t5", "checkpoint")
+    orbax_ckpt = os.path.join(TESTDATA, "tiny_orbax", "1", "checkpoint")
+    t5_ckpt = os.path.join(TESTDATA, "tiny_t5", "checkpoint_1", "checkpoint")
+
+    ret = checkpoint_utils.detect_checkpoint_type(
+        t5_ckpt, expected=checkpoint_utils.CheckpointTypes.T5X
+    )
+    self.assertEqual(ret, checkpoint_utils.CheckpointTypes.T5X)
+
+    ret = checkpoint_utils.detect_checkpoint_type(
+        tf_ckpt, expected=checkpoint_utils.CheckpointTypes.T5X_TF
+    )
+    self.assertEqual(ret, checkpoint_utils.CheckpointTypes.T5X_TF)
+
+    ret = checkpoint_utils.detect_checkpoint_type(
+        orbax_ckpt, expected=checkpoint_utils.CheckpointTypes.ORBAX
+    )
+    self.assertEqual(ret, checkpoint_utils.CheckpointTypes.ORBAX)
+
+    with self.assertLogs(level="WARN") as log_output:
+      checkpoint_utils.detect_checkpoint_type(
+          tf_ckpt, expected=checkpoint_utils.CheckpointTypes.T5X
+      )
+    self.assertRegex(
+        log_output[0][0].message,
+        ".*to be CheckpointTypes.T5X format, but the actual detected format was"
+        " CheckpointTypes.T5X_TF.*",
+    )
+
+    with self.assertLogs(level="WARN") as log_output:
+      checkpoint_utils.detect_checkpoint_type(
+          orbax_ckpt, expected=checkpoint_utils.CheckpointTypes.T5X_TF
+      )
+    self.assertRegex(
+        log_output[0][0].message,
+        ".*to be CheckpointTypes.T5X_TF format, but the actual detected format"
+        " was CheckpointTypes.ORBAX.*",
+    )
+
+
 if __name__ == "__main__":
   absltest.main()
