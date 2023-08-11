@@ -18,6 +18,7 @@ r"""Script to pretrain or finetune in JAX using a SeqIO pipeline.
 
 import functools
 import gc
+import inspect
 import math
 import os
 import time
@@ -790,6 +791,11 @@ if __name__ == '__main__':
       'process_count', None, help='Number of processes for multi-host GPU.')
 
   flags.DEFINE_integer('process_index', None, help='Index of this process.')
+  flags.DEFINE_integer(
+      'initialization_timeout',
+      None,
+      help='Timeout for jax.distributed.initialize. Default used is the '
+      'default as specified injax.distributed.initialize. ')
 
 
   def main(argv: Sequence[str]):
@@ -813,8 +819,15 @@ if __name__ == '__main__':
           '  coordinator_address: %s\n  process_count: %s\n  process_index: %s',
           FLAGS.coordinator_address, FLAGS.process_count, FLAGS.process_index)
 
-      jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.process_count,
-                                 FLAGS.process_index)
+      if FLAGS.initialization_timeout:
+        if 'initialization_timeout' not in inspect.signature(jax.distributed.initialize).parameters:
+          raise ValueError(f'Specified --initialization_timeout={FLAGS.initialization_timeout}, but '
+                  'jax=={jax.__version__} does not support this yet. Use jax>0.4.14')
+        jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.process_count,
+                                   FLAGS.process_index, initialization_timeout=FLAGS.initialization_timeout)
+      else:
+        jax.distributed.initialize(FLAGS.coordinator_address, FLAGS.process_count,
+                                   FLAGS.process_index)
 
     if FLAGS.tfds_data_dir:
       seqio.set_tfds_data_dir_override(FLAGS.tfds_data_dir)
