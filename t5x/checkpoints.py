@@ -243,6 +243,8 @@ def get_checkpoint_dir(
 
 def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
   """Returns a step number and the parent directory."""
+  if checkpoints_dir.endswith('/'):
+    checkpoints_dir = checkpoints_dir[:-1]
   parent, checkpoint = os.path.split(checkpoints_dir)
   if 'checkpoint_' not in checkpoint:
     raise ValueError('Found improperly formatted checkpoint directory.')
