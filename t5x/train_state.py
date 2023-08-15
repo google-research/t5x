@@ -303,7 +303,7 @@ class InferenceState(flax.struct.PyTreeNode):
     # because jax.tree_map will short circut and never call the function on the
     # step.
     flax_mutables_axes = self.flax_mutables_axes or EMPTY_DICT
-    return InferenceState(
+    return InferenceState(  # pytype: disable=wrong-arg-types  # dataclass_transform
         step=None,
         params=flax_partitioning.get_axis_names(self.params_axes),
         flax_mutables=flax_partitioning.get_axis_names(flax_mutables_axes))
