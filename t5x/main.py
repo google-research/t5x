@@ -113,6 +113,10 @@ _ATTR_BY_RUN_MODE = {
     RunMode.EXPORT: 'save',
 }
 
+# Extra attributes to set in __main__ from the imported module. This is for
+# backward compatibility with existing __main__ references in gin files.
+_EXTRA_ATTRS_BY_RUN_MODE = {RunMode.INFER: ('create_task_from_tfexample_file',)}
+
 
 main_module = sys.modules[__name__]
 
@@ -144,6 +148,8 @@ def main(argv: Sequence[str]):
 
   entry_func = getattr(imported_lib, import_attr)
   setattr(main_module, import_attr, entry_func)
+  for attr_name in _EXTRA_ATTRS_BY_RUN_MODE.get(_RUN_MODE.value, ()):
+    setattr(main_module, attr_name, getattr(imported_lib, attr_name))
 
 
   if _TFDS_DATA_DIR.value is not None:
