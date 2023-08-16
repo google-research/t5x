@@ -2393,7 +2393,7 @@ class OrbaxCheckpointManagerInterface:
     restore_kwargs = {
         _STATE_KEY: {
             'restore_args': restore_args,
-            'transform_fn': transform_fn,
+            'legacy_transform_fn': transform_fn,
         },
     }
     restored = self._manager.restore(
