@@ -1352,7 +1352,7 @@ def compute_base_metrics(
       'loss_per_nonpadding_target_token': clu_metrics.Average(
           total=loss, count=nonpadding_tokens
       ),
-      'loss_per_all_target_tokens': clu_metrics.Average(
+      'loss_per_all_target_tokens': clu_metrics.Average(  # pytype: disable=wrong-arg-types  # jnp-array
           total=loss, count=num_tokens
       ),
       'timing/seqs_per_second': metrics_lib.TimeRate.from_model_output(
@@ -1372,18 +1372,18 @@ def compute_base_metrics(
               numerator=num_tokens / num_devices
           )
       ),
-      'non_padding_fraction/loss_weights': clu_metrics.Average(
+      'non_padding_fraction/loss_weights': clu_metrics.Average(  # pytype: disable=wrong-arg-types  # jnp-array
           total=nonpadding_tokens, count=num_tokens
       ),
   }
   if z_loss is not None:
     metrics.update({
         'z_loss': metrics_lib.AveragePerStep(total=z_loss),
-        'z_loss_per_all_target_tokens': clu_metrics.Average(
+        'z_loss_per_all_target_tokens': clu_metrics.Average(  # pytype: disable=wrong-arg-types  # jnp-array
             total=z_loss, count=num_tokens
         ),
         'cross_ent_loss': metrics_lib.AveragePerStep(total=loss - z_loss),
-        'cross_ent_loss_per_all_target_tokens': clu_metrics.Average(
+        'cross_ent_loss_per_all_target_tokens': clu_metrics.Average(  # pytype: disable=wrong-arg-types  # jnp-array
             total=jnp.sum(loss - z_loss), count=num_tokens
         ),
     })
@@ -1404,10 +1404,10 @@ def compute_base_metrics(
       feature_size = feature_segment_ids.size
       total_tokens += feature_size
       total_non_padding_tokens += feature_non_padding
-      metrics[f'non_padding_fraction/{feature}'] = clu_metrics.Average(
+      metrics[f'non_padding_fraction/{feature}'] = clu_metrics.Average(  # pytype: disable=wrong-arg-types  # jnp-array
           total=feature_non_padding, count=feature_size
       )
-    metrics['non_padding_fraction/overall'] = clu_metrics.Average(
+    metrics['non_padding_fraction/overall'] = clu_metrics.Average(  # pytype: disable=wrong-arg-types  # jnp-array
         total=total_non_padding_tokens, count=total_tokens
     )
 

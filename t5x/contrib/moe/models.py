@@ -419,7 +419,7 @@ def _expert_metrics(
       # Override vanilla T5 cross entropy loss metrics with corrected loss that
       # accounts for MoE losses.
       'cross_ent_loss': metrics_lib.AveragePerStep(total=cross_ent_loss),
-      'cross_ent_loss_per_all_target_tokens': clu_metrics.Average(
+      'cross_ent_loss_per_all_target_tokens': clu_metrics.Average(  # pytype: disable=wrong-arg-types  # jnp-array
           total=jnp.sum(cross_ent_loss), count=num_tokens
       ),
   }

@@ -76,7 +76,7 @@ class Sum(clu_metrics.Metric):
   def merge(self, other: "Sum") -> "Sum":
     return type(self)(total=self.total + other.total)
 
-  def compute(self) -> Scalar:
+  def compute(self) -> Scalar:  # pytype: disable=signature-mismatch  # jnp-array
     return self.total
 
 
@@ -94,7 +94,7 @@ class Step(clu_metrics.Metric):
   def replace_steps(self, steps) -> "Step":
     return self.replace(steps=steps)
 
-  def compute(self) -> Scalar:
+  def compute(self) -> Scalar:  # pytype: disable=signature-mismatch  # jnp-array
     if self.steps is None:
       raise ValueError(
           "`steps` must be set by calling `replace_steps` before computing metric."
@@ -157,7 +157,7 @@ class Time(clu_metrics.Metric):
   def merge(self, other: "Time") -> "Time":
     return self
 
-  def compute(self) -> Scalar:
+  def compute(self) -> Scalar:  # pytype: disable=signature-mismatch  # jnp-array
     if self.duration is None:
       raise ValueError(
           "`Time` `duration` must be set by calling `replace_duration` before computing."
