@@ -228,7 +228,7 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
 class InferenceState(flax.struct.PyTreeNode):
   """State compatible with FlaxOptimTrainState without optimizer state."""
 
-  step: jnp.ndarray
+  step: Optional[jnp.ndarray]
   params: flax_scope.FrozenVariableDict
   params_axes: Optional[flax_scope.FrozenVariableDict] = None
   flax_mutables: flax_scope.FrozenDict = EMPTY_DICT
