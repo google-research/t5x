@@ -1336,8 +1336,8 @@ def compute_base_metrics(
   Returns:
     Dict of metrics.
   """
-  num_examples = targets.shape[0]
-  num_tokens = targets.size
+  num_examples = jnp.array(targets.shape[0])
+  num_tokens = jnp.array(targets.size)
   num_devices = jax.device_count()
   assert num_devices, 'JAX is reporting no devices, but it should.'
   # Note: apply mask again even though mask has already been applied to loss.
@@ -1389,8 +1389,8 @@ def compute_base_metrics(
     })
 
   if segment_ids is not None:
-    total_tokens = 0
-    total_non_padding_tokens = 0
+    total_tokens = jnp.array(0)
+    total_non_padding_tokens = jnp.array(0)
     for feature, feature_segment_ids in segment_ids.items():
       if feature_segment_ids is None or feature_segment_ids.shape[1] == 0:
         continue
@@ -1401,7 +1401,7 @@ def compute_base_metrics(
       )
       # 0s is padding
       feature_non_padding = jnp.sum(feature_segment_ids != 0)
-      feature_size = feature_segment_ids.size
+      feature_size = jnp.array(feature_segment_ids.size)
       total_tokens += feature_size
       total_non_padding_tokens += feature_non_padding
       metrics[f'non_padding_fraction/{feature}'] = clu_metrics.Average(
