@@ -774,10 +774,10 @@ class DecodeTest(parameterized.TestCase):
                 'cached_key': jnp.ones([10, 12, 2]),
                 'cached_values': jnp.ones([4, 7, 2]),
                 'cache_index': jnp.ones([4, 5, 6]),
-            }
+            },
         },
         'position_embedder': {
-            'position_embedder_index': jnp.array(-1),
+            'position_embedder_index': jnp.array([-1]),
         },
     }
 
@@ -787,9 +787,11 @@ class DecodeTest(parameterized.TestCase):
         'layers_0': {
             'cached_key': fn(jnp.ones([3, 6])),
             'cached_values': fn(jnp.ones([3, 6])),
-            'cache_index': fn(jnp.ones([
-                3,
-            ])),
+            'cache_index': fn(
+                jnp.ones([
+                    3,
+                ])
+            ),
         },
         'layers_1': {
             'relpos_bias': {
@@ -804,10 +806,10 @@ class DecodeTest(parameterized.TestCase):
                 'cached_key': fn(jnp.ones([10, 12, 2])),
                 'cached_values': fn(jnp.ones([4, 7, 2])),
                 'cache_index': fn(jnp.ones([4, 5, 6])),
-            }
+            },
         },
         'position_embedder': {
-            'position_embedder_index': jnp.array(-1),
+            'position_embedder_index': jnp.array([-1]),
         },
     }
 
