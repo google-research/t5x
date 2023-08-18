@@ -20,6 +20,7 @@ steps.
 """
 
 import abc
+import dataclasses
 import functools
 from typing import Any, Callable, Mapping, MutableMapping, Optional, Tuple, Union
 
@@ -352,6 +353,12 @@ class BaseTransformerModel(BaseModel):
     )
 
 
+@dataclasses.dataclass(frozen=True)
+class DecoderParams:
+  return_all_decodes: bool = False
+  num_decodes: int = 1
+
+
 class EncoderDecoderModel(BaseTransformerModel):
   """Wrapper class for the models.Transformer nn.module."""
 
@@ -372,11 +379,13 @@ class EncoderDecoderModel(BaseTransformerModel):
       loss_normalizing_factor: Optional[
           Union[float, int, str, losses.SpecialLossNormalizingFactor]
       ] = None,
+      default_decoder_params: Optional[DecoderParams] = None,
   ):
     if feature_converter_cls is not None:
       self.FEATURE_CONVERTER_CLS = (
           feature_converter_cls  # pylint: disable=invalid-name
       )
+    self._default_decoder_params = default_decoder_params or DecoderParams()
     super().__init__(
         module=module,
         input_vocabulary=input_vocabulary,
@@ -548,8 +557,8 @@ class EncoderDecoderModel(BaseTransformerModel):
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
       decoder_params: Optional[MutableMapping[str, Any]] = None,
-      return_all_decodes: bool = False,
-      num_decodes: int = 1,
+      return_all_decodes: bool = None,
+      num_decodes: int = None,  # pytype:disable=annotation-type-mismatch
       prompt_with_targets: bool = False,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict with fast decoding beam search on a batch.
@@ -603,6 +612,11 @@ class EncoderDecoderModel(BaseTransformerModel):
         the batch of predictions, with the entire beam if requested
         an auxiliary dictionary of decoder scores
     """
+    if return_all_decodes is None:
+      return_all_decodes = self._default_decoder_params.return_all_decodes
+    if num_decodes is None:
+      num_decodes = self._default_decoder_params.num_decodes
+
     # [batch, input_len]
     encoder_input_tokens = batch['encoder_input_tokens']
     decoder_input_tokens = batch['decoder_input_tokens']

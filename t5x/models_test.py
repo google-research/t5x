@@ -132,6 +132,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     def mock_init(self):
       self.module = mock_transformer
       self.optimizer_def = mock_optimizer_def
+      self._default_decoder_params = models.DecoderParams()
 
     with mock.patch.object(
         models.EncoderDecoderModel, '__init__', new=mock_init):
@@ -242,6 +243,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     def mock_init(self):
       self.module = MockModule()
       self.module.scan_layers = False
+      self._default_decoder_params = models.DecoderParams()
       self._input_vocabulary = mock.Mock(eos_id=1)
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = mock_decode_fn
@@ -306,6 +308,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
 
     def mock_init(self):
       self.module = module
+      self._default_decoder_params = models.DecoderParams()
       # Set the EOS token to be larger then the vocabulary size. This forces the
       # model to decode all the way to `max_decode_length`, allowing us to test
       # behavior when one element reaches the end before the others.
@@ -553,6 +556,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     def mock_init(self):
       self.module = MockModule()
       self.module.scan_layers = False
+      self._default_decoder_params = models.DecoderParams()
       self._input_vocabulary = mock.Mock(eos_id=1)
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = decode_fn
@@ -584,6 +588,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
               }) if 'mutable' in kwargs else np.zeros((2, 2))))
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = decode_fn_mock
+      self._default_decoder_params = models.DecoderParams()
 
     with mock.patch.object(
         models.EncoderDecoderModel, '__init__', new=mock_init):
@@ -673,6 +678,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     def mock_init(self):
       self.module = MockModule()
       self.module.scan_layers = False
+      self._default_decoder_params = models.DecoderParams()
       self._input_vocabulary = mock.Mock(eos_id=1)
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = decoding.beam_search
