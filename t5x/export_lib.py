@@ -589,17 +589,25 @@ def create_dual_encoder_preprocessor(
     tokenized_inputs: bool = False,
     input_tensor_name: str = 'text_batch',
     bucket_keys: Optional[Mapping[str, List[int]]] = None,
+    split_separator: Optional[str] = None,
 ) -> Tuple[PreprocessorFn, Sequence[tf.TensorSpec]]:
   """Builds a function based on the config task to tokenize and batch the input text."""
 
   def preprocess(input_texts: tf.Tensor) -> Mapping[str, tf.Tensor]:
     """TF-based preprocessor that takes a batch of text and converts it to model features."""
-    inputs = input_texts
     if tokenized_inputs:
+      inputs = input_texts
       targets = tf.broadcast_to(
           tf.constant(0, dtype=tf.int32), tf.shape(input_texts))
-    else:
+    elif split_separator is None:
+      inputs = input_texts
       targets = tf.broadcast_to(tf.constant(''), tf.shape(input_texts))
+    else:
+      ragged_split = tf.strings.split(
+          input_texts, sep=split_separator, maxsplit=1
+      )
+      split = ragged_split.to_tensor(shape=[tf.shape(input_texts)[0], 2])
+      inputs, targets = split[:, 0], split[:, 1]
 
     # TODO(b/188656799): Generalize this code to work with arbitrary models.
     def featurize(text, k):
