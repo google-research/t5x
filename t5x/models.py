@@ -41,6 +41,8 @@ from t5x import optimizers
 import tensorflow as tf
 import typing_extensions
 
+from t5x.te_helper import TransformerEngineHelper
+
 # Remove _ShardedDeviceArray when users of t5x have their types updated
 _ShardedDeviceArray = Any
 Array = Union[np.ndarray, jnp.ndarray, _ShardedDeviceArray, tf.Tensor]
@@ -133,6 +135,7 @@ class BaseModel(abc.ABC):
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray],
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Computes loss and metrics.
 
@@ -153,6 +156,7 @@ class BaseModel(abc.ABC):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Computes loss and metrics during the evaluation.
 
@@ -170,6 +174,7 @@ class BaseModel(abc.ABC):
         params=params,
         batch=batch,
         dropout_rng=None,
+        flax_mutables=flax_mutables,
     )
 
   def predict_batch(
@@ -177,6 +182,7 @@ class BaseModel(abc.ABC):
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> jnp.ndarray:
     """Predicts a batch of outputs from the model.
 
@@ -188,7 +194,7 @@ class BaseModel(abc.ABC):
     Returns:
       The model predictions.
     """
-    return self.predict_batch_with_aux(params=params, batch=batch, rng=rng)[0]
+    return self.predict_batch_with_aux(params=params, batch=batch, rng=rng, flax_mutables=flax_mutables)[0]
 
   @abc.abstractmethod
   def predict_batch_with_aux(
@@ -196,6 +202,7 @@ class BaseModel(abc.ABC):
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.random.KeyArray] = None,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict a batch from the modelwith auxiliary outputs.
 
@@ -216,6 +223,7 @@ class BaseModel(abc.ABC):
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       return_intermediates: bool = False,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> jnp.ndarray:
     """Computes scores for batch."""
     pass
@@ -279,7 +287,7 @@ class BaseTransformerModel(BaseModel):
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray] = None,
-  ) -> jnp.ndarray:
+      flax_mutables: Optional[PyTreeDef] = None) -> jnp.ndarray:
     """Computes logits via a forward pass of the model."""
     pass
 
@@ -288,9 +296,11 @@ class BaseTransformerModel(BaseModel):
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray],
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Loss function used for training with a cross-entropy loss."""
-    logits = self._compute_logits(params, batch, dropout_rng)
+    logits = self._compute_logits(params, batch, dropout_rng, 
+                                  flax_mutables=flax_mutables)
 
     loss_normalizing_factor: Optional[
         Union[float, int, str, losses.SpecialLossNormalizingFactor]
@@ -333,6 +343,31 @@ class BaseTransformerModel(BaseModel):
         segment_ids=segment_ids,
     )
     return loss, metrics
+
+  def eval_fn(
+      self,
+      params: PyTreeDef,
+      batch: Mapping[str, jnp.ndarray],
+      flax_mutables:  Optional[PyTreeDef] = None,
+  ) -> Tuple[jnp.ndarray, MetricsMap]:
+    """Computes loss and metrics during the evaluation.
+
+    Args:
+      params: model parameters.
+      batch: a batch of inputs.
+
+    Returns:
+      loss: the loss computed for the given inputs and parameters.
+      aux:
+        weight_sum: sum of the per-token weights applied to the loss.
+        metrics: a mapping of metrics computed for this batch.
+    """
+    return self.loss_fn(
+        params=params,
+        batch=batch,
+        dropout_rng=None,
+        flax_mutables=flax_mutables,
+    )
 
   def _compute_metrics(
       self,
@@ -459,15 +494,18 @@ class EncoderDecoderModel(BaseTransformerModel):
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray] = None,
       mutable: flax_scope.CollectionFilter = False,
-      other_variables: Optional[PyTree] = None,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, flax_scope.FrozenVariableDict]]:
     """Computes logits via a forward pass of `self.module_cls`."""
     # Dropout is provided only for the training mode.
     rngs = {'dropout': dropout_rng} if dropout_rng is not None else None
-    if other_variables is None:
-      other_variables = {}
+    if flax_mutables is None:
+      flax_mutables = {}
     return self.module.apply(
-        {'params': params, **other_variables},
+        {
+            'params': params,
+            **flax_mutables,
+        },
         batch['encoder_input_tokens'],
         batch['decoder_input_tokens'],
         batch['decoder_target_tokens'],
@@ -488,17 +526,25 @@ class EncoderDecoderModel(BaseTransformerModel):
       encoded_inputs: jnp.ndarray,
       raw_inputs: jnp.ndarray,
       max_decode_length: int,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Token slice to logits from decoder model."""
     flat_ids = decoding_state.cur_token
     flat_cache = decoding_state.cache
+
+    if flax_mutables is None:
+      flax_mutables = {}
 
     # flat_ids: [batch * beam, seq_len=1]
     # cache is expanded inside beam_search to become flat_cache
     # flat_cache: [batch * beam, num_heads, depth_per_head, max_decode_len]
     # flat_logits: [batch * beam, seq_len=1, vocab]
     flat_logits, new_vars = self.module.apply(
-        {'params': params, 'cache': flat_cache},
+        {
+            'params': params,
+            'cache': flat_cache,
+            **flax_mutables,
+        },
         encoded_inputs,
         raw_inputs,  # only needed for encoder padding mask
         flat_ids,
@@ -520,6 +566,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       encoded_inputs: jnp.ndarray,
       encoder_input_tokens: jnp.ndarray,
       decoder_input_tokens: jnp.ndarray,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[PyTree, Optional[jnp.ndarray]]:
     """Initialize the key/value cache.
 
@@ -535,9 +582,14 @@ class EncoderDecoderModel(BaseTransformerModel):
       cache: The initialzed cache.
       initial_index: None, since we are not prefilling.
     """
+    if flax_mutables is None:
+        flax_mutables = {}
     del encoded_inputs
     _, initial_variables = self.module.apply(
-        {'params': params},
+        {
+            'params': params,
+            **flax_mutables,
+        },
         encoder_input_tokens=jnp.ones_like(encoder_input_tokens),
         decoder_input_tokens=jnp.ones_like(decoder_input_tokens),
         decoder_target_tokens=jnp.ones_like(decoder_input_tokens),
@@ -551,6 +603,24 @@ class EncoderDecoderModel(BaseTransformerModel):
 
     return initial_variables['cache'], initial_index
 
+  def predict_batch(self,
+                    params: PyTreeDef,
+                    batch: Mapping[str, jnp.ndarray],
+                    rng: Optional[jax.random.KeyArray] = None,
+                    flax_mutables: Optional[PyTreeDef] = None) -> jnp.ndarray:
+    """Predicts a batch of outputs from the model.
+
+    Args:
+      params: model parameters.
+      batch: a batch of inputs.
+      rng: an optional RNG to use during prediction (e.g., for decoding).
+
+    Returns:
+      The model predictions.
+    """
+    return self.predict_batch_with_aux(params=params, batch=batch, 
+                                       rng=rng, flax_mutables=flax_mutables)[0]
+
   def predict_batch_with_aux(
       self,
       params: PyTree,
@@ -560,6 +630,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       return_all_decodes: bool = None,
       num_decodes: int = None,  # pytype:disable=annotation-type-mismatch
       prompt_with_targets: bool = False,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict with fast decoding beam search on a batch.
 
@@ -616,6 +687,8 @@ class EncoderDecoderModel(BaseTransformerModel):
       return_all_decodes = self._default_decoder_params.return_all_decodes
     if num_decodes is None:
       num_decodes = self._default_decoder_params.num_decodes
+    if flax_mutables is None:
+      flax_mutables = {}
 
     # [batch, input_len]
     encoder_input_tokens = batch['encoder_input_tokens']
@@ -630,7 +703,7 @@ class EncoderDecoderModel(BaseTransformerModel):
     # [batch * num_decodes, input_len, emb_dim]
     encoded_inputs = decoding.flat_batch_beam_expand(
         self.module.apply(
-            {'params': params},
+            {'params': params, **flax_mutables},
             encoder_input_tokens,
             enable_dropout=False,
             method=self.module.encode,
@@ -656,6 +729,7 @@ class EncoderDecoderModel(BaseTransformerModel):
         encoded_inputs=encoded_inputs,
         encoder_input_tokens=encoder_input_tokens,
         decoder_input_tokens=decoder_prompt_inputs,
+        flax_mutables=flax_mutables,
     )
 
     # [batch * num_decodes, input_len]
@@ -669,6 +743,7 @@ class EncoderDecoderModel(BaseTransformerModel):
         encoded_inputs=encoded_inputs,
         raw_inputs=raw_inputs,
         max_decode_length=decoder_input_tokens.shape[1],
+        flax_mutables=flax_mutables,
     )
 
     if decoder_params is None:
@@ -694,6 +769,7 @@ class EncoderDecoderModel(BaseTransformerModel):
     # decodes: [batch, num_decodes, max_decode_len + 1]
     # scores: [batch, num_decodes]
     scanned = hasattr(self.module, 'scan_layers') and self.module.scan_layers
+    cfg = TransformerEngineHelper.get_t5x_config(self.module.config)
 
     if 'eos_id' not in decoder_params:
       decoder_params['eos_id'] = self.output_vocabulary.eos_id
@@ -702,8 +778,8 @@ class EncoderDecoderModel(BaseTransformerModel):
         cache=cache,
         tokens_to_logits=tokens_ids_to_logits,
         num_decodes=num_decodes,
-        cache_offset=1 if scanned else 0,
-        **decoder_params,
+        cache_offset=1 if (scanned or cfg.transpose_batch_sequence) else 0,
+        **decoder_params
     )
 
     # Beam search returns [n_batch, n_beam, n_length] with beam dimension sorted
@@ -719,6 +795,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       return_intermediates: bool = False,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, Mapping[str, Any]]]:
     """Compute log likelihood score on a batch."""
     weights = batch['decoder_loss_weights']
@@ -726,7 +803,8 @@ class EncoderDecoderModel(BaseTransformerModel):
 
     if return_intermediates:
       logits, modified_variables = self._compute_logits(
-          params=params, batch=batch, mutable=['intermediates']
+          params=params, batch=batch, mutable=['intermediates'],
+          flax_mutables=flax_mutables,
       )
 
       # Inside self.module, we called nn.Module.sow to track various
@@ -744,7 +822,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       # `intermediates` should be tuples tracking all instantiations of a value.
       # These values each have just one instantiation, hence singletons.
     else:
-      logits = self._compute_logits(params, batch)  # type: jnp.ndarray  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+      logits = self._compute_logits(params, batch, flax_mutables=flax_mutables)  # type: jnp.ndarray  # pytype: disable=annotation-type-mismatch  # jax-ndarray
 
     # Purposefully don't use config.z_loss because that term is for training
     # stability and shouldn't affect our reported scores.
@@ -855,16 +933,19 @@ class DecoderOnlyModel(BaseTransformerModel):
       batch: Mapping[str, jnp.ndarray],
       dropout_rng: Optional[jax.random.KeyArray] = None,
       mutable: flax_scope.CollectionFilter = False,
-      other_variables: Optional[PyTree] = None,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> jnp.ndarray:
     """Computes logits via a forward pass of `self.module`."""
     rngs = {'dropout': dropout_rng} if dropout_rng is not None else None
     decoder_causal_attention = self._get_decoder_causal_attention(batch)
-    if other_variables is None:
-      other_variables = {}
+    if flax_mutables is None:
+      flax_mutables = {}
 
     return self.module.apply(
-        {'params': params, **other_variables},
+        {
+            'params': params,
+            **flax_mutables,
+        },
         batch['decoder_input_tokens'],
         batch['decoder_target_tokens'],
         decoder_segment_ids=batch.get('decoder_segment_ids', None),
@@ -881,6 +962,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       decoding_state: decoding.DecodingState,
       params: PyTree,
       max_decode_length: int,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Token slice to logits from decoder model."""
     flat_ids = decoding_state.cur_token
@@ -891,7 +973,11 @@ class DecoderOnlyModel(BaseTransformerModel):
     # flat_cache['cache_index']: [batch]
     # flat_logits: [batch, seq_len=1, vocab]
     flat_logits, new_vars = self.module.apply(
-        {'params': params, 'cache': flat_cache},
+        {
+            'params': params,
+            'cache': flat_cache,
+            **flax_mutables,
+        },
         flat_ids,
         flat_ids,
         enable_dropout=False,
@@ -909,6 +995,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
       return_intermediates: bool = False,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> jnp.ndarray:
     """Compute log likelihood score on a batch."""
 
@@ -921,6 +1008,7 @@ class DecoderOnlyModel(BaseTransformerModel):
           batch=batch,
           dropout_rng=None,
           mutable=['intermediates'],
+          flax_mutables=flax_mutables,
       )
 
       # Inside self.module, we called nn.Module.sow to track various
@@ -939,7 +1027,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       # These values each have just one instantiation, hence singletons.
     else:
       logits = self._compute_logits(
-          params=params, batch=batch, dropout_rng=None
+          params=params, batch=batch, dropout_rng=None, flax_mutables=flax_mutables,
       )
 
     token_scores = (
@@ -967,6 +1055,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       params: PyTree,
       inputs: jnp.ndarray,
       causal_attention_mask: jnp.ndarray,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[PyTree, jnp.ndarray]:
     """Compute the key/value cache on the input prompt.
 
@@ -980,12 +1069,17 @@ class DecoderOnlyModel(BaseTransformerModel):
       cache: The prefilled cache.
       initial_index: The index of the next position following prefill.
     """
+    if flax_mutables is None:
+        flax_mutables = {}
     # The lengths of the inputs match the number of non-padding positions,
     # excluding the initial BOS.
     inputs_lengths = jnp.sum(inputs[:, 1:] != 0, axis=-1)
 
     _, initial_variables = self.module.apply(
-        {'params': params},
+        {
+            'params': params,
+            **flax_mutables,
+        },
         jnp.ones_like(inputs),
         jnp.ones_like(inputs),
         enable_dropout=False,
@@ -1023,7 +1117,11 @@ class DecoderOnlyModel(BaseTransformerModel):
     )
 
     _, variables_with_cache = self.module.apply(
-        {'params': params, 'cache': cache},
+        {
+            'params': params,
+            'cache': cache,
+            **flax_mutables,
+        },
         decoder_input_tokens=inputs,
         # Use the `decoder_causal_attention`, which has 1 for all input
         # positions, including the BOS token, as the targets so when the
@@ -1050,6 +1148,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       return_all_decodes: bool = False,
       num_decodes: int = 1,
       decoder_params: Optional[MutableMapping[str, Any]] = None,
+      flax_mutables: Optional[PyTreeDef] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict with prefix.
 
@@ -1148,7 +1247,7 @@ class DecoderOnlyModel(BaseTransformerModel):
     inputs = batch['decoder_input_tokens'] * batch['decoder_causal_attention']
 
     prefilled_cache, initial_index = self._compute_kv_cache(
-        params, inputs, batch['decoder_causal_attention']
+        params, inputs, batch['decoder_causal_attention'], flax_mutables=flax_mutables,
     )
 
     target_shape = batch['decoder_input_tokens'].shape
@@ -1158,6 +1257,7 @@ class DecoderOnlyModel(BaseTransformerModel):
         self._compute_logits_from_slice,
         params=params,
         max_decode_length=max_decode_length,
+        flax_mutables=flax_mutables,
     )
 
     if decoder_params is None:
