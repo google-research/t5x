@@ -193,16 +193,40 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     self.assertFalse(called_with[1]['enable_dropout'])
 
   @parameterized.named_parameters(
-      dict(testcase_name='no_force_decoding', prompt_with_targets=False),
-      dict(testcase_name='force_decoding', prompt_with_targets=True),
+      dict(
+          testcase_name='no_force_decoding',
+          prompt_with_targets=False,
+          supports_prefilling=True,
+      ),
+      dict(
+          testcase_name='force_decoding_no_prefill',
+          prompt_with_targets=True,
+          supports_prefilling=False,
+      ),
+      dict(
+          testcase_name='force_decoding_prefill_positional',
+          prompt_with_targets=True,
+          supports_prefilling=True,
+          position_embedder=True,
+      ),
+      dict(
+          testcase_name='force_decoding_prefill',
+          prompt_with_targets=True,
+          supports_prefilling=True,
+          position_embedder=False,
+      ),
   )
-  def test_prompt_with_targets(self, prompt_with_targets):
+  def test_prompt_with_targets(
+      self, prompt_with_targets, supports_prefilling, position_embedder=True
+  ):
     batch_size, encoder_len, max_decode_len, emb_dim = 2, 3, 4, 5
     batch = {
-        'encoder_input_tokens':
-            np.zeros((batch_size, encoder_len), dtype=np.int32),
-        'decoder_input_tokens':
-            np.full([batch_size, max_decode_len], 2, dtype=np.int32)
+        'encoder_input_tokens': np.zeros(
+            (batch_size, encoder_len), dtype=np.int32
+        ),
+        'decoder_input_tokens': np.array(
+            [[0, 2, 3, 0], [0, 0, 0, 0]], dtype=np.int32
+        ),
     }
 
     # These dummy logits represent the probability distribution where all the
@@ -212,36 +236,40 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     # vocabulary.
     dummy_logits = jnp.expand_dims(
         jnp.array([[-1e7, -1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, -1e7, 0]]),
-        axis=1)
+        axis=1,
+    )
 
-    mock_decode_fn = mock.Mock()
-    mock_decode_fn.return_value = (np.full([batch_size, max_decode_len, 1],
-                                           3,
-                                           dtype=np.int32),
-                                   np.full([batch_size, 1],
-                                           1.0,
-                                           dtype=np.float32))
+    mock_decode_fn = (
+        mock.create_autospec(lambda initial_index, **kwargs: None)
+        if supports_prefilling
+        else mock.Mock()
+    )
+    mock_decode_fn.return_value = (
+        np.full([batch_size, max_decode_len, 1], 3, dtype=np.int32),
+        np.full([batch_size, 1], 1.0, dtype=np.float32),
+    )
 
-    class MockModule:
-
-      def __init__(self):
-        self.dtype = jnp.float32
-
-      def apply(self, *args, method=None, **kwargs):
-        del args, kwargs
-        if method is None:  # use for module.`__call__`
-          return (dummy_logits, {'cache': {}})
-        else:
-          return method()
-
-      def encode(self):
-        return jnp.zeros((batch_size, encoder_len, emb_dim))
-
-      def decode(self):
+    def mock_module_apply(*args, method=None, **kwargs):
+      del args, kwargs
+      if method is None:
         return (dummy_logits, {'cache': {}})
+      return method()
+
+    mock_init_cache = {'decoder': {}}
+    if position_embedder:
+      mock_init_cache['decoder']['position_embedder'] = {
+          'position_embedder_index': [0]
+      }
+
+    mock_module = mock.Mock(
+        dtype=jnp.float32,
+        apply=mock.Mock(side_effect=mock_module_apply),
+        encode=lambda: jnp.zeros((batch_size, encoder_len, emb_dim)),
+        decode=lambda prefill=None: (dummy_logits, {'cache': mock_init_cache}),
+    )
 
     def mock_init(self):
-      self.module = MockModule()
+      self.module = mock_module
       self.module.scan_layers = False
       self._default_decoder_params = models.DecoderParams()
       self._input_vocabulary = mock.Mock(eos_id=1)
@@ -266,6 +294,28 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     # work well with np.array comparison.
     np.testing.assert_array_equal(mock_decode_fn.mock_calls[0][2]['inputs'],
                                   expected_inputs)
+    if supports_prefilling:
+      if prompt_with_targets:
+        expected_initial_index = [2, 0]
+      else:
+        expected_initial_index = [0, 0]
+      np.testing.assert_array_equal(
+          mock_decode_fn.mock_calls[0][2]['initial_index'],
+          expected_initial_index,
+      )
+      # Encode inputs, initialize decoder, cache prompt.
+      self.assertEqual(mock_module.apply.call_count, 3)
+      if position_embedder:
+        np.testing.assert_array_equal(
+            mock_decode_fn.mock_calls[0][2]['cache']['decoder'][
+                'position_embedder'
+            ]['position_embedder_index'],
+            expected_initial_index,
+        )
+    else:
+      self.assertNotIn('initial_index', mock_decode_fn.mock_calls[0][2])
+      # Encode inputs, initialize decoder.
+      self.assertEqual(mock_module.apply.call_count, 2)
 
   def test_predict_batch_loop_and_caches_are_equal(self):
     vocab_size = 50

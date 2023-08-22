@@ -22,8 +22,10 @@ steps.
 import abc
 import dataclasses
 import functools
+import inspect
 from typing import Any, Callable, Mapping, MutableMapping, Optional, Tuple, Union
 
+from absl import logging
 import clu.metrics as clu_metrics
 from flax import core as flax_core
 from flax import linen as nn
@@ -520,22 +522,25 @@ class EncoderDecoderModel(BaseTransformerModel):
       encoded_inputs: jnp.ndarray,
       encoder_input_tokens: jnp.ndarray,
       decoder_input_tokens: jnp.ndarray,
+      prefill_decoder_prompt: bool = False,
   ) -> Tuple[PyTree, Optional[jnp.ndarray]]:
-    """Initialize the key/value cache.
+    """Initialize the key/value cache, with optional prompt.
 
     Args:
       params: The parameters of the model.
-      encoded_inputs: Output of the encoder on the inputs. Unused.
+      encoded_inputs: Output of the encoder on the inputs.
       encoder_input_tokens: Input tokens for the encoder. Only needed for
         padding mask.
-      decoder_input_tokens: Input tokens for the decoder. Only needed for
-        length.
+      decoder_input_tokens: Input tokens for the decoder, possibly containing a
+        prompt.
+      prefill_decoder_prompt: Whether to prefill the cache using the decoder
+        prompt.
 
     Returns:
       cache: The initialzed cache.
-      initial_index: None, since we are not prefilling.
+      initial_index: The index of the next position following prefill or None if
+        `prefill_decoder_prompt` is False.
     """
-    del encoded_inputs
     _, initial_variables = self.module.apply(
         {'params': params},
         encoder_input_tokens=jnp.ones_like(encoder_input_tokens),
@@ -546,10 +551,37 @@ class EncoderDecoderModel(BaseTransformerModel):
         enable_dropout=False,
     )
 
-    # Our initial index is None since we do not prefill based on a prompt.
-    initial_index = None
+    cache = initial_variables['cache']
 
-    return initial_variables['cache'], initial_index
+    if not prefill_decoder_prompt:
+      return cache, None
+
+    # Prefill the cache based on an (optional) prompt.
+    # We assume the only 0 tokens are a BOS=0 token at the beginning of the
+    # input and PAD=0 tokens at the end.
+    inputs_lengths = jnp.sum(decoder_input_tokens != 0, axis=1)
+
+    _, variables_with_cache = self.module.apply(
+        {'params': params, 'cache': cache},
+        encoded=encoded_inputs,
+        encoder_input_tokens=encoder_input_tokens,  # only for padding mask,
+        decoder_input_tokens=decoder_input_tokens,
+        decoder_target_tokens=jnp.ones_like(decoder_input_tokens),  # for shape
+        mutable=['cache'],
+        enable_dropout=False,
+        prefill=True,
+        prefill_lengths=inputs_lengths,
+        method=self.module.decode,
+    )
+
+    cache = variables_with_cache['cache']
+    if 'position_embedder' in cache['decoder']:
+      # TODO(adarob): Instead have `module.decode` accept an index.
+      cache['decoder']['position_embedder'][
+          'position_embedder_index'
+      ] = inputs_lengths
+
+    return cache, inputs_lengths
 
   def predict_batch_with_aux(
       self,
@@ -621,23 +653,6 @@ class EncoderDecoderModel(BaseTransformerModel):
     encoder_input_tokens = batch['encoder_input_tokens']
     decoder_input_tokens = batch['decoder_input_tokens']
 
-    # Prepare transformer fast-decoder call for beam search: for beam search, we
-    # need to set up our decoder model to handle a batch size equal to
-    # batch_size * num_decodes, where each batch item's data is expanded
-    # in-place rather than tiled.
-    # i.e. if we denote each batch element subtensor as el[n]:
-    # [el0, el1, el2] --> beamsize=2 --> [el0,el0,el1,el1,el2,el2]
-    # [batch * num_decodes, input_len, emb_dim]
-    encoded_inputs = decoding.flat_batch_beam_expand(
-        self.module.apply(
-            {'params': params},
-            encoder_input_tokens,
-            enable_dropout=False,
-            method=self.module.encode,
-        ),
-        num_decodes,
-    )
-
     # `decoder_prompt_inputs` is initialized from the batch's
     # `decoder_input_tokens`. The EOS is stripped to avoid decoding to stop
     # after the prompt by matching to `output_vocabulary.eos_id`.
@@ -650,24 +665,54 @@ class EncoderDecoderModel(BaseTransformerModel):
     else:
       decoder_prompt_inputs = jnp.zeros_like(decoder_input_tokens)
 
+    encoded_inputs = self.module.apply(
+        {'params': params},
+        encoder_input_tokens,
+        enable_dropout=False,
+        method=self.module.encode,
+    )
+
     # Prepare autoregressive cache.
+    if 'initial_index' not in inspect.signature(self.decode_fn).parameters:
+      logging.info(
+          'Disabling prompt prefilliing due to incompatible decode fn: %s.',
+          self.decode_fn,
+      )
+      prefill_decoder_prompt = False
+    elif 'prefill' not in inspect.signature(self.module.decode).parameters:
+      logging.info(
+          'Disabling prompt prefilliing due to incompatible `module.decode`.'
+      )
+      prefill_decoder_prompt = False
+    else:
+      logging.info('Enabling prompt prefilling.')
+      prefill_decoder_prompt = True
     cache, initial_index = self._compute_kv_cache(
         params,
         encoded_inputs=encoded_inputs,
         encoder_input_tokens=encoder_input_tokens,
         decoder_input_tokens=decoder_prompt_inputs,
+        prefill_decoder_prompt=prefill_decoder_prompt,
     )
 
-    # [batch * num_decodes, input_len]
-    raw_inputs = decoding.flat_batch_beam_expand(
-        encoder_input_tokens, num_decodes
-    )
-
+    # Prepare transformer fast-decoder call for beam search: for beam search, we
+    # need to set up our decoder model to handle a batch size equal to
+    # batch_size * num_decodes, where each batch item's data is expanded
+    # in-place rather than tiled.
+    # i.e. if we denote each batch element subtensor as el[n]:
+    # [el0, el1, el2] --> beamsize=2 --> [el0,el0,el1,el1,el2,el2]
+    # [batch * num_decodes, input_len, emb_dim]
     tokens_ids_to_logits = functools.partial(
         self._compute_logits_from_slice,
         params=params,
-        encoded_inputs=encoded_inputs,
-        raw_inputs=raw_inputs,
+        # [batch * num_decodes, input_len, emb_dim]
+        encoded_inputs=decoding.flat_batch_beam_expand(
+            encoded_inputs, num_decodes
+        ),
+        # [batch * num_decodes, input_len]
+        raw_inputs=decoding.flat_batch_beam_expand(
+            encoder_input_tokens, num_decodes
+        ),
         max_decode_length=decoder_input_tokens.shape[1],
     )
 
