@@ -218,6 +218,10 @@ class ExportableModule(tf.Module):
   def export_batch_sizes(self):
     return self._allowed_batch_sizes or [self._batch_size]
 
+  @tf.function(autograph=False, jit_compile=False)
+  def preproc_func(self, *args):
+    return self._preproc_tf_fn(*args)
+
 
 def get_train_state_initializer(
     model: models.BaseTransformerModel,
@@ -1432,6 +1436,7 @@ def save(
       params=params,
       batch_size=batch_size,
   )
+  module.preproc_func.get_concrete_function(*input_signature)
   signatures = {
       signature_name: module.__call__.get_concrete_function(*input_signature)
   }
