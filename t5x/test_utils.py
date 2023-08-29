@@ -37,7 +37,7 @@ import tensorflow.compat.v2 as tf
 
 
 # Mock JAX devices
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class CpuDevice:
   id: int
   process_index: int
@@ -45,7 +45,7 @@ class CpuDevice:
   platform: str = 'cpu'
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class GpuDevice:
   id: int
   process_index: int
@@ -53,7 +53,7 @@ class GpuDevice:
   platform: str = 'Tesla V100-SXM2-16GB'
 
 
-@dataclasses.dataclass
+@dataclasses.dataclass(frozen=True)
 class TpuDevice:
   id: int
   process_index: int
