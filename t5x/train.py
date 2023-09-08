@@ -92,7 +92,7 @@ def run_actions(
 
 def train(
     *,
-    model: models.BaseTransformerModel,
+    model: models.BaseModel,
     train_dataset_cfg: utils.DatasetConfig,
     train_eval_dataset_cfg: Optional[utils.DatasetConfig],
     infer_eval_dataset_cfg: Optional[utils.DatasetConfig],
@@ -180,7 +180,8 @@ def train(
       initializing partitioned TrainState from checkpoints or scratch.
     use_orbax: if True, uses Orbax for checkpointing. Experimental feature.
     verify_matching_vocabs_fn: Function to validate whether the task vocabulary
-      matches the model vocabulary. Should raise an exception on error.
+      matches the model vocabulary, if the model is a BaseTransformerModel
+      instance. Should raise an exception on error.
     gc_period: The number of train steps between runs of the garbage collector.
       If 0, the garbage collector will run at the normal frequency.
 
@@ -273,7 +274,9 @@ def train(
   num_ds_shards = data_layout.num_shards
 
   def _verify_matching_vocabs(cfg: utils.DatasetConfig):
-    if verify_matching_vocabs_fn is not None:
+    if verify_matching_vocabs_fn and isinstance(
+        model, models.BaseTransformerModel
+    ):
       verify_matching_vocabs_fn(cfg, model)
 
   _verify_matching_vocabs(train_dataset_cfg)

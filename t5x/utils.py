@@ -43,6 +43,7 @@ import numpy as np
 import orbax.checkpoint
 import seqio
 from t5x import checkpoints
+from t5x import models
 from t5x import optimizers
 from t5x import partitioning
 from t5x import state_utils
@@ -1857,7 +1858,9 @@ def get_vocabulary(
   return (first_vocab, first_vocab)
 
 
-def verify_matching_vocabs(cfg: DatasetConfig, model: Any):
+def verify_matching_vocabs(
+    cfg: DatasetConfig, model: models.BaseTransformerModel
+):
   """Verify whether the task vocab matches the model vocab.
 
   The seqio Task and the Model both define their vocabularies

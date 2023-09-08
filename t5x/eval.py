@@ -67,8 +67,8 @@ class InferenceEvaluator:
       partitioner: partitioning.BasePartitioner,
       log_dir: Optional[str] = None,
       verify_matching_vocabs_fn: Optional[
-          Callable[[utils.DatasetConfig, models.BaseModel],
-                   None]] = utils.verify_matching_vocabs,
+          Callable[[utils.DatasetConfig, models.BaseTransformerModel], None]
+      ] = utils.verify_matching_vocabs,
   ):
     """Constructs inference evaluator.
 
@@ -85,7 +85,9 @@ class InferenceEvaluator:
         vocabulary matches the model vocabulary. Should raise an exception on
         error.
     """
-    if verify_matching_vocabs_fn is not None:
+    if verify_matching_vocabs_fn and isinstance(
+        model, models.BaseTransformerModel
+    ):
       verify_matching_vocabs_fn(infer_eval_dataset_cfg, model)
 
     self._model = model
