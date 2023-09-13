@@ -16,6 +16,8 @@ r"""Script to pretrain or finetune in JAX using a SeqIO pipeline.
 
 """
 
+# pylint: disable=g-import-not-at-top
+
 import functools
 import gc
 import math
@@ -25,7 +27,6 @@ from typing import Callable, Mapping, Optional, Sequence, Tuple, Type
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
-# pylint:disable=g-import-not-at-top
 os.environ['FLAX_PROFILE'] = 'true'
 # TODO(adarob): Re-enable once users are notified and tests are updated.
 os.environ['FLAX_LAZY_RNG'] = 'no'
@@ -47,6 +48,7 @@ from t5x import utils
 import tensorflow as tf
 # pylint:enable=g-import-not-at-top
 
+# pylint:enable=g-import-not-at-top
 
 # Automatically search for gin files relative to the T5X package.
 _DEFAULT_GIN_SEARCH_PATHS = [
