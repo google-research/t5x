@@ -395,6 +395,7 @@ def train(
 
   # Skip initialization if neither save nor restore is requested.
   train_state = None
+  checkpoint_manager = None
   if valid_restore_cfg or checkpoint_period or checkpoint_steps:
     train_state, checkpoint_manager = (
         utils.create_checkpoint_manager_and_restore(
