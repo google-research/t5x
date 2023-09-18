@@ -40,15 +40,15 @@ PartitionSpec = partitioning.PartitionSpec
 
 class PartitioningTest(absltest.TestCase):
 
-  @mock.patch('jax.host_count')
+  @mock.patch('jax.process_count')
   @mock.patch('jax.local_device_count')
-  def test_bounds_from_last_device(self, local_device_count, host_count):
+  def test_bounds_from_last_device(self, local_device_count, process_count):
     last_device = mock.Mock(coords=(3, 3, 3), core_on_chip=1)
     tpu_bounds = partitioning.bounds_from_last_device(last_device)
     self.assertEqual(tpu_bounds, (4, 4, 4, 2))
 
     last_device = mock.Mock(spec=[])
-    host_count.return_value = 1
+    process_count.return_value = 1
     local_device_count.return_value = 4
     non_tpu_bounds = partitioning.bounds_from_last_device(last_device)
     self.assertEqual(non_tpu_bounds, (1, 4))

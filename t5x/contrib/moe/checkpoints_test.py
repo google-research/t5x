@@ -286,25 +286,25 @@ class CheckpointsTest(parameterized.TestCase):
       'jax.experimental.multihost_utils.sync_global_devices', return_value=None
   )
   @mock.patch('time.time', return_value=0)
-  @mock.patch('jax.host_count')
+  @mock.patch('jax.process_count')
   @mock.patch('jax.process_index')
   def call_host_checkpointer(
       self,
       train_state,
       process_index,
-      host_count,
+      process_count,
       partitioner,
       fn,
       save_dtype,
       ds_iter,
       mock_process_index,
-      mock_host_count,
+      mock_process_count,
       unused_mock_host_time,
       unused_mock_sync_devices,
       restore_dtype=np.float32,
   ):
     mock_process_index.return_value = process_index
-    mock_host_count.return_value = host_count
+    mock_process_count.return_value = process_count
 
     checkpointer = checkpoints.UpcycleCheckpointer(
         train_state,
