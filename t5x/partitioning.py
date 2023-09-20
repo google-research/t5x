@@ -583,7 +583,7 @@ class BasePartitioner(metaclass=abc.ABCMeta):
       logging.error(
           (
               '`model_parallel_submesh` must be either None or a 4-tuple. Got'
-              ' `model_parallel_submesh`=%s. A ValueError will be raised'
+              ' `model_parallel_submesh`=%r. A ValueError will be raised'
               ' beginning March 1, 2022.'
           ),
           model_parallel_submesh,
@@ -592,9 +592,11 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     if bool(num_partitions) and bool(model_parallel_submesh):
       logging.error(
           'At most one of `num_partitions` or `model_parallel_submesh` can be '
-          'set. Got `num_partitions=%s` and `model_parallel_submesh`=%s. A '
-          'ValueError will be raised beginning March 21, 2022.', num_partitions,
-          model_parallel_submesh)
+          'set. Got `num_partitions=%r` and `model_parallel_submesh`=%r. A '
+          'ValueError will be raised beginning March 21, 2022.',
+          num_partitions,
+          model_parallel_submesh,
+      )
 
     self._num_partitions = num_partitions
     self._model_parallel_submesh = model_parallel_submesh
