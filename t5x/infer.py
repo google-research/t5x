@@ -186,8 +186,9 @@ def merge_chunks_to_file(
         'input did not contain any examples')
 
   assert int(chunk_paths[-1][-5:]) + 1 == len(chunk_paths), (
-      f'Expecting {int(chunk_paths[-1][-5:])} chunk paths, found '
-      f'{len(chunk_paths)}')
+      f'Expecting {int(chunk_paths[-1][-5:]) + 1} chunk paths, found '
+      f'{len(chunk_paths)}'
+  )
   output_path = os.path.join(output_dir, output_fname)
   del step
   with gfile.GFile(output_path, 'wb') as merged:
@@ -620,6 +621,10 @@ def infer(
       chunk_rng = jax.random.fold_in(jax.random.PRNGKey(0), chunk)
       chunk_path = os.path.join(tmp_dir, f'{output_fname}-chunk{chunk:05}')
       if gfile.exists(chunk_path + '.COMPLETED') and not checkpoint_ds_iter:
+        assert gfile.exists(chunk_path), (
+            f'Chunk file {chunk_path} should be present if '
+            f'{chunk_path + ".COMPLETED"} exists.'
+        )
         logging.info('Skipping chunk %s. Chunk file already exists.', chunk)
         continue
 
