@@ -557,7 +557,7 @@ class Checkpointer(object):
       oldest ones will be automatically deleted to save space.
   """
 
-  def __init__(
+  def __init__(  # pytype: disable=annotation-type-mismatch  # jnp-type
       self,
       train_state: train_state_lib.TrainState,
       partitioner: partitioning.BasePartitioner,
@@ -1302,16 +1302,18 @@ class CheckpointerConstructor(typing_extensions.Protocol):
   of Checkpointer subclasses without triggering type errors.
   """
 
-  def __call__(self,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               checkpoints_dir: str,
-               dataset_iterator: Optional[tf.data.Iterator] = None,
-               *,
-               keep: Optional[int] = None,
-               save_dtype: jnp.dtype = np.float32,
-               restore_dtype: Optional[jnp.dtype] = None,
-               keep_dataset_checkpoints: Optional[int] = None) -> Checkpointer:
+  def __call__(
+      self,  # pytype: disable=annotation-type-mismatch  # jnp-type
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      checkpoints_dir: str,
+      dataset_iterator: Optional[tf.data.Iterator] = None,
+      *,
+      keep: Optional[int] = None,
+      save_dtype: jnp.dtype = np.float32,
+      restore_dtype: Optional[jnp.dtype] = None,
+      keep_dataset_checkpoints: Optional[int] = None,
+  ) -> Checkpointer:
     """Checkpointer constructor.
 
     Args:
@@ -1456,20 +1458,22 @@ class SaveBestCheckpointer(Checkpointer):
       oldest ones will be automatically deleted to save space.
   """
 
-  def __init__(self,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               checkpoints_dir: str,
-               dataset_iterator: Optional[tf.data.Iterator] = None,
-               *,
-               keep: Optional[int] = None,
-               save_dtype: jnp.dtype = np.float32,
-               restore_dtype: Optional[jnp.dtype] = None,
-               metric_name_to_monitor: str = 'train/accuracy',
-               metric_mode: str = 'max',
-               keep_checkpoints_without_metrics: bool = True,
-               force_keep_period: Optional[int] = None,
-               keep_dataset_checkpoints: Optional[int] = None):
+  def __init__(
+      self,  # pytype: disable=annotation-type-mismatch  # jnp-type
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      checkpoints_dir: str,
+      dataset_iterator: Optional[tf.data.Iterator] = None,
+      *,
+      keep: Optional[int] = None,
+      save_dtype: jnp.dtype = np.float32,
+      restore_dtype: Optional[jnp.dtype] = None,
+      metric_name_to_monitor: str = 'train/accuracy',
+      metric_mode: str = 'max',
+      keep_checkpoints_without_metrics: bool = True,
+      force_keep_period: Optional[int] = None,
+      keep_dataset_checkpoints: Optional[int] = None,
+  ):
     super().__init__(
         train_state,
         partitioner,

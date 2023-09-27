@@ -291,7 +291,7 @@ class Adafactor(OptimizerDef):
   def _decay_rate_pow(i: int, exponent: float = 0.8) -> float:
     """Default Adafactor second-moment decay schedule."""
     t = jnp.array(i, jnp.float32) + 1.0
-    return 1.0 - t**(-exponent)
+    return 1.0 - t ** (-exponent)  # pytype: disable=bad-return-type  # jnp-type
 
   @staticmethod
   def _parse_rule(
@@ -412,7 +412,7 @@ class Adafactor(OptimizerDef):
       state['v'] = jnp.zeros(param.shape, dtype=jnp.float32)
     if self.hyper_params.beta1 is not None:
       state['m'] = jnp.zeros(param.shape, dtype=self.dtype_momentum)
-    return _AdafactorParamState(**state)
+    return _AdafactorParamState(**state)  # pytype: disable=wrong-arg-types  # jnp-type
 
   def init_state(self, params):
     params_flat = utils.flatten_dict_string_keys(params)

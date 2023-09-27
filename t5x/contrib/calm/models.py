@@ -269,7 +269,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
     for meta_logits, meta_labels in zip(all_meta_logits[:-1],
                                         all_meta_labels[:-1]):
       # Balance across the positive/ negative labels.
-      balanced_weights = weights.copy().astype(float)
+      balanced_weights = weights.copy().astype(float)  # pytype: disable=attribute-error  # jnp-type
 
       pos_num = (meta_labels * weights == 1).sum()
       neg_num = ((1 - meta_labels) * weights == 1).sum()

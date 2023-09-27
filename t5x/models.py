@@ -1312,7 +1312,7 @@ def compute_weighted_accuracy(
   if weights is not None:
     accuracy = accuracy * weights
 
-  return jnp.sum(accuracy)
+  return jnp.sum(accuracy)  # pytype: disable=bad-return-type  # jnp-type
 
 
 # TODO(cpgaffney) remove when users rely on compute_base_metrics
@@ -1369,7 +1369,7 @@ def count_packed_examples(segment_ids: jnp.ndarray) -> int:
   # Get the first discrete different along axis=1.
   first_diff = jnp.diff(segment_ids, n=1, axis=1)
   # count = #(non-0 diff) + #(row) - #(padded ex).
-  return jnp.sum(first_diff != 0) + segment_ids.shape[0] - num_padded_examples
+  return jnp.sum(first_diff != 0) + segment_ids.shape[0] - num_padded_examples  # pytype: disable=bad-return-type  # jnp-type
 
 
 def compute_base_metrics(
@@ -1414,20 +1414,20 @@ def compute_base_metrics(
       'loss_per_all_target_tokens': clu_metrics.Average(
           total=loss, count=num_tokens
       ),
-      'timing/seqs_per_second': metrics_lib.TimeRate.from_model_output(
+      'timing/seqs_per_second': metrics_lib.TimeRate.from_model_output(  # pytype: disable=wrong-arg-types  # jnp-type
           numerator=num_examples
       ),
       'timing/steps_per_second': metrics_lib.StepsPerTime.from_model_output(),
       'timing/seconds': metrics_lib.Time(),
       'timing/seqs': metrics_lib.Sum(num_examples),
-      'timing/seqs_per_second_per_core': metrics_lib.TimeRate.from_model_output(
+      'timing/seqs_per_second_per_core': metrics_lib.TimeRate.from_model_output(  # pytype: disable=wrong-arg-types  # jnp-type
           numerator=num_examples / num_devices
       ),
-      'timing/target_tokens_per_second': metrics_lib.TimeRate.from_model_output(
+      'timing/target_tokens_per_second': metrics_lib.TimeRate.from_model_output(  # pytype: disable=wrong-arg-types  # jnp-type
           numerator=num_tokens
       ),
       'timing/target_tokens_per_second_per_core': (
-          metrics_lib.TimeRate.from_model_output(
+          metrics_lib.TimeRate.from_model_output(  # pytype: disable=wrong-arg-types  # jnp-type
               numerator=num_tokens / num_devices
           )
       ),

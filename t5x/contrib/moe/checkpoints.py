@@ -45,7 +45,7 @@ class UpcycleCheckpointer(checkpoints.Checkpointer):
   for more details.
   """
 
-  def __init__(
+  def __init__(  # pytype: disable=annotation-type-mismatch  # jnp-type
       self,
       train_state: train_state_lib.TrainState,
       partitioner: partitioning.BasePartitioner,
