@@ -70,9 +70,9 @@ Check `gs://$GOOGLE_CLOUD_BUCKET_NAME/t5x/` for the output artifacts, which can
 be read by TensorBoard.
 
 ## GPU Usage
-UPDATE!: Nvidia has released an updated version of this repository with H100 FP8 support and broad GPU performance improvements here: [NVIDIA Rosetta](https://github.com/NVIDIA/JAX-Toolbox/tree/main/rosetta/rosetta/projects/t5x)
+Note: NVIDIA has released an updated version of this repository with H100 FP8 support and broad GPU performance improvements. Please visit the [NVIDIA Rosetta](https://github.com/NVIDIA/JAX-Toolbox/tree/main/rosetta/rosetta/projects/t5x) repository for more details and usage instructions.
 
-T5X can be run easily on GPUs either in single-node configurations or multi-node configurations with a SLURM+pyxis cluster. Further instructions at [t5x/contrib/gpu/scripts_gpu](https://github.com/google-research/t5x/blob/main/t5x/contrib/gpu/scripts_gpu/README.md). The `t5x/contrib/gpu/scripts_gpu` folder contains example scripts for pretraining T5X on [The Pile](https://pile.eleuther.ai/) and for finetuning on SQuAD and MNLI. These scripts and associated `gin` configurations also contain additional GPU optimizations for better throughput.
+T5X can be run easily on GPUs either in single-node configurations or multi-node configurations with a SLURM+pyxis cluster. Further instructions at [t5x/contrib/gpu](https://github.com/google-research/t5x/blob/main/t5x/contrib/gpu/README.md). The `t5x/contrib/gpu/scripts_gpu` folder contains example scripts for pretraining T5X on [The Pile](https://pile.eleuther.ai/) and for finetuning on SQuAD and MNLI. These scripts and associated `gin` configurations also contain additional GPU optimizations for better throughput. More examples and instructions can be found in the [NVIDIA Rosetta](https://github.com/NVIDIA/JAX-Toolbox/tree/main/rosetta/rosetta/projects/t5x) repository maintained by NVIDIA with H100 FP8 support and broad GPU performance improvements.
 
 
 ## Installation
@@ -85,7 +85,7 @@ the TPU VM instance unless otherwise stated.
     to set up a Google Cloud Platform (GCP) account and enable the Cloud TPU
     API.
 
-    **Note:** T5X also works with GPU, please follow instructions in [t5x/contrib/gpu/scripts_gpu](https://github.com/google-research/t5x/blob/main/t5x/contrib/gpu/scripts_gpu/README.md) if you'd like to use GPU version.
+    **Note:** T5X also works with GPU, please follow instructions in [t5x/contrib/gpu](https://github.com/google-research/t5x/blob/main/t5x/contrib/gpu/README.md) if you'd like to use GPU version.
 
 2.  Create a
     [Cloud TPU VM instance](https://cloud.google.com/blog/products/compute/introducing-cloud-tpu-vms)

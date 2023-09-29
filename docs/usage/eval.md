@@ -41,7 +41,9 @@ SeqIO Task will be used:
     [`t5x/configs/models/t5_1_1_small.gin`](https://github.com/google-research/t5x/blob/main/t5x/google/examples/flaxformer_t5/configs/models/t5_1_1_small.gin).
 
 If you would like to fine-tune your model before evaluation, please follow the
-[fine-tuning](finetune.md) tutorial, and continue to Step 2.
+[fine-tuning](finetune.md) tutorial, and continue to Step 2. A list of all
+available pre-trained models (with model checkpoints and Gin config files) are
+available in the [Models](https://github.com/google-research/t5x/blob/main/docs/models.md) documentation.
 
 ## Step 2: Choose a SeqIO Task/Mixture
 

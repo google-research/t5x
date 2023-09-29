@@ -17,18 +17,23 @@ checkpoint locations.
 
 Publicly Available Models:
 
-Model             | Use Case
----------------------------------------     | ---------------------------------------------------
-[T5 1.1](#t5-11-checkpoints)                | Improved T5, recommended for most research. English only.
-[T5](#t5-checkpoints)                       | The original T5 work for reproducibility. English only.
-[T5 1.1 LM-Adapted](#t5-11-lm-adapted-checkpoints)| Trained for 100k additional steps on the LM objective, per [prompt tuning paper](https://arxiv.org/abs/2104.08691).
-[mT5](#mt5-checkpoints)                     | Multilingual T5. Recommended for multilingual research. Note that at smaller scales (at least through XL), mT5 performance is lower than T5 on English tasks.
-[mT5 LM-Adapted](#mt5-lm-adapted-checkpoints)| Trained for 100k additional steps on the LM objective, per [zero-shot cross-lingual generation (XGen) paper](https://arxiv.org/abs/2205.12647).
-[umT5](#umt5-checkpoints)                   | umT5, an updated mT5 model trained using a more uniform language distribution, per [the UniMax paper](https://openreview.net/forum?id=kXwdL1cWOAi).
-[ByT5](#byt5-checkpoints)                   | ByT5. A "token-free" model that uses UTF-8 bytes for input and output. Recommended for tasks involving word-internal phenomena such as spelling, pronunciation, or morphology.
-[LongT5](#longt5-checkpoints)               | TBD
-[MoE](#mixture-of-experts-moe-checkpoints)  | Useful for MoE experimentation.
-[Flan-T5](#flan-t5-checkpoints)  | General purpose T5 checkpoints for few-shot and finetuning. We recommend Flan-T5 over vanilla T5 and T5 LM-adapted
+Model                                                | Use Case
+---------------------------------------------------- | --------
+[T5 1.1](#t5-11-checkpoints)                         | Improved T5, recommended for most research. English only.
+[T5](#t5-checkpoints)                                | The original T5 work for reproducibility. English only.
+[T5 1.1 LM-Adapted](#t5-11-lm-adapted-checkpoints)   | Trained for 100k additional steps on the LM objective, per [prompt tuning paper](https://arxiv.org/abs/2104.08691).
+[mT5](#mt5-checkpoints)                              | Multilingual T5. Recommended for multilingual research. Note that at smaller scales (at least through XL), mT5 performance is lower than T5 on English tasks.
+[mT5 LM-Adapted](#mt5-lm-adapted-checkpoints)        | Trained for 100k additional steps on the LM objective, per [zero-shot cross-lingual generation (XGen) paper](https://arxiv.org/abs/2205.12647).
+[umT5](#umt5-checkpoints)                            | umT5, an updated mT5 model trained using a more uniform language distribution, per [the UniMax paper](https://openreview.net/forum?id=kXwdL1cWOAi).
+[ByT5](#byt5-checkpoints)                            | ByT5. A "token-free" model that uses UTF-8 bytes for input and output. Recommended for tasks involving word-internal phenomena such as spelling, pronunciation, or morphology.
+[LongT5](#longt5-checkpoints)                        | Recommended checkpoints to fine-tune for long input sequence tasks
+[MoE](#mixture-of-experts-moe-checkpoints)           | Useful for MoE experimentation.
+[Flan-T5](#flan-t5-checkpoints)                      | General purpose T5 checkpoints for few-shot and finetuning. We recommend Flan-T5 over vanilla T5 and T5 LM-adapted
+[UL2](#ul2-checkpoints)                              | Checkpoints for 20B pretrained and FLAN-based instruction-tuned models using the UL2 objective from [UL2 paper](https://arxiv.org/abs/2205.05131)
+[BigScience](#bigscience-checkpoints)                | Checkpoints from the [BigScience paper](https://arxiv.org/abs/2204.05832)
+[FLIP](#flip-checkpoints)                            | Language-Image models trained with an alternative to CLIP, presented in the [FLIP paper](https://arxiv.org/abs/2212.00794)
+[RankGen](#rankgen-checkpoints)                      | 1.2B parameter encoder model for English to score model generations given a prefix for decoding from the [RankGen paper](https://arxiv.org/abs/2205.09726)
+[Dipper](#dipper-checkpoints)                        | 11B parameter paraphrase generation model from the [Dipper paper](https://arxiv.org/abs/2303.13408)
 
 
 ### Public Research Models
@@ -280,5 +285,35 @@ Flan-T5 XL    | [t5_1_1_xl.gin](https://github.com/google-research/t5x/blob/main
 Flan-T5 XXL   | [t5_1_1_xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/xxl.gin)     | [gs://t5-data/pretrained_models/t5x/flan_t5_xxl/checkpoint_1114000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/flan_t5_xxl/checkpoint_1114000)
 
 
+#### UL2 Checkpoints
 
+Checkpoints for 20B pretrained and FLAN-based instruction-tuned models using the
+UL2 objective from [UL2 paper](https://arxiv.org/abs/2205.05131). Checkpoints
+are released at
+https://github.com/google-research/google-research/tree/master/ul2#checkpoints.
+
+#### BigScience Checkpoints
+
+Checkpoints from the [BigScience paper](https://arxiv.org/abs/2204.05832),
+released at
+https://github.com/bigscience-workshop/architecture-objective/tree/main#checkpoints.
+
+#### FLIP Checkpoints
+
+Language-Image models trained with an alternative to CLIP, presented in the
+[FLIP paper](https://arxiv.org/abs/2212.00794). Checkpoints are released at
+https://github.com/facebookresearch/flip#results-and-pre-trained-flip-models.
+
+#### RankGen Checkpoints
+
+1.2B parameter encoder model for English to score model generations given a
+prefix for decoding from the [RankGen paper](https://arxiv.org/abs/2205.09726).
+Checkpoints are released at
+https://github.com/google-research/google-research/tree/master/rankgen.
+
+#### Dipper Checkpoints
+
+11B parameter paraphrase generation model from the
+[Dipper paper](https://arxiv.org/abs/2303.13408). Checkpoints are released at
+https://github.com/google-research/google-research/tree/master/dipper.
 
