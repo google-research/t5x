@@ -81,7 +81,7 @@ class DecodeFnCallable(typing_extensions.Protocol):
       tokens_to_logits: TokensIdsToLogitsCallable,
       eos_id: int,
       num_decodes: int,
-      decode_rng: Optional[jax.random.KeyArray],
+      decode_rng: Optional[jax.Array],
       cache_offset: int,
       **kwargs,
   ) -> Tuple[jnp.ndarray, jnp.ndarray]:
@@ -134,7 +134,7 @@ class BaseModel(abc.ABC):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jax.random.KeyArray],
+      dropout_rng: Optional[jax.Array],
   ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Computes loss and metrics.
 
@@ -178,7 +178,7 @@ class BaseModel(abc.ABC):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      rng: Optional[jax.random.KeyArray] = None,
+      rng: Optional[jax.Array] = None,
   ) -> jnp.ndarray:
     """Predicts a batch of outputs from the model.
 
@@ -197,7 +197,7 @@ class BaseModel(abc.ABC):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      rng: Optional[jax.random.KeyArray] = None,
+      rng: Optional[jax.Array] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
     """Predict a batch from the modelwith auxiliary outputs.
 
@@ -225,7 +225,7 @@ class BaseModel(abc.ABC):
   @abc.abstractmethod
   def get_initial_variables(
       self,
-      rng: jax.random.KeyArray,
+      rng: jax.Array,
       input_shapes: Mapping[str, Array],
       input_types: Optional[Mapping[str, jnp.dtype]] = None,
   ) -> flax_scope.FrozenVariableDict:
@@ -280,7 +280,7 @@ class BaseTransformerModel(BaseModel):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jax.random.KeyArray] = None,
+      dropout_rng: Optional[jax.Array] = None,
   ) -> jnp.ndarray:
     """Computes logits via a forward pass of the model."""
     pass
@@ -289,7 +289,7 @@ class BaseTransformerModel(BaseModel):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jax.random.KeyArray],
+      dropout_rng: Optional[jax.Array],
   ) -> Tuple[jnp.ndarray, MetricsMap]:
     """Loss function used for training with a cross-entropy loss."""
     logits = self._compute_logits(params, batch, dropout_rng)
@@ -401,7 +401,7 @@ class EncoderDecoderModel(BaseTransformerModel):
 
   def get_initial_variables(
       self,
-      rng: jax.random.KeyArray,
+      rng: jax.Array,
       input_shapes: Mapping[str, Array],
       input_types: Optional[Mapping[str, jnp.dtype]] = None,
   ) -> flax_scope.FrozenVariableDict:
@@ -459,7 +459,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jax.random.KeyArray] = None,
+      dropout_rng: Optional[jax.Array] = None,
       mutable: flax_scope.CollectionFilter = False,
       other_variables: Optional[PyTree] = None,
   ) -> Union[jnp.ndarray, Tuple[jnp.ndarray, flax_scope.FrozenVariableDict]]:
@@ -587,7 +587,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      rng: Optional[jax.random.KeyArray] = None,
+      rng: Optional[jax.Array] = None,
       decoder_params: Optional[MutableMapping[str, Any]] = None,
       return_all_decodes: bool = None,
       num_decodes: int = None,  # pytype:disable=annotation-type-mismatch
@@ -864,7 +864,7 @@ class DecoderOnlyModel(BaseTransformerModel):
 
   def get_initial_variables(
       self,
-      rng: jax.random.KeyArray,
+      rng: jax.Array,
       input_shapes: Mapping[str, Array],
       input_types: Optional[Mapping[str, jnp.dtype]] = None,
   ) -> flax_scope.FrozenVariableDict:
@@ -898,7 +898,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      dropout_rng: Optional[jax.random.KeyArray] = None,
+      dropout_rng: Optional[jax.Array] = None,
       mutable: flax_scope.CollectionFilter = False,
       other_variables: Optional[PyTree] = None,
   ) -> jnp.ndarray:
@@ -1090,7 +1090,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       self,
       params: PyTree,
       batch: Mapping[str, jnp.ndarray],
-      rng: Optional[jax.random.KeyArray] = None,
+      rng: Optional[jax.Array] = None,
       *,
       return_all_decodes: bool = False,
       num_decodes: int = 1,
