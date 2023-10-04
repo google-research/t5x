@@ -26,6 +26,7 @@ import jax.numpy as jnp
 import numpy as np
 from t5x import decoding
 
+PAD_ID = 0
 EOS_ID = 1
 NEG_INF = decoding.NEG_INF
 
@@ -957,6 +958,8 @@ class DecodeTest(parameterized.TestCase):
         for token, prompt_token in zip(beam, prompt):
           if prompt_token != 0:
             beam_scores.append(0)
+          elif token == PAD_ID:
+            beam_scores.append(0)
           else:
             beam_scores.append(log_probs[token])
         beam_expected_scores.append(sum(beam_scores))
@@ -989,6 +992,163 @@ class DecodeTest(parameterized.TestCase):
     expected = np.array([[[3, 2, 2, 2, 2], [2, 2, 2, 2, 2]],
                          [[2, 3, 3, 3, 3], [3, 3, 3, 3, 3]]])
     np.testing.assert_array_equal(expected, beam_search_sequences)
+
+  def test_align_prompt(self):
+    prompts = np.array(
+        [
+            [0, 0, 0, 0, 0, 0, 0],
+            [1, 2, 3, 4, 5, 6, 7],
+            [0, 1, 0, 0, 0, 0, 0],
+            [0, 1, 2, 0, 0, 0, 0],
+            [0, 1, 2, 3, 0, 0, 0],
+        ],
+        dtype=np.int32,
+    )
+    right_aligned_prompts = decoding._right_align_prompts(prompts)
+    left_aligned_prompts = decoding._left_align_prompts(right_aligned_prompts)
+    np.testing.assert_array_equal(
+        np.array(
+            [
+                [0, 0, 0, 0, 0, 0, 0],
+                [1, 2, 3, 4, 5, 6, 7],
+                [0, 0, 0, 0, 0, 0, 1],
+                [0, 0, 0, 0, 0, 1, 2],
+                [0, 0, 0, 0, 1, 2, 3],
+            ],
+            dtype=np.int32,
+        ),
+        right_aligned_prompts,
+    )
+    np.testing.assert_array_equal(
+        np.array(
+            [
+                [0, 0, 0, 0, 0, 0, 0],
+                [1, 2, 3, 4, 5, 6, 7],
+                [1, 0, 0, 0, 0, 0, 0],
+                [1, 2, 0, 0, 0, 0, 0],
+                [1, 2, 3, 0, 0, 0, 0],
+            ],
+            dtype=np.int32,
+        ),
+        left_aligned_prompts,
+    )
+
+  def test_beam_search_force_decode_prefix_with_initial_index(self):
+    beam_size = 2
+
+    record_decoding_states = []
+
+    def token_to_logits(decoding_state: decoding.DecodingState):
+      # Record the decoding_state coming in.
+      # pdb.set_trace()
+      record_decoding_states.append(decoding_state)
+
+      # Use id 2 then 3 for batch element 0 and id 3, 2 then EOS for element 1.
+      logits = np.repeat(
+          np.expand_dims(
+              np.array(
+                  [
+                      [-1e7, -1e10, -0.1, -0.9, -1e4, -1e4, -1e4, -1e4],
+                      [-1e7, -1.0, -0.9, -0.1, -1e4, -1e4, -1e4, -1e4],
+                  ],
+                  dtype=np.float32,
+              ),
+              axis=1,
+          ),
+          [beam_size],
+          axis=1,
+      )
+
+      logits = decoding.flatten_beam_dim(logits)
+      # Return the cache as-is.
+      return logits, decoding_state.cache
+
+    # batch element 0 has length 1 and element 1 has length 2.
+    inputs = np.array([[0, 7, 0, 0, 0], [0, 4, 5, 0, 0]], dtype=np.int32)
+    batch_size = inputs.shape[0]
+    rolled_inputs = np.array([[7, 0, 0, 0, 0], [4, 5, 0, 0, 0]], dtype=np.int32)
+    initial_index = np.array([1, 2], dtype=np.int32)
+    REST_OF_THE_SHAPE = 1024  # dummy  pylint: disable=invalid-name
+    dummy_cache = {
+        'cached_bias': np.ones((1, REST_OF_THE_SHAPE), dtype=np.float32),
+        'decoder/layers_0/self_attention/cached_key': np.ones(
+            (batch_size, REST_OF_THE_SHAPE), dtype=np.float32
+        ),
+        'decoder/layers_0/self_attention/cache_index': np.ones(
+            (batch_size,), dtype=np.float32
+        ),
+    }
+
+    # Since we are capturing the cache, etc.
+    with jax.disable_jit():
+      beam_search_sequences, decoding_scores = decoding.beam_search(
+          inputs,
+          dummy_cache,
+          token_to_logits,
+          EOS_ID,
+          num_decodes=beam_size,
+          alpha=0,
+          initial_index=initial_index,
+      )
+
+    # pdb.set_trace()
+
+    # Since we're sending in a decode prefix, the first tokens that should get
+    # decoded are the last tokens in the prompt - broadcasted to the beam size.
+    expected_first_tokens = np.array([[7], [7], [5], [5]], dtype=np.int32)
+    np.testing.assert_array_equal(
+        expected_first_tokens, record_decoding_states[0].cur_token
+    )
+
+    # Assert on the expected cache shapes that `token_to_logits` should see.
+    first_cache = record_decoding_states[0].cache
+
+    # This shouldn't expand.
+    self.assertEqual(
+        dummy_cache['cached_bias'].shape, first_cache['cached_bias'].shape
+    )
+    # These should expand.
+    self.assertEqual(
+        (batch_size * beam_size, REST_OF_THE_SHAPE),
+        first_cache['decoder/layers_0/self_attention/cached_key'].shape,
+    )
+    self.assertEqual(
+        (batch_size * beam_size,),
+        first_cache['decoder/layers_0/self_attention/cache_index'].shape,
+    )
+
+    # Prefixes are forced depending on inputs.
+    # Beam search sequences and corresponding scores are in reverse order.
+    self.assertTrue(np.all(np.diff(decoding_scores) >= 0))
+    expected = np.array(
+        [[[7, 3, 2, 2, 2], [7, 2, 2, 2, 2]], [[4, 5, 3, 1, 0], [4, 5, 1, 0, 0]]]
+    )
+    np.testing.assert_array_equal(expected, beam_search_sequences)
+
+    expected_scores = []
+    batch_logits = np.array(
+        [
+            [-1e7, -1e10, -0.1, -0.9, -1e4, -1e4, -1e4, -1e4],
+            [-1e7, -1.0, -0.9, -0.1, -1e4, -1e4, -1e4, -1e4],
+        ],
+        dtype=np.float32,
+    )
+    for batch, logits, prompt in zip(expected, batch_logits, rolled_inputs):
+      beam_expected_scores = []
+      for beam in batch:
+        log_probs = jax.nn.log_softmax(logits)
+        # Add them directly since they are static.
+        beam_scores = []
+        for token, prompt_token in zip(beam, prompt):
+          if prompt_token != 0:
+            beam_scores.append(0)
+          elif token == PAD_ID:
+            beam_scores.append(0)
+          else:
+            beam_scores.append(log_probs[token])
+        beam_expected_scores.append(sum(beam_scores))
+      expected_scores.append(beam_expected_scores)
+    np.testing.assert_allclose(expected_scores, decoding_scores, atol=1e-5)
 
 
 if __name__ == '__main__':
