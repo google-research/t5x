@@ -416,7 +416,7 @@ def _temperature_sample_single_trial(
     rescale_log_probs: bool = True,
     state_callback_fn: Optional[StateCallbackFn] = None,
     logit_callback_fn: Optional[LogitCallbackFn] = None,
-) -> Tuple[jax.Array, jax.Array]:
+) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
   # We can check the values of topp and topk only if they are not dynamic.
@@ -494,13 +494,13 @@ def _temperature_sample_single_trial(
   # [batch, 1]
   initial_eos_count = jnp.sum(sequences0 == end_marker, axis=-1, keepdims=True)
 
-  def sampling_loop_cond_fn(state: SamplingLoopState) -> jax.Array:
+  def sampling_loop_cond_fn(state: SamplingLoopState) -> bool:
     """Sampling loop termination condition."""
     # Have all sampled sequences reached an end marker?
     # Different elements in the batch can be at different loop indices, if any
     # of our examples are not at the end, keep going.
     all_sequences_ended = jnp.all(state.ended)
-    return ~all_sequences_ended
+    return ~all_sequences_ended  # pytype: disable=bad-return-type  # jnp-type
 
   def sampling_loop_body_fn(state: SamplingLoopState) -> SamplingLoopState:
     """Sampling loop state update."""
@@ -681,7 +681,7 @@ def _temperature_sample_single_trial(
   log_prob = final_state.log_prob
   # Drop the first position because they are dummy bos tokens. Drop the new
   # garbage collection token at the end too.
-  return final_sequences[:, 1:-1], log_prob
+  return final_sequences[:, 1:-1], log_prob  # pytype: disable=bad-return-type  # jax-ndarray
 
 
 # ------------------------------------------------------------------------------
@@ -968,43 +968,23 @@ class BeamState:
   finished_flags: jax.Array  # bool: [batch_size, beam_size]
   # The current state of the autoregressive decoding caches.
   cache: PyTree  # Any pytree of arrays, e.g. flax attention Cache object
-  # Optional array of initial indices from which decoding starts, will be either
-  # 0s if there is no prompt or None.
-  initial_index: jax.Array | None
 
 
-def beam_init(
-    batch_size: int,
-    beam_size: int,
-    max_decode_len: int,
-    cache: Mapping[str, jnp.ndarray],
-    offset: int = 0,
-    live_seqs: Optional[jnp.ndarray] = None,
-    initial_index: Optional[jnp.ndarray] = None,
-) -> BeamState:
+def beam_init(batch_size: int,
+              beam_size: int,
+              max_decode_len: int,
+              cache: Mapping[str, jnp.ndarray],
+              offset: int = 0) -> BeamState:
   """Initializes the beam search state data structure."""
   cur_index0 = jnp.array(0)
   live_logprobs0 = jnp.tile(
       jnp.array([0.0] + [NEG_INF] * (beam_size - 1)), [batch_size, 1])
   finished_scores0 = jnp.ones((batch_size, beam_size)) * NEG_INF
-  # If we prefill any part of the prompt, then the initial live sequences are
-  # provided. In reality these will be the last token of the prompt or BOS if
-  # the prompt (in the batch) is empty.
-  live_seqs0 = (
-      live_seqs
-      if live_seqs is not None
-      else jnp.zeros((batch_size, beam_size, max_decode_len), jnp.int32)
-  )
+  live_seqs0 = jnp.zeros((batch_size, beam_size, max_decode_len), jnp.int32)
   finished_seqs0 = jnp.zeros((batch_size, beam_size, max_decode_len), jnp.int32)
   finished_flags0 = jnp.zeros((batch_size, beam_size), jnp.bool_)
   # add beam dimension to attention cache pytree elements
-  # We will have to expand the cache_index if we're given an initial prompt that
-  # we prefill.
-  beam_cache0 = cache_map(
-      lambda x: add_beam_dim(x, beam_size, offset),
-      cache,
-      apply_to_index=live_seqs is not None,
-  )
+  beam_cache0 = cache_map(lambda x: add_beam_dim(x, beam_size, offset), cache)
   return BeamState(
       cur_index=cur_index0,
       live_logprobs=live_logprobs0,
@@ -1012,105 +992,28 @@ def beam_init(
       live_seqs=live_seqs0,
       finished_seqs=finished_seqs0,
       finished_flags=finished_flags0,
-      cache=beam_cache0,
-      initial_index=initial_index,
-  )
-
-
-def _right_align_prompts(prompts):
-  """Right align the prompts."""
-
-  # Implementation note:
-  #
-  # A very short code to do this right aligning, would be to vmap a jnp.roll for
-  # the amount of padding in each example, i.e. max_len - prompt_max_index
-  # (+-1) - however this is slow.
-  #
-  # A faster way, courtesy Jeremiah Willcock, is to shift rows by bitmasking
-  # the gap and iterating for 1, 2, 4, ... log2(len) bitmasks.
-  #
-  # This gives a ~3x speedup over vmapping a roll.
-
-  max_len = prompts.shape[1]
-  nbits = np.ceil(np.log2(max_len)).astype(np.int32)
-  indices = jnp.arange(max_len)
-  prompt_max_index = jnp.argmax((prompts != 0) * indices[None, :], axis=1)
-  shifts = max_len - prompt_max_index - 1
-  for i in range(0, nbits + 1):
-    bitmask = 2**i
-    prompts = jnp.where(
-        jnp.expand_dims(shifts & bitmask, 1),
-        jnp.pad(prompts, ((0, 0), (bitmask, 0)))[:, :-bitmask],
-        prompts,
-    )
-  return prompts
-
-
-def _left_align_prompts(prompts):
-  """Left align the prompts."""
-  # See implementation notes in `_right_align_prompts`.
-
-  max_len = prompts.shape[1]
-  # [0, 1, 2, ... L - 1]
-  indices = jnp.arange(max_len)
-  # Indices of non padding positions - 1 based, since `indices` is 0 based.
-  non_padding_positions = (prompts != 0) * (indices[None, :] + 1)
-  # Replace all padding with `max_len + 1`
-  m = jnp.where(non_padding_positions, non_padding_positions, max_len + 1)
-  # First prompt's index.
-  shifts = jnp.argmin(m, axis=1)
-  temp = prompts
-  nbits = np.ceil(np.log2(max_len)).astype(np.int32)
-  for i in range(0, nbits + 1):
-    bitmask = 2**i
-    temp = jnp.where(
-        jnp.expand_dims(shifts & bitmask, 1),
-        jnp.pad(temp, ((0, 0), (0, bitmask)))[:, bitmask:],
-        temp,
-    )
-  return temp
-
-
-def _pick_last_prompt_token(prompts):
-  # prompts: i32[batch, length]
-  prompt_lengths = jnp.sum(prompts != 0, axis=1)
-  # return value: i32[batch,]
-  return prompts[jnp.arange(prompts.shape[0]), prompt_lengths]
+      cache=beam_cache0)
 
 
 # Beam search routine:
-def beam_search(
-    inputs: jnp.ndarray,
-    cache: Mapping[str, jnp.ndarray],
-    tokens_to_logits: Callable[
-        [DecodingState], Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]
-    ],
-    eos_id: int,
-    num_decodes: int = 4,
-    alpha: float = 0.6,
-    max_decode_len: Optional[int] = None,
-    decode_rng: Optional[jnp.ndarray] = None,
-    cache_offset: int = 0,
-    initial_index: Optional[jnp.ndarray] = None,
-) -> Tuple[jnp.ndarray, jnp.ndarray]:
+
+
+def beam_search(inputs: jnp.ndarray,
+                cache: Mapping[str, jnp.ndarray],
+                tokens_to_logits: Callable[[DecodingState],
+                                           Tuple[jnp.ndarray,
+                                                 Mapping[str, jnp.ndarray]]],
+                eos_id: int,
+                num_decodes: int = 4,
+                alpha: float = 0.6,
+                max_decode_len: Optional[int] = None,
+                decode_rng: Optional[jnp.ndarray] = None,
+                cache_offset: int = 0) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Beam search for transformer machine translation.
 
   If `inputs` has non-zero entries, those values are not modified, i.e.,
   the sampled values for those positions are discarded. This simulates the
   teacher forcing on the prefix positions.
-
-  NOTE: While using initial_index with prompts of variable lengths
-  To comply with the max_decode_len length requirement, we might now return
-  sequences that were live (i.e. EOS not decoded yet) when they exceeded their
-  length allowance along with sequences that finished (i.e. EOS was decoded).
-  Furthermore there might be sequences that finished decoding after their
-  max_decode_len was finished, but would appear truncated in the output at
-  max_decode_len.
-
-  TODO(afrozm): Solve this, if needed, by having a third class of sequences
-  apart from live and finished called "truncated", then after beam search
-  completes, we will order them as finished > truncated > live, rather than
-  finished > live that happens right now.
 
   Args:
     inputs: array: [batch_size, length] int32 sequence of tokens.
@@ -1125,11 +1028,6 @@ def beam_search(
       None, it uses `inputs.shape[1]` as `max_decode_len`.
     decode_rng: Unused decoder RNG seed.
     cache_offset: axis offset for cache, arising from scanned layers.
-    initial_index: Optional[jnp.ndarray], the index from which to start decoding
-      autoregressively if set. If unset, then we teacher-force the prefix, but
-      autoregressively (so it will be slow). When set, this also assumes that
-      the cache is appropriately populated. Since inputs are padded on the left
-      with BOS = 0, these are also the lengths of the prompts.
 
   Returns:
      Tuple of:
@@ -1148,55 +1046,15 @@ def beam_search(
   # We start with a dummy token in the beginning so extend the maximum length.
   max_decode_len += 1
 
-  right_aligned_input = None
-  live_seqs = None
-  if initial_index is not None:
-    # Now contains the inputs, but "right aligned" so as to end with the last
-    # prompt token.
-    # [batch_size, length]
-    right_aligned_input = _right_align_prompts(inputs)
-    # `inputs` now is just the last token of the prompt, right padded to the
-    # same as before.
-    length = inputs.shape[1]
-    inputs = jnp.pad(
-        right_aligned_input[:, -1][:, None],
-        ((0, 0), (0, length - 1)),
-        constant_values=0,
-    )
-
-    # Sized [batch, max_decode_len]
-    live_seqs = jnp.pad(
-        right_aligned_input[:, -1][:, None],
-        ((0, 0), (0, max_decode_len - 1)),
-        constant_values=0,
-    )
-    live_seqs = jnp.expand_dims(live_seqs, axis=1)
-    live_seqs = jnp.broadcast_to(
-        live_seqs, (live_seqs.shape[0], num_decodes, live_seqs.shape[-1])
-    )
-  else:
-    initial_index = jnp.zeros((batch_size,), dtype=jnp.int32)
-
   # initialize beam search state
-  beam_search_init_state = beam_init(
-      batch_size,
-      beam_size,
-      max_decode_len,
-      cache,
-      cache_offset,
-      live_seqs=live_seqs,
-      initial_index=initial_index,
-  )
+  beam_search_init_state = beam_init(batch_size, beam_size, max_decode_len,
+                                     cache, cache_offset)
 
-  def beam_search_loop_cond_fn(state: BeamState) -> jax.Array:
+  def beam_search_loop_cond_fn(state: BeamState) -> bool:
     """Beam search loop termination condition."""
     # Have we reached max decoding length?
-
-    # Since we might be starting at different points in the prompts, let's use
-    # the minimum prompt length to stop conservatively.
-    cur_index = state.cur_index + jnp.min(state.initial_index)
     # Because we mutate the "i+1" position, we stop one token before the end.
-    not_at_end = cur_index < max_decode_len - 1
+    not_at_end = (state.cur_index < max_decode_len - 1)
 
     # Is no further progress in the beam search possible?
     # Get the best possible scores from alive sequences.
@@ -1214,7 +1072,7 @@ def beam_search(
 
     # If we're not at the max decode length, and the search hasn't terminated,
     # continue looping.
-    return not_at_end & (~search_terminated)
+    return not_at_end & (~search_terminated)  # pytype: disable=bad-return-type  # jax-devicearray
 
   def beam_search_loop_body_fn(state: BeamState) -> BeamState:
     """Beam search loop state update function."""
@@ -1276,20 +1134,12 @@ def beam_search(
     topk_ids = topk_indices % vocab_size
     # Force decode `inputs` into topk_ids up until PAD. When `inputs` is all
     # PADs this is a no-op.
-    #
-    # Also note that when `initial_index` is set, we've already setup the
-    # inputs so that at position 1 onwards (i.e. state.cur_index + 1 >= 1)
-    # the tokens are 0 and we'll immediately be "out of prompt".
-    # --> [batch_size, 1]
     next_input_token = jnp.expand_dims(
         inputs, axis=1).astype(jnp.int32)[:, :, state.cur_index + 1]
-    # --> [batch_size, 1]
     out_of_prompt = (next_input_token == 0)
 
     # When forcing prompts, update log probabilities to `0` for the top of the
     # beam and -INF for the rest, effectively keeping only one beam alive.
-    # This is necessary, because if two beams have the same prefix, then they
-    # will both decode the exact same sequences and that's redundant.
     # --> [batch, 2*beams]
     inside_prompt_log_probs = jnp.concatenate([
         jnp.zeros((batch_size, 1), dtype=topk_log_probs.dtype),
@@ -1348,16 +1198,7 @@ def beam_search(
 
     # Update FINISHED (reached end of sentence) sequences:
     # Calculate new seq scores from log probabilities.
-    lengths = state.cur_index + 1
-    # We should add the lengths of the prompts to the beams as well to
-    # calculate the brevity penalty correctly.
-    # initial_index --> [batch_size,]
-    # topk_lengths  --> [batch_size, 2*beams]
-    topk_lengths = jnp.repeat(initial_index[:, None], beams_to_keep, axis=1)
-    # lengths is now: [batch_size, 2*beams]
-    lengths = topk_lengths + lengths
-
-    new_scores = topk_log_probs / brevity_penalty(alpha, lengths)  # pytype: disable=wrong-arg-types  # jax-devicearray
+    new_scores = topk_log_probs / brevity_penalty(alpha, state.cur_index + 1)  # pytype: disable=wrong-arg-types  # jax-devicearray
     # Mask out the still unfinished sequences by adding large negative value.
     # --> [batch, 2*beams]
     new_scores += (~newly_finished) * NEG_INF
@@ -1384,9 +1225,7 @@ def beam_search(
         live_seqs=top_alive_seq,
         finished_seqs=top_finished_seq,
         finished_flags=top_finished_flags,
-        cache=top_alive_cache,
-        initial_index=initial_index,
-    )
+        cache=top_alive_cache)
 
   # Run while loop and get final beam search state.
   final_state = lax.while_loop(beam_search_loop_cond_fn,
@@ -1395,57 +1234,14 @@ def beam_search(
   # Account for the edge-case where there are no finished sequences for a
   # particular batch item. If so, return live sequences for that batch item.
   # --> [batch]
-  any_finished = jnp.any(final_state.finished_flags, axis=1)
+  none_finished = jnp.any(final_state.finished_flags, axis=1)
   # --> [batch, beams, length]
-  finished_seqs = jnp.where(
-      any_finished[:, None, None],
-      final_state.finished_seqs,
-      final_state.live_seqs,
-  )
+  finished_seqs = jnp.where(none_finished[:, None, None],
+                            final_state.finished_seqs, final_state.live_seqs)
   # --> [batch, beams]
-  finished_scores = jnp.where(
-      any_finished[:, None],
-      final_state.finished_scores,
-      final_state.live_logprobs,
-  )
+  finished_scores = jnp.where(none_finished[:,
+                                            None], final_state.finished_scores,
+                              final_state.live_logprobs)
 
-  # Construct the finished sequences back from the prompts that we kept
-  # separately in the right aligned buffer.
-  if right_aligned_input is not None:
-    # Right now we have right aligned inputs, and then the last tokens +
-    # completions in finished_seqs. We need to concatenate and get rid of the
-    # extra padding, while broadcasting in the beam dimension.
-
-    # Drop the first token, because it is also in the `right_aligned_input`
-    # [batch, beams, length]
-    finished_seqs = finished_seqs[:, :, 1:]
-    # right_aligned_input is [batch, length_prompt], we need to create a new
-    # beams dimension and broadcast it along that.
-    # --> [batch, beams, length]
-    right_aligned_input = jnp.broadcast_to(
-        right_aligned_input[:, None, :],
-        (batch_size, finished_seqs.shape[1], right_aligned_input.shape[-1]),
-    )
-    # Now concatenate along the length dimension.
-    # --> [batch, beams, length]
-    finished_seqs = jnp.concatenate(
-        [right_aligned_input, finished_seqs], axis=-1
-    )
-
-    # Now we left align everything.
-
-    # First flatten to [batch_size * beams, length]
-    flat_finished_seqs = jnp.reshape(
-        finished_seqs, (-1, finished_seqs.shape[-1])
-    )
-    # Left align everything.
-    flat_finished_seqs = _left_align_prompts(flat_finished_seqs)
-    # Shape back to the original shape.
-    left_aligned_seqs = jnp.reshape(flat_finished_seqs, finished_seqs.shape)
-    # Cut to the desired length (-1 because we added 1 right off the bat)
-    finished_seqs = left_aligned_seqs[:, :, : max_decode_len - 1]
-  else:
-    # Just drop the first dummy 0 token.
-    finished_seqs = finished_seqs[:, :, 1:]
-
-  return finished_seqs, finished_scores
+  # Drop the first dummy 0 token.
+  return finished_seqs[:, :, 1:], finished_scores
