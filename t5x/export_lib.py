@@ -177,7 +177,7 @@ class ExportableModule(tf.Module):
 
     if self._allowed_batch_sizes:
       if self._batch_size is not None:
-        raise ValueError('allowed_batch_size requires polymorphic batch size')
+        raise ValueError('allowed_batch_sizes requires polymorphic batch size')
       max_batch_size = self._max_batch_size or max(self._allowed_batch_sizes)
       allowed_batch_sizes = self._allowed_batch_sizes
     elif self._batch_size is not None:
@@ -185,7 +185,7 @@ class ExportableModule(tf.Module):
       allowed_batch_sizes = [self._batch_size]
     else:
       raise ValueError(
-          'Need to set either batch_size or allowed_batch_size when '
+          'Need to set either batch_size or allowed_batch_sizes when '
           'using batch_function.'
       )
     batch_wrapper = tf.nondifferentiable_batch_function(
