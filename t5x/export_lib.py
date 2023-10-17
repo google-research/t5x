@@ -293,7 +293,7 @@ def create_inference_function(
     enable_xla: bool = True,
     polymorphic_shapes_inputs: Optional[Any] = None,
     native_lowering: bool = False,
-    native_lowering_platforms: Sequence[str] = (),
+    native_lowering_platforms: Optional[Sequence[str]] = None,
     model_fn_extra_kwargs: Optional[Mapping[str, Any]] = None,
 ) -> Callable[[Mapping[str, Any], Any], PyTree]:
   """Fetches a model and returns the inference function based on inference_mode."""
@@ -1299,7 +1299,7 @@ def save(
     mixture_or_task_name: Optional[str] = None,
     validation_examples: Optional[List[Any]] = None,
     native_lowering: bool = False,
-    native_lowering_platforms: Sequence[str] = (),
+    native_lowering_platforms: Optional[Sequence[str]] = None,
     enable_xla: bool = True,
     decode_outputs: Optional[bool] = None,
     trailing_shapes: Optional[Mapping[str, Tuple[int, ...]]] = None,
@@ -1350,7 +1350,7 @@ def save(
     native_lowering_platforms: In conjunction with `native_lowering`, specify
       the platform(s) for which to lower the code. Must be a tuple of strings,
       including a subset of: 'cpu', 'cuda', 'rocm', 'tpu'. The default
-      (empty tuple), specifies the JAX default backend on the machine where the
+      (None), specifies the JAX default backend on the machine where the
       lowering is done.
     enable_xla: Defaults to true. If false, jax2tf conversion only emits non-XLA
       ops.
