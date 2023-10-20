@@ -726,23 +726,6 @@ class EncoderDecoderModel(BaseTransformerModel):
     encoder_input_tokens = batch['encoder_input_tokens']
     decoder_input_tokens = batch['decoder_input_tokens']
 
-    # Prepare transformer fast-decoder call for beam search: for beam search, we
-    # need to set up our decoder model to handle a batch size equal to
-    # batch_size * num_decodes, where each batch item's data is expanded
-    # in-place rather than tiled.
-    # i.e. if we denote each batch element subtensor as el[n]:
-    # [el0, el1, el2] --> beamsize=2 --> [el0,el0,el1,el1,el2,el2]
-    # [batch * num_decodes, input_len, emb_dim]
-    encoded_inputs = decoding.flat_batch_beam_expand(
-        self.module.apply(
-            {'params': params, **flax_mutables},
-            encoder_input_tokens,
-            enable_dropout=False,
-            method=self.module.encode,
-        ),
-        num_decodes,
-    )
-
     # `decoder_prompt_inputs` is initialized from the batch's
     # `decoder_input_tokens`. The EOS is stripped to avoid decoding to stop
     # after the prompt by matching to `output_vocabulary.eos_id`.
