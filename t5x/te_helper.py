@@ -198,7 +198,7 @@ class TEInstalledHelper(TransformerEngineHelperBase):
   @staticmethod
   def get_encoder_layer(config, relative_embedding, name, original_cls):
     hidden_dropout_dims = (-3,) if config.transpose_batch_sequence else(-2,)
-    return te.TransformerLayer(
+    return te.flax.TransformerLayer(
         hidden_size=config.num_heads*config.head_dim,
         mlp_hidden_size=config.mlp_dim,
         layernorm_type="rmsnorm",
@@ -214,14 +214,14 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         fuse_qkv_params=config.fuse_qkv_params,
         relative_embedding=relative_embedding,
         dtype=config.dtype,
-        layer_type=te.TransformerLayerType.ENCODER,
+        layer_type=te.flax.TransformerLayerType.ENCODER,
         self_attn_mask_type='padding',
         name=name)
 
   @staticmethod
   def get_decoder_layer(config, relative_embedding, name, original_cls):
     hidden_dropout_dims = (-3,) if config.transpose_batch_sequence else(-2,)
-    return te.TransformerLayer(
+    return te.flax.TransformerLayer(
         hidden_size=config.num_heads*config.head_dim,
         mlp_hidden_size=config.mlp_dim,
         layernorm_type="rmsnorm",
@@ -237,7 +237,7 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         fuse_qkv_params=config.fuse_qkv_params,
         relative_embedding=relative_embedding,
         dtype=config.dtype,
-        layer_type=te.TransformerLayerType.DECODER,
+        layer_type=te.flax.TransformerLayerType.DECODER,
         self_attn_mask_type='causal',
         name=name)
 
