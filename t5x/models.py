@@ -756,7 +756,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       decoder_prompt_inputs = jnp.zeros_like(decoder_input_tokens)
 
     encoded_inputs = self.module.apply(
-        {'params': params},
+        {'params': params, **flax_mutables},
         encoder_input_tokens,
         enable_dropout=False,
         method=self.module.encode,
