@@ -32,6 +32,7 @@ PyTreeDef = jax.tree_util.PyTreeDef
 # Constants
 # "Effective negative infinity" constant for masking in beam search.
 NEG_INF = np.array(-1.0e7)
+NEG_INF_VALUE = -1.0e7
 
 # Temperatures lower than this are considered 0.0, which is handled specially
 # with a conditional. This is to avoid numeric issues from exponentiating on
@@ -1089,6 +1090,7 @@ def beam_search(
     num_decodes: int = 4,
     alpha: float = 0.6,
     max_decode_len: Optional[int] = None,
+    min_log_prob: float = NEG_INF_VALUE,
     decode_rng: Optional[jnp.ndarray] = None,
     cache_offset: int = 0,
     initial_index: Optional[jnp.ndarray] = None,
@@ -1123,6 +1125,8 @@ def beam_search(
     alpha: float: scaling factor for brevity penalty.
     max_decode_len: int: an optional maximum length of decoded sequence. If
       None, it uses `inputs.shape[1]` as `max_decode_len`.
+    min_log_prob: the beam search will stop if there is no live beam entry with
+      higher raw score (ignoring brevity penalty) than this.
     decode_rng: Unused decoder RNG seed.
     cache_offset: axis offset for cache, arising from scanned layers.
     initial_index: Optional[jnp.ndarray], the index from which to start decoding
@@ -1212,9 +1216,20 @@ def beam_search(
     # scores, the search cannot improve the finished set further.
     search_terminated = jnp.all(worst_finished_scores > best_live_scores)
 
-    # If we're not at the max decode length, and the search hasn't terminated,
+    # If no best possible live score is greater than min_log_porb, end search
+    # early. Note:
+    # - We are ignoring the brevity penalty as it can over-estimate the scores.
+    # - state.cur_index > 0 is needed as beam search just starts and live
+    # beams are empty.
+    raw_min_log_prob = min_log_prob / min_brevity_penalty
+    none_pass_min_prob_check = (
+        jnp.all(best_live_scores < raw_min_log_prob) & state.cur_index > 0
+    )
+
+    # If we're not at the max decode length, there is at least one beam passing
+    # the minimum probability threshold, and the search hasn't terminated,
     # continue looping.
-    return not_at_end & (~search_terminated)
+    return not_at_end & (~search_terminated) & ~none_pass_min_prob_check
 
   def beam_search_loop_body_fn(state: BeamState) -> BeamState:
     """Beam search loop state update function."""

@@ -1150,6 +1150,45 @@ class DecodeTest(parameterized.TestCase):
       expected_scores.append(beam_expected_scores)
     np.testing.assert_allclose(expected_scores, decoding_scores, atol=1e-5)
 
+  def test_beam_search_min_log_prob(self):
+    beam_size = 2
+
+    def token_to_logits(decoding_state: decoding.DecodingState):
+      del decoding_state
+      # Use id 2 then 3 for batch element 0 and id 3 then 2 for element 1.
+      logits = np.repeat(
+          np.expand_dims(
+              np.array(
+                  [[-1e7, -1e10, -0.1, -0.9], [-1e7, -1e10, -0.9, -0.1]],
+                  dtype=np.float32,
+              ),
+              axis=1,
+          ),
+          [beam_size],
+          axis=1,
+      )
+      logits = decoding.flatten_beam_dim(logits)
+      return logits, {}
+
+    # No prefix is passed.
+    inputs = np.array([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], dtype=np.int32)
+    beam_search_sequences, decoding_scores = decoding.beam_search(
+        inputs,
+        {},
+        token_to_logits,
+        EOS_ID,
+        num_decodes=beam_size,
+        min_log_prob=-0.05,
+    )
+
+    # Prefixes are forced depending on inputs.
+    # Beam search sequences and corresponding scores are in reverse order.
+    self.assertTrue(np.all(np.diff(decoding_scores) >= 0))
+    expected = np.array(
+        [[[3, 0, 0, 0, 0], [2, 0, 0, 0, 0]], [[2, 0, 0, 0, 0], [3, 0, 0, 0, 0]]]
+    )
+    np.testing.assert_array_equal(expected, beam_search_sequences)
+
 
 if __name__ == '__main__':
   absltest.main()
