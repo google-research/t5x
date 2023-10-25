@@ -2361,7 +2361,11 @@ class OrbaxCheckpointManagerInterface:
             self.directory,
             restore_dtype=self._restore_dtype,
         )
-        return legacy_checkpointer.restore(path=path)
+        return legacy_checkpointer.restore(
+            path=path,
+            fallback_state=fallback_state,
+            state_transformation_fns=state_transformation_fns,
+        )
 
     state_dict = self._train_state.state_dict()
     # Returns a state dict rather than a train state.
