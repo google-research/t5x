@@ -305,9 +305,9 @@ def train(
       partitioner=partitioner,
       data_layout=data_layout,
   )
-
   input_shapes = jax.tree_map(
-      lambda x: (data_layout.batch_size, *x.shape[1:]), train_iter.element_spec
+      lambda x: (data_layout.batch_size, *x.shape[1:]),
+      train_iter.element_spec,
   )
   input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
 
@@ -513,9 +513,13 @@ def train(
           }
       )
     logging.info('Computing training evaluation metrics.')
-    eval_batch_iters = {
-        task: ds.as_numpy_iterator() for task, ds in train_eval_datasets.items()
-    }
+    eval_batch_iters = {}
+    for task, ds in train_eval_datasets.items():
+      if isinstance(ds, tf.data.Dataset):
+        eval_batch_iters[task] = ds.as_numpy_iterator()
+      else:
+        eval_batch_iters[task] = ds
+
     eval_summaries = trainer.eval(eval_batch_iters)
     trainer.stop_training = run_actions(
         trainer_lib.ActionMode.TRAIN_EVAL,  # pytype: disable=wrong-arg-types  # jax-ndarray
