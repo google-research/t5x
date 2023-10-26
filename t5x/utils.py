@@ -1834,10 +1834,7 @@ def get_vocabulary(
       raise ValueError(
           f'No vocabularies found for AirIO task/mixture {mixture_or_task}'
       )
-    all_vocabularies = list(vocab_map.values())
-    feature = seqio.Feature(vocabulary=all_vocabularies[0])
-    # TODO(b/307361073): Handle multimodal.
-    features = {'inputs': feature, 'targets': feature}
+    features = {k: seqio.Feature(vocabulary=v) for k, v in vocab_map.items()}
   elif isinstance(cfg.mixture_or_task_name, seqio.DatasetProviderBase):
     mixture_or_task = cfg.mixture_or_task_name
     features = mixture_or_task.output_features
