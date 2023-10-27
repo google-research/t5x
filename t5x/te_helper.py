@@ -168,7 +168,7 @@ class TEInstalledHelper(TransformerEngineHelperBase):
   def extend_logical_axis_rules(rules):
     # Apply fp8_autocast to correctly set sharding_resource up.
     with TEInstalledHelper.fp8_autocast(TransformerEngineConfig()):
-      return te.extend_logical_axis_rules(rules)
+      return te.flax.extend_logical_axis_rules(rules)
 
   @staticmethod
   def update_fp8_metas(grad_accum, flax_mutables):
