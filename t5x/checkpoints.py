@@ -2075,7 +2075,9 @@ def _construct_orbax_restoration_transforms(
     def _modify_orbax_param_info(info, value):
       if ocp.utils.leaf_is_placeholder(value):
         name = ocp.utils.name_from_leaf_placeholder(value)
-        return dataclasses.replace(info, path=directory_ / name)
+        return dataclasses.replace(
+            info, name=name, path=directory_ / name, parent_dir=directory_
+        )
       return info
 
     item_ = jax.tree_util.tree_map(
