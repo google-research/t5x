@@ -675,13 +675,13 @@ class EncoderDecoderModel(BaseTransformerModel):
     # Prepare autoregressive cache.
     if 'initial_index' not in inspect.signature(self.decode_fn).parameters:
       logging.info(
-          'Disabling prompt prefilliing due to incompatible decode fn: %s.',
+          'Disabling prompt prefilling due to incompatible decode fn: %s.',
           self.decode_fn,
       )
       prefill_decoder_prompt = False
     elif 'prefill' not in inspect.signature(self.module.decode).parameters:
       logging.info(
-          'Disabling prompt prefilliing due to incompatible `module.decode`.'
+          'Disabling prompt prefilling due to incompatible `module.decode`.'
       )
       prefill_decoder_prompt = False
     else:
