@@ -161,7 +161,7 @@ cause issues), run the following on commandline:
 
 ```sh
 MODEL_DIR="/tmp/finetune-model/"
-python -m t5x.train \
+python -m t5x.train_unfragmented \
   --gin_file=t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin \
   --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --alsologtostderr

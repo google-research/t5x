@@ -168,7 +168,7 @@ cause issues), run the following on commandline:
 
 ```sh
 EVAL_OUTPUT_DIR="/tmp/model-eval/"
-python -m t5x.eval \
+python -m t5x.eval_unfragmented \
   --gin_file=t5x/google/examples/flaxformer_t5/configs/examples/eval/t5_1_1_small_cbqa_natural_questions.gin \
   --gin.EVAL_OUTPUT_DIR=\"${EVAL_OUTPUT_DIR}\" \
   --alsologtostderr

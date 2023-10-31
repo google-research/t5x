@@ -335,7 +335,7 @@ and if you are doing finetuning, you can use
 We can apply these two files with the following command:
 
 ```sh
-python -m t5x.train \
+python -m t5x.train_unfragmented \
   --gin_file=t5x/examples/t5/t5_1_1/small.gin \
   --gin_file=t5x/configs/runs/finetune.gin \
   --logtostderr
@@ -354,7 +354,7 @@ you'll see the list of required overrides, which we will populate for finetuning
 on WMT in the updated launch command here:
 
 ```sh
-python -m t5x.train \
+python -m t5x.train_unfragmented \
   --gin_file=t5x/examples/t5/t5_1_1/small.gin \
   --gin_file=t5x/configs/runs/finetune.gin \
   --gin.MIXTURE_OR_TASK_NAME=\"wmt_t2t_ende_v003\" \
@@ -379,7 +379,7 @@ is just such an example that allows you to exactly duplicate the previous launch
 command simply by calling:
 
 ```sh
-python -m t5x.train \
+python -m t5x.train_unfragmented \
   --gin_file=t5x/examples/t5/t5_1_1/examples/small_wmt_finetune.gin \
   --gin.MODEL_DIR=\"/tmp/t5_1_1_small_finetune_gin\" \
   --logtostderr
