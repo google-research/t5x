@@ -280,7 +280,7 @@ def train(
   )
 
   if prepare_train_iter_fn:
-    train_iter = utils.prepare_train_iter(
+    train_iter = prepare_train_iter_fn(
         train_iter,
         checkpoint_cfg=checkpoint_cfg,
         partitioner=partitioner,
