@@ -86,7 +86,7 @@ python3 -u ${T5X_DIR}/t5x/train.py \
   --gin.train/utils.DatasetConfig.pack=${PACK} \
   --gin.train_eval/utils.DatasetConfig.pack=${PACK} \
   --gin.train.te_config_cls=@te_helper.TransformerEngineConfig \
-  --gin.te_helper.TransformerEngineConfig.enabled=${ENABLE_FP8} \
+  --gin.te_helper.TransformerEngineConfig.enable_fp8=${ENABLE_FP8} \
   --gin.te_helper.TransformerEngineConfig.fp8_format=\"hybrid\" \
   --gin.network.T5Config.transpose_batch_sequence=${TRANSPOSE_BS} \
   --gin.network.T5Config.fuse_qkv_params=${FUSE_QKV} \
