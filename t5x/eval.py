@@ -17,6 +17,7 @@
 r"""Runs training- and inference-evaluation on a T5X-compatible model.
 
 """
+
 # pyformat: enable
 # pylint:enable=line-too-long
 import functools
