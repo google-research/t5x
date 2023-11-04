@@ -17,6 +17,7 @@
 r"""Runs training- and inference-evaluation on a T5X-compatible model.
 
 """
+
 # pyformat: enable
 # pylint:enable=line-too-long
 import functools
@@ -50,9 +51,12 @@ _DEFAULT_GIN_SEARCH_PATHS = [
 
 class SummarizeConfigFn(Protocol):
 
-  def __call__(self, model_dir: str,
-               summary_writer: Optional[metric_writers.SummaryWriter],
-               step: int) -> None:
+  def __call__(
+      self,
+      model_dir: str,
+      summary_writer: Optional[metric_writers.SummaryWriter],
+      step: int,
+  ) -> None:
     ...
 
 
@@ -107,7 +111,8 @@ class InferenceEvaluator:
         seed=infer_eval_dataset_cfg.seed,
         sequence_length=infer_eval_dataset_cfg.task_feature_lengths,
         use_memory_cache=infer_eval_dataset_cfg.use_memory_cache,
-        **kwargs)
+        **kwargs,
+    )
     # Lazily initialized upon the first `evaluate` call.
     self._predict_fn = None
     self._predict_with_aux_fn = None
@@ -143,32 +148,35 @@ class InferenceEvaluator:
           infer_step=self._model.predict_batch,
           batch_size=self._infer_eval_dataset_cfg.batch_size,
           train_state_axes=train_state_axes,
-          partitioner=self._partitioner)
+          partitioner=self._partitioner,
+      )
 
       self._predict_with_aux_fn = utils.get_infer_fn(
           infer_step=self._model.predict_batch_with_aux,
           batch_size=self._infer_eval_dataset_cfg.batch_size,
           train_state_axes=train_state_axes,
-          partitioner=self._partitioner)
+          partitioner=self._partitioner,
+      )
 
       self._score_fn = utils.get_infer_fn(
           infer_step=self._model.score_batch,
           batch_size=self._infer_eval_dataset_cfg.batch_size,
           train_state_axes=train_state_axes,
-          partitioner=self._partitioner)
+          partitioner=self._partitioner,
+      )
 
     all_metrics, _ = self._seqio_evaluator.evaluate(
         compute_metrics=jax.process_index() == 0,
         step=int(utils.get_local_data(train_state.step)),
         predict_fn=functools.partial(
-            self._predict_fn,
-            train_state=train_state,
-            rng=jax.random.PRNGKey(0)),
+            self._predict_fn, train_state=train_state, rng=jax.random.PRNGKey(0)
+        ),
         score_fn=functools.partial(self._score_fn, train_state=train_state),
         predict_with_aux_fn=functools.partial(
             self._predict_with_aux_fn,
             train_state=train_state,
-            rng=jax.random.PRNGKey(0)),
+            rng=jax.random.PRNGKey(0),
+        ),
     )
     return all_metrics
 
@@ -251,11 +259,13 @@ def evaluate(
       inference_evaluator_cls,
       model,
       partitioner,
-      log_dir=output_dir)
+      log_dir=output_dir,
+  )
   if not evaluator.eval_tasks:
     raise ValueError(
         f"'{dataset_cfg.mixture_or_task_name}' has no metrics for evaluation, "
-        "or this mixture/task doesn't have provided split.")
+        "or this mixture/task doesn't have provided split."
+    )
 
   # ----------------------------------------------------------------------------
   # T5X model loading.
@@ -270,13 +280,14 @@ def evaluate(
       optimizer_def=None,  # Do not load optimizer state.
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
-      partitioner=partitioner)
+      partitioner=partitioner,
+  )
   train_state_axes = train_state_initializer.train_state_axes
   # Log the variable shapes information and write to a file.
   log_file = os.path.join(output_dir, 'model-info.txt')
-  utils.log_model_info(log_file,
-                       train_state_initializer.global_train_state_shape,
-                       partitioner)
+  utils.log_model_info(
+      log_file, train_state_initializer.global_train_state_shape, partitioner
+  )
 
   if training_evaluator_cls:
     data_layout = partitioner.get_data_layout(dataset_cfg.batch_size)
@@ -314,12 +325,16 @@ def evaluate(
 
   # Skip checkpoints that have already been evaluated.
   eval_ckpt_path = os.path.join(
-      output_dir, f'eval.{dataset_cfg.mixture_or_task_name}.ckpt')
+      output_dir, f'eval.{dataset_cfg.mixture_or_task_name}.ckpt'
+  )
   if restore_checkpoint_cfg.mode == 'all' and gfile.exists(eval_ckpt_path):
     logging.info('Found evaluation checkpoint: %s', eval_ckpt_path)
 
-    ckpt_dirs = ([restore_checkpoint_cfg.path] if isinstance(
-        restore_checkpoint_cfg.path, str) else restore_checkpoint_cfg.path)
+    ckpt_dirs = (
+        [restore_checkpoint_cfg.path]
+        if isinstance(restore_checkpoint_cfg.path, str)
+        else restore_checkpoint_cfg.path
+    )
     ckpt_paths = set()
     for ckpt_dir in ckpt_dirs:
       if not gfile.isdir(ckpt_dir):
@@ -329,7 +344,8 @@ def evaluate(
         )
       ckpt_paths.update(
           checkpoints.get_checkpoint_dir(ckpt_dir, step)
-          for step in checkpoints.all_steps(ckpt_dir))
+          for step in checkpoints.all_steps(ckpt_dir)
+      )
 
     evaluated_ckpt_paths = _load_evaluated_ckpt_paths(eval_ckpt_path)
 
@@ -393,27 +409,36 @@ if __name__ == '__main__':
   flags.DEFINE_multi_string(
       'gin_file',
       default=None,
-      help='Path to gin configuration file. Multiple paths may be passed and '
-      'will be imported in the given order, with later configurations  '
-      'overriding earlier ones.')
+      help=(
+          'Path to gin configuration file. Multiple paths may be passed and '
+          'will be imported in the given order, with later configurations  '
+          'overriding earlier ones.'
+      ),
+  )
 
   flags.DEFINE_multi_string(
-      'gin_bindings', default=[], help='Individual gin bindings.')
+      'gin_bindings', default=[], help='Individual gin bindings.'
+  )
 
   flags.DEFINE_list(
       'gin_search_paths',
       default=['.'],
-      help='Comma-separated list of gin config path prefixes to be prepended '
-      'to suffixes given via `--gin_file`. If a file appears in. Only the '
-      'first prefix that produces a valid path for each suffix will be '
-      'used.')
+      help=(
+          'Comma-separated list of gin config path prefixes to be prepended '
+          'to suffixes given via `--gin_file`. If a file appears in. Only the '
+          'first prefix that produces a valid path for each suffix will be '
+          'used.'
+      ),
+  )
 
   flags.DEFINE_string(
-      'tfds_data_dir', None,
+      'tfds_data_dir',
+      None,
       'If set, this directory will be used to store datasets prepared by '
       'TensorFlow Datasets that are not available in the public TFDS GCS '
       'bucket. Note that this flag overrides the `tfds_data_dir` attribute of '
-      'all `Task`s.')
+      'all `Task`s.',
+  )
 
 
   def main(argv: Sequence[str]):
