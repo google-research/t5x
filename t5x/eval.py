@@ -39,6 +39,7 @@ from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x import trainer as trainer_lib
 from t5x import utils
+import tensorflow as tf
 from tensorflow.io import gfile
 from typing_extensions import Protocol
 # pylint:enable=g-import-not-at-top
@@ -315,7 +316,11 @@ def evaluate(
       train_evaluator.train_state = train_state
       train_evaluator.eval(
           {
-              task: ds.as_numpy_iterator()
+              task: (
+                  ds.as_numpy_iterator()
+                  if isinstance(ds, tf.data.Dataset)
+                  else ds
+              )
               for task, ds in train_eval_datasets.items()
           }
       )
