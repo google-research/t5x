@@ -273,12 +273,17 @@ def flatten(
 
 
 _BUILTIN_INFERENCE_MODES = {
-    'predict':
-        CustomInferenceMode('predict_batch_with_aux',
-                            functools.partial(flatten, assert_output_len=2)),
-    'score':
-        CustomInferenceMode('score_batch',
-                            functools.partial(flatten, assert_output_len=1)),
+    'predict': CustomInferenceMode(
+        'predict_batch_with_aux',
+        functools.partial(flatten, assert_output_len=2),
+    ),
+    'score': CustomInferenceMode(
+        'score_batch', functools.partial(flatten, assert_output_len=1)
+    ),
+    # Outputs both mask and encodings for token-level encoding (e.g., XTR).
+    'score_with_mask': CustomInferenceMode(
+        'score_batch', functools.partial(flatten, assert_output_len=2)
+    ),
 }
 
 
