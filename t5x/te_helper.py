@@ -163,7 +163,8 @@ class TEInstalledHelper(TransformerEngineHelperBase):
                                    amax_compute_algo="max")
     try:
       with te.fp8_autocast(enabled=te_config.enable_fp8, fp8_recipe=delay_scaling,
-                           sharding_resource=te.ShardingResource(dp_mesh_axis, tp_mesh_axis)):
+                           mesh_resource=te.MeshResource(dp_resource=dp_mesh_axis,
+                                                         tp_resource=tp_mesh_axis)):
         yield
     finally:
         pass
@@ -177,8 +178,6 @@ class TEInstalledHelper(TransformerEngineHelperBase):
   @staticmethod
   def update_fp8_metas(grad_accum, flax_mutables):
     update_coll = te.update_collections(grad_accum, flax_mutables)
-    # As the suggestion of FP8 training, updating FP8 scales as frequent as possible.
-    update_coll = te.update_fp8_metas(update_coll)
     return update_coll
 
   @staticmethod
