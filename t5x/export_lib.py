@@ -80,6 +80,8 @@ class CustomInferenceMode:
   model_fn_name: str
   # Fetch useful output from the raw output of the model function.
   fetch_output: Optional[Callable[[PyTree], PyTree]] = None
+  # Constant keyword aguments to append when calling the model function.
+  model_fn_const_kwargs: None | Mapping[str, Any] = None
 
 
 class CreatePostprocessorFn(typing_extensions.Protocol):
@@ -273,12 +275,14 @@ def flatten(
 
 
 _BUILTIN_INFERENCE_MODES = {
-    'predict':
-        CustomInferenceMode('predict_batch_with_aux',
-                            functools.partial(flatten, assert_output_len=2)),
-    'score':
-        CustomInferenceMode('score_batch',
-                            functools.partial(flatten, assert_output_len=1)),
+    'predict': CustomInferenceMode(
+        model_fn_name='predict_batch_with_aux',
+        fetch_output=functools.partial(flatten, assert_output_len=2),
+    ),
+    'score': CustomInferenceMode(
+        model_fn_name='score_batch',
+        fetch_output=functools.partial(flatten, assert_output_len=1),
+    ),
 }
 
 
@@ -349,6 +353,11 @@ def create_inference_function(
 
   else:
     model_fn = getattr(model, inference_mode.model_fn_name)
+
+  if inference_mode.model_fn_const_kwargs:
+    model_fn = functools.partial(
+        model_fn, **inference_mode.model_fn_const_kwargs
+    )
 
   model_fn = maybe_partition(model_fn)
   if enable_jax2tf:
@@ -1276,7 +1285,7 @@ def create_batch_polymorphic_shapes(
 def save(
     *,
     model: models.BaseTransformerModel,
-    inference_mode: str,
+    inference_mode: str | CustomInferenceMode,
     restore_checkpoint_cfg: utils.RestoreCheckpointConfig,
     exportable_module_cls: Type[ExportableModule],
     create_preprocessor_fn: CreatePreprocessorFn = create_preprocessor,
