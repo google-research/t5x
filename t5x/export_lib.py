@@ -296,7 +296,7 @@ def create_inference_function(
     enable_jax2tf: bool,
     enable_xla: bool = True,
     polymorphic_shapes_inputs: Optional[Any] = None,
-    native_lowering: bool = False,
+    native_lowering: bool = True,
     native_lowering_platforms: Optional[Sequence[str]] = None,
     model_fn_extra_kwargs: Optional[Mapping[str, Any]] = None,
 ) -> Callable[[Mapping[str, Any], Any], PyTree]:

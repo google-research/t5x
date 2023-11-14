@@ -70,7 +70,7 @@ export_lib.save:
   output_dir = %MODEL_OUTPUT_DIR
   model_name = %MODEL_NAME
   batch_size = %BATCH_SIZE
-  native_lowering = False
+  native_lowering = True
 
 utils.RestoreCheckpointConfig:
   path = %CHECKPOINT_PATH
