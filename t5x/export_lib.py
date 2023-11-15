@@ -299,6 +299,7 @@ def create_inference_function(
     native_lowering: bool = True,
     native_lowering_platforms: Optional[Sequence[str]] = None,
     model_fn_extra_kwargs: Optional[Mapping[str, Any]] = None,
+    jax2tf_disable_platform_checks: bool = False,
 ) -> Callable[[Mapping[str, Any], Any], PyTree]:
   """Fetches a model and returns the inference function based on inference_mode."""
   if partitioner and train_state_initializer:
@@ -361,11 +362,17 @@ def create_inference_function(
 
   model_fn = maybe_partition(model_fn)
   if enable_jax2tf:
+    disabled_checks = (
+        [jax2tf.DisabledSafetyCheck.platform()]
+        if jax2tf_disable_platform_checks
+        else []
+    )
     model_fn = jax2tf.convert(
         model_fn,
         polymorphic_shapes=[None, polymorphic_shapes_inputs],
         native_serialization=native_lowering,
         native_serialization_platforms=native_lowering_platforms,
+        native_serialization_disabled_checks=disabled_checks,
         enable_xla=enable_xla,
     )
 
