@@ -2251,10 +2251,14 @@ def find_next_checkpoint_step(
     checkpoint_period: int,
     first_step: int,
 ):
-  """Finds next valid checkpoint step in checkpoint_steps list parameter to stop scalar training and save a checkpoint at.
+  """Finds next valid checkpoint step in checkpoint_steps list parameter.
 
-  Checkpoint step is considered valid if it is less than the epoch end step,
-  not at a concurrent checkpoint_period step, greater than the epoch first step.
+  This will stop scalar training and save a checkpoint at that step.
+  Checkpoint step is considered valid if less than or equal to epoch end step,
+  not at a concurrent checkpoint_period step, and greater than the first
+  step. Specifically, this will decrease inner_num_steps (the current number
+  of scalar steps to train) if host_step + inner_num_steps would otherwise
+  pass a desired checkpoint step.
 
   Args:
     checkpoint_steps_index: Current index in checkpoint_steps list while
@@ -2268,7 +2272,8 @@ def find_next_checkpoint_step(
     epoch_end_step: Last training step in epoch.
     checkpoint_period: Period value passed in as parameter in
       checkpoint_cfg.save.
-    first_step: First step in epoch while training.
+    first_step: First step while training. Or, this may be the first step after
+      resuming a job (e.g. after pre-emption).
 
   Returns:
     Tuple containing (possibly) halted inner_num_steps value and
@@ -2279,14 +2284,16 @@ def find_next_checkpoint_step(
   while (
       checkpoint_steps
       and (inner_num_steps + host_step)
-      > checkpoint_steps[checkpoint_steps_index]
+      >= checkpoint_steps[checkpoint_steps_index]
   ):
     curr_checkpoint_step = checkpoint_steps[checkpoint_steps_index]
     if (
         ((curr_checkpoint_step - first_step) % checkpoint_period != 0)
-        and checkpoint_steps_index > first_step
-        and curr_checkpoint_step < epoch_end_step
+        and curr_checkpoint_step > first_step
+        and curr_checkpoint_step <= epoch_end_step
     ):
+      # Found a checkpoint step before inner_num_steps + host_step that
+      # is not part of the normal period.
       inner_num_steps = curr_checkpoint_step - host_step
       is_checkpoint_step = True
       return (inner_num_steps, is_checkpoint_step)
@@ -2294,7 +2301,12 @@ def find_next_checkpoint_step(
         not is_checkpoint_step
         and checkpoint_steps_index == len(checkpoint_steps) - 1
     ):
+      # Iterated through all of checkpoint_steps, and there are no new
+      # checkpoint steps before inner_num_steps + host_step.
       return (inner_num_steps, is_checkpoint_step)
+    checkpoint_steps_index += 1
+  # Reached inner_num_steps + host_step and no new checkpoint steps found.
+  # Return the original settings.
   return (inner_num_steps, is_checkpoint_step)
 
 
@@ -2315,8 +2327,8 @@ def find_first_checkpoint_step(
     host_step: Host step of training.
 
   Returns:
-    Integer containing first valid checkpoint step index to start off epoch
-    training on.
+    Integer containing first valid checkpoint step index after host_step and not
+    equal to first_step.
   """
   while (
       checkpoint_steps

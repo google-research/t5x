@@ -682,9 +682,9 @@ def train(
     logging.info('BEGIN Train loop.')
     try:
       # Until the last epoch, `num_steps = steps_per_epoch`
-      num_steps = min(total_steps - host_step, steps_per_epoch)
-      epoch_end_step = host_step + num_steps
-      logging.info('Training for %d steps.', num_steps)
+      epoch_end_step = first_step + steps_per_epoch * (epoch - first_epoch + 1)
+      epoch_end_step = min(total_steps, epoch_end_step)
+      logging.info('Training for %d steps.', epoch_end_step - host_step)
       while host_step < epoch_end_step:
         if trainer.stop_training:
           if checkpoint_period:
@@ -720,6 +720,9 @@ def train(
             checkpoint_period,
             first_step,
         )
+        # Handled separately if this is the overall last step.
+        if host_step + inner_num_steps == total_steps:
+          is_checkpoint_step = False
 
         train_summary = trainer.train(
             train_iter, inner_num_steps, start_step=host_step
@@ -742,11 +745,12 @@ def train(
               trainer.train_state,
               checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
           )
-        if (
-            checkpoint_steps
-            and checkpoint_steps_index < len(checkpoint_steps) - 1
-        ):
-          checkpoint_steps_index += 1
+          # Increment the checkpoint_step_index only if a checkpoint was saved.
+          if (
+              checkpoint_steps
+              and checkpoint_steps_index < len(checkpoint_steps) - 1
+          ):
+            checkpoint_steps_index += 1
         host_step += inner_num_steps
       logging.info('END Train loop.')
     except trainer_lib.PreemptionError as e:
