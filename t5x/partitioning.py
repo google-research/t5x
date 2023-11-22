@@ -960,6 +960,13 @@ class PjittedFnWithContext(PartitionedCallable):
                   self._logical_axis_rules):
       return self._pjitted_fn.lower(*args, **kwargs)
 
+  def lower_and_compile(self, *args, **kwargs):
+    with Mesh(self._mesh.devices,
+              self._mesh.axis_names), flax_partitioning.axis_rules(
+                  self._logical_axis_rules):
+      return self._pjitted_fn.lower(*args, **kwargs).compile()
+
+
 
 class BasePjitPartitioner(BasePartitioner):
   """Partitioner that uses T5X version of jax.pjit."""
@@ -998,7 +1005,7 @@ class BasePjitPartitioner(BasePartitioner):
 
   def compile(self, partitioned_fn: PjittedFnWithContext,
               *args) -> CompiledPartitionedCallable:
-    return partitioned_fn.lower(*args).compile()
+    return partitioned_fn.lower_and_compile(*args)
 
 
 class PjitPartitioner(BasePjitPartitioner):
