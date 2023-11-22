@@ -193,7 +193,6 @@ def train(
   Returns:
     The tuple of (last_step, last_train_state).
   """
-  jax.monitoring.record_event('/jax/t5x/train/beacon')
   logging.info('Process ID: %d', jax.process_index())
   tf.io.gfile.makedirs(model_dir)
 

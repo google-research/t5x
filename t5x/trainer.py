@@ -443,6 +443,7 @@ class BaseTrainer(abc.ABC):
       rng: jax PRNGKey seed for random operations, to be combined with step
         number for a deterministic RNG.
     """
+    jax.monitoring.record_event("/jax/t5x/train/beacon")
     self._model = model
     self._train_state_axes = train_state_axes
     self._base_rng = rng
