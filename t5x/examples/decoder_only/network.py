@@ -43,6 +43,7 @@ class TransformerConfig:
 class DecoderLayer(nn.Module):
   """Transformer decoder layer."""
   config: TransformerConfig
+  relative_embedding: nn.Module
 
   @nn.compact
   def __call__(self,
@@ -65,15 +66,7 @@ class DecoderLayer(nn.Module):
     # wasteful but generally harmless. During subsequent decode steps, this will
     # be called with `decode=True` and will reuse the cached bias. This
     # significantly improves performance during decoding with many decode steps.
-    decoder_bias = layers.RelativePositionBiases(
-        num_buckets=32,
-        max_distance=128,
-        num_heads=cfg.num_heads,
-        dtype=cfg.dtype,
-        embedding_init=nn.initializers.variance_scaling(1.0, 'fan_avg',
-                                                        'uniform'),
-        name='relpos_bias')(
-            l, l, False, decode=decode)
+    decoder_bias = self.relative_embedding(l, l, False, decode=decode)
 
     # `inputs` is layer input with a shape [batch, length, emb_dim].
     x = layers.LayerNorm(
@@ -169,6 +162,16 @@ class Decoder(nn.Module):
     cfg = self.config
     deterministic = not enable_dropout
     assert decoder_input_tokens.ndim == 2  # [batch, len]
+    rel_emb = layers.RelativePositionBiases(
+        num_buckets=32,
+        max_distance=128,
+        num_heads=cfg.num_heads,
+        dtype=cfg.dtype,
+        embedding_init=nn.initializers.variance_scaling(
+            1.0, 'fan_avg', 'uniform'
+        ),
+        name='relpos_bias',
+    )
 
     if decode:
       decoder_mask = None
@@ -197,14 +200,16 @@ class Decoder(nn.Module):
     for lyr in range(cfg.num_layers):
       # [batch, length, emb_dim] -> [batch, length, emb_dim]
       y = DecoderLayer(
-          config=cfg, name=f'layers_{lyr}')(
-              y,
-              decoder_mask=decoder_mask,
-              deterministic=deterministic,
-              decode=decode,
-              max_decode_length=max_decode_length,
-              prefill=prefill,
-              prefill_lengths=prefill_lengths)
+          config=cfg, relative_embedding=rel_emb, name=f'layers_{lyr}'
+      )(
+          y,
+          decoder_mask=decoder_mask,
+          deterministic=deterministic,
+          decode=decode,
+          max_decode_length=max_decode_length,
+          prefill=prefill,
+          prefill_lengths=prefill_lengths,
+      )
 
     y = layers.LayerNorm(dtype=cfg.dtype, name='decoder_norm')(y)
     y = nn.Dropout(
