@@ -1314,7 +1314,7 @@ def save(
     write_warmup_example_fn: Callable[..., None] = write_warmup_examples,
     mixture_or_task_name: Optional[str] = None,
     validation_examples: Optional[List[Any]] = None,
-    native_lowering: bool = False,
+    native_lowering: bool = True,
     native_lowering_platforms: Optional[Sequence[str]] = None,
     enable_xla: bool = True,
     decode_outputs: Optional[bool] = None,
