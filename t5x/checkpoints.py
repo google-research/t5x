@@ -2136,20 +2136,21 @@ class OrbaxCheckpointManagerInterface:
   class _CheckpointManagerImpl(ocp.CheckpointManager):
     """CheckpointManager implementation to deal with metrics update."""
 
-    def _get_old_steps_to_remove(self):
+    def _get_old_steps_to_remove(self, current_checkpoint):
       """Update metrics for Orbax management, if available."""
       if self._track_best:
+        steps = list(self.all_steps()) + [current_checkpoint.step]
         metric_name_to_monitor = self._options.metric_name_to_monitor  # pytype: disable=attribute-error
         step_to_metric = populate_metrics_for_steps(
             os.fspath(self.directory),
             metric_name_to_monitor,
-            self.all_steps(),
+            steps,
         )
-        for info in self._checkpoints:
+        for info in self._checkpoints + [current_checkpoint]:
           if info.step in step_to_metric:
             metrics = {metric_name_to_monitor: step_to_metric[info.step]}
             info.metrics = metrics
-      super()._get_old_steps_to_remove()
+      super()._get_old_steps_to_remove(current_checkpoint)
 
   def __init__(
       self,
