@@ -27,6 +27,7 @@ require an optimizer to get given up front so it is useful for things like
 debugging and analysis of learned weights. However, this means that we cannot do
 partitioned reads so loading will be slower than that `Checkpointer` class.
 """
+
 import asyncio
 import dataclasses
 import functools
@@ -86,8 +87,9 @@ _WRITE_CHECKPOINT_EVENT: str = '/jax/checkpoint/write/durations_sec'
 _TS_CONTEXT = ts.Context({'file_io_concurrency': {'limit': 128}})
 
 
-def _choose_chunk_shape(write_shape: Sequence[int],
-                        target_elements: int) -> List[int]:
+def _choose_chunk_shape(
+    write_shape: Sequence[int], target_elements: int
+) -> List[int]:
   """Chooses a chunk shape that evenly divides write_shape.
 
   The chunk shape is chosen such that the total number of elements is less than
@@ -145,6 +147,7 @@ def _choose_chunk_shape(write_shape: Sequence[int],
 @dataclasses.dataclass
 class _ParameterInfo:
   """Information needed to read/write and slice a partitioned parameter."""
+
   # The unique parameter name.
   name: str
   # The shape of the parameter.
@@ -198,8 +201,9 @@ def all_steps(checkpoints_dir: str) -> Sequence[int]:
 
 def all_dataset_checkpoint_steps(checkpoints_dir: str) -> Sequence[int]:
   """Returns available dataset checkpoint step numbers in ascending order."""
-  glob_pattern = os.path.join(checkpoints_dir, 'checkpoint_*',
-                              f'{_TRAIN_DS_PREFIX}-*')
+  glob_pattern = os.path.join(
+      checkpoints_dir, 'checkpoint_*', f'{_TRAIN_DS_PREFIX}-*'
+  )
   train_ds_paths = gfile.glob(glob_pattern)
   re_pattern = re.compile(r'.*/checkpoint_(\d+)/.*$')
   matches = [re_pattern.match(path) for path in train_ds_paths]
@@ -270,16 +274,19 @@ def _cast(target: PyTree, dtype: jnp.dtype):
 
 
 def _update_ts_path_from_relative_to_absolute(
-    ckpt_dir: str, ts_spec_dict: MutableMapping[str, Any]):
+    ckpt_dir: str, ts_spec_dict: MutableMapping[str, Any]
+):
   """Update (in-place) the path and gcs bucket (if applicable) in a TS Spec."""
 
   # Handle `gs://` paths.
   m = re.fullmatch('^gs://([^/]*)/(.*)$', ckpt_dir, re.DOTALL)
   if m is not None:
     if ts_spec_dict['kvstore']['driver'] != 'gcs':
-      raise ValueError(f'Incorrect TensorStore Spec.  '
-                       f'Expects kvstore driver to be "gcs" for {ckpt_dir}.  '
-                       f'Got {ts_spec_dict}')
+      raise ValueError(
+          'Incorrect TensorStore Spec.  '
+          f'Expects kvstore driver to be "gcs" for {ckpt_dir}.  '
+          f'Got {ts_spec_dict}'
+      )
     bucket = m.group(1)
     ckpt_dir = m.group(2)
     ts_spec_dict['kvstore']['bucket'] = bucket
@@ -289,14 +296,16 @@ def _update_ts_path_from_relative_to_absolute(
   if 'path' in ts_spec_dict['kvstore']:
     # tensorstore>=0.1.14 format
     ts_spec_dict['kvstore']['path'] = os.path.join(
-        ckpt_dir, ts_spec_dict['kvstore']['path'])
+        ckpt_dir, ts_spec_dict['kvstore']['path']
+    )
   elif 'path' in ts_spec_dict:
     # tensorstore<0.1.14 format
     ts_spec_dict['path'] = os.path.join(ckpt_dir, ts_spec_dict['path'])
   else:
     raise ValueError(
         'Incorrect TensorStore Spec. Expects "path" to be a key of spec or '
-        f'`spec["kvstore"]`. Got {ts_spec_dict}')
+        f'`spec["kvstore"]`. Got {ts_spec_dict}'
+    )
 
 
 def _maybe_update_ts_from_file_to_gcs(ckpt_contents):
@@ -314,22 +323,28 @@ def _maybe_update_ts_from_file_to_gcs(ckpt_contents):
       ts_spec_dict['kvstore'] = {
           'bucket': 't5x-dummy-bucket',
           'driver': 'gcs',
-          'path': path
+          'path': path,
       }
     else:
       if arr_or_ts_spec_dict['kvstore']['driver'] != 'gcs':
-        raise ValueError('Unsupported TensoreStore driver. Got '
-                         f'{arr_or_ts_spec_dict["kvstore"]["driver"]}.')
+        raise ValueError(
+            'Unsupported TensoreStore driver. Got '
+            f'{arr_or_ts_spec_dict["kvstore"]["driver"]}.'
+        )
       ts_spec_dict = arr_or_ts_spec_dict
 
     return ts_spec_dict
 
   def _is_leaf(value):
-    return not isinstance(
-        value, dict) or set(value.keys()) >= {'driver', 'kvstore', 'metadata'}
+    return not isinstance(value, dict) or set(value.keys()) >= {
+        'driver',
+        'kvstore',
+        'metadata',
+    }
 
   return jax.tree_util.tree_map(
-      _gfile_to_gcs_driver, ckpt_contents, is_leaf=_is_leaf)
+      _gfile_to_gcs_driver, ckpt_contents, is_leaf=_is_leaf
+  )
 
 
 def _maybe_update_ts_from_gcs_to_file(ckpt_contents):
@@ -352,21 +367,28 @@ def _maybe_update_ts_from_gcs_to_file(ckpt_contents):
     elif arr_or_ts_spec_dict['kvstore']['driver'] == 'file':
       ts_spec_dict = arr_or_ts_spec_dict
     else:
-      raise ValueError('Unsupported TensoreStore driver. Got '
-                       f'{arr_or_ts_spec_dict["kvstore"]["driver"]}.')
+      raise ValueError(
+          'Unsupported TensoreStore driver. Got '
+          f'{arr_or_ts_spec_dict["kvstore"]["driver"]}.'
+      )
 
     return ts_spec_dict
 
   def _is_leaf(value):
-    return not isinstance(
-        value, dict) or set(value.keys()) >= {'driver', 'kvstore', 'metadata'}
+    return not isinstance(value, dict) or set(value.keys()) >= {
+        'driver',
+        'kvstore',
+        'metadata',
+    }
 
   return jax.tree_util.tree_map(
-      _gcs_to_file_driver, ckpt_contents, is_leaf=_is_leaf)
+      _gcs_to_file_driver, ckpt_contents, is_leaf=_is_leaf
+  )
 
 
-def _get_spec(directory: str, arr: Any, name: str,
-              metadata: Dict[str, Any]) -> ts.Spec:
+def _get_spec(
+    directory: str, arr: Any, name: str, metadata: Dict[str, Any]
+) -> ts.Spec:
   """Get ts.Spec from array and name information."""
 
   if os.fspath(directory).startswith('gs://'):
@@ -387,10 +409,7 @@ def _get_spec(directory: str, arr: Any, name: str,
     spec = {
         'driver': 'zarr',
         'dtype': jnp.dtype(arr.dtype).name,
-        'kvstore': {
-            'driver': 'file',
-            'path': name.replace('/', '.')
-        },
+        'kvstore': {'driver': 'file', 'path': name.replace('/', '.')},
         'metadata': metadata,
     }
 
@@ -604,33 +623,36 @@ class Checkpointer(object):
     self._original_dataset_iterator = dataset_iterator
     if isinstance(dataset_iterator, tf.data.Iterator):
       dataset_iterator = _TfDataCheckpointer(dataset_iterator)
-    elif isinstance(dataset_iterator,
-                    clu.data.dataset_iterator.TfDatasetIterator):
+    elif isinstance(
+        dataset_iterator, clu.data.dataset_iterator.TfDatasetIterator
+    ):
       assert dataset_iterator._checkpoint
     self._dataset_iterator = dataset_iterator
 
     data_layout = partitioner.get_data_layout()
     self._dataset_ckpt_name = (
         f'{_TRAIN_DS_PREFIX}-'
-        f'{data_layout.shard_id:03}-of-{data_layout.num_shards:03}')
+        f'{data_layout.shard_id:03}-of-{data_layout.num_shards:03}'
+    )
     self._should_write_dataset_ckpt = (
-        dataset_iterator and data_layout.is_first_host_in_replica_set)
+        dataset_iterator and data_layout.is_first_host_in_replica_set
+    )
 
     self._parameter_infos = self._get_parameter_infos()
 
     asyncio.set_event_loop(asyncio.new_event_loop())
 
   def _get_state_dict_for_save(
-      self,
-      state_dict: Dict[str, Any],
-      lazy_load: bool = True) -> MutableMapping[str, Any]:
+      self, state_dict: Dict[str, Any], lazy_load: bool = True
+  ) -> MutableMapping[str, Any]:
     """Gets the optimizer state dict."""
 
     def _lazy_load_device_array(arr):
       if isinstance(arr, jax.Array):
         if len(arr.sharding.device_set) == 1:
-          return LazyThreadPoolArray(arr.shape, arr.dtype,
-                                     lambda: np.array(arr))
+          return LazyThreadPoolArray(
+              arr.shape, arr.dtype, lambda: np.array(arr)
+          )
       return arr
 
     if lazy_load:
@@ -666,7 +688,8 @@ class Checkpointer(object):
             shape=arr.shape,
             ts_spec=None,
             local_chunk_info=None,
-            axes=None)
+            axes=None,
+        )
 
       if isinstance(arr, jax.Array):
         local_chunk_info = None
@@ -674,7 +697,8 @@ class Checkpointer(object):
         del metadata['dtype']
       else:
         local_chunk_info = self._partitioner.get_local_chunk_info(
-            arr.shape, axes)
+            arr.shape, axes
+        )
         write_shape = [
             si if sl == slice(None) else sl.stop - sl.start
             for si, sl in zip(arr.shape, local_chunk_info.slice)
@@ -682,12 +706,11 @@ class Checkpointer(object):
         # TODO(levskaya, adarob): how should we handle stacked/fused variables??
         chunk_shape = _choose_chunk_shape(
             write_shape,
-            target_elements=_DESIRED_CHUNK_SIZE_BYTES / arr.dtype.itemsize)
+            target_elements=_DESIRED_CHUNK_SIZE_BYTES / arr.dtype.itemsize,
+        )
 
         metadata = {
-            'compressor': {
-                'id': 'gzip'
-            },
+            'compressor': {'id': 'gzip'},
             'shape': arr.shape,
             'chunks': np.array(chunk_shape),
         }
@@ -699,19 +722,24 @@ class Checkpointer(object):
           shape=arr.shape,
           ts_spec=spec,
           local_chunk_info=local_chunk_info,
-          axes=axes)
+          axes=axes,
+      )
 
     # Create a tree of param names as the keys on the path to each leaf
     # separated by "/".
     param_names = traverse_util.unflatten_dict({
-        k: '/'.join(k) for k in traverse_util.flatten_dict(
-            self._train_state.state_dict(), keep_empty_nodes=True)
+        k: '/'.join(k)
+        for k in traverse_util.flatten_dict(
+            self._train_state.state_dict(), keep_empty_nodes=True
+        )
     })
 
     return jax.tree_util.tree_map(
-        _get_param_info, param_names,
+        _get_param_info,
+        param_names,
         self._get_state_dict_for_save(self._train_state.state_dict()),
-        self._partitioner.get_mesh_axes(self._train_state).state_dict())
+        self._partitioner.get_mesh_axes(self._train_state).state_dict(),
+    )
 
   def _get_checkpoint_dir(self, step: int) -> epath.PathLike:
     return get_checkpoint_dir(self.checkpoints_dir, step)
@@ -736,7 +764,8 @@ class Checkpointer(object):
       if to_remove > 0:
         for step in existing_steps[:to_remove]:
           checkpoint_utils.remove_dataset_checkpoint(
-              self._get_checkpoint_dir(step), _TRAIN_DS_PREFIX)
+              self._get_checkpoint_dir(step), _TRAIN_DS_PREFIX
+          )
 
   def _remove_old_checkpoints(self):
     """Deletes oldest checkpoints if there are more than keep_checkpoints."""
@@ -750,11 +779,13 @@ class Checkpointer(object):
     for step in existing_steps[:to_remove]:
       checkpoint_utils.remove_checkpoint_dir(self._get_checkpoint_dir(step))
 
-  def save(self,
-           train_state: train_state_lib.TrainState,
-           state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
-           *,
-           concurrent_gb: int = 128):
+  def save(
+      self,
+      train_state: train_state_lib.TrainState,
+      state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
+      *,
+      concurrent_gb: int = 128,
+  ):
     """Saves a checkpoint for the given train state.
 
     Args:
@@ -781,7 +812,9 @@ class Checkpointer(object):
     if gfile.exists(final_dir):
       logging.info(
           'Skipping save checkpoint for step %d (directory %s already exists)',
-          step, final_dir)
+          step,
+          final_dir,
+      )
       return
 
     logging.info('Saving checkpoint for step %d to %s', step, tmp_dir)
@@ -792,40 +825,46 @@ class Checkpointer(object):
     _sync_global_devices(f'checkpointer:make_dir:{tmp_dir}')
 
     written_state_dict = self._write_state_to_tensorstore(
-        tmp_dir, train_state, concurrent_gb, state_transformation_fns)
+        tmp_dir, train_state, concurrent_gb, state_transformation_fns
+    )
 
     if self._should_write_dataset_ckpt:
-      logging.info("Writing dataset iterator state to '%s'.",
-                   self._dataset_ckpt_name)
+      logging.info(
+          "Writing dataset iterator state to '%s'.", self._dataset_ckpt_name
+      )
       try:
         self._dataset_iterator.save(
-            os.path.join(tmp_dir, self._dataset_ckpt_name))
+            os.path.join(tmp_dir, self._dataset_ckpt_name)
+        )
       except tf.errors.FailedPreconditionError as e:
         logging.error(
             'Input pipeline must be stateless in order to checkpoint. Cache '
-            'stateful steps offline or disable iterator checkpointing.')
+            'stateful steps offline or disable iterator checkpointing.'
+        )
         raise e
 
     # Block until complete on all hosts.
     _sync_global_devices(f'checkpointer:tensorstore_write_complete:{tmp_dir}')
 
     if jax.process_index() == 0:
-      written_state_dict = jax.tree_util.tree_map(get_local_data,
-                                                  written_state_dict)
+      written_state_dict = jax.tree_util.tree_map(
+          get_local_data, written_state_dict
+      )
 
       # Write msgpack file in host 0 only
-      msgpack_bytes = serialization.to_bytes({
-          'version': VERSION,
-          'optimizer': written_state_dict
-      })
+      msgpack_bytes = serialization.to_bytes(
+          {'version': VERSION, 'optimizer': written_state_dict}
+      )
       with gfile.GFile(os.path.join(tmp_dir, 'checkpoint'), 'wb') as fp:
         fp.write(msgpack_bytes)
 
       # Finalize checkpoint directory.
       if final_dir.startswith('gs://'):
-        subprocess.run(['gsutil', '-m', 'mv', tmp_dir, final_dir],
-                       stdout=subprocess.DEVNULL,
-                       check=True)
+        subprocess.run(
+            ['gsutil', '-m', 'mv', tmp_dir, final_dir],
+            stdout=subprocess.DEVNULL,
+            check=True,
+        )
       else:
         gfile.rename(tmp_dir, final_dir)
       logging.info('Saved checkpoint for step %d to %s', step, final_dir)
@@ -838,8 +877,9 @@ class Checkpointer(object):
     _sync_global_devices(f'checkpointer:write_complete:{final_dir}')
 
     end_time = time.time()
-    monitoring.record_event_duration_secs(_WRITE_CHECKPOINT_EVENT,
-                                          end_time - start_time)
+    monitoring.record_event_duration_secs(
+        _WRITE_CHECKPOINT_EVENT, end_time - start_time
+    )
     ocp.utils.record_saved_duration(start_time)
 
   def _write_state_to_tensorstore(
@@ -852,9 +892,9 @@ class Checkpointer(object):
     """Writes extracted state from train state to Tensorstore."""
     concurrent_bytes = concurrent_gb * 10**9
 
-    async def _write_array(maybe_arr: Any,
-                           param_info: Optional[_ParameterInfo],
-                           cast: bool = False):
+    async def _write_array(
+        maybe_arr: Any, param_info: Optional[_ParameterInfo], cast: bool = False
+    ):
       """Maybe write to TensorStore, returning object to write to msgpack.
 
       Args:
@@ -880,13 +920,11 @@ class Checkpointer(object):
       arr = maybe_arr
       # Wait until memory is available.
       if isinstance(arr, jax.Array):
-        n_bytes = sum(
-            [
-                shard.data.nbytes
-                for shard in arr.addressable_shards
-                if shard.replica_id == 0
-            ]
-        )
+        n_bytes = sum([
+            shard.data.nbytes
+            for shard in arr.addressable_shards
+            if shard.replica_id == 0
+        ])
       else:
         n_bytes = arr.nbytes
       if n_bytes > concurrent_bytes:
@@ -938,9 +976,12 @@ class Checkpointer(object):
       return param_info.ts_spec
 
     transformed_state_dict, transformed_parameter_infos = (
-        _transform_state_and_infos(train_state.state_dict(),
-                                   self._parameter_infos,
-                                   state_transformation_fns))
+        _transform_state_and_infos(
+            train_state.state_dict(),
+            self._parameter_infos,
+            state_transformation_fns,
+        )
+    )
 
     state_dict_for_save = self._get_state_dict_for_save(transformed_state_dict)
 
@@ -950,16 +991,21 @@ class Checkpointer(object):
       return maybe_arr
 
     state_dict_for_save['target'] = jax.tree_util.tree_map(  # pytype: disable=unsupported-operands  # dynamic-method-lookup
-        _cast_arr_if_not_partitioned, state_dict_for_save['target'],
-        transformed_parameter_infos['target'])
+        _cast_arr_if_not_partitioned,
+        state_dict_for_save['target'],
+        transformed_parameter_infos['target'],
+    )
     future_written_state = {}
     for k in state_dict_for_save.keys():
       # ensure that only 'target' is cast
       future_written_state[k] = jax.tree_util.tree_map(
           functools.partial(
               _write_array,
-              cast=(k == 'target' and self._save_dtype is not None)),
-          state_dict_for_save[k], transformed_parameter_infos[k])
+              cast=(k == 'target' and self._save_dtype is not None),
+          ),
+          state_dict_for_save[k],
+          transformed_parameter_infos[k],
+      )
 
     # Block until complete on this host.
     written_state_dict = _run_future_tree(future_written_state)
@@ -976,8 +1022,9 @@ class Checkpointer(object):
       state_transformation_fns: Sequence[SaveStateTransformationFn],
   ) -> Tuple[PyTree, PyTree]:
     """Applies transformations to the state dict and parameter infos PyTrees."""
-    return _transform_state_and_infos(state_dict, parameter_infos,
-                                      state_transformation_fns)
+    return _transform_state_and_infos(
+        state_dict, parameter_infos, state_transformation_fns
+    )
 
   def restore(
       self,
@@ -985,7 +1032,8 @@ class Checkpointer(object):
       path: Optional[str] = None,
       state_transformation_fns: Sequence[RestoreStateTransformationFn] = (),
       fallback_state: Optional[Mapping[str, Any]] = None,
-      lazy_parameters: bool = False) -> train_state_lib.TrainState:
+      lazy_parameters: bool = False,
+  ) -> train_state_lib.TrainState:
     """Restores the host-specific parameters in an Optimizer.
 
     Either `step` or `path` can be specified, but not both. If neither are
@@ -1015,8 +1063,10 @@ class Checkpointer(object):
     """
     start_time = time.time()
     if lazy_parameters and self._partitioner.params_on_devices:
-      raise ValueError('Lazy Parameters cannot be copied to devices, please '
-                       'set partitioner.params_on_devices=False.')
+      raise ValueError(
+          'Lazy Parameters cannot be copied to devices, please '
+          'set partitioner.params_on_devices=False.'
+      )
     if step is not None and path is not None:
       raise ValueError('At most one of `step` or `path` may be provided.')
     if path:
@@ -1070,8 +1120,9 @@ class Checkpointer(object):
     else:
       ckpt_contents = _maybe_update_ts_from_gcs_to_file(ckpt_contents)
 
-    ckpt_state_dict = self._get_optimizer_state_dict(ckpt_contents,
-                                                     state_transformation_fns)
+    ckpt_state_dict = self._get_optimizer_state_dict(
+        ckpt_contents, state_transformation_fns
+    )
 
     # The state dict may contain TensorStore specs that need to be read.
     dummy_spec = ts.Spec({'driver': 'zarr', 'kvstore': {'driver': 'memory'}})
@@ -1091,12 +1142,15 @@ class Checkpointer(object):
       # of parameters matched by `self._get_optimizer_state_dict`. The
       # rest will be provided by `fallback_state`.
       dummy_written_state_dict = state_utils.intersect_state(
-          dummy_written_state_dict, ckpt_state_dict)
+          dummy_written_state_dict, ckpt_state_dict
+      )
       restore_parameter_infos = state_utils.intersect_state(
-          self._parameter_infos, ckpt_state_dict)
+          self._parameter_infos, ckpt_state_dict
+      )
 
     restore_parameter_infos_flat = state_utils.flatten_state_dict(
-        restore_parameter_infos)
+        restore_parameter_infos
+    )
     for key in restore_parameter_infos_flat.keys():
       logging.info('Restoring key from ckpt: %s', key)
 
@@ -1106,13 +1160,15 @@ class Checkpointer(object):
     # `written_state_dict` is a pytree with a realized np.array for leaves
     # (params or states) written as msgpack and a `ts.Spec` for leaves written
     # by TensorStore.
-    written_state_dict = serialization.from_state_dict(dummy_written_state_dict,
-                                                       ckpt_state_dict)
+    written_state_dict = serialization.from_state_dict(
+        dummy_written_state_dict, ckpt_state_dict
+    )
     state_dict = self._read_state_from_tensorstore(
         ckpt_path,
         written_state_dict,
         restore_parameter_infos=restore_parameter_infos,
-        lazy_parameters=lazy_parameters)
+        lazy_parameters=lazy_parameters,
+    )
 
     # If `fallback_state` was specified, then fill the missing parameters.
     if fallback_state is not None:
@@ -1123,27 +1179,34 @@ class Checkpointer(object):
         logging.info('Not restoring key from ckpt: %s', key)
 
     if self._dataset_iterator:
-      logging.info("Restoring dataset iterator from '%s'.",
-                   self._dataset_ckpt_name)
+      logging.info(
+          "Restoring dataset iterator from '%s'.", self._dataset_ckpt_name
+      )
       self._dataset_iterator.load(
-          os.path.join(ckpt_dir, self._dataset_ckpt_name))
+          os.path.join(ckpt_dir, self._dataset_ckpt_name)
+      )
 
     restored_train_state = self._restore_train_state(state_dict)
 
     end_time = time.time()
-    monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
-                                          end_time - start_time)
+    monitoring.record_event_duration_secs(
+        _READ_CHECKPOINT_EVENT, end_time - start_time
+    )
     return restored_train_state
 
   def _restore_train_state(
-      self,
-      state_dict: optimizers.OptimizerStateType) -> train_state_lib.TrainState:
+      self, state_dict: optimizers.OptimizerStateType
+  ) -> train_state_lib.TrainState:
     """Restores a TrainState from an Optimizer state_dict."""
     return self._train_state.restore_state(state_dict)
 
   def _create_lazy_awaitable_array(
-      self, param_info: _ParameterInfo, maybe_ts_spec: Any, ckpt_path: str,
-      restore_dtype: Optional[jnp.dtype]) -> LazyAwaitableArray:
+      self,
+      param_info: _ParameterInfo,
+      maybe_ts_spec: Any,
+      ckpt_path: str,
+      restore_dtype: Optional[jnp.dtype],
+  ) -> LazyAwaitableArray:
     """Creates LazyArray from tensorstore.
 
     Does not materialize the array immediately.
@@ -1186,7 +1249,8 @@ class Checkpointer(object):
       )
 
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
-        maybe_ts_spec, get_fn, dtype=restore_dtype)
+        maybe_ts_spec, get_fn, dtype=restore_dtype
+    )
 
   def _read_state_from_tensorstore(
       self,
@@ -1208,12 +1272,16 @@ class Checkpointer(object):
           functools.partial(
               self._create_lazy_awaitable_array,
               ckpt_path=ckpt_path,
-              restore_dtype=restore_dtype), restore_parameter_infos[k],
-          written_state_dict[k])
+              restore_dtype=restore_dtype,
+          ),
+          restore_parameter_infos[k],
+          written_state_dict[k],
+      )
 
     if not lazy_parameters:
-      future_state_dict = jax.tree_util.tree_map(lambda x: x.get_async(),
-                                                 state_dict)
+      future_state_dict = jax.tree_util.tree_map(
+          lambda x: x.get_async(), state_dict
+      )
       state_dict = _run_future_tree(future_state_dict)
 
     if self.restore_dtype is not None:
@@ -1230,7 +1298,7 @@ class Checkpointer(object):
       self,
       path_or_dir: str,
       strict: bool = True,
-      translator: Optional[checkpoint_importer.CheckpointTranslator] = None
+      translator: Optional[checkpoint_importer.CheckpointTranslator] = None,
   ) -> train_state_lib.TrainState:
     """Restore from a TensorFlow-based T5 checkpoint."""
     start_time = time.time()
@@ -1239,7 +1307,8 @@ class Checkpointer(object):
         path_or_dir,
         lazy_parameters=False,
         strict=strict,
-        translator=translator)
+        translator=translator,
+    )
     full_state_dict = dict(full_state_dict)
 
     def _partition_parameter(maybe_arr: Any, param_info: _ParameterInfo):
@@ -1254,16 +1323,19 @@ class Checkpointer(object):
       return maybe_arr
 
     if self.restore_dtype is not None:
-      full_state_dict['target'] = _cast(full_state_dict['target'],
-                                        self.restore_dtype)
-    state_dict = jax.tree_util.tree_map(_partition_parameter, full_state_dict,
-                                        self._parameter_infos)
+      full_state_dict['target'] = _cast(
+          full_state_dict['target'], self.restore_dtype
+      )
+    state_dict = jax.tree_util.tree_map(
+        _partition_parameter, full_state_dict, self._parameter_infos
+    )
 
     restored_train_state = self._restore_train_state(state_dict)
 
     end_time = time.time()
-    monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
-                                          end_time - start_time)
+    monitoring.record_event_duration_secs(
+        _READ_CHECKPOINT_EVENT, end_time - start_time
+    )
 
     return restored_train_state
 
@@ -1273,27 +1345,30 @@ class Checkpointer(object):
       *,
       state_transformation_fns: Sequence[SaveStateTransformationFn] = (),
       concurrent_gb: int = 16,
-      translator: Optional[checkpoint_importer.CheckpointTranslator] = None):
+      translator: Optional[checkpoint_importer.CheckpointTranslator] = None,
+  ):
     """Convert from a TensorFlow-based T5 checkpoint."""
     full_state_dict = checkpoint_importer.restore_from_t5_checkpoint(
         self._train_state.state_dict(),
         path_or_dir,
         lazy_parameters=True,
-        translator=translator)
+        translator=translator,
+    )
     train_state = self._train_state.restore_state(full_state_dict)
     self.save(
         train_state,
         state_transformation_fns=state_transformation_fns,
-        concurrent_gb=concurrent_gb)
+        concurrent_gb=concurrent_gb,
+    )
 
   def _get_optimizer_state_dict(
       self,
       ckpt_contents: PyTree,
       state_transformation_fns: Sequence[RestoreStateTransformationFn],
   ):
-    return _get_optimizer_state_dict(ckpt_contents,
-                                     self._train_state.state_dict(),
-                                     state_transformation_fns)
+    return _get_optimizer_state_dict(
+        ckpt_contents, self._train_state.state_dict(), state_transformation_fns
+    )
 
 
 class CheckpointerConstructor(typing_extensions.Protocol):
@@ -1339,14 +1414,16 @@ class CheckpointerConstructor(typing_extensions.Protocol):
     pass
 
 
-def populate_metrics_for_steps(checkpoints_dir: str, metric_name: str,
-                               steps: Iterable[int]) -> Mapping[int, float]:
+def populate_metrics_for_steps(
+    checkpoints_dir: str, metric_name: str, steps: Iterable[int]
+) -> Mapping[int, float]:
   """Iterate through summary event files and return metrics for `steps`."""
 
   metric_run, metric_tag = None, None
 
-  def _try_fill_metric_run_and_tag_names(metric_name: str,
-                                         run_keys: Iterable[str]) -> bool:
+  def _try_fill_metric_run_and_tag_names(
+      metric_name: str, run_keys: Iterable[str]
+  ) -> bool:
     """Extract metric run and tag names by matching one of the `run_keys`.
 
     This function tries to greedily split user-provided metric_name_to_monitor
@@ -1373,7 +1450,7 @@ def populate_metrics_for_steps(checkpoints_dir: str, metric_name: str,
       for possible_run_name in possible_run_names:
         if key == possible_run_name:
           metric_run = possible_run_name
-          metric_tag = metric_name[len(metric_run) + 1:]
+          metric_tag = metric_name[len(metric_run) + 1 :]
           break
 
     if metric_run and metric_tag:
@@ -1384,21 +1461,27 @@ def populate_metrics_for_steps(checkpoints_dir: str, metric_name: str,
   for subdir in io_wrapper.GetLogdirSubdirectories(checkpoints_dir):
     rpath = os.path.relpath(subdir, checkpoints_dir)
     # Skip runs that do not match user-specified metric.
-    if ((not metric_run and
-         not _try_fill_metric_run_and_tag_names(metric_name, (rpath,))) or
-        metric_run != rpath):
+    if (
+        not metric_run
+        and not _try_fill_metric_run_and_tag_names(metric_name, (rpath,))
+    ) or metric_run != rpath:
       logging.info('Skipping events in %s', subdir)
       continue
 
     logging.info('Looking for events in %s', subdir)
     loader = directory_watcher.DirectoryWatcher(
-        subdir, event_file_loader.EventFileLoader,
-        io_wrapper.IsTensorFlowEventsFile)
+        subdir,
+        event_file_loader.EventFileLoader,
+        io_wrapper.IsTensorFlowEventsFile,
+    )
     for event in loader.Load():
       # Skip metric collection of events for unavailable checkpoints or for
       # unmonitored tags.
-      if (event.step not in steps or not event.summary.value or
-          event.summary.value[0].tag != metric_tag):
+      if (
+          event.step not in steps
+          or not event.summary.value
+          or event.summary.value[0].tag != metric_tag
+      ):
         continue
       metric_value = tf.make_ndarray(event.summary.value[0].tensor)
       metrics_by_step[event.step] = metric_value
@@ -1484,7 +1567,8 @@ class SaveBestCheckpointer(Checkpointer):
         keep=keep,
         save_dtype=save_dtype,
         restore_dtype=restore_dtype,
-        keep_dataset_checkpoints=keep_dataset_checkpoints)
+        keep_dataset_checkpoints=keep_dataset_checkpoints,
+    )
     if metric_mode not in ('max', 'min'):
       raise ValueError('Unsupported `metric_mode`: %s' % metric_mode)
 
@@ -1492,8 +1576,12 @@ class SaveBestCheckpointer(Checkpointer):
     self._metric_mode = metric_mode
     self._keep_checkpoints_without_metrics = keep_checkpoints_without_metrics
     self._force_keep_period = force_keep_period
-    logging.info('Using SaveBestCheckpointer to keep %s best (%s) metric %s',
-                 keep, metric_mode, metric_name_to_monitor)
+    logging.info(
+        'Using SaveBestCheckpointer to keep %s best (%s) metric %s',
+        keep,
+        metric_mode,
+        metric_name_to_monitor,
+    )
 
   def _filter_out_force_keep_period_steps(self, existing_steps):
     """Filter out steps that are divisible by keep_period excluding the last."""
@@ -1522,9 +1610,9 @@ class SaveBestCheckpointer(Checkpointer):
       return
 
     # Synchronous fetch of new events for existing_steps.
-    metrics_by_step = populate_metrics_for_steps(self.checkpoints_dir,
-                                                 self._metric_name_to_monitor,
-                                                 existing_steps)
+    metrics_by_step = populate_metrics_for_steps(
+        self.checkpoints_dir, self._metric_name_to_monitor, existing_steps
+    )
     logging.info('SaveBestcheckpointer: collected metrics %s', metrics_by_step)
 
     # Re-sort existing_steps by metric values while always keeping the latest
@@ -1534,7 +1622,8 @@ class SaveBestCheckpointer(Checkpointer):
 
     if self._keep_checkpoints_without_metrics:
       existing_steps = list(
-          filter(lambda s: s in metrics_by_step, existing_steps))
+          filter(lambda s: s in metrics_by_step, existing_steps)
+      )
 
     to_remove = len(existing_steps) - self.keep
     if to_remove <= 0:
@@ -1547,7 +1636,8 @@ class SaveBestCheckpointer(Checkpointer):
     existing_steps = sorted(
         existing_steps,
         key=lambda step: metrics_by_step.get(step, not_found_value),
-        reverse=(self._metric_mode != 'max'))
+        reverse=(self._metric_mode != 'max'),
+    )
     existing_steps.append(latest_checkpoint)
 
     for step in existing_steps[:to_remove]:
@@ -1595,8 +1685,10 @@ def _get_optimizer_state_dict(
     return ckpt_optimizer_state
   else:
     version = ckpt_contents.get('version', 0)  # pylint: disable=unreachable
-    raise ValueError('Checkpoint versions earlier than 2 are not supported. '  # pylint: disable=unreachable
-                     f'Got version: {version}')
+    raise ValueError(
+        'Checkpoint versions earlier than 2 are not supported. '  # pylint: disable=unreachable
+        f'Got version: {version}'
+    )
 
 
 def _transform_state_and_infos(
@@ -1671,30 +1763,37 @@ async def _read_ts(
   # location. Path and gcs bucket (if applicable) information is updated
   # in-place.
   _update_ts_path_from_relative_to_absolute(
-      os.path.dirname(ckpt_path), tmp_ts_spec_dict)
+      os.path.dirname(ckpt_path), tmp_ts_spec_dict
+  )
 
   if param_info.shape is not None:
     ts_spec_arr_shape = tuple(tmp_ts_spec_dict['metadata']['shape'])
     # Check that the shapes of the array on disk match the expected shape based
     # on the optimizer that is being restored.
     if ts_spec_arr_shape != param_info.shape:
-      raise ValueError(f'Shape of `{param_info.name}` in checkpoint '
-                       f'{ts_spec_arr_shape} does not match expected '
-                       f'{param_info.shape}.')
+      raise ValueError(
+          f'Shape of `{param_info.name}` in checkpoint '
+          f'{ts_spec_arr_shape} does not match expected '
+          f'{param_info.shape}.'
+      )
 
-  if ('dtype' in tmp_ts_spec_dict and tmp_ts_spec_dict['dtype']
-      == 'uint16') or ('dtype' in tmp_ts_spec_dict['metadata'] and
-                       tmp_ts_spec_dict['metadata']['dtype'] == '<u2'):
+  if (
+      'dtype' in tmp_ts_spec_dict and tmp_ts_spec_dict['dtype'] == 'uint16'
+  ) or (
+      'dtype' in tmp_ts_spec_dict['metadata']
+      and tmp_ts_spec_dict['metadata']['dtype'] == '<u2'
+  ):
     error_message = (
         'Found unsupported uint16 type in Tensorstore spec: '
-        f'{tmp_ts_spec_dict}. Please update saved types to bfloat16.')
+        f'{tmp_ts_spec_dict}. Please update saved types to bfloat16.'
+    )
     raise ValueError(error_message)
 
   if restore_dtype is not None:
     tmp_ts_spec_dict = {
         'base': tmp_ts_spec_dict,
         'driver': 'cast',
-        'dtype': jnp.dtype(restore_dtype).name
+        'dtype': jnp.dtype(restore_dtype).name,
     }
 
   if params_on_devices:
@@ -1721,14 +1820,16 @@ def fake_param_info(maybe_tspec: Any) -> Optional[_ParameterInfo]:
   if isinstance(maybe_tspec, ts.Spec):
     tspec = maybe_tspec
     local_chunk_info = partitioning.LocalChunkInfo(
-        slice=(slice(None, None),), replica_id=0)
+        slice=(slice(None, None),), replica_id=0
+    )
   return _ParameterInfo(
       name='',  # We don't ever use the name.
       shape=tuple(tspec.to_json()['metadata']['shape']) if tspec else None,
       # We just believe the spec in the file.
       ts_spec=tspec,
       local_chunk_info=local_chunk_info,
-      axes=None)
+      axes=None,
+  )
 
 
 def find_checkpoint(
@@ -1817,8 +1918,9 @@ def load_t5x_checkpoint(
 
   # Remap that variable names to the most recent formatting.
   if remap:
-    ckpt_optimizer_state = _get_optimizer_state_dict(ckpt_contents, {},
-                                                     state_transformation_fns)
+    ckpt_optimizer_state = _get_optimizer_state_dict(
+        ckpt_contents, {}, state_transformation_fns
+    )
   # If we aren't remapping names we at least need to index into the checkpoint
   # file blob to make sure we are only dealing with the optimizer state.
   else:
@@ -1834,9 +1936,9 @@ def load_t5x_checkpoint(
   # states may be set to `None` (when a parameter was untouched by any
   # optimizer). We still needs references to these in our state so we keep
   # empty nodes.
-  ckpt_optimizer_state_with_specs = (
-      state_utils.flatten_state_dict(
-          ckpt_optimizer_state, keep_empty_nodes=True))
+  ckpt_optimizer_state_with_specs = state_utils.flatten_state_dict(
+      ckpt_optimizer_state, keep_empty_nodes=True
+  )
   ckpt_optimizer_state_with_specs = {
       k: ts.Spec(v) if isinstance(v, dict) else v
       for k, v in ckpt_optimizer_state_with_specs.items()
@@ -1848,12 +1950,16 @@ def load_t5x_checkpoint(
   }
 
   ckpt_optimizer_state_with_specs = traverse_util.unflatten_dict(
-      ckpt_optimizer_state_with_specs, sep='/')
+      ckpt_optimizer_state_with_specs, sep='/'
+  )
   param_infos = traverse_util.unflatten_dict(param_infos, sep='/')
 
   def _create_lazy_awaitable_array(
-      param_info: _ParameterInfo, maybe_ts_spec: Any, ckpt_path: str,
-      restore_dtype: Optional[jnp.dtype]) -> LazyAwaitableArray:
+      param_info: _ParameterInfo,
+      maybe_ts_spec: Any,
+      ckpt_path: str,
+      restore_dtype: Optional[jnp.dtype],
+  ) -> LazyAwaitableArray:
     get_fn = functools.partial(
         _read_ts,
         param_info,
@@ -1863,26 +1969,32 @@ def load_t5x_checkpoint(
         params_on_devices=False,
     )
     return LazyAwaitableArray.from_tensor_store_spec_or_array(
-        maybe_ts_spec, get_fn, dtype=restore_dtype)
+        maybe_ts_spec, get_fn, dtype=restore_dtype
+    )
 
   state_dict = jax.tree_util.tree_map(
       functools.partial(
           _create_lazy_awaitable_array,
           ckpt_path=path,
-          restore_dtype=restore_dtype), param_infos,
-      ckpt_optimizer_state_with_specs)
+          restore_dtype=restore_dtype,
+      ),
+      param_infos,
+      ckpt_optimizer_state_with_specs,
+  )
 
   if not lazy_parameters:
-    future_state_dict = jax.tree_util.tree_map(lambda x: x.get_async(),
-                                               state_dict)
+    future_state_dict = jax.tree_util.tree_map(
+        lambda x: x.get_async(), state_dict
+    )
     state_dict = _run_future_tree(future_state_dict)
 
   if restore_dtype is not None:
     state_dict['target'] = _cast(state_dict['target'], restore_dtype)
 
   end_time = time.time()
-  monitoring.record_event_duration_secs(_READ_CHECKPOINT_EVENT,
-                                        end_time - start_time)
+  monitoring.record_event_duration_secs(
+      _READ_CHECKPOINT_EVENT, end_time - start_time
+  )
   return state_dict
 
 
@@ -1921,9 +2033,9 @@ class DatasetCheckpointHandler(ocp.CheckpointHandler):
     ckpt.write(os.fspath(directory / self._checkpoint_filename))
     multihost_utils.sync_global_devices('DatasetCheckpointHandler:save')
 
-  def restore(self,
-              directory: epath.Path,
-              item: Optional[tf.data.Iterator] = None) -> tf.data.Iterator:
+  def restore(
+      self, directory: epath.Path, item: Optional[tf.data.Iterator] = None
+  ) -> tf.data.Iterator:
     """Restores the given item.
 
     Args:
@@ -1938,8 +2050,9 @@ class DatasetCheckpointHandler(ocp.CheckpointHandler):
     if jax.process_count() > 1:
       directory /= f'process_{jax.process_index()}-of-{jax.process_count()}'
     ckpt = tf.train.Checkpoint(ds=item)
-    ckpt.read(os.fspath(directory /
-                        self._checkpoint_filename)).assert_consumed()
+    ckpt.read(
+        os.fspath(directory / self._checkpoint_filename)
+    ).assert_consumed()
     return item
 
   def structure(self, directory: epath.Path) -> Any:
@@ -1988,14 +2101,12 @@ def _construct_orbax_param_infos(
     partitioner: partitioning.BasePartitioner,
 ) -> PyTree:
   """Construct _OrbaxParamInfo tree for TrainState parameters."""
-  param_names = traverse_util.unflatten_dict(
-      {
-          k: '/'.join(k)
-          for k in traverse_util.flatten_dict(
-              train_state.state_dict(), keep_empty_nodes=True
-          )
-      }
-  )
+  param_names = traverse_util.unflatten_dict({
+      k: '/'.join(k)
+      for k in traverse_util.flatten_dict(
+          train_state.state_dict(), keep_empty_nodes=True
+      )
+  })
   mesh_axes = partitioner.get_mesh_axes(train_state).state_dict()
   return jax.tree_util.tree_map(_OrbaxParamInfo, param_names, mesh_axes)
 
