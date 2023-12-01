@@ -43,6 +43,7 @@ from etils import epath
 import flax
 from flax import serialization
 from flax import traverse_util
+import gin
 import jax
 from jax import monitoring
 import jax.config
@@ -1406,6 +1407,7 @@ def populate_metrics_for_steps(checkpoints_dir: str, metric_name: str,
 
 
 # TODO(b/216649487): Replace with BestCheckpointManager.
+@gin.configurable
 class SaveBestCheckpointer(Checkpointer):
   """A Checkpointer class that keeps checkpoints based on 'best' metrics.
 

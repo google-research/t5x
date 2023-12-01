@@ -1298,7 +1298,21 @@ def create_orbax_checkpoint_manager(
       extra_kwargs = _get_default_args(cfg.checkpointer_cls)
     else:
       if issubclass(cfg.checkpointer_cls, checkpoints.SaveBestCheckpointer):
-        extra_kwargs = _get_default_args(cfg.checkpointer_cls.__init__)
+        save_best_checkpointer = checkpoints.SaveBestCheckpointer(
+            train_state=train_state,
+            checkpoints_dir=model_dir,
+            partitioner=partitioner,
+        )
+        extra_kwargs = {
+            'metric_name_to_monitor': (
+                save_best_checkpointer._metric_name_to_monitor  # pylint: disable=protected-access
+            ),
+            'metric_mode': save_best_checkpointer._metric_mode,  # pylint: disable=protected-access
+            'keep_checkpoints_without_metrics': (
+                save_best_checkpointer._keep_checkpoints_without_metrics  # pylint: disable=protected-access
+            ),
+            'force_keep_period': save_best_checkpointer._force_keep_period,  # pylint: disable=protected-access
+        }
     return extra_kwargs
 
   save_dtype = None

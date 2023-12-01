@@ -706,10 +706,18 @@ class UtilsTest(parameterized.TestCase):
         restore_dataset=False,
     )
 
+    global_mesh = test_utils.create_global_mesh((4, 2), ("x", "y"))
+    mesh_axes = partitioning.PartitionSpec("x", "y")
+    global_input_shape = (8, 2)
+
+    train_state = test_utils.make_train_state(
+        global_mesh, global_input_shape, mesh_axes
+    )
+
     manager = utils.create_orbax_checkpoint_manager(
         save_cfg=save_cfg,
         restore_cfg=restore_cfg,
-        train_state=mock.Mock(),
+        train_state=train_state,
         partitioner=mock_partitioner,
         ds_iter=mock.Mock(),
         model_dir=directory,
@@ -773,10 +781,18 @@ class UtilsTest(parameterized.TestCase):
         restore_dataset=False,
     )
 
+    global_mesh = test_utils.create_global_mesh((4, 2), ("x", "y"))
+    mesh_axes = partitioning.PartitionSpec("x", "y")
+    global_input_shape = (8, 2)
+
+    train_state = test_utils.make_train_state(
+        global_mesh, global_input_shape, mesh_axes
+    )
+
     manager = utils.create_orbax_checkpoint_manager(
         save_cfg=save_cfg,
         restore_cfg=restore_cfg,
-        train_state=mock.Mock(),
+        train_state=train_state,
         partitioner=mock_partitioner,
         ds_iter=mock.Mock(),
         model_dir=directory,

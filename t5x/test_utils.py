@@ -16,9 +16,11 @@
 
 import contextlib
 import dataclasses
+import functools
 import itertools
+import math
 import operator
-from typing import Generator, List, Sequence, Tuple
+from typing import Any, Generator, List, Mapping, Sequence, Tuple
 import unittest
 
 import jax
@@ -29,6 +31,7 @@ import seqio
 import t5.data
 from t5x import adafactor
 from t5x import models
+from t5x import optimizers
 from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x.checkpoint_importer import LazyArray
@@ -106,6 +109,66 @@ def make_devices(nx: int,
             platform='tpu',
             device_kind=kind))
   return devices
+
+
+def make_train_state_base(
+    *,
+    step: int,
+    params: Mapping[str, Any],
+    param_states: Mapping[str, Any],
+    flax_optimizer_def: optimizers.OptimizerDefType = optimizers.sgd(0.1),
+) -> train_state_lib.TrainState:
+  """Helper to construct a train state for testing."""
+  optimizer = optimizers.Optimizer(
+      flax_optimizer_def,
+      state=optimizers.OptimizerState(  # pytype: disable=wrong-arg-types  # jax-ndarray
+          step=step, param_states=param_states
+      ),
+      target=params,
+  )
+
+  return train_state_lib.FlaxOptimTrainState(optimizer)
+
+
+def make_train_state_replicated(
+    global_input_shape,
+    step=42,
+    dtype=np.float32,
+):
+  """Helper to construct a train state for testing."""
+  bias = np.ones(global_input_shape, dtype=dtype)
+  kernel = np.arange(math.prod(global_input_shape), dtype=dtype).reshape(
+      global_input_shape
+  )
+  train_state = make_train_state_base(
+      step=np.int32(step),
+      params={'bias': bias * 2, 'kernel': kernel * 2},
+      param_states={  # only cast targets (above)
+          'bias': bias.astype(np.float32),
+          'kernel': kernel.astype(np.float32),
+      },
+  )
+  return train_state
+
+
+def make_train_state(
+    global_mesh, global_input_shape, mesh_axes, step=42, dtype=np.float32
+):
+  """Construct a train state for testing."""
+  train_state = make_train_state_replicated(
+      global_input_shape, step=step, dtype=dtype
+  )
+
+  return jax.tree_map(
+      functools.partial(
+          create_sharded_array,
+          global_shape=global_input_shape,
+          global_mesh=global_mesh,
+          mesh_axes=mesh_axes,
+      ),
+      train_state,
+      is_leaf=lambda x: isinstance(x, np.ndarray),
+  )
 
 
 def get_t5_test_model(**config_overrides) -> models.EncoderDecoderModel:
