@@ -175,7 +175,7 @@ class MetricsManagerTest(absltest.TestCase):
     mm._duration_timer._start_future.result()
 
     # Deleted/donated.
-    x.device_buffer.delete()
+    x.addressable_data(0).delete()
     mm.start_duration_timer(block_on=x)
     mm._duration_timer._start_future.result()
 
