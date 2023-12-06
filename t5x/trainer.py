@@ -740,7 +740,7 @@ def accumulate_grads_microbatched(
   # them and return flax_mutables from `get_initial_variables` and `loss_fn`.
 
   initial_flax_mutables = (
-      train_state.flax_mutables if train_state.flax_mutables else {}
+      train_state.flax_mutables if train_state.flax_mutables else FrozenDict({})
   )
 
   if num_microbatches is None or num_microbatches <= 1:
