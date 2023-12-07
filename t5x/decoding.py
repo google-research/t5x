@@ -1216,7 +1216,7 @@ def beam_search(
     # scores, the search cannot improve the finished set further.
     search_terminated = jnp.all(worst_finished_scores > best_live_scores)
 
-    # If no best possible live score is greater than min_log_porb, end search
+    # If no best possible live score is greater than min_log_prob, end search
     # early. Note:
     # - We are ignoring the brevity penalty as it can over-estimate the scores.
     # - state.cur_index > 0 is needed as beam search just starts and live
