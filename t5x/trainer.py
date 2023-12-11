@@ -398,11 +398,12 @@ class MetricsManager(object):
       final_metrics = jax.tree_util.tree_map(utils.get_local_data,
                                              final_metrics)
 
-      summary = {k: v.compute_value() for k, v in final_metrics.items()}
-      with self._writer_lock:
-        metric_writers.write_values(self._writer, int(step), summary)
+      with jax.spmd_mode("allow_all"):
+        summary = {k: v.compute_value() for k, v in final_metrics.items()}
+        with self._writer_lock:
+          metric_writers.write_values(self._writer, int(step), summary)
 
-      return summary
+        return summary
 
     return self._summary_pool(_summarize_and_write)()
 
