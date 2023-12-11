@@ -152,12 +152,14 @@ class WeightMetricsComputer(object):
   ]
 
   @staticmethod
-  def _make_rms_metrics(name, tree):
+  def _make_rms_metrics(name, tree, keep_inf=True):
     """Calculates the root-mean-square metric for a pytree."""
     return {
         f"{name}/{k}": metrics_lib.AveragePerStep.from_model_output(
-            jnp.sqrt(jnp.mean(jnp.square(v))))
+            jnp.sqrt(jnp.mean(jnp.square(v)))
+        )
         for k, v in utils.flatten_dict_string_keys(tree).items()
+        if keep_inf or jnp.isfinite(v)
     }
 
   @staticmethod
@@ -206,9 +208,15 @@ class WeightMetricsComputer(object):
     metrics.update(self._make_rms_metrics("weight_update_rms", weight_update))
     weight_update_by_weight = jax.tree_util.tree_map(jnp.divide, weight_update,
                                                      old_train_state.params)
+    # Filter INF because weight_update_by_weight is INF on the first update of
+    # zero-initialized layers.
     metrics.update(
-        self._make_rms_metrics("weight_update_divided_by_weight_rms",
-                               weight_update_by_weight))
+        self._make_rms_metrics(
+            "weight_update_divided_by_weight_rms",
+            weight_update_by_weight,
+            keep_inf=False,
+        )
+    )
     metrics.update(self._make_max_metrics("weight_max", new_train_state.params))
 
     return metrics
