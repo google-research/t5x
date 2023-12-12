@@ -367,6 +367,9 @@ def create_inference_function(
         if jax2tf_disable_platform_checks
         else []
     )
+    if native_lowering and (not native_lowering_platforms):
+      # Change default value to make the exported cpu model still work.
+      native_lowering_platforms = ['cpu', 'tpu']
     model_fn = jax2tf.convert(
         model_fn,
         polymorphic_shapes=[None, polymorphic_shapes_inputs],
