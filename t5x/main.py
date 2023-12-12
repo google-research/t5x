@@ -30,6 +30,7 @@ python -m t5x.main \
   --run_mode=train \
   --logtostderr
 """
+
 import concurrent.futures  # pylint:disable=unused-import
 import enum
 import importlib
@@ -53,6 +54,7 @@ from t5x import utils
 @enum.unique
 class RunMode(enum.Enum):
   """All the running mode possible in T5X."""
+
   TRAIN = 'train'
   EVAL = 'eval'
   INFER = 'infer'
@@ -63,37 +65,49 @@ class RunMode(enum.Enum):
 _GIN_FILE = flags.DEFINE_multi_string(
     'gin_file',
     default=None,
-    help='Path to gin configuration file. Multiple paths may be passed and '
-    'will be imported in the given order, with later configurations  '
-    'overriding earlier ones.')
+    help=(
+        'Path to gin configuration file. Multiple paths may be passed and '
+        'will be imported in the given order, with later configurations  '
+        'overriding earlier ones.'
+    ),
+)
 
 _GIN_BINDINGS = flags.DEFINE_multi_string(
-    'gin_bindings', default=[], help='Individual gin bindings.')
+    'gin_bindings', default=[], help='Individual gin bindings.'
+)
 
 _GIN_SEARCH_PATHS = flags.DEFINE_list(
     'gin_search_paths',
     default=['.'],
-    help='Comma-separated list of gin config path prefixes to be prepended '
-    'to suffixes given via `--gin_file`. If a file appears in. Only the '
-    'first prefix that produces a valid path for each suffix will be '
-    'used.')
+    help=(
+        'Comma-separated list of gin config path prefixes to be prepended '
+        'to suffixes given via `--gin_file`. If a file appears in. Only the '
+        'first prefix that produces a valid path for each suffix will be '
+        'used.'
+    ),
+)
 
 _RUN_MODE = flags.DEFINE_enum_class(
     'run_mode',
     default=None,
     enum_class=RunMode,
-    help='The mode to run T5X under')
+    help='The mode to run T5X under',
+)
 
 _TFDS_DATA_DIR = flags.DEFINE_string(
-    'tfds_data_dir', None,
+    'tfds_data_dir',
+    None,
     'If set, this directory will be used to store datasets prepared by '
     'TensorFlow Datasets that are not available in the public TFDS GCS '
     'bucket. Note that this flag overrides the `tfds_data_dir` attribute of '
-    'all `Task`s.')
+    'all `Task`s.',
+)
 
 _DRY_RUN = flags.DEFINE_bool(
-    'dry_run', False,
-    'If set, does not start the function but stil loads and logs the config.')
+    'dry_run',
+    False,
+    'If set, does not start the function but stil loads and logs the config.',
+)
 
 
 FLAGS = flags.FLAGS

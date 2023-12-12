@@ -58,9 +58,12 @@ AUTOTUNE = tf.data.experimental.AUTOTUNE
 
 class SummarizeConfigFn(Protocol):
 
-  def __call__(self, model_dir: str,
-               summary_writer: Optional[metric_writers.SummaryWriter],
-               step: int) -> None:
+  def __call__(
+      self,
+      model_dir: str,
+      summary_writer: Optional[metric_writers.SummaryWriter],
+      step: int,
+  ) -> None:
     ...
 
 
@@ -99,12 +102,14 @@ class FailFastThreadPoolExecutor(concurrent.futures.ThreadPoolExecutor):
     super().shutdown(*args, **kwargs)
 
 
-def create_task_from_tfexample_file(paths: Sequence[str],
-                                    file_type: str,
-                                    inputs_key: str,
-                                    targets_key: Optional[str],
-                                    features: Mapping[str, seqio.Feature],
-                                    task_id: Optional[str] = None) -> str:
+def create_task_from_tfexample_file(
+    paths: Sequence[str],
+    file_type: str,
+    inputs_key: str,
+    targets_key: Optional[str],
+    features: Mapping[str, seqio.Feature],
+    task_id: Optional[str] = None,
+) -> str:
   """Registers ad-hoc Task for file-based dataset of TFExamples.
 
   Args:
@@ -136,8 +141,7 @@ def create_task_from_tfexample_file(paths: Sequence[str],
     # Fail early if there's something wrong with the input file pattern.
     raise ValueError('Missing or invalid paths: %s' % paths)
   reader = {
-      'tfrecord':
-          tf.data.TFRecordDataset,
+      'tfrecord': tf.data.TFRecordDataset,
   }[file_type]
 
   feature_description = {inputs_key: tf.io.FixedLenFeature([], tf.string)}
@@ -147,23 +151,25 @@ def create_task_from_tfexample_file(paths: Sequence[str],
   # Create a unique, deterministic task name.
   if task_id is None:
     task_id = hashlib.md5(
-        ':'.join(list(paths) +
-                 [inputs_key, targets_key or '']).encode()).hexdigest()[:10]
+        ':'.join(list(paths) + [inputs_key, targets_key or '']).encode()
+    ).hexdigest()[:10]
 
   task = seqio.TaskRegistry.add(
       name=f'infer_{task_id}',
-      source=seqio.TFExampleDataSource({'infer': paths},
-                                       feature_description=feature_description,
-                                       reader_cls=reader),
+      source=seqio.TFExampleDataSource(
+          {'infer': paths},
+          feature_description=feature_description,
+          reader_cls=reader,
+      ),
       preprocessors=[
           functools.partial(
               seqio.preprocessors.rekey,
-              key_map={
-                  'inputs': inputs_key,
-                  'targets': targets_key
-              }), seqio.preprocessors.tokenize_and_append_eos
+              key_map={'inputs': inputs_key, 'targets': targets_key},
+          ),
+          seqio.preprocessors.tokenize_and_append_eos,
       ],
-      output_features=features)
+      output_features=features,
+  )
 
   return task.name
 
@@ -178,12 +184,14 @@ def merge_chunks_to_file(
   logging.info('Merging chunk results.')
   # Merge chunks into single file.
   chunk_paths = sorted(
-      gfile.glob(os.path.join(tmp_dir, f'{output_fname}-chunk?????')))
+      gfile.glob(os.path.join(tmp_dir, f'{output_fname}-chunk?????'))
+  )
 
   if not chunk_paths:
     raise FileNotFoundError(
         'No chunk results found! One possible explanation is that your '
-        'input did not contain any examples')
+        'input did not contain any examples'
+    )
 
   assert int(chunk_paths[-1][-5:]) + 1 == len(chunk_paths), (
       f'Expecting {int(chunk_paths[-1][-5:]) + 1} chunk paths, found '
@@ -218,10 +226,10 @@ def write_inferences_to_file(
   Args:
     path: File path to write to.
     inferences: A tuple containing (predictions, aux_values). If mode is
-      'predict' then the `predictions` will be token IDs. If it's
-      'score' then it'll be a collection of scores. `aux_values` will be an
-      empty dictionary unless mode is 'predict_with_aux', in which case it'll
-      contain the model's auxiliary outputs.
+      'predict' then the `predictions` will be token IDs. If it's 'score' then
+      it'll be a collection of scores. `aux_values` will be an empty dictionary
+      unless mode is 'predict_with_aux', in which case it'll contain the model's
+      auxiliary outputs.
     task_ds: Original task dataset. Features from task with suffix
       `_pretokenized` are added to the outputs.
     mode: Prediction mode, either 'predict', 'score' or 'predict_with_aux'.
@@ -239,8 +247,10 @@ def write_inferences_to_file(
   all_predictions, all_aux_values = inferences
 
   if mode in ('predict', 'predict_with_aux') and vocabulary is None:
-    raise ValueError('The `vocabulary` parameter is required in `predict` and '
-                     '`predict_with_aux` modes')
+    raise ValueError(
+        'The `vocabulary` parameter is required in `predict` and '
+        '`predict_with_aux` modes'
+    )
 
   def _json_compat(value):
     if isinstance(value, bytes):
@@ -258,7 +268,8 @@ def write_inferences_to_file(
   if include_all_inputs and input_fields_to_include is not None:
     raise ValueError(
         'include_all_inputs and input_fields_to_include should not be set'
-        ' simultaneously.')
+        ' simultaneously.'
+    )
   with gfile.GFile(path, 'w') as f:
     for i, inp in task_ds.enumerate().as_numpy_iterator():
       predictions = all_predictions[i]
@@ -272,9 +283,13 @@ def write_inferences_to_file(
         inputs = inp
       elif input_fields_to_include is not None:
         inputs = {
-            k: v for k, v in inp.items() if k in input_fields_to_include or
-            (k.endswith('_pretokenized') and
-             k[:-len('_pretokenized')] in input_fields_to_include)
+            k: v
+            for k, v in inp.items()
+            if k in input_fields_to_include
+            or (
+                k.endswith('_pretokenized')
+                and k[: -len('_pretokenized')] in input_fields_to_include
+            )
         }
       else:
         inputs = {k: v for k, v in inp.items() if k.endswith('_pretokenized')}
@@ -285,12 +300,13 @@ def write_inferences_to_file(
       if mode == 'predict':
         assert vocabulary is not None
         json_dict['prediction'] = _json_compat(
-            vocabulary.decode_tf(tf.constant(predictions)).numpy())
+            vocabulary.decode_tf(tf.constant(predictions)).numpy()
+        )
         if output_ids:
           pred = _json_compat(tf.constant(predictions).numpy())
           # Truncate padding tokens.
           assert isinstance(pred, list)
-          pred = pred[:pred.index(0)] if 0 in pred else pred
+          pred = pred[: pred.index(0)] if 0 in pred else pred
           json_dict['prediction_tokens'] = pred
       elif mode == 'score':
         json_dict['score'] = _json_compat(predictions)
@@ -299,11 +315,12 @@ def write_inferences_to_file(
       elif mode == 'predict_with_aux':
         assert vocabulary is not None
         json_dict['prediction'] = _json_compat(
-            vocabulary.decode_tf(tf.constant(predictions)).numpy())
+            vocabulary.decode_tf(tf.constant(predictions)).numpy()
+        )
         if output_ids:
           pred = _json_compat(tf.constant(predictions).numpy())
           # Truncate padding tokens.
-          pred = pred[:pred.index(0)] if 0 in pred else pred
+          pred = pred[: pred.index(0)] if 0 in pred else pred
           json_dict['prediction_tokens'] = pred
         json_dict['aux'] = jax.tree_map(_json_compat, aux_values)
       else:
@@ -432,7 +449,8 @@ def infer(
   if mode not in ('predict', 'score', 'predict_with_aux'):
     raise ValueError(
         "`mode` must be one of 'predict', 'score' or 'predict_with_aux'. "
-        f"Got '{mode}'")
+        f"Got '{mode}'"
+    )
 
   # Remove double-slashes in directory path to avoid inconsistencies.
   output_dir = re.sub(r'(?<!gs:)([\/]{2,})', '/', output_dir)
@@ -460,17 +478,21 @@ def infer(
         num_epochs=1,
         shard_info=host_shard_info,
         use_cached=dataset_cfg.use_cached,
-        seed=dataset_cfg.seed)
+        seed=dataset_cfg.seed,
+    )
 
   # Each "chunk" should be how often we checkpoint the input dataset and flush
   # the inferences to disk.
-  logging.info('Inferring with checkpoints every %d batches of %d examples.',
-               checkpoint_period, batch_size)
+  logging.info(
+      'Inferring with checkpoints every %d batches of %d examples.',
+      checkpoint_period,
+      batch_size,
+  )
 
   logging.info('Initializing model, optimizer, and step functions.')
   element_spec = feature_converter(
-      _get_dataset(task_or_mixture),
-      dataset_cfg.task_feature_lengths).element_spec
+      _get_dataset(task_or_mixture), dataset_cfg.task_feature_lengths
+  ).element_spec
   input_shapes = {
       k: (batch_size,) + spec.shape for k, spec in element_spec.items()
   }
@@ -485,13 +507,16 @@ def infer(
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
       input_types=input_types,
-      partitioner=partitioner)
+      partitioner=partitioner,
+  )
   # Log the variable shapes information and write to a file.
   model_info_log_file = os.path.join(output_dir, 'model-info.txt')
   if shard_id == 0:
-    utils.log_model_info(model_info_log_file,
-                         train_state_initializer.global_train_state_shape,
-                         partitioner)
+    utils.log_model_info(
+        model_info_log_file,
+        train_state_initializer.global_train_state_shape,
+        partitioner,
+    )
 
   # Disable strictness since we are dropping the optimizer state.
   restore_checkpoint_cfg.strict = False
@@ -528,8 +553,9 @@ def infer(
   )
 
   def infer_task(task: seqio.Task):
-    tmp_dir = os.path.join(output_dir,
-                           f'tmp-{task.name}-{shard_id:05}-of-{num_shards:05}')
+    tmp_dir = os.path.join(
+        output_dir, f'tmp-{task.name}-{shard_id:05}-of-{num_shards:05}'
+    )
     if jax.process_index() == 0:
       gfile.makedirs(tmp_dir)
 
@@ -540,7 +566,8 @@ def infer(
     ds = _get_dataset(task)
 
     model_ds = feature_converter(
-        ds, task_feature_lengths=dataset_cfg.task_feature_lengths)
+        ds, task_feature_lengths=dataset_cfg.task_feature_lengths
+    )
 
     # Zip task and model features.
     # (task, model)
@@ -549,7 +576,8 @@ def infer(
     # Create batches the size of each chunk and index them.
     # (i, [(task, model)] * chunk_size)
     infer_ds = infer_ds.padded_batch(
-        checkpoint_period * batch_size, drop_remainder=False).enumerate()
+        checkpoint_period * batch_size, drop_remainder=False
+    ).enumerate()
 
     infer_ds_iter: Iterator[Tuple[int, Any]] = iter(infer_ds.prefetch(AUTOTUNE))
 
@@ -568,10 +596,18 @@ def infer(
     if gfile.exists(os.path.join(output_dir, f'{output_fname}.COMPLETED')):
       logging.info(
           "File %s exists. Skipping inference for shard %d/%d of task '%s'",
-          output_fname, shard_id, num_shards, task.name)
+          output_fname,
+          shard_id,
+          num_shards,
+          task.name,
+      )
       return
-    logging.info("Starting inference loop for shard %d of %d of task '%s'.",
-                 shard_id, num_shards, task.name)
+    logging.info(
+        "Starting inference loop for shard %d of %d of task '%s'.",
+        shard_id,
+        num_shards,
+        task.name,
+    )
 
     def _write_chunk_and_canonicalize_ckpt(
         chunk: int,
@@ -588,17 +624,22 @@ def infer(
         f.write('')
       write_time = time.time() - write_tick
       num_examples = len(inferences[0])
-      logging.info('Writing completed in %02f seconds (%02f examples/sec).',
-                   write_time, num_examples / write_time)
+      logging.info(
+          'Writing completed in %02f seconds (%02f examples/sec).',
+          write_time,
+          num_examples / write_time,
+      )
       update_measurement_series('writing_total_sec', chunk, write_time)
-      update_measurement_series('writing_examples_per_sec', chunk,
-                                num_examples / write_time)
+      update_measurement_series(
+          'writing_examples_per_sec', chunk, num_examples / write_time
+      )
 
       if chunk_ckpt_path:
         # Canonicalize checkpoint.
         for fname in gfile.glob(chunk_ckpt_path + '*'):
           gfile.rename(
-              fname, fname.replace(chunk_ckpt_path, ckpt_path), overwrite=True)
+              fname, fname.replace(chunk_ckpt_path, ckpt_path), overwrite=True
+          )
 
     # Main Loop over "chunks".
     for chunk, chunk_batch in infer_ds_iter:
@@ -631,16 +672,21 @@ def infer(
       logging.info('Running inference on %d batches.', checkpoint_period)
       infer_result = infer_fn(model_ds.enumerate(), rng=chunk_rng)
       inferences: Tuple[Sequence[Any], Mapping[str, Any]] = (
-          _extract_tokens_and_aux_values(infer_result))
+          _extract_tokens_and_aux_values(infer_result)
+      )
       num_examples = len(inferences[0])
 
       if jax.process_index() == 0:
         chunk_time = time.time() - chunk_tick
-        logging.info('chunk completed in %02f seconds (%02f examples/sec).',
-                     chunk_time, num_examples / chunk_time)
+        logging.info(
+            'chunk completed in %02f seconds (%02f examples/sec).',
+            chunk_time,
+            num_examples / chunk_time,
+        )
         update_measurement_series('inference_total_sec', chunk, chunk_time)
-        update_measurement_series('inference_examples_per_sec', chunk,
-                                  num_examples / chunk_time)
+        update_measurement_series(
+            'inference_examples_per_sec', chunk, num_examples / chunk_time
+        )
 
         chunk_ckpt_path = None
         if checkpoint_ds_iter:
@@ -650,10 +696,12 @@ def infer(
           # restart occurs.
           ckpt_tick = time.time()
           chunk_ckpt_path = input_ckpt.write(
-              os.path.join(tmp_dir, f'{chunk}.ckpt'))
+              os.path.join(tmp_dir, f'{chunk}.ckpt')
+          )
           logging.info(
               'Checkpoint written to temporary location in %02f seconds.',
-              time.time() - ckpt_tick)
+              time.time() - ckpt_tick,
+          )
 
         # These will execute sequentially since the ThreadPool size is 1.
         write_thread_pool.submit(
@@ -662,7 +710,8 @@ def infer(
             chunk_path=chunk_path,
             inferences=inferences,
             task_ds=task_ds,
-            chunk_ckpt_path=chunk_ckpt_path)
+            chunk_ckpt_path=chunk_ckpt_path,
+        )
 
       # Wait for checkpoint to be written before continuing.
       utils.sync_global_devices(f'{task.name}:checkpoint_chunk{chunk:05}')
@@ -680,7 +729,8 @@ def infer(
 
     if jax.process_index() == 0:
       with gfile.GFile(
-          os.path.join(output_dir, f'{output_fname}.COMPLETED'), 'w') as f:
+          os.path.join(output_dir, f'{output_fname}.COMPLETED'), 'w'
+      ) as f:
         f.write('')
 
     # Wait for host 0 to finish writing before exiting.
@@ -711,33 +761,45 @@ if __name__ == '__main__':
   flags.DEFINE_integer(
       'shard_id',
       default=None,
-      help='Index to use for splitting the Task across multiple inference '
-      'runs. NB: If set, this overrides --gin.infer.shard_id')
+      help=(
+          'Index to use for splitting the Task across multiple inference '
+          'runs. NB: If set, this overrides --gin.infer.shard_id'
+      ),
+  )
 
   flags.DEFINE_multi_string(
       'gin_file',
       default=None,
-      help='Path to gin configuration file. Multiple paths may be passed and '
-      'will be imported in the given order, with later configurations  '
-      'overriding earlier ones.')
+      help=(
+          'Path to gin configuration file. Multiple paths may be passed and '
+          'will be imported in the given order, with later configurations  '
+          'overriding earlier ones.'
+      ),
+  )
 
   flags.DEFINE_multi_string(
-      'gin_bindings', default=[], help='Individual gin bindings.')
+      'gin_bindings', default=[], help='Individual gin bindings.'
+  )
 
   flags.DEFINE_list(
       'gin_search_paths',
       default=['.'],
-      help='Comma-separated list of gin config path prefixes to be prepended '
-      'to suffixes given via `--gin_file`. If a file appears in. Only the '
-      'first prefix that produces a valid path for each suffix will be '
-      'used.')
+      help=(
+          'Comma-separated list of gin config path prefixes to be prepended '
+          'to suffixes given via `--gin_file`. If a file appears in. Only the '
+          'first prefix that produces a valid path for each suffix will be '
+          'used.'
+      ),
+  )
 
   flags.DEFINE_string(
-      'tfds_data_dir', None,
+      'tfds_data_dir',
+      None,
       'If set, this directory will be used to store datasets prepared by '
       'TensorFlow Datasets that are not available in the public TFDS GCS '
       'bucket. Note that this flag overrides the `tfds_data_dir` attribute of '
-      'all `Task`s.')
+      'all `Task`s.',
+  )
 
 
   def main(argv: Sequence[str]):

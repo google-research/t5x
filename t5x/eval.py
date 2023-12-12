@@ -314,16 +314,12 @@ def evaluate(
   def _maybe_run_train_eval(train_state: train_state_lib.TrainState):
     if training_evaluator_cls:
       train_evaluator.train_state = train_state
-      train_evaluator.eval(
-          {
-              task: (
-                  ds.as_numpy_iterator()
-                  if isinstance(ds, tf.data.Dataset)
-                  else ds
-              )
-              for task, ds in train_eval_datasets.items()
-          }
-      )
+      train_evaluator.eval({
+          task: (
+              ds.as_numpy_iterator() if isinstance(ds, tf.data.Dataset) else ds
+          )
+          for task, ds in train_eval_datasets.items()
+      })
 
   # Disable strictness since we are dropping the optimizer state.
   restore_checkpoint_cfg.strict = False
