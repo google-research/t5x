@@ -139,6 +139,7 @@ def main(argv: Sequence[str]):
   if len(argv) > 1:
     raise app.UsageError('Too many command-line arguments.')
 
+
   if _RUN_MODE.value is None:
     raise ValueError("'run_mode' flag must be specified when using main.py.")
   # Dynamic import the modules based on run_mode, e.g.
