@@ -395,7 +395,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
       state_transformation_fns: Sequence[
           checkpoints.SaveStateTransformationFn
       ] = (),
-  ):
+  ):  # pytype: disable=signature-mismatch
     """Performs save operation.
 
     Args:
@@ -416,7 +416,7 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
       fallback_state: Optional[Mapping[str, Any]] = None,
   ) -> Optional[
       Union[train_state_lib.TrainState, Sequence[train_state_lib.TrainState]]
-  ]:
+  ]:  # pytype: disable=signature-mismatch
     """Performs restore operation using restore_checkpointer.
 
     Determines whether the indicated path is a Tensorflow checkpoint.
