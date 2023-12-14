@@ -26,9 +26,8 @@ import t5x.state_utils
 import t5x.train_state
 import t5x.trainer
 import t5x.utils
-
 # Version number.
-from t5x.version import __version__
+from t5x.version import __version__  # pylint: disable=g-importing-member
 
 # TODO(adarob): Move clients to t5x.checkpointing and rename
 # checkpoints.py to checkpointing.py
