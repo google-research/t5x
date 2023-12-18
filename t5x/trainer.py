@@ -348,6 +348,7 @@ class MetricsManager(object):
     """Writes scalar value to metric writers in a threadsafe manner."""
     step = utils.get_local_data(step)
     with self._writer_lock:
+      assert self._writer is not None
       self._writer.write_scalars(step, scalars)
 
   def start_duration_timer(self, block_on: PyTree = ()):
@@ -410,7 +411,8 @@ class MetricsManager(object):
     try:
       self._summary_pool.join()
     finally:
-      self._writer.flush()
+      if self._writer:
+        self._writer.flush()
 
 
 class PreemptionError(Exception):

@@ -303,6 +303,7 @@ async def _read_upcycle_ts(
         Returns:
           Array broadcast to number of expert multiples.
         """
+        assert param_info.local_chunk_info is not None
         sl = param_info.local_chunk_info.slice
         # Since sl is the slice generated for the new model, we need to ignore
         # the first (expert) dimension to deal with the checkpoint states.
