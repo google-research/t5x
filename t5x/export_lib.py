@@ -1543,7 +1543,7 @@ def save(
       warmup_examples = warmup_examples[:batch_size]
       while len(warmup_examples) < batch_size:
         if tokenized_inputs:
-          warmup_examples.append([0] * task_feature_lengths['inputs'])
+          warmup_examples.append(np.zeros_like(warmup_examples[0]).tolist())
         else:
           warmup_examples.append('')
 
