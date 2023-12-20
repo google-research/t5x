@@ -39,7 +39,7 @@ import typing
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 from absl import logging
-import clu.data
+import clu.data.dataset_iterator
 from etils import epath
 import flax
 from flax import serialization
