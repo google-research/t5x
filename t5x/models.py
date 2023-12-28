@@ -638,7 +638,7 @@ class EncoderDecoderModel(BaseTransformerModel):
   def predict_batch(self,
                     params: PyTreeDef,
                     batch: Mapping[str, jnp.ndarray],
-                    rng: Optional[jax.random.KeyArray] = None,
+                    rng: Optional[jax.Array] = None,
                     flax_mutables: Optional[PyTreeDef] = None) -> jnp.ndarray:
     """Predicts a batch of outputs from the model.
 
