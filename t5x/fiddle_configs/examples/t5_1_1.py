@@ -66,7 +66,7 @@ def small_wmt_eval() -> fdl.Buildable:
           partitioning.PjitPartitioner,
           num_partitions=1,
       ),
-      dataset_cfg=fdl.Config(
+      dataset_cfg=fdl.Config(  # pytype: disable=wrong-arg-types  # use-fiddle-overlay
           utils.DatasetConfig,
           mixture_or_task_name='wmt_t2t_ende_v003',
           task_feature_lengths=None,  # Auto-computes the max lengths.
@@ -86,7 +86,7 @@ def small_wmt_eval() -> fdl.Buildable:
           use_memory_cache=True,
       ),
       summarize_config_fn=config_utils.summarize_fiddle_config,
-      restore_checkpoint_cfg=fdl.Config(
+      restore_checkpoint_cfg=fdl.Config(  # pytype: disable=wrong-arg-types  # use-fiddle-overlay
           utils.RestoreCheckpointConfig,
           path=None,  # Set via --fdl_set="restore_checkpoint_cfg.path=..."
           mode='specific',

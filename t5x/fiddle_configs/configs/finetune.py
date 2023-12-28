@@ -205,7 +205,7 @@ def infer_eval_dataset_config(
     use_cached_tasks: bool,
     mixture_or_task_module: Optional[str],
 ) -> fdl.Buildable[utils.DatasetConfig]:
-  return fdl.Config(
+  return fdl.Config(  # pytype: disable=wrong-arg-types  # use-fiddle-overlay
       utils.DatasetConfig,
       mixture_or_task_name=mixture_or_task_name,
       task_feature_lengths=None,  # compute max

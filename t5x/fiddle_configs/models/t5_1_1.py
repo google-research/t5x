@@ -58,7 +58,7 @@ def model(
 ) -> fdl.Buildable[models.BaseTransformerModel]:
   return fdl.Config(
       models.EncoderDecoderModel,
-      module=fdl.Config(
+      module=fdl.Config(  # pytype: disable=wrong-arg-types  # use-fiddle-overlay
           network.Transformer,
           config=config,
       ),
