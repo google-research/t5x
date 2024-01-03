@@ -22,7 +22,6 @@ import jax
 from jax import lax
 from jax import random
 import jax.numpy as jnp
-
 from t5x import binary_search
 from t5x import decoding
 from t5x.decoding import _is_tracer
@@ -56,6 +55,7 @@ class SamplingLoopState:
     exits: [batch_size, max_decode_len] array recording the number of decoder
       layers used (until exiting) per token.
   """
+
   cur_index: jnp.ndarray
   sequences: jnp.ndarray
   cache: Mapping[str, jnp.ndarray]
@@ -70,9 +70,10 @@ class SamplingLoopState:
 def temperature_sample(
     inputs: jnp.ndarray,
     cache: Mapping[str, jnp.ndarray],
-    tokens_to_logits: Callable[[DecodingState],
-                               Tuple[jnp.ndarray, Mapping[str, jnp.ndarray],
-                                     jnp.ndarray, jnp.ndarray]],
+    tokens_to_logits: Callable[
+        [DecodingState],
+        Tuple[jnp.ndarray, Mapping[str, jnp.ndarray], jnp.ndarray, jnp.ndarray],
+    ],
     eos_id: int,
     decode_rng: Optional[jnp.ndarray] = None,
     num_decodes: int = 1,
@@ -84,10 +85,12 @@ def temperature_sample(
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
     max_decode_steps_hard_limit: Optional[int] = None,
     rescale_log_probs: bool = True,
-    state_callback_fn: Optional[Callable[[SamplingLoopState],
-                                         SamplingLoopState]] = None,
-    logit_callback_fn: Optional[Callable[[jnp.ndarray, SamplingLoopState],
-                                         jnp.ndarray]] = None
+    state_callback_fn: Optional[
+        Callable[[SamplingLoopState], SamplingLoopState]
+    ] = None,
+    logit_callback_fn: Optional[
+        Callable[[jnp.ndarray, SamplingLoopState], jnp.ndarray]
+    ] = None,
 ) -> Tuple[jnp.ndarray, Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
   """Temperature sampling for language model generation.
 
@@ -300,10 +303,14 @@ def temperature_sample(
   if decode_rng is None:
     decode_rng = jax.random.PRNGKey(0)
 
-  if (max_decode_steps_hard_limit is not None and
-      max_decode_steps_hard_limit > 0 and max_decode_steps is not None):
-    max_decode_steps = jnp.minimum(max_decode_steps,
-                                   max_decode_steps_hard_limit)
+  if (
+      max_decode_steps_hard_limit is not None
+      and max_decode_steps_hard_limit > 0
+      and max_decode_steps is not None
+  ):
+    max_decode_steps = jnp.minimum(
+        max_decode_steps, max_decode_steps_hard_limit
+    )
 
   if num_decodes > 1:
     # [batch, len] -> [batch * num_decodes, len]
@@ -312,15 +319,18 @@ def temperature_sample(
         functools.partial(
             decoding.flat_batch_beam_expand,
             beam_size=num_decodes,
-            offset=cache_offset),
+            offset=cache_offset,
+        ),
         cache,
         # When we start with a prefilled cache, the cache index is no longer a
         # scalar that will broadcast across multiple decodes, it is a vector and
         # needs to be updated to handle the multiple decodes.
-        apply_to_index=initial_index is not None)
+        apply_to_index=initial_index is not None,
+    )
     if initial_index is not None:
-      initial_index = decoding.flat_batch_beam_expand(initial_index,
-                                                      num_decodes)
+      initial_index = decoding.flat_batch_beam_expand(
+          initial_index, num_decodes
+      )
   else:
     expanded_inputs = inputs
     expanded_cache = cache
@@ -329,31 +339,37 @@ def temperature_sample(
   # expanded_log_prob: [batch * num_decodes]
   # expanded_exits: [batch * num_decodes, len]
   # expanded_confidences: [batch * num_decodes, len]
-  expanded_decodes, expanded_log_prob, expanded_exits, expanded_confidences = _temperature_sample_single_trial(
-      expanded_inputs,
-      expanded_cache,
-      tokens_to_logits,
-      eos_id,
-      decode_rng,
-      temperature,
-      topk,
-      topp,
-      initial_index=initial_index,
-      max_decode_steps=max_decode_steps,
-      rescale_log_probs=rescale_log_probs,
-      state_callback_fn=state_callback_fn,
-      logit_callback_fn=logit_callback_fn)
+  expanded_decodes, expanded_log_prob, expanded_exits, expanded_confidences = (
+      _temperature_sample_single_trial(
+          expanded_inputs,
+          expanded_cache,
+          tokens_to_logits,
+          eos_id,
+          decode_rng,
+          temperature,
+          topk,
+          topp,
+          initial_index=initial_index,
+          max_decode_steps=max_decode_steps,
+          rescale_log_probs=rescale_log_probs,
+          state_callback_fn=state_callback_fn,
+          logit_callback_fn=logit_callback_fn,
+      )
+  )
 
   batch_size = inputs.shape[0]
   # [batch * num_decodes, len] -> [batch, num_decodes, len]
-  decodes = decoding.unflatten_beam_dim(expanded_decodes, batch_size,
-                                        num_decodes)
+  decodes = decoding.unflatten_beam_dim(
+      expanded_decodes, batch_size, num_decodes
+  )
   exits = decoding.unflatten_beam_dim(expanded_exits, batch_size, num_decodes)
-  confidences = decoding.unflatten_beam_dim(expanded_confidences, batch_size,
-                                            num_decodes)
+  confidences = decoding.unflatten_beam_dim(
+      expanded_confidences, batch_size, num_decodes
+  )
   # [batch * num_decodes] -> [batch, num_decodes]
-  log_prob = decoding.unflatten_beam_dim(expanded_log_prob, batch_size,
-                                         num_decodes)
+  log_prob = decoding.unflatten_beam_dim(
+      expanded_log_prob, batch_size, num_decodes
+  )
 
   # Sort `decodes` and `log_prob` by increasing log probabilities of the sampled
   # sequence.
@@ -363,7 +379,8 @@ def temperature_sample(
   # returns [batch, num_decodes, len], [batch, num_decodes] in sorted order.
   sorted_decodes = jnp.take_along_axis(decodes, idxs, axis=1)
   sorted_log_prob = jnp.take_along_axis(
-      log_prob, jnp.squeeze(idxs, axis=-1), axis=-1)
+      log_prob, jnp.squeeze(idxs, axis=-1), axis=-1
+  )
   sorted_exits = jnp.take_along_axis(exits, idxs, axis=1)
   sorted_confidences = jnp.take_along_axis(confidences, idxs, axis=1)
 
@@ -373,9 +390,10 @@ def temperature_sample(
 def _temperature_sample_single_trial(
     inputs: jnp.ndarray,
     cache: Mapping[str, jnp.ndarray],
-    tokens_to_logits: Callable[[DecodingState],
-                               Tuple[jnp.ndarray, Mapping[str, jnp.ndarray],
-                                     jnp.ndarray, jnp.ndarray]],
+    tokens_to_logits: Callable[
+        [DecodingState],
+        Tuple[jnp.ndarray, Mapping[str, jnp.ndarray], jnp.ndarray, jnp.ndarray],
+    ],
     eos_id: int,
     prng_key: jnp.ndarray,
     temperature: Union[float, jnp.ndarray] = 1.0,
@@ -384,10 +402,12 @@ def _temperature_sample_single_trial(
     initial_index: Optional[jnp.ndarray] = None,
     max_decode_steps: Optional[Union[int, jnp.ndarray]] = None,
     rescale_log_probs: bool = True,
-    state_callback_fn: Optional[Callable[[SamplingLoopState],
-                                         SamplingLoopState]] = None,
-    logit_callback_fn: Optional[Callable[[jnp.ndarray, SamplingLoopState],
-                                         jnp.ndarray]] = None
+    state_callback_fn: Optional[
+        Callable[[SamplingLoopState], SamplingLoopState]
+    ] = None,
+    logit_callback_fn: Optional[
+        Callable[[jnp.ndarray, SamplingLoopState], jnp.ndarray]
+    ] = None,
 ) -> jnp.ndarray:
   """A helper function for `temperature_sample`."""
 
@@ -428,7 +448,8 @@ def _temperature_sample_single_trial(
   expanded_prompt_inputs = jnp.append(
       inputs,
       jnp.zeros((batch_size, extra_input_tokens), dtype=inputs.dtype),
-      axis=1)
+      axis=1,
+  )
   end_marker = jnp.array(eos_id)
 
   temperature = jnp.asarray(temperature)
@@ -448,7 +469,8 @@ def _temperature_sample_single_trial(
     # the per batch-item holding current token in loop.
     # Select the token that the initial index is pointing to.
     token0 = jnp.take_along_axis(
-        expanded_prompt_inputs, jnp.expand_dims(i0, axis=1), axis=1)
+        expanded_prompt_inputs, jnp.expand_dims(i0, axis=1), axis=1
+    )
   # per batch-item state bit indicating if sentence has finished.
   ended0 = jnp.zeros((batch_size, 1), dtype=jnp.bool_)
   # (batch, length+2) array containing prefix prompt tokens for sampling loop
@@ -457,9 +479,17 @@ def _temperature_sample_single_trial(
   log_prob0 = jnp.zeros((batch_size,), dtype=jnp.float32)
   confidences0 = -1.0 * jnp.ones((batch_size, max_decode_len), jnp.float32)
   exits0 = -1 * jnp.ones((batch_size, max_decode_len), jnp.int32)
-  sampling_loop_init_state = SamplingLoopState(i0, sequences0, cache, token0,
-                                               ended0, rng0, log_prob0,
-                                               confidences0, exits0)
+  sampling_loop_init_state = SamplingLoopState(
+      i0,
+      sequences0,
+      cache,
+      token0,
+      ended0,
+      rng0,
+      log_prob0,
+      confidences0,
+      exits0,
+  )
   # Initial eos count to be used to determine whether eos is "generated". Many
   # inputs follow the format bos, inputs..., eos, targets..., eos. By counting
   # the number of eos tokens we can detect when a new one is added, instead of
@@ -488,7 +518,8 @@ def _temperature_sample_single_trial(
         cur_index=state.cur_index,
         sequences=state.sequences[:, :-extra_input_tokens],
         cur_token=state.cur_token,
-        cache=state.cache)
+        cache=state.cache,
+    )
     confidences = state.confidences
     exits = state.exits
     logits, new_cache, conf, exit_layer = tokens_to_logits(decoding_state)
@@ -520,8 +551,10 @@ def _temperature_sample_single_trial(
       # [batch, vocab] -> [batch]
       next_log_prob = jnp.squeeze(
           jnp.take_along_axis(
-              log_probs, jnp.expand_dims(next_token, axis=1), axis=-1),
-          axis=-1)
+              log_probs, jnp.expand_dims(next_token, axis=1), axis=-1
+          ),
+          axis=-1,
+      )
 
       return (next_token, next_log_prob)
 
@@ -537,16 +570,20 @@ def _temperature_sample_single_trial(
         log_probs = jax.nn.log_softmax(logits)
         next_log_prob = jnp.squeeze(
             jnp.take_along_axis(
-                log_probs, jnp.expand_dims(next_token, axis=1), axis=-1),
-            axis=-1)
+                log_probs, jnp.expand_dims(next_token, axis=1), axis=-1
+            ),
+            axis=-1,
+        )
 
       return (next_token, next_log_prob)
 
     # Perform sampling with temperature
-    (next_token,
-     next_log_prob) = lax.cond(temperature > MIN_TEMPERATURE,
-                               sample_logits_with_nonzero_temperature,
-                               sample_logits_with_zero_temperature, logits)
+    (next_token, next_log_prob) = lax.cond(
+        temperature > MIN_TEMPERATURE,
+        sample_logits_with_nonzero_temperature,
+        sample_logits_with_zero_temperature,
+        logits,
+    )
 
     # When different batch elements are at different points in the loop counter,
     # it is possible that an element that started at a higher index will reach
@@ -563,22 +600,23 @@ def _temperature_sample_single_trial(
     # [batch]
     next_input_token = jnp.squeeze(
         jnp.take_along_axis(
-            state.sequences, jnp.expand_dims(i + 1, axis=1), axis=1),
-        axis=1)
+            state.sequences, jnp.expand_dims(i + 1, axis=1), axis=1
+        ),
+        axis=1,
+    )
     # Check if the next token is padding (a target) or non-padding (an input).
     # Mask will have `1` for targets and `0` for inputs.
-    out_of_prompt = (next_input_token == 0)
+    out_of_prompt = next_input_token == 0
     # Select the sampled next token for targets and the actual next token for
     # inputs (teacher forcing).
     # [batch]
-    next_token = (
-        next_token * out_of_prompt + next_input_token * ~out_of_prompt)
+    next_token = next_token * out_of_prompt + next_input_token * ~out_of_prompt
 
     # only add probability if outside prefix region
     # [batch] -> [batch]
     next_log_prob = state.log_prob + (
-        next_log_prob * out_of_prompt) * jnp.squeeze(
-            ~state.ended, axis=-1).astype(jnp.int32)
+        next_log_prob * out_of_prompt
+    ) * jnp.squeeze(~state.ended, axis=-1).astype(jnp.int32)
 
     # [batch] -> [batch, 1]
     next_token = jnp.expand_dims(next_token, axis=-1)
@@ -588,9 +626,11 @@ def _temperature_sample_single_trial(
     next_token_or_endpad = next_token * ~state.ended
     # Add current sampled tokens to recorded sequences.
     one_hot = jax.nn.one_hot(
-        i + 1, state.sequences.shape[1], dtype=state.sequences.dtype)
-    new_sequences = state.sequences * (1 -
-                                       one_hot) + next_token_or_endpad * one_hot
+        i + 1, state.sequences.shape[1], dtype=state.sequences.dtype
+    )
+    new_sequences = (
+        state.sequences * (1 - one_hot) + next_token_or_endpad * one_hot
+    )
     # new_sequences = dynamic_update_vector_slice_in_dim(sequences,
     #                                                    next_token_or_endpad,
     #                                                    i + 1,
@@ -607,19 +647,31 @@ def _temperature_sample_single_trial(
     # write to sequences[-1] which is our garbage collection token. Thus `i`
     # should be strictly less than max_decode_len.
     has_additional_eos = cur_eos_count > initial_eos_count
-    ended = state.ended | has_additional_eos | jnp.expand_dims(
-        i >= max_decode_len - 1, axis=1)
+    ended = (
+        state.ended
+        | has_additional_eos
+        | jnp.expand_dims(i >= max_decode_len - 1, axis=1)
+    )
 
     new_conf = confidences.at[:, i].set(conf)
     new_exits = exits.at[:, i].set(exit_layer)
 
-    return SamplingLoopState(i + 1, new_sequences, new_cache,
-                             next_token_or_endpad, ended, rng2, next_log_prob,
-                             new_conf, new_exits)
+    return SamplingLoopState(
+        i + 1,
+        new_sequences,
+        new_cache,
+        next_token_or_endpad,
+        ended,
+        rng2,
+        next_log_prob,
+        new_conf,
+        new_exits,
+    )
 
   # Run sampling loop and collect final state.
-  final_state = lax.while_loop(sampling_loop_cond_fn, sampling_loop_body_fn,
-                               sampling_loop_init_state)
+  final_state = lax.while_loop(
+      sampling_loop_cond_fn, sampling_loop_body_fn, sampling_loop_init_state
+  )
 
   # Pick part of the state corresponding to the sampled sequences.
   final_sequences = final_state.sequences

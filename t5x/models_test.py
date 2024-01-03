@@ -64,8 +64,9 @@ class ModelsTest(parameterized.TestCase):
     # `actual_1` is DeviceArray(3, dtype=int32).
     np.testing.assert_array_equal(actual_1, [3])
 
-    segment_ids_2 = np.array([[1, 1, 3, 3, 0, 0], [2, 2, 2, 2, 2, 2],
-                              [2, 7, 7, 7, 7, 0]])
+    segment_ids_2 = np.array(
+        [[1, 1, 3, 3, 0, 0], [2, 2, 2, 2, 2, 2], [2, 7, 7, 7, 7, 0]]
+    )
     actual_2 = models.count_packed_examples(segment_ids_2)
     # `actual_2` is DeviceArray(5, dtype=int32).
     np.testing.assert_array_equal(actual_2, [5])
@@ -81,19 +82,21 @@ class EncoderDecoderModelTest(parameterized.TestCase):
           testcase_name='no_types',
           shapes={
               'encoder_input_tokens': [1, 512],
-              'decoder_input_tokens': [1, 62]
+              'decoder_input_tokens': [1, 62],
           },
-          types=None),
+          types=None,
+      ),
       dict(
           testcase_name='int32',
           shapes={
               'encoder_input_tokens': [1, 512],
-              'decoder_input_tokens': [1, 62]
+              'decoder_input_tokens': [1, 62],
           },
           types={
               'encoder_input_tokens': jnp.int32,
-              'decoder_input_tokens': jnp.int32
-          }),
+              'decoder_input_tokens': jnp.int32,
+          },
+      ),
       dict(
           testcase_name='float32',
           shapes={
@@ -106,8 +109,9 @@ class EncoderDecoderModelTest(parameterized.TestCase):
               'encoder_input_tokens': jnp.int32,
               'decoder_input_tokens': jnp.int32,
               'encoder_positions': jnp.int32,
-              'decoder_positions': jnp.int32
-          }),
+              'decoder_positions': jnp.int32,
+          },
+      ),
       dict(
           testcase_name='float32_segment_ids',
           shapes={
@@ -120,8 +124,9 @@ class EncoderDecoderModelTest(parameterized.TestCase):
               'encoder_input_tokens': jnp.int32,
               'decoder_input_tokens': jnp.int32,
               'encoder_segment_ids': jnp.int32,
-              'decoder_segment_ids': jnp.int32
-          }),
+              'decoder_segment_ids': jnp.int32,
+          },
+      ),
   )
   def test_get_initial_variables_shapes_and_types(self, shapes, types):
     mock_transformer = mock.Mock()
@@ -135,20 +140,25 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       self._default_decoder_params = models.DecoderParams()
 
     with mock.patch.object(
-        models.EncoderDecoderModel, '__init__', new=mock_init):
+        models.EncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.EncoderDecoderModel()
       model.get_initial_variables(rng, shapes, types)
 
     if types is None:
       encoder_input = jnp.ones(
-          shapes['encoder_input_tokens'], dtype=jnp.float32)
+          shapes['encoder_input_tokens'], dtype=jnp.float32
+      )
       decoder_input = jnp.ones(
-          shapes['decoder_input_tokens'], dtype=jnp.float32)
+          shapes['decoder_input_tokens'], dtype=jnp.float32
+      )
     else:
       encoder_input = jnp.ones(
-          shapes['encoder_input_tokens'], dtype=types['encoder_input_tokens'])
+          shapes['encoder_input_tokens'], dtype=types['encoder_input_tokens']
+      )
       decoder_input = jnp.ones(
-          shapes['decoder_input_tokens'], dtype=types['decoder_input_tokens'])
+          shapes['decoder_input_tokens'], dtype=types['decoder_input_tokens']
+      )
 
     # Using `.assert_called_once_with` doesn't work because the simple
     # comparison it does for the array arguments fail (truth value of an array
@@ -161,31 +171,39 @@ class EncoderDecoderModelTest(parameterized.TestCase):
 
     if 'encoder_positions' in shapes:
       encoder_positions = jnp.ones(
-          shapes['encoder_positions'], dtype=types['encoder_positions'])
-      np.testing.assert_allclose(called_with[1]['encoder_positions'],
-                                 encoder_positions)
+          shapes['encoder_positions'], dtype=types['encoder_positions']
+      )
+      np.testing.assert_allclose(
+          called_with[1]['encoder_positions'], encoder_positions
+      )
     else:
       self.assertIsNone(called_with[1]['encoder_positions'])
     if 'decoder_positions' in shapes:
       decoder_positions = jnp.ones(
-          shapes['decoder_positions'], dtype=types['decoder_positions'])
-      np.testing.assert_allclose(called_with[1]['decoder_positions'],
-                                 decoder_positions)
+          shapes['decoder_positions'], dtype=types['decoder_positions']
+      )
+      np.testing.assert_allclose(
+          called_with[1]['decoder_positions'], decoder_positions
+      )
     else:
       self.assertIsNone(called_with[1]['decoder_positions'])
 
     if 'encoder_segment_ids' in shapes:
       encoder_positions = jnp.ones(
-          shapes['encoder_segment_ids'], dtype=types['encoder_segment_ids'])
-      np.testing.assert_allclose(called_with[1]['encoder_segment_ids'],
-                                 encoder_positions)
+          shapes['encoder_segment_ids'], dtype=types['encoder_segment_ids']
+      )
+      np.testing.assert_allclose(
+          called_with[1]['encoder_segment_ids'], encoder_positions
+      )
     else:
       self.assertIsNone(called_with[1]['encoder_segment_ids'])
     if 'decoder_segment_ids' in shapes:
       decoder_segment_ids = jnp.ones(
-          shapes['decoder_segment_ids'], dtype=types['decoder_segment_ids'])
-      np.testing.assert_allclose(called_with[1]['decoder_segment_ids'],
-                                 decoder_segment_ids)
+          shapes['decoder_segment_ids'], dtype=types['decoder_segment_ids']
+      )
+      np.testing.assert_allclose(
+          called_with[1]['decoder_segment_ids'], decoder_segment_ids
+      )
     else:
       self.assertIsNone(called_with[1]['decoder_segment_ids'])
 
@@ -277,12 +295,13 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       self._decode_fn = mock_decode_fn
 
     with mock.patch.object(
-        models.EncoderDecoderModel, '__init__', new=mock_init):
+        models.EncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.EncoderDecoderModel()
 
-    model.predict_batch_with_aux({},
-                                 batch,
-                                 prompt_with_targets=prompt_with_targets)
+    model.predict_batch_with_aux(
+        {}, batch, prompt_with_targets=prompt_with_targets
+    )
 
     if prompt_with_targets:
       expected_inputs = batch['decoder_input_tokens']
@@ -292,8 +311,9 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     assert mock_decode_fn.call_count == 1
     # Look at the kwargs call list for inputs, assert_called_with doesn't
     # work well with np.array comparison.
-    np.testing.assert_array_equal(mock_decode_fn.mock_calls[0][2]['inputs'],
-                                  expected_inputs)
+    np.testing.assert_array_equal(
+        mock_decode_fn.mock_calls[0][2]['inputs'], expected_inputs
+    )
     if supports_prefilling:
       if prompt_with_targets:
         expected_initial_index = [2, 0]
@@ -322,29 +342,37 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     lengths = np.array([[2], [3]])
     batch_size, beam_size, encoder_len, max_decode_len = 2, 2, 3, 7
     batch = {
-        'encoder_input_tokens':
-            np.zeros((batch_size, encoder_len), dtype=np.int32),
-        'decoder_target_tokens':
-            np.zeros((batch_size, encoder_len), dtype=np.int32),
-        'decoder_input_tokens':
-            np.concatenate(
-                [
-                    np.expand_dims(
-                        np.concatenate(
-                            [[0],
-                             np.arange(9, 9 + lengths[0][0], dtype=np.int32),
-                             np.zeros((max_decode_len - lengths[0][0] - 1),
-                                      dtype=np.int32)]),
-                        axis=0),  # First element
-                    np.expand_dims(
-                        np.concatenate(
-                            [[0],
-                             np.arange(3, 3 + lengths[1][0], dtype=np.int32),
-                             np.zeros((max_decode_len - lengths[1][0] - 1),
-                                      dtype=np.int32)]),
-                        axis=0)  # Second element
-                ],
-                axis=0),
+        'encoder_input_tokens': np.zeros(
+            (batch_size, encoder_len), dtype=np.int32
+        ),
+        'decoder_target_tokens': np.zeros(
+            (batch_size, encoder_len), dtype=np.int32
+        ),
+        'decoder_input_tokens': np.concatenate(
+            [
+                np.expand_dims(
+                    np.concatenate([
+                        [0],
+                        np.arange(9, 9 + lengths[0][0], dtype=np.int32),
+                        np.zeros(
+                            (max_decode_len - lengths[0][0] - 1), dtype=np.int32
+                        ),
+                    ]),
+                    axis=0,
+                ),  # First element
+                np.expand_dims(
+                    np.concatenate([
+                        [0],
+                        np.arange(3, 3 + lengths[1][0], dtype=np.int32),
+                        np.zeros(
+                            (max_decode_len - lengths[1][0] - 1), dtype=np.int32
+                        ),
+                    ]),
+                    axis=0,
+                ),  # Second element
+            ],
+            axis=0,
+        ),
     }
 
     model = test_utils.get_t5_test_model(vocab_size=50)
@@ -354,7 +382,8 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         jnp.ones((batch_size, encoder_len)),
         jnp.ones((batch_size, max_decode_len)),
         jnp.ones((batch_size, max_decode_len)),
-        enable_dropout=False)['params']
+        enable_dropout=False,
+    )['params']
 
     def mock_init(self):
       self.module = module
@@ -366,24 +395,27 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       self._decode_fn = decoding.beam_search
 
     with mock.patch.object(
-        models.EncoderDecoderModel, '__init__', new=mock_init):
+        models.EncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.EncoderDecoderModel()
 
     with mock.patch.object(
-        model, '_compute_logits_from_slice',
-        autospec=True) as tokens_to_logits_mock:
+        model, '_compute_logits_from_slice', autospec=True
+    ) as tokens_to_logits_mock:
       # Make the side effect of the mock, call the method on the class, with the
       # instance partialed in as `self`. This lets us call the actual code,
       # while recording the inputs, without an infinite loop you would get
       # calling `instance.method`
       tokens_to_logits_mock.side_effect = functools.partial(
-          models.EncoderDecoderModel._compute_logits_from_slice, model)
+          models.EncoderDecoderModel._compute_logits_from_slice, model
+      )
       # Disable jit, so that the `lax.while_loop` isn't traced, as the
       # collection of tracers in the mock call_args would generally trigger a
       # tracer leak error.
       with jax.disable_jit():
         _ = model.predict_batch_with_aux(
-            params, batch, prompt_with_targets=True, num_decodes=2)
+            params, batch, prompt_with_targets=True, num_decodes=2
+        )
 
     # Collect all the input tokens to our tokens_to_logits function
     all_inputs = []
@@ -400,11 +432,13 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       cache = flax.core.unfreeze(cache)
       # Cache: [B * Be, 1] * #Layers
       cache_keys = [
-          v for k, v in traverse_util.flatten_dict(cache).items()
+          v
+          for k, v in traverse_util.flatten_dict(cache).items()
           if k[-1] == 'cached_key'
       ]
       cache_values = [
-          v for k, v in traverse_util.flatten_dict(cache).items()
+          v
+          for k, v in traverse_util.flatten_dict(cache).items()
           if k[-1] == 'cached_value'
       ]
       all_inputs.append(inputs)
@@ -424,11 +458,14 @@ class EncoderDecoderModelTest(parameterized.TestCase):
           self.assertEqual(input_token, batch['decoder_input_tokens'][b][i])
           # For all layers.
           for cache_keys in all_cache_keys:
-            np.testing.assert_array_equal(cache_keys[b * beam_size][i],
-                                          cache_keys[b * beam_size + 1][i])
+            np.testing.assert_array_equal(
+                cache_keys[b * beam_size][i], cache_keys[b * beam_size + 1][i]
+            )
           for cache_values in all_cache_values:
-            np.testing.assert_array_equal(cache_values[b * beam_size][i],
-                                          cache_values[b * beam_size + 1][i])
+            np.testing.assert_array_equal(
+                cache_values[b * beam_size][i],
+                cache_values[b * beam_size + 1][i],
+            )
 
   def test_score_batch(self):
     encoder_input_tokens = jnp.ones((2, 3))
@@ -447,29 +484,32 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         'encoder_input_tokens': encoder_input_tokens,
         'decoder_input_tokens': decoder_input_tokens,
         'decoder_target_tokens': decoder_target_tokens,
-        'decoder_loss_weights': decoder_loss_weights
+        'decoder_loss_weights': decoder_loss_weights,
     }
 
     def mock_init(self):
       self.module = mock_transformer
 
     with mock.patch.object(
-        models.EncoderDecoderModel, '__init__', new=mock_init):
+        models.EncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.EncoderDecoderModel()
       res = model.score_batch(params, batch)
 
-    mock_transformer.apply.assert_called_with({'params': params},
-                                              encoder_input_tokens,
-                                              decoder_input_tokens,
-                                              decoder_target_tokens,
-                                              encoder_segment_ids=None,
-                                              decoder_segment_ids=None,
-                                              encoder_positions=None,
-                                              decoder_positions=None,
-                                              decode=False,
-                                              enable_dropout=False,
-                                              rngs=None,
-                                              mutable=False)
+    mock_transformer.apply.assert_called_with(
+        {'params': params},
+        encoder_input_tokens,
+        decoder_input_tokens,
+        decoder_target_tokens,
+        encoder_segment_ids=None,
+        decoder_segment_ids=None,
+        encoder_positions=None,
+        decoder_positions=None,
+        decode=False,
+        enable_dropout=False,
+        rngs=None,
+        mutable=False,
+    )
     np.testing.assert_allclose(res, [-3.222973, -1.815315], rtol=1e-4)
 
   def test_score_batch_can_return_intermediates(self):
@@ -490,38 +530,44 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         'encoder_input_tokens': encoder_input_tokens,
         'decoder_input_tokens': decoder_input_tokens,
         'decoder_target_tokens': decoder_target_tokens,
-        'decoder_loss_weights': decoder_loss_weights
+        'decoder_loss_weights': decoder_loss_weights,
     }
 
     def mock_init(self):
       self.module = mock_transformer
 
     with mock.patch.object(
-        models.EncoderDecoderModel, '__init__', new=mock_init):
+        models.EncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.EncoderDecoderModel()
       scores, intermediates = model.score_batch(
-          params, batch, return_intermediates=True)
+          params, batch, return_intermediates=True
+      )
 
-    mock_transformer.apply.assert_called_with({'params': params},
-                                              encoder_input_tokens,
-                                              decoder_input_tokens,
-                                              decoder_target_tokens,
-                                              encoder_segment_ids=None,
-                                              decoder_segment_ids=None,
-                                              encoder_positions=None,
-                                              decoder_positions=None,
-                                              decode=False,
-                                              enable_dropout=False,
-                                              rngs=None,
-                                              mutable=['intermediates'])
+    mock_transformer.apply.assert_called_with(
+        {'params': params},
+        encoder_input_tokens,
+        decoder_input_tokens,
+        decoder_target_tokens,
+        encoder_segment_ids=None,
+        decoder_segment_ids=None,
+        encoder_positions=None,
+        decoder_positions=None,
+        decode=False,
+        enable_dropout=False,
+        rngs=None,
+        mutable=['intermediates'],
+    )
     np.testing.assert_allclose(scores, [-3.222973, -1.815315], rtol=1e-4)
     # Incumbent intermediates are passed out unchanged.
     np.testing.assert_allclose(intermediates['bar'], jnp.ones(5))
     # A new collection of decoder intermediates are inserted by score_batch()
-    np.testing.assert_allclose(intermediates['decoder']['loss_weights'][0],
-                               decoder_loss_weights)
-    np.testing.assert_allclose(intermediates['decoder']['target_tokens'][0],
-                               decoder_target_tokens)
+    np.testing.assert_allclose(
+        intermediates['decoder']['loss_weights'][0], decoder_loss_weights
+    )
+    np.testing.assert_allclose(
+        intermediates['decoder']['target_tokens'][0], decoder_target_tokens
+    )
 
   def test_train_transformer_wmt(self):
     # Dummy input data
@@ -533,7 +579,7 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     input_data = {
         'encoder_input_tokens': encoder_input_tokens,
         'decoder_input_tokens': decoder_input_tokens,
-        'decoder_target_tokens': decoder_target_tokens
+        'decoder_target_tokens': decoder_target_tokens,
     }
 
     partitioner = partitioning.PjitPartitioner(num_partitions=1)
@@ -547,7 +593,8 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         optimizer_def=model.optimizer_def,
         init_fn=model.get_initial_variables,
         input_shapes=input_shapes,
-        partitioner=partitioner)
+        partitioner=partitioner,
+    )
     train_state_axes = train_state_initializer.train_state_axes
 
     trainer = trainer_lib.Trainer(
@@ -559,7 +606,8 @@ class EncoderDecoderModelTest(parameterized.TestCase):
         train_state_axes=train_state_axes,
         rng=jax.random.PRNGKey(0),
         learning_rate_fn=lambda x: 0.001,
-        num_microbatches=1)
+        num_microbatches=1,
+    )
 
     trainer.train(ds_iter, 1)
     logging.info('optimizer after first step %s', trainer.train_state.params)
@@ -567,14 +615,17 @@ class EncoderDecoderModelTest(parameterized.TestCase):
 
   @parameterized.parameters(
       {'decode_fn': decoding.beam_search},
-      {'decode_fn': functools.partial(decoding.temperature_sample, topk=4)})
+      {'decode_fn': functools.partial(decoding.temperature_sample, topk=4)},
+  )
   def test_predict_batch(self, decode_fn):
     batch_size, encoder_len, max_decode_len, emb_dim = 2, 3, 4, 5
     batch = {
-        'encoder_input_tokens':
-            np.zeros((batch_size, encoder_len), dtype=np.int32),
-        'decoder_input_tokens':
-            np.zeros((batch_size, max_decode_len), dtype=np.int32)
+        'encoder_input_tokens': np.zeros(
+            (batch_size, encoder_len), dtype=np.int32
+        ),
+        'decoder_input_tokens': np.zeros(
+            (batch_size, max_decode_len), dtype=np.int32
+        ),
     }
 
     # These dummy logits represent the probability distribution where all the
@@ -583,7 +634,8 @@ class EncoderDecoderModelTest(parameterized.TestCase):
     # We test `_predict_step` to avoid having to define a task and its
     # vocabulary.
     dummy_logits = jnp.expand_dims(
-        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1)
+        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1
+    )
 
     class MockModule:
 
@@ -612,7 +664,8 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       self._decode_fn = decode_fn
 
     with mock.patch.object(
-        models.EncoderDecoderModel, '__init__', new=mock_init):
+        models.EncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.EncoderDecoderModel()
 
     actual = model.predict_batch({}, batch)
@@ -624,24 +677,31 @@ class EncoderDecoderModelTest(parameterized.TestCase):
   def test_predict_batch_rng(self):
     batch = {
         'encoder_input_tokens': np.zeros((2, 1), dtype=np.int32),
-        'decoder_input_tokens': np.zeros((2, 2), dtype=np.int32)
+        'decoder_input_tokens': np.zeros((2, 2), dtype=np.int32),
     }
 
     decode_fn_mock = mock.Mock(
-        return_value=(np.zeros((2, 2, 3)), np.zeros((2, 2))))
+        return_value=(np.zeros((2, 2, 3)), np.zeros((2, 2)))
+    )
 
     def mock_init(self):
       self.module = mock.Mock(
-          apply=mock.Mock(side_effect=lambda *_, **kwargs: (  # pylint:disable=g-long-lambda,g-long-ternary
-              np.zeros((2, 2)), {
-                  'cache': None
-              }) if 'mutable' in kwargs else np.zeros((2, 2))))
+          apply=mock.Mock(
+              side_effect=lambda *_, **kwargs: (  # pylint:disable=g-long-lambda,g-long-ternary
+                  np.zeros((2, 2)),
+                  {'cache': None},
+              )
+              if 'mutable' in kwargs
+              else np.zeros((2, 2))
+          )
+      )
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = decode_fn_mock
       self._default_decoder_params = models.DecoderParams()
 
     with mock.patch.object(
-        models.EncoderDecoderModel, '__init__', new=mock_init):
+        models.EncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.EncoderDecoderModel()
 
     # No RNG
@@ -671,30 +731,38 @@ class EncoderDecoderModelTest(parameterized.TestCase):
 
     # Both
     with self.assertRaisesWithLiteralMatch(
-        ValueError, 'Got RNG both from the `rng` argument (4) and '
-        "`decoder_params['decode_rng']` (3). Please specify one or the other."):
-      model.predict_batch_with_aux({},
-                                   batch,
-                                   rng=4,
-                                   decoder_params={'decode_rng': 3})
+        ValueError,
+        'Got RNG both from the `rng` argument (4) and '
+        "`decoder_params['decode_rng']` (3). Please specify one or the other.",
+    ):
+      model.predict_batch_with_aux(
+          {}, batch, rng=4, decoder_params={'decode_rng': 3}
+      )
 
   @parameterized.named_parameters(
       dict(
           testcase_name='int32',
           batch={
-              'encoder_input_tokens':
-                  np.zeros((BATCH_SIZE, ENCODER_LEN), dtype=np.int32),
-              'decoder_input_tokens':
-                  np.zeros((BATCH_SIZE, MAX_DECODE_LEN), dtype=np.int32)
-          }),
+              'encoder_input_tokens': np.zeros(
+                  (BATCH_SIZE, ENCODER_LEN), dtype=np.int32
+              ),
+              'decoder_input_tokens': np.zeros(
+                  (BATCH_SIZE, MAX_DECODE_LEN), dtype=np.int32
+              ),
+          },
+      ),
       dict(
           testcase_name='float32',
           batch={
-              'encoder_input_tokens':
-                  np.zeros((BATCH_SIZE, ENCODER_LEN), dtype=np.float32),
-              'decoder_input_tokens':
-                  np.zeros((BATCH_SIZE, MAX_DECODE_LEN), dtype=np.float32)
-          }))
+              'encoder_input_tokens': np.zeros(
+                  (BATCH_SIZE, ENCODER_LEN), dtype=np.float32
+              ),
+              'decoder_input_tokens': np.zeros(
+                  (BATCH_SIZE, MAX_DECODE_LEN), dtype=np.float32
+              ),
+          },
+      ),
+  )
   def test_predict_batch_fake_input_shapes_and_types(self, batch):
 
     # These dummy logits represent the probability distribution where all the
@@ -735,7 +803,8 @@ class EncoderDecoderModelTest(parameterized.TestCase):
       self._inputs_bidirectional_attention = False
 
     with mock.patch.object(
-        models.EncoderDecoderModel, '__init__', new=mock_init):
+        models.EncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.EncoderDecoderModel()
     model.predict_batch({}, batch)
 
@@ -773,16 +842,18 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     seq_len = 10
     lengths = np.array([[6], [3]])
     batch = {
-        'decoder_input_tokens':
-            np.tile(
-                np.expand_dims(np.arange(seq_len, dtype=np.int32), axis=0),
-                (batch_size, 1)),
-        'decoder_causal_attention':
-            (lengths > np.arange(seq_len)).astype(np.int32)
+        'decoder_input_tokens': np.tile(
+            np.expand_dims(np.arange(seq_len, dtype=np.int32), axis=0),
+            (batch_size, 1),
+        ),
+        'decoder_causal_attention': (lengths > np.arange(seq_len)).astype(
+            np.int32
+        ),
     }
 
     dummy_logits = jnp.expand_dims(
-        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1)
+        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1
+    )
 
     mock_module = mock.Mock()
     mock_module.apply.return_value = (dummy_logits, {'cache': {}})
@@ -805,8 +876,9 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     # 'decoder_target_tokens'.
     targets = prefill_call[1]['decoder_target_tokens']
     self.assertTrue(kwargs['prefill'])
-    np.testing.assert_array_equal(kwargs['prefill_lengths'],
-                                  np.squeeze(lengths - 1, axis=-1))
+    np.testing.assert_array_equal(
+        kwargs['prefill_lengths'], np.squeeze(lengths - 1, axis=-1)
+    )
     # Test that the non padding values of the "targets" cover all of the input,
     # you it will all be considered in the attention mask.
     np.testing.assert_array_equal(inputs * targets, inputs)
@@ -819,15 +891,18 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     # position (which is 1 - length). If we didn't mask the target correctly,
     # we would expect a larger value in the max.
     np.testing.assert_array_equal(
-        np.max(inputs, axis=1), np.squeeze(lengths - 1, axis=-1))
+        np.max(inputs, axis=1), np.squeeze(lengths - 1, axis=-1)
+    )
 
 
   def test_predict_batch(self):
     batch = {
-        'decoder_input_tokens':
-            np.array([[0, 3, 4, 5, 6, 0, 0], [0, 7, 8, 9, 0, 0, 0]]),
-        'decoder_causal_attention':
-            np.array([[1, 1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0]])
+        'decoder_input_tokens': np.array(
+            [[0, 3, 4, 5, 6, 0, 0], [0, 7, 8, 9, 0, 0, 0]]
+        ),
+        'decoder_causal_attention': np.array(
+            [[1, 1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0]]
+        ),
     }
 
     # These dummy logits represent the probability distribution where all the
@@ -836,7 +911,8 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     # We test `_predict_step` to avoid having to define a task and its
     # vocabulary.
     dummy_logits = jnp.expand_dims(
-        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1)
+        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1
+    )
 
     mock_module = mock.Mock()
     mock_module.apply.return_value = (dummy_logits, {'cache': {}})
@@ -868,18 +944,24 @@ class DecoderOnlyModelTest(parameterized.TestCase):
   def test_predict_batch_rng(self):
     batch = {
         'decoder_input_tokens': np.zeros((2, 2), dtype=np.int32),
-        'decoder_causal_attention': np.zeros((2, 2), dtype=np.int32)
+        'decoder_causal_attention': np.zeros((2, 2), dtype=np.int32),
     }
 
     decode_fn_mock = mock.Mock(
-        return_value=(np.zeros((2, 2, 3)), np.zeros((2, 2))))
+        return_value=(np.zeros((2, 2, 3)), np.zeros((2, 2)))
+    )
 
     def mock_init(self):
       self.module = mock.Mock(
-          apply=mock.Mock(side_effect=lambda *_, **kwargs: (  # pylint:disable=g-long-lambda,g-long-ternary
-              np.zeros((2, 2)), {
-                  'cache': None
-              }) if 'mutable' in kwargs else np.zeros((2, 2))))
+          apply=mock.Mock(
+              side_effect=lambda *_, **kwargs: (  # pylint:disable=g-long-lambda,g-long-ternary
+                  np.zeros((2, 2)),
+                  {'cache': None},
+              )
+              if 'mutable' in kwargs
+              else np.zeros((2, 2))
+          )
+      )
       self._output_vocabulary = mock.Mock(eos_id=1)
       self._decode_fn = decode_fn_mock
       self._inputs_bidirectional_attention = False
@@ -914,12 +996,13 @@ class DecoderOnlyModelTest(parameterized.TestCase):
 
     # Both
     with self.assertRaisesWithLiteralMatch(
-        ValueError, 'Got RNG both from the `rng` argument (4) and '
-        "`decoder_params['decode_rng']` (3). Please specify one or the other."):
-      model.predict_batch_with_aux({},
-                                   batch,
-                                   rng=4,
-                                   decoder_params={'decode_rng': 3})
+        ValueError,
+        'Got RNG both from the `rng` argument (4) and '
+        "`decoder_params['decode_rng']` (3). Please specify one or the other.",
+    ):
+      model.predict_batch_with_aux(
+          {}, batch, rng=4, decoder_params={'decode_rng': 3}
+      )
 
   def test_predict_batch_num_decodes_temperature_sample(self):
     batch = {
@@ -928,7 +1011,7 @@ class DecoderOnlyModelTest(parameterized.TestCase):
         ]),
         'decoder_causal_attention': np.array([
             [1, 1, 1, 0, 0, 0, 0],
-        ])
+        ]),
     }
 
     # These dummy logits represent the probability distribution where all the
@@ -937,7 +1020,8 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     # Technically these should be identical since the prompts are the same, but
     # this makes testing easier.
     dummy_logits = jnp.expand_dims(
-        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1)
+        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1
+    )
 
     mock_module = mock.Mock()
     mock_module.apply.return_value = (dummy_logits, {'cache': {}})
@@ -952,13 +1036,12 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     with mock.patch.object(models.DecoderOnlyModel, '__init__', new=mock_init):
       model = models.DecoderOnlyModel()
 
-    actual_output, aux = model.predict_batch_with_aux({},
-                                                      batch,
-                                                      num_decodes=2,
-                                                      return_all_decodes=True)
+    actual_output, aux = model.predict_batch_with_aux(
+        {}, batch, num_decodes=2, return_all_decodes=True
+    )
 
     expected_output = [[[2, 2, 2, 2, 2, 0, 0], [3, 3, 3, 3, 3, 0, 0]]]
-    expected_scores = [[0., 0.]]
+    expected_scores = [[0.0, 0.0]]
 
     # The expected progression of the first element of 'decoder_input_tokens':
     # [0, 3, 4, 5, 6, 0, 0] -> [0, 3, 4, 0, 0, 0, 0] ->
@@ -977,12 +1060,12 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     # is created from multiplying the causal attention and the input tokens
     # needs to be an int or the decoding will fail.
     batch = {
-        'decoder_input_tokens':
-            np.array([[0, 3, 4, 5, 6, 0, 0], [0, 7, 8, 9, 0, 0, 0]],
-                     dtype=np.int32),
-        'decoder_causal_attention':
-            np.array([[1, 1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0]],
-                     dtype=np.int32)
+        'decoder_input_tokens': np.array(
+            [[0, 3, 4, 5, 6, 0, 0], [0, 7, 8, 9, 0, 0, 0]], dtype=np.int32
+        ),
+        'decoder_causal_attention': np.array(
+            [[1, 1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0]], dtype=np.int32
+        ),
     }
 
     dummy_logits = jnp.ones((2, 1, 5), jnp.float32)
@@ -1009,25 +1092,27 @@ class DecoderOnlyModelTest(parameterized.TestCase):
     self.assertEqual(cache_init_call[0][0], {'params': {}})
     np.testing.assert_allclose(cache_init_call[0][1], fake_target)
     np.testing.assert_allclose(cache_init_call[0][2], fake_target)
-    self.assertEqual(cache_init_call[1], {
-        'decode': True,
-        'enable_dropout': False,
-        'mutable': ['cache']
-    })
+    self.assertEqual(
+        cache_init_call[1],
+        {'decode': True, 'enable_dropout': False, 'mutable': ['cache']},
+    )
 
   @parameterized.named_parameters(
       dict(
           testcase_name='no_types',
           shapes={'decoder_input_tokens': [1, 62]},
-          types=None),
+          types=None,
+      ),
       dict(
           testcase_name='int32',
           shapes={'decoder_input_tokens': [1, 62]},
-          types={'decoder_input_tokens': jnp.int32}),
+          types={'decoder_input_tokens': jnp.int32},
+      ),
       dict(
           testcase_name='float32',
           shapes={'decoder_input_tokens': [1, 62]},
-          types={'decoder_input_tokens': jnp.int32}),
+          types={'decoder_input_tokens': jnp.int32},
+      ),
   )
   def test_get_initial_variables_shapes_and_types(self, shapes, types):
     mock_lm = mock.Mock()
@@ -1045,10 +1130,12 @@ class DecoderOnlyModelTest(parameterized.TestCase):
 
     if types is None:
       decoder_input = jnp.ones(
-          shapes['decoder_input_tokens'], dtype=jnp.float32)
+          shapes['decoder_input_tokens'], dtype=jnp.float32
+      )
     else:
       decoder_input = jnp.ones(
-          shapes['decoder_input_tokens'], dtype=types['decoder_input_tokens'])
+          shapes['decoder_input_tokens'], dtype=types['decoder_input_tokens']
+      )
 
     # Using `.assert_called_once_with` doesn't work because the simple
     # comparison it does for the array arguments fail (truth value of an array

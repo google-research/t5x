@@ -51,9 +51,11 @@ class MoeTrainer(trainer.Trainer):
       learning_rate_fn: LearningRateCallable,
       num_microbatches: Optional[int],
       num_expert_partitions: int,
-      sharded_match_fn: Optional[Callable[
-          [str], bool]] = training_utils.match_fn(r'.*expert.*'),
-      weight_metrics_computer: Optional[trainer.WeightMetricsComputer] = None):
+      sharded_match_fn: Optional[
+          Callable[[str], bool]
+      ] = training_utils.match_fn(r'.*expert.*'),
+      weight_metrics_computer: Optional[trainer.WeightMetricsComputer] = None,
+  ):
     """Trainer constructor.
 
     Args:
@@ -88,7 +90,8 @@ class MoeTrainer(trainer.Trainer):
         rng=rng,
         learning_rate_fn=learning_rate_fn,
         num_microbatches=num_microbatches,
-        weight_metrics_computer=weight_metrics_computer)
+        weight_metrics_computer=weight_metrics_computer,
+    )
 
     self._num_expert_partitions = num_expert_partitions
     self._sharded_match_fn = sharded_match_fn
@@ -105,8 +108,9 @@ class MoeTrainer(trainer.Trainer):
       Partitioned train step function.
     """
 
-    def train_with_lr(train_state: train_state_lib.TrainState,
-                      batch: BatchType):
+    def train_with_lr(
+        train_state: train_state_lib.TrainState, batch: BatchType
+    ):
       grad_accum, metrics, flax_mutables = (
           trainer.accumulate_grads_microbatched(
               self._model,
@@ -114,13 +118,16 @@ class MoeTrainer(trainer.Trainer):
               batch,
               self._get_step_rng(train_state.step),  # pytype: disable=wrong-arg-types  # jax-ndarray
               self._num_microbatches,
-              data_partition_spec=self.data_partition_spec))
+              data_partition_spec=self.data_partition_spec,
+          )
+      )
 
       # Only difference between this train step and regular T5X train step:
       scaled_grads = training_utils.scale_sharded_grads(
           grad_accum,
           self._sharded_match_fn,
-          scale_factor=self._num_expert_partitions)
+          scale_factor=self._num_expert_partitions,
+      )
 
       new_train_state, metrics = trainer.apply_grads(
           train_state,
@@ -129,11 +136,14 @@ class MoeTrainer(trainer.Trainer):
           self._learning_rate_fn(train_state.step),
           self._weight_metrics_computer,
           other_state_variables={'flax_mutables': flax_mutables}
-          if flax_mutables else None)
+          if flax_mutables
+          else None,
+      )
       return new_train_state, metrics
 
     return self._partitioner.partition(
         train_with_lr,
         in_axis_resources=(self._train_state_axes, self.data_partition_spec),
         out_axis_resources=(self._train_state_axes, None),
-        donate_argnums=(0,))
+        donate_argnums=(0,),
+    )

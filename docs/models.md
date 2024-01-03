@@ -131,23 +131,26 @@ mT5 XXL   | [mt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/e
 
 #### mT5 LM-Adapted Checkpoints
 
-These are the checkpoints released as part of the [zero-shot cross-lingual generation (XGen) paper](https://arxiv.org/abs/2205.12647).
+These are the checkpoints released as part of the
+[zero-shot cross-lingual generation (XGen) paper](https://arxiv.org/abs/2205.12647).
 
 These "LM-adapted" models are initialized from mT5 (above) and trained for an
-additional 100K steps on the LM objective discussed in the [T5 paper](https://arxiv.org/abs/1910.10683).
+additional 100K steps on the LM objective discussed in the
+[T5 paper](https://arxiv.org/abs/1910.10683).
 
-This adaptation improves the ability of the model to be used for [prompt tuning](https://arxiv.org/abs/2104.08691).
+This adaptation improves the ability of the model to be used for
+[prompt tuning](https://arxiv.org/abs/2104.08691).
 
 **Vocabulary:**
 [mc4.250000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/mc4.250000.100extra)
 
-Model                | Gin File Location                                                                                                   | Checkpoint Location
--------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
+Model                | Gin File Location                                                            | Checkpoint Location
+-------------------- | ---------------------------------------------------------------------------- | -------------------
 mT5 LM-Adapted Small | [mt5/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/small.gin) | [mt5_lm_adapted/small/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/small/checkpoint_1100000)
-mT5 LM-Adapted Base | [mt5/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/base.gin) | [mt5_lm_adapted/base/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/base/checkpoint_1100000)
+mT5 LM-Adapted Base  | [mt5/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/base.gin)   | [mt5_lm_adapted/base/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/base/checkpoint_1100000)
 mT5 LM-Adapted Large | [mt5/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/large.gin) | [mt5_lm_adapted/large/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/large/checkpoint_1100000)
-mT5 LM-Adapted XL | [mt5/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xl.gin) | [mt5_lm_adapted/xl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/xl/checkpoint_1100000)
-mT5 LM-Adapted XXL | [mt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xxl.gin) | [mt5_lm_adapted/xxl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/xxl/checkpoint_1100000)
+mT5 LM-Adapted XL    | [mt5/xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xl.gin)       | [mt5_lm_adapted/xl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/xl/checkpoint_1100000)
+mT5 LM-Adapted XXL   | [mt5/xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/mt5/xxl.gin)     | [mt5_lm_adapted/xxl/checkpoint_1100000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/mt5_lm_adapted/xxl/checkpoint_1100000)
 
 #### umT5 Checkpoints
 
@@ -159,20 +162,19 @@ to 13B parameters, trained on the mC4 corpus using a denoising objective. umT5
 is trained on a fresher version of the mC4 corpus (3.1.0), and with a more
 uniform language balancing strategy.
 
-**Vocabulary:**
-[umt5.256000](https://console.cloud.google.com/storage/browser/t5-data/vocabs/umt5.256000)
+**Vocabulary:** [umt5.256000](https://console.cloud.google.com/storage/browser/t5-data/vocabs/umt5.256000)
 
-Model                | Gin File Location                                                                                                   | Checkpoint Location
--------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
+Model      | Gin File Location                                                                                         | Checkpoint Location
+---------- | --------------------------------------------------------------------------------------------------------- | -------------------
 umT5 Small | [umt5/pretrain_small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_small.gin) | [umt5/small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/small/checkpoint_1000000)
-umT5 Base | [umt5/pretrain_base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_base.gin) | [umt5/base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/base/checkpoint_1000000)
-umT5 XL | [umt5/pretrain_xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_xl.gin) | [umt5/xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xl/checkpoint_1000000)
-umT5 XXL | [umt5/pretrain_xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_xxl.gin) | [umt5/xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xxl/checkpoint_1000000)
+umT5 Base  | [umt5/pretrain_base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_base.gin)   | [umt5/base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/base/checkpoint_1000000)
+umT5 XL    | [umt5/pretrain_xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_xl.gin)       | [umt5/xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xl/checkpoint_1000000)
+umT5 XXL   | [umt5/pretrain_xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/scalable_t5/umt5/pretrain_xxl.gin)     | [umt5/xxl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/umt5/xxl/checkpoint_1000000)
 
 #### ByT5 Checkpoints
 
-These are the checkpoints used in the paper [ByT5: Towards a Token-Free Future
-with Pre-trained Byte-to-Byte Models](https://aclanthology.org/2022.tacl-1.17/).
+These are the checkpoints used in the paper
+[ByT5: Towards a Token-Free Future with Pre-trained Byte-to-Byte Models](https://aclanthology.org/2022.tacl-1.17/).
 They are similar to mT5 (above), but are "token-free", processing text as raw
 UTF-8 bytes, as opposed to using a pretrained subword vocabulary. These models
 are more robust to character-level noise, and outperform parameter-matched mT5
@@ -182,8 +184,8 @@ pronunciation, or morphology. However inference is significantly slower, up to
 
 **Vocabulary:** None
 
-Model     | Gin File Location                                                            | Checkpoint Location
---------- | ---------------------------------------------------------------------------- | -------------------
+Model      | Gin File Location                                                              | Checkpoint Location
+---------- | ------------------------------------------------------------------------------ | -------------------
 ByT5 Small | [byt5/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/byt5/small.gin) | [gs://t5-data/pretrained_models/t5x/byt5_small/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/byt5_small)
 ByT5 Base  | [byt5/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/byt5/base.gin)   | [gs://t5-data/pretrained_models/t5x/byt5_base/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/byt5_base)
 ByT5 Large | [byt5/large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/byt5/large.gin) | [gs://t5-data/pretrained_models/t5x/byt5_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/byt5_large)
@@ -229,7 +231,6 @@ LongT5 Base  | [longt5/models/longt5_1_1_transient_base.gin](https://github.com/
 LongT5 Large | [longt5/models/longt5_1_1_transient_large.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_transient_global_large.gin) | [gs://t5-data/pretrained_models/t5x/longt5/tglobal_large/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/tglobal_large)
 LongT5 XL    | [longt5/models/longt5_1_1_transient_xl.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/longt5/models/longt5_1_1_transient_global_xl.gin)       | [gs://t5-data/pretrained_models/t5x/longt5/tglobal_xl/checkpoint_1000000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/longt5/tglobal_xl)
 
-
 #### Mixture of Experts (MoE) Checkpoints
 
 These MoE checkpoints need to be used with T5X MoE overrides -- specifically,
@@ -239,11 +240,11 @@ the MoeTrainer and the MoePjitPartitioner. For example, for fine-tuning, use the
 
 ##### Converted Mesh Tensorflow checkpoints
 
-These are the checkpoints from the
 [Switch Transformer model](https://arxiv.org/abs/2101.03961).
 
 **Vocabulary:**
 [cc_all.32000.100extra](https://console.cloud.google.com/storage/browser/t5-data/vocabs/cc_all.32000.100extra)
+
 
 Model                                    | Gin File Location                                                                                            | Checkpoint Location
 ---------------------------------------- | ------------------------------------------------------------------------------------------------------------ | -------------------
@@ -258,32 +259,30 @@ Switch Transformer XXL 128 Experts       | [switch_xxl.gin](https://github.com/g
 Switch Transformer C 2048 Experts (1.6T) | [switch_c.gin](https://github.com/google/flaxformer/tree/main/flaxformer/t5x/configs/moe/models/switch_c.gin)         | [gs://t5-data/pretrained_models/t5x/moe/switch_classic/c/e2048/checkpoint_611800](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/moe/switch_classic/c/e2048)
 
 
-
-
-
 #### Flan-T5 Checkpoints
 
-These are the checkpoints released as part of the paper [Scaling
-Instruction-Finetuned Language Models](https://arxiv.org/abs/2210.11416). They were
-initialized from the [T5 1.1 LM-Adapted](#t5-11-lm-adapted-checkpoints) and instruction-finetuned.
+These are the checkpoints released as part of the paper
+[Scaling Instruction-Finetuned Language Models](https://arxiv.org/abs/2210.11416).
+They were initialized from the
+[T5 1.1 LM-Adapted](#t5-11-lm-adapted-checkpoints) and instruction-finetuned.
 
 They significantly outperform the LM-adapted checkpoints. For example,
 Flan-T5-XXL outperforms T5-LM-XXL by 26.6% absolute on the normalized average
-score. It even outperforms a much larger PaLM 62B model on [BigBench
-Hard](https://arxiv.org/abs/2210.09261) a
-set of challenging BigBench benchmark.
+score. It even outperforms a much larger PaLM 62B model on
+[BigBench Hard](https://arxiv.org/abs/2210.09261) a set of challenging BigBench
+benchmark.
 
-Unlike the vanilla T5 checkpoints, these can be directly used for
-few-shot prompting as well as standard finetuning. See [Chung et al. 2022](https://arxiv.org/abs/2210.11416) for details.
+Unlike the vanilla T5 checkpoints, these can be directly used for few-shot
+prompting as well as standard finetuning. See
+[Chung et al. 2022](https://arxiv.org/abs/2210.11416) for details.
 
-Model                | Gin File Location                                                                                                   | Checkpoint Location
--------------------- | ------------------------------------------------------------------------------------------------------------------- | -------------------
+Model         | Gin File Location                                                                  | Checkpoint Location
+------------- | ---------------------------------------------------------------------------------- | -------------------
 Flan-T5 Small | [t5_1_1/small.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/small.gin) | [gs://t5-data/pretrained_models/t5x/flan_t5_small/checkpoint_1198000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/flan_t5_small/checkpoint_1198000)
 Flan-T5 Base  | [t5_1_1/base.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/base.gin)   | [gs://t5-data/pretrained_models/t5x/flan_t5_base/checkpoint_1184000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/flan_t5_base/checkpoint_1184000)
 Flan-T5 Large | [t5_1_1_large.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/large.gin) | [gs://t5-data/pretrained_models/t5x/flan_t5_large/checkpoint_1164000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/flan_t5_large/checkpoint_1164000)
 Flan-T5 XL    | [t5_1_1_xl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/xl.gin)       | [gs://t5-data/pretrained_models/t5x/flan_t5_xl/checkpoint_1138000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/flan_t5_xl/checkpoint_1138000)
 Flan-T5 XXL   | [t5_1_1_xxl.gin](https://github.com/google-research/t5x/blob/main/t5x/examples/t5/t5_1_1/xxl.gin)     | [gs://t5-data/pretrained_models/t5x/flan_t5_xxl/checkpoint_1114000](https://console.cloud.google.com/storage/browser/t5-data/pretrained_models/t5x/flan_t5_xxl/checkpoint_1114000)
-
 
 #### UL2 Checkpoints
 

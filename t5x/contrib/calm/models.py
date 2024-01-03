@@ -125,12 +125,12 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       output_vocabulary: seqio.Vocabulary,
       optimizer_def: optimizers.OptimizerDefType,
       decode_fn: DecodeFnCallable = calm_decoding.temperature_sample,
-      feature_converter_cls: Optional[Callable[...,
-                                               seqio.FeatureConverter]] = None,
+      feature_converter_cls: Optional[
+          Callable[..., seqio.FeatureConverter]
+      ] = None,
       label_smoothing: float = 0.0,
       z_loss: float = 0.0,
       loss_normalizing_factor: Optional[float] = None,
-
       apply_early_inference: bool = False,
       decoder_layers: int = 12,
       conf_threshold: float = 1.0,
@@ -174,18 +174,20 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         loss_normalizing_factor=loss_normalizing_factor,
     )
 
-  def get_pred_confidence(self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
-                          logits: jnp.ndarray = None,
-                          prev_state: jnp.ndarray = None,
-                          new_state: jnp.ndarray = None,
-                          meta_score: jnp.ndarray = None) -> jnp.ndarray:
+  def get_pred_confidence(
+      self,  # pytype: disable=annotation-type-mismatch  # jax-ndarray
+      logits: jnp.ndarray = None,
+      prev_state: jnp.ndarray = None,
+      new_state: jnp.ndarray = None,
+      meta_score: jnp.ndarray = None,
+  ) -> jnp.ndarray:
     """Computes the of decoder in its current prediction.
 
     The confidence function is determined by self.conf_method.
 
     Args:
-      logits: Array with last dimension holding the logits over
-        the output vocabulary.
+      logits: Array with last dimension holding the logits over the output
+        vocabulary.
       prev_state: Hidden state from previous layer.
       new_state: Hidden state of current layer.
       meta_score: The confidence score of an early-exit classifier.
@@ -218,7 +220,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       # hidden state and the previous one.
       assert prev_state is not None and new_state is not None
       conf = jnp.inner(prev_state, new_state) / (
-          jnp.linalg.norm(prev_state) * jnp.linalg.norm(new_state))
+          jnp.linalg.norm(prev_state) * jnp.linalg.norm(new_state)
+      )
       return conf.squeeze()
 
     elif self.conf_method == 'meta':
@@ -228,7 +231,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
     else:
       raise NotImplementedError(
-          f'Confidence method {self.conf_method} is not implemented.')
+          f'Confidence method {self.conf_method} is not implemented.'
+      )
 
   def loss_fn_meta_cls(
       self,
@@ -252,15 +256,19 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       metrics: a mapping of metrics computed for this batch.
     """
 
-    loss_normalizing_factor: Optional[Union[
-        float, int, str, losses.SpecialLossNormalizingFactor]]
-    (loss_normalizing_factor,
-     weights) = losses.get_loss_normalizing_factor_and_weights(
-         self._loss_normalizing_factor, batch)
+    loss_normalizing_factor: Optional[
+        Union[float, int, str, losses.SpecialLossNormalizingFactor]
+    ]
+    (loss_normalizing_factor, weights) = (
+        losses.get_loss_normalizing_factor_and_weights(
+            self._loss_normalizing_factor, batch
+        )
+    )
 
     all_logits = self._compute_logits(params, batch, dropout_rng)
-    assert isinstance(all_logits,
-                      tuple), 'Verify that meta_cls was initialized in decoder.'
+    assert isinstance(
+        all_logits, tuple
+    ), 'Verify that meta_cls was initialized in decoder.'
     all_meta_logits = all_logits[1]
     all_logits = all_logits[0]
 
@@ -271,9 +279,16 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
     all_meta_labels = jnp.array(top_pred == predictions, dtype=jnp.int32)
 
     # Aggregate meta loss across layers.
-    all_loss, all_total_z_loss, = [], []
-    for meta_logits, meta_labels in zip(all_meta_logits[:-1],
-                                        all_meta_labels[:-1]):
+    (
+        all_loss,
+        all_total_z_loss,
+    ) = (
+        [],
+        [],
+    )
+    for meta_logits, meta_labels in zip(
+        all_meta_logits[:-1], all_meta_labels[:-1]
+    ):
       # Balance across the positive/ negative labels.
       balanced_weights = weights.copy().astype(float)  # pytype: disable=attribute-error  # jnp-type
 
@@ -282,8 +297,10 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
       pos_weight = 1 - (pos_num / (pos_num + neg_num))
       neg_weight = 1 - (neg_num / (pos_num + neg_num))
-      balanced_weights = weights * meta_labels * pos_weight + weights * (
-          1 - meta_labels) * neg_weight
+      balanced_weights = (
+          weights * meta_labels * pos_weight
+          + weights * (1 - meta_labels) * neg_weight
+      )
 
       # Compute layer loss.
       all_loss_i, all_total_z_loss_i, _ = losses.compute_weighted_cross_entropy(
@@ -292,7 +309,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
           label_smoothing=self._label_smoothing,
           z_loss=self._z_loss,
           weights=balanced_weights,
-          loss_normalizing_factor=loss_normalizing_factor)
+          loss_normalizing_factor=loss_normalizing_factor,
+      )
       all_loss.append(all_loss_i)
       all_total_z_loss.append(all_total_z_loss_i)
 
@@ -304,19 +322,20 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         targets=batch['decoder_target_tokens'],
         mask=weights,
         loss=loss,
-        z_loss=total_z_loss)
+        z_loss=total_z_loss,
+    )
 
     # Meta metrics.
     for i, (meta_logits, meta_labels) in enumerate(
-        zip(all_meta_logits[:-1], all_meta_labels[:-1])):
+        zip(all_meta_logits[:-1], all_meta_labels[:-1])
+    ):
       meta_metrics = {
-          f'meta_accuracy/layer_{i}':
-              clu_metrics.Accuracy.from_model_output(
-                  logits=meta_logits,
-                  labels=meta_labels.astype(jnp.int32),
-                  mask=weights),
-          f'meta_loss/layer_{i}':
-              metrics_lib.AveragePerStep(total=all_loss[i]),
+          f'meta_accuracy/layer_{i}': clu_metrics.Accuracy.from_model_output(
+              logits=meta_logits,
+              labels=meta_labels.astype(jnp.int32),
+              mask=weights,
+          ),
+          f'meta_loss/layer_{i}': metrics_lib.AveragePerStep(total=all_loss[i]),
       }
       metrics.update(meta_metrics)
 
@@ -350,15 +369,19 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       metrics: a mapping of metrics computed for this batch.
     """
 
-    loss_normalizing_factor: Optional[Union[
-        float, int, str, losses.SpecialLossNormalizingFactor]]
-    (loss_normalizing_factor,
-     weights) = losses.get_loss_normalizing_factor_and_weights(
-         self._loss_normalizing_factor, batch)
+    loss_normalizing_factor: Optional[
+        Union[float, int, str, losses.SpecialLossNormalizingFactor]
+    ]
+    (loss_normalizing_factor, weights) = (
+        losses.get_loss_normalizing_factor_and_weights(
+            self._loss_normalizing_factor, batch
+        )
+    )
 
     all_logits = self._compute_logits(params, batch, dropout_rng)
-    assert isinstance(all_logits,
-                      tuple), 'Verify that meta_cls was initialized in decoder.'
+    assert isinstance(
+        all_logits, tuple
+    ), 'Verify that meta_cls was initialized in decoder.'
     all_meta_logits = all_logits[1]
     all_logits = all_logits[0]
 
@@ -385,7 +408,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         label_smoothing=self._label_smoothing,
         z_loss=self._z_loss,
         weights=weights,
-        loss_normalizing_factor=loss_normalizing_factor)
+        loss_normalizing_factor=loss_normalizing_factor,
+    )
 
     total_z_loss = 0.0  # hardcoded
 
@@ -394,24 +418,26 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         targets=batch['decoder_target_tokens'],
         mask=weights,
         loss=loss,
-        z_loss=total_z_loss)
+        z_loss=total_z_loss,
+    )
 
     # Meta metrics.
     for i, (meta_logits, meta_labels) in enumerate(
-        zip(all_meta_logits[:-1], all_meta_labels[:-1])):
+        zip(all_meta_logits[:-1], all_meta_labels[:-1])
+    ):
       meta_metrics = {
-          f'meta_accuracy/layer_{i}':
-              clu_metrics.Accuracy.from_model_output(
-                  logits=meta_logits,
-                  labels=meta_labels.astype(jnp.int32),
-                  mask=weights),
+          f'meta_accuracy/layer_{i}': clu_metrics.Accuracy.from_model_output(
+              logits=meta_logits,
+              labels=meta_labels.astype(jnp.int32),
+              mask=weights,
+          ),
       }
       meta_metrics.update({
-          'meta_accuracy/multiclass':
-              clu_metrics.Accuracy.from_model_output(
-                  logits=geom_like_probs,
-                  labels=all_meta_labels_multiclass.astype(jnp.int32),
-                  mask=weights),
+          'meta_accuracy/multiclass': clu_metrics.Accuracy.from_model_output(
+              logits=geom_like_probs,
+              labels=all_meta_labels_multiclass.astype(jnp.int32),
+              mask=weights,
+          ),
       })
       metrics.update(meta_metrics)
 
@@ -446,11 +472,14 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       else:
         return self.loss_fn_meta_cls(params, batch, dropout_rng)
 
-    loss_normalizing_factor: Optional[Union[
-        float, int, str, losses.SpecialLossNormalizingFactor]]
-    (loss_normalizing_factor,
-     weights) = losses.get_loss_normalizing_factor_and_weights(
-         self._loss_normalizing_factor, batch)
+    loss_normalizing_factor: Optional[
+        Union[float, int, str, losses.SpecialLossNormalizingFactor]
+    ]
+    (loss_normalizing_factor, weights) = (
+        losses.get_loss_normalizing_factor_and_weights(
+            self._loss_normalizing_factor, batch
+        )
+    )
 
     all_logits = self._compute_logits(params, batch, dropout_rng)
     all_loss, all_total_z_loss = [], []
@@ -461,20 +490,22 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
           weights=weights,
           label_smoothing=self._label_smoothing,
           z_loss=self._z_loss,
-          loss_normalizing_factor=loss_normalizing_factor)
+          loss_normalizing_factor=loss_normalizing_factor,
+      )
       all_loss.append(all_loss_i)
       all_total_z_loss.append(all_total_z_loss_i)
 
     if self.aggregation_weights == -1:
       # Geometric series with a=1, r=2.
-      avg_weights = jnp.geomspace(1, 2**(len(all_loss) - 1), len(all_loss))
+      avg_weights = jnp.geomspace(1, 2 ** (len(all_loss) - 1), len(all_loss))
     elif self.aggregation_weights == 0:
       avg_weights = jnp.ones(len(all_loss))
     else:
       avg_weights = jnp.arange(
           1,
           self.aggregation_weights * len(all_loss) + 1,
-          step=self.aggregation_weights)
+          step=self.aggregation_weights,
+      )
     loss = jnp.average(jnp.array(all_loss), 0, avg_weights)
     total_z_loss = jnp.average(jnp.array(all_total_z_loss), 0, avg_weights)
 
@@ -484,18 +515,22 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         targets=batch['decoder_target_tokens'],
         mask=weights,
         loss=loss,
-        z_loss=total_z_loss)
+        z_loss=total_z_loss,
+    )
 
     # Per layer metrics.
     for i, logits in enumerate(all_logits[:-1]):
       meta_metrics = {
-          f'accuracy_per_layer/layer_{i}':
+          f'accuracy_per_layer/layer_{i}': (
               clu_metrics.Accuracy.from_model_output(
                   logits=logits,
                   labels=batch['decoder_target_tokens'],
-                  mask=weights),
-          f'loss_per_layer/layer_{i}':
-              metrics_lib.AveragePerStep(total=all_loss[i]),
+                  mask=weights,
+              )
+          ),
+          f'loss_per_layer/layer_{i}': metrics_lib.AveragePerStep(
+              total=all_loss[i]
+          ),
       }
       metrics.update(meta_metrics)
 
@@ -521,10 +556,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       # Compute the prediction of the full model for reference for the oracle.
       oracle_flat_cache = copy.deepcopy(flat_cache)
       oracle_flat_logits, _ = self.module.apply(
-          {
-              'params': params,
-              'cache': oracle_flat_cache
-          },
+          {'params': params, 'cache': oracle_flat_cache},
           encoded_inputs,
           raw_inputs,  # only needed for encoder padding mask
           flat_ids,
@@ -536,7 +568,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
           end_idx=None,
           return_prelogits=False,
           mutable=['cache'],
-          method=self.module.decode)
+          method=self.module.decode,
+      )
       oracle_tok_pred = oracle_flat_logits.argmax()
 
     # Get the computation intervals (per layers) of the decoder between exits.
@@ -547,10 +580,7 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
     # First run the decoder but only up to the first exit.
     decoder_hidden, new_vars = self.module.apply(
-        {
-            'params': params,
-            'cache': flat_cache
-        },
+        {'params': params, 'cache': flat_cache},
         encoded_inputs,
         raw_inputs,  # only needed for encoder padding mask
         flat_ids,
@@ -562,7 +592,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         end_idx=comp_intervals[0][1],
         return_prelogits=True,
         mutable=['cache'],
-        method=self.module.decode)
+        method=self.module.decode,
+    )
 
     # If using meta_cls.
     if isinstance(decoder_hidden, tuple):
@@ -573,14 +604,13 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
     new_flat_cache = new_vars['cache']
     if 'softmax' in self.conf_method:
-      flat_logits = self.module.apply({
-          'params': params,
-          'cache': flat_cache
-      },
-                                      decoder_hidden,
-                                      logit_mask=None,
-                                      enable_dropout=False,
-                                      method=self.module.compute_logits)
+      flat_logits = self.module.apply(
+          {'params': params, 'cache': flat_cache},
+          decoder_hidden,
+          logit_mask=None,
+          enable_dropout=False,
+          method=self.module.compute_logits,
+      )
     else:
       flat_logits = None
 
@@ -591,16 +621,18 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       conf = self.get_pred_confidence(logits=flat_logits, meta_score=meta_score)
 
     # Used to enable a positional argument (decoder_embedded_input) for switch.
-    def prt(a,
-            b,
-            c,
-            d,
-            e,
-            f,
-            start_idx=0,
-            end_idx=None,
-            only_propagate_state=False,
-            **kwargs):  # pylint: disable=unused-argument
+    def prt(
+        a,
+        b,
+        c,
+        d,
+        e,
+        f,
+        start_idx=0,
+        end_idx=None,
+        only_propagate_state=False,
+        **kwargs,
+    ):  # pylint: disable=unused-argument
       return self.module.apply(
           a,
           b,
@@ -616,7 +648,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
           return_prelogits=True,
           only_propagate_state=only_propagate_state,
           mutable=['cache'],
-          method=self.module.decode)
+          method=self.module.decode,
+      )
 
     # Segments of the model between exits, passed to lax.switch.
     branches = [
@@ -628,7 +661,9 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
             start_idx=interval[0],
             end_idx=interval[1],
             mutable=['cache'],
-            method=self.module.decode) for interval in comp_intervals
+            method=self.module.decode,
+        )
+        for interval in comp_intervals
     ]
 
     # Switch branches for state propagation. Last branch has zero layers, to be
@@ -643,7 +678,9 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
             end_idx=None,
             mutable=['cache'],
             only_propagate_state=True,
-            method=self.module.decode) for interval in comp_intervals
+            method=self.module.decode,
+        )
+        for interval in comp_intervals
     ] + [
         functools.partial(  # pylint: disable=g-complex-comprehension
             prt,
@@ -654,12 +691,20 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
             end_idx=comp_intervals[-1][1],  # same idx (to just skip)
             mutable=['cache'],
             only_propagate_state=True,
-            method=self.module.decode)
+            method=self.module.decode,
+        )
     ]
 
     # TODO(talschuster) convert to named tuple.
-    init_state = (flat_logits, decoder_hidden, new_flat_cache, conf, 1,
-                  comp_intervals[0][1], meta_score)
+    init_state = (
+        flat_logits,
+        decoder_hidden,
+        new_flat_cache,
+        conf,
+        1,
+        comp_intervals[0][1],
+        meta_score,
+    )
 
     # Runs a segment of the model.
     def body_fn(state):
@@ -668,15 +713,13 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       new_decoder_hidden, new_vars = lax.switch(
           interval,
           branches,
-          {
-              'params': params,
-              'cache': new_flat_cache
-          },
+          {'params': params, 'cache': new_flat_cache},
           encoded_inputs,
           raw_inputs,  # only needed for encoder padding mask
           flat_ids,
           flat_ids,
-          decoder_hidden)
+          decoder_hidden,
+      )
 
       # If using meta_cls.
       if isinstance(new_decoder_hidden, tuple):
@@ -687,14 +730,12 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
 
       if 'softmax' in self.conf_method:
         cur_flat_logits = self.module.apply(
-            {
-                'params': params,
-                'cache': new_flat_cache
-            },
+            {'params': params, 'cache': new_flat_cache},
             new_decoder_hidden,
             logit_mask=None,
             enable_dropout=False,
-            method=self.module.compute_logits)
+            method=self.module.compute_logits,
+        )
         new_flat_logits = cur_flat_logits
       else:
         new_flat_logits = None
@@ -705,19 +746,32 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
           logits=new_flat_logits,
           prev_state=decoder_hidden,
           new_state=new_decoder_hidden,
-          meta_score=meta_score)
+          meta_score=meta_score,
+      )
 
       layer = lax.min(layer + self.exit_interval, num_layers)
-      return (new_flat_logits, new_decoder_hidden, new_flat_cache, new_conf,
-              interval + 1, layer, meta_score)
+      return (
+          new_flat_logits,
+          new_decoder_hidden,
+          new_flat_cache,
+          new_conf,
+          interval + 1,
+          layer,
+          meta_score,
+      )
 
     # Stopping condition (loop continues until it's False).
     def cond_fn(state):
       if self.position_adjusted_threshold:
         # Decays the confidence threshold with decoding time step.
-        correct_by_pos = lambda i: conf_threshold * jnp.exp(  # pylint: disable=g-long-lambda
-            -self.position_temp * i / max_decode_length
-        ) / 10 + 9 * conf_threshold / 10
+        correct_by_pos = (
+            lambda i: conf_threshold
+            * jnp.exp(  # pylint: disable=g-long-lambda
+                -self.position_temp * i / max_decode_length
+            )
+            / 10
+            + 9 * conf_threshold / 10
+        )
         adjusted_threshold = correct_by_pos(jnp.min(pos))
       else:
         adjusted_threshold = conf_threshold
@@ -725,30 +779,34 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       if self.oracle_tok_consistency:
         # Oracle to exit first time predictiong is the same as top layer.
         flat_logits, _, _, _, _, layer, _ = state
-        return (flat_logits.argmax() != oracle_tok_pred) & (
-            layer < num_layers)
+        return (flat_logits.argmax() != oracle_tok_pred) & (layer < num_layers)
       else:
         # Continues until average batch confidence reaches the threshold, or
         # until all layers were exhausted. Also, doesn't exit before min_exit.
         _, _, _, conf, _, layer, _ = state
-        return ((jnp.min(conf) < adjusted_threshold) &
-                (layer < num_layers)) | (
-                    layer < self.min_exit)
+        return ((jnp.min(conf) < adjusted_threshold) & (layer < num_layers)) | (
+            layer < self.min_exit
+        )
 
-    flat_logits, new_decoder_hidden, new_flat_cache, conf, interval, layer, new_meta_score = lax.while_loop(
-        cond_fn, body_fn, init_state)
+    (
+        flat_logits,
+        new_decoder_hidden,
+        new_flat_cache,
+        conf,
+        interval,
+        layer,
+        new_meta_score,
+    ) = lax.while_loop(cond_fn, body_fn, init_state)
 
     if 'softmax' not in self.conf_method:
       # Computes the softmax over the output vocabulary only after exiting.
       flat_logits = self.module.apply(
-          {
-              'params': params,
-              'cache': new_flat_cache
-          },
+          {'params': params, 'cache': new_flat_cache},
           new_decoder_hidden,
           logit_mask=None,
           enable_dropout=False,
-          method=self.module.compute_logits)
+          method=self.module.compute_logits,
+      )
 
     if self.oracle_cache:
       # Run the rest of the layers to compute the real cache (oracle setting).
@@ -756,11 +814,18 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         _, _, _, _, _, layer, _ = state
         return layer < num_layers - 1
 
-      post_exit_state = (flat_logits, new_decoder_hidden, new_flat_cache, conf,
-                         interval, layer - self.exit_interval, new_meta_score)
-      _, _, new_flat_cache, _, _, _, _ = lax.while_loop(cond_fn_complete_run,
-                                                        body_fn,
-                                                        post_exit_state)
+      post_exit_state = (
+          flat_logits,
+          new_decoder_hidden,
+          new_flat_cache,
+          conf,
+          interval,
+          layer - self.exit_interval,
+          new_meta_score,
+      )
+      _, _, new_flat_cache, _, _, _, _ = lax.while_loop(
+          cond_fn_complete_run, body_fn, post_exit_state
+      )
     else:
       # If some decoding layers were skipped, we want to pass the state
       # from the last computed layer to all the upstream skipped layers. This
@@ -770,15 +835,13 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       _, new_vars = lax.switch(
           interval,
           state_prop_branches,
-          {
-              'params': params,
-              'cache': new_flat_cache
-          },
+          {'params': params, 'cache': new_flat_cache},
           encoded_inputs,
           raw_inputs,  # only needed for encoder padding mask
           flat_ids,
           flat_ids,
-          decoder_hidden)
+          decoder_hidden,
+      )
       new_flat_cache = new_vars['cache']
 
     if self.oracle_tok_noisy_cache:
@@ -865,7 +928,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         jnp.ones(target_shape, target_type),
         decode=True,
         enable_dropout=False,
-        mutable=['cache'])
+        mutable=['cache'],
+    )
 
     cache = variables_with_cache['cache']
 
@@ -877,10 +941,14 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
     # [el0, el1, el2] --> beamsize=2 --> [el0,el0,el1,el1,el2,el2]
     # [batch * num_decodes, input_len, emb_dim]
     encoded_inputs = decoding.flat_batch_beam_expand(
-        self.module.apply({'params': params},
-                          inputs,
-                          enable_dropout=False,
-                          method=self.module.encode), num_decodes)
+        self.module.apply(
+            {'params': params},
+            inputs,
+            enable_dropout=False,
+            method=self.module.encode,
+        ),
+        num_decodes,
+    )
 
     # [batch * num_decodes, input_len]
     raw_inputs = decoding.flat_batch_beam_expand(inputs, num_decodes)
@@ -892,23 +960,27 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
           encoded_inputs=encoded_inputs,
           raw_inputs=raw_inputs,
           max_decode_length=target_shape[1],
-          conf_threshold=self.conf_threshold)
+          conf_threshold=self.conf_threshold,
+      )
     else:
       tokens_ids_to_logits = functools.partial(
           self._compute_logits_from_slice,
           params=params,
           encoded_inputs=encoded_inputs,
           raw_inputs=raw_inputs,
-          max_decode_length=target_shape[1])
+          max_decode_length=target_shape[1],
+      )
 
     if decoder_params is None:
       decoder_params = {}
     if rng is not None:
       if decoder_params.get('decode_rng') is not None:
         raise ValueError(
-            f'Got RNG both from the `rng` argument ({rng}) and '
-            f"`decoder_params['decode_rng']` ({decoder_params['decode_rng']}). "
-            'Please specify one or the other.')
+            f'Got RNG both from the `rng` argument ({rng}) and'
+            " `decoder_params['decode_rng']`"
+            f' ({decoder_params["decode_rng"]}). Please specify one or the'
+            ' other.'
+        )
       decoder_params['decode_rng'] = rng
 
     # `decoder_prompt_inputs` is initialized from the batch's
@@ -918,7 +990,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
     if prompt_with_targets:
       decoder_prompt_inputs = batch['decoder_input_tokens']
       decoder_prompt_inputs = decoder_prompt_inputs * (
-          decoder_prompt_inputs != self.output_vocabulary.eos_id)
+          decoder_prompt_inputs != self.output_vocabulary.eos_id
+      )
     else:
       decoder_prompt_inputs = jnp.zeros_like(batch['decoder_input_tokens'])
 
@@ -936,7 +1009,8 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
         tokens_to_logits=tokens_ids_to_logits,
         num_decodes=num_decodes,
         cache_offset=1 if scanned else 0,
-        **decoder_params)
+        **decoder_params,
+    )
 
     # TODO(talschuster) make the decode func return a general dict.
     if self.apply_early_inference:
@@ -951,11 +1025,11 @@ class EncoderDecoderModel(models.EncoderDecoderModel):
       return decodes, {  # pytype: disable=bad-return-type  # jax-ndarray
           'scores': scores,
           'exits': exits,
-          'confidences': confidences
+          'confidences': confidences,
       }
     else:
       return decodes[:, -1, :], {
           'scores': scores[:, -1],
           'exits': exits[:, -1, :],
-          'confidences': confidences[:, -1, :]
+          'confidences': confidences[:, -1, :],
       }

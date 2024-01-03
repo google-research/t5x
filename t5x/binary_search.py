@@ -25,8 +25,9 @@ from jax import lax
 from jax import numpy as jnp
 
 
-def int32_bsearch(batch_shape: Sequence[int], predicate: Callable[[jnp.ndarray],
-                                                                  jnp.ndarray]):
+def int32_bsearch(
+    batch_shape: Sequence[int], predicate: Callable[[jnp.ndarray], jnp.ndarray]
+):
   """Batched binary search over int32 values.
 
   For each element of the batch, search for the largest int32 (closest to
@@ -61,8 +62,9 @@ def int32_bsearch(batch_shape: Sequence[int], predicate: Callable[[jnp.ndarray],
     bit = jnp.int32(1 << bit_index)
     midpoint = current_bits | bit
     predicate_satisfied = predicate(midpoint)
-    current_bits = current_bits | jnp.where(predicate_satisfied, jnp.int32(0),
-                                            bit)
+    current_bits = current_bits | jnp.where(
+        predicate_satisfied, jnp.int32(0), bit
+    )
     return current_bits
 
   current_bits = lax.fori_loop(0, 31, loop_body, current_bits)
@@ -225,8 +227,9 @@ def topk_mask(x: jnp.ndarray, k: int, replace_val: jnp.ndarray) -> jnp.ndarray:
   return jnp.where(x >= cutoff, x, jnp.full_like(x, replace_val))
 
 
-def topp_mask(logits: jnp.ndarray, p: float,
-              replace_val: jnp.ndarray) -> jnp.ndarray:
+def topp_mask(
+    logits: jnp.ndarray, p: float, replace_val: jnp.ndarray
+) -> jnp.ndarray:
   """Applies top-p masking to logits.
 
   Masks logits down to the smallest set of choices, such that the total
@@ -282,7 +285,8 @@ def topp_mask(logits: jnp.ndarray, p: float,
     # count_ge: [batch...]
     probability_mass = jnp.sum(
         jnp.where(probs_for_reduction >= threshold, probs_for_reduction, 0.0),
-        axis=reduce_axis)
+        axis=reduce_axis,
+    )
 
     return probability_mass < p
 
@@ -290,5 +294,6 @@ def topp_mask(logits: jnp.ndarray, p: float,
   threshold = float32_bsearch(batch_shape, predicate)
   # threshold: [batch..., 1]
   threshold = lax.expand_dims(threshold, (threshold.ndim,))
-  return jnp.where(probs >= threshold, logits,
-                   jnp.full_like(logits, replace_val))
+  return jnp.where(
+      probs >= threshold, logits, jnp.full_like(logits, replace_val)
+  )

@@ -26,7 +26,7 @@ class GinUtilsTest(absltest.TestCase):
         'gin.value=3',
         '--gin.value=3',
         '--gin.value="3"',
-        '--gin.value=\'3\'',
+        "--gin.value='3'",
         '--gin.tricky="key = value"',
         '--gin.dict={"foo": 4, "bar": "four"}',
         '--gin.gin=bar',
@@ -37,21 +37,23 @@ class GinUtilsTest(absltest.TestCase):
         'gin.value=3',
         '--gin_bindings=value = 3',
         '--gin_bindings=value = "3"',
-        '--gin_bindings=value = \'3\'',
+        "--gin_bindings=value = '3'",
         '--gin_bindings=tricky = "key = value"',
         '--gin_bindings=dict = {"foo": 4, "bar": "four"}',
         '--gin_bindings=gin = bar',
         '--gin_bindings=scope/foo = bar',
     ]
     self.assertSequenceEqual(
-        gin_utils.rewrite_gin_args(test_args), expected_args)
+        gin_utils.rewrite_gin_args(test_args), expected_args
+    )
 
   def test_rewrite_gin_args_malformed(self):
     test_args = ['--gin.value=3', '--gin.test']
     with self.assertRaisesWithLiteralMatch(
         ValueError,
         "Gin bindings must be of the form '--gin.<param>=<value>', got: "
-        '--gin.test'):
+        '--gin.test',
+    ):
       gin_utils.rewrite_gin_args(test_args)
 
 

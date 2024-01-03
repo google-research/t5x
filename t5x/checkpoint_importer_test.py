@@ -33,12 +33,11 @@ class CheckpointImporterTest(absltest.TestCase):
     # i.e., the same relative attention parameters are shared by all layers
     # within the (en|de)coder.
     ckpt_data = {
-        'encoder/block_000/layer_000/SelfAttention/relative_attention_bias':
-            1,
-        'decoder/block_000/layer_000/SelfAttention/relative_attention_bias':
-            2,
-        'decoder/block_000/layer_000/SelfAttention/relative_attention_bias_slot_v':
-            3,
+        'encoder/block_000/layer_000/SelfAttention/relative_attention_bias': 1,
+        'decoder/block_000/layer_000/SelfAttention/relative_attention_bias': 2,
+        'decoder/block_000/layer_000/SelfAttention/relative_attention_bias_slot_v': (
+            3
+        ),
     }
     t5_data = checkpoint_importer.t5_importer.apply(ckpt_data)
     t5_data = checkpoint_importer._maybe_correct_relpos_bias(t5_data)
@@ -54,16 +53,13 @@ class CheckpointImporterTest(absltest.TestCase):
     # transformer_layers.SelfAttention.relative_attention_type = "bias", i.e.,
     # each layer has its own relative attention parameters.
     ckpt_data = {
-        'encoder/block_000/layer_000/SelfAttention/relative_attention_bias':
-            1,
-        'encoder/block_001/layer_000/SelfAttention/relative_attention_bias':
-            2,
-        'decoder/block_000/layer_000/SelfAttention/relative_attention_bias':
-            3,
-        'decoder/block_000/layer_000/SelfAttention/relative_attention_bias_slot_v':
-            4,
-        'decoder/block_011/layer_000/SelfAttention/relative_attention_bias':
-            5
+        'encoder/block_000/layer_000/SelfAttention/relative_attention_bias': 1,
+        'encoder/block_001/layer_000/SelfAttention/relative_attention_bias': 2,
+        'decoder/block_000/layer_000/SelfAttention/relative_attention_bias': 3,
+        'decoder/block_000/layer_000/SelfAttention/relative_attention_bias_slot_v': (
+            4
+        ),
+        'decoder/block_011/layer_000/SelfAttention/relative_attention_bias': 5,
     }
     t5_data = checkpoint_importer.t5_importer.apply(ckpt_data)
     t5_data = checkpoint_importer._maybe_correct_relpos_bias(t5_data)
@@ -75,6 +71,7 @@ class CheckpointImporterTest(absltest.TestCase):
         'target/decoder/layers_11/relpos_bias/rel_embedding': 5,
     }
     self.assertEqual(t5_data, expected)
+
 
 
 if __name__ == '__main__':

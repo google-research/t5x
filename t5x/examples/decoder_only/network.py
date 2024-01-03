@@ -25,6 +25,7 @@ from t5x.examples.decoder_only import layers
 @struct.dataclass
 class TransformerConfig:
   """Global hyperparameters used to minimize obnoxious kwarg plumbing."""
+
   vocab_size: int
   # Activation dtypes.
   dtype: Any = jnp.float32
@@ -42,18 +43,21 @@ class TransformerConfig:
 
 class DecoderLayer(nn.Module):
   """Transformer decoder layer."""
+
   config: TransformerConfig
   relative_embedding: nn.Module
 
   @nn.compact
-  def __call__(self,
-               inputs: jnp.ndarray,
-               decoder_mask: Optional[jnp.ndarray] = None,
-               deterministic: bool = False,
-               decode: bool = False,
-               max_decode_length: Optional[int] = None,
-               prefill: bool = False,
-               prefill_lengths: Optional[jnp.ndarray] = None):
+  def __call__(
+      self,
+      inputs: jnp.ndarray,
+      decoder_mask: Optional[jnp.ndarray] = None,
+      deterministic: bool = False,
+      decode: bool = False,
+      max_decode_length: Optional[int] = None,
+      prefill: bool = False,
+      prefill_lengths: Optional[jnp.ndarray] = None,
+  ):
     """Applies decoder block module."""
     cfg = self.config
 
@@ -69,9 +73,9 @@ class DecoderLayer(nn.Module):
     decoder_bias = self.relative_embedding(l, l, False, decode=decode)
 
     # `inputs` is layer input with a shape [batch, length, emb_dim].
-    x = layers.LayerNorm(
-        dtype=cfg.dtype, name='pre_self_attention_layer_norm')(
-            inputs)
+    x = layers.LayerNorm(dtype=cfg.dtype, name='pre_self_attention_layer_norm')(
+        inputs
+    )
 
     # Self-attention block
     x = layers.MultiHeadDotProductAttention(
@@ -79,20 +83,22 @@ class DecoderLayer(nn.Module):
         dtype=cfg.dtype,
         head_dim=cfg.head_dim,
         dropout_rate=cfg.dropout_rate,
-        name='self_attention')(
-            x,
-            x,
-            decoder_mask,
-            decoder_bias,
-            deterministic=deterministic,
-            decode=decode,
-            prefill=prefill,
-            prefill_lengths=prefill_lengths)
+        name='self_attention',
+    )(
+        x,
+        x,
+        decoder_mask,
+        decoder_bias,
+        deterministic=deterministic,
+        decode=decode,
+        prefill=prefill,
+        prefill_lengths=prefill_lengths,
+    )
     x = nn.Dropout(
         rate=cfg.dropout_rate,
         broadcast_dims=(-2,),
-        name='post_self_attention_dropout')(
-            x, deterministic=deterministic)
+        name='post_self_attention_dropout',
+    )(x, deterministic=deterministic)
     x = x + inputs
 
     # MLP block.
@@ -105,8 +111,8 @@ class DecoderLayer(nn.Module):
         name='mlp',
     )(y, deterministic=deterministic)
     y = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,), name='post_mlp_dropout')(
-            y, deterministic=deterministic)
+        rate=cfg.dropout_rate, broadcast_dims=(-2,), name='post_mlp_dropout'
+    )(y, deterministic=deterministic)
     y = y + x
 
     return y
@@ -114,21 +120,24 @@ class DecoderLayer(nn.Module):
 
 class Decoder(nn.Module):
   """A stack of decoder layers."""
+
   config: TransformerConfig
 
   @nn.compact
-  def __call__(self,
-               decoder_input_tokens: jnp.ndarray,
-               decoder_target_tokens: jnp.ndarray,
-               decoder_segment_ids: Optional[jnp.ndarray] = None,
-               decoder_positions: Optional[jnp.ndarray] = None,
-               decoder_causal_attention: Optional[jnp.ndarray] = None,
-               *,
-               enable_dropout: bool = True,
-               decode: bool = False,
-               max_decode_length: Optional[int] = None,
-               prefill: Optional[bool] = None,
-               prefill_lengths: Optional[jnp.ndarray] = None):
+  def __call__(
+      self,
+      decoder_input_tokens: jnp.ndarray,
+      decoder_target_tokens: jnp.ndarray,
+      decoder_segment_ids: Optional[jnp.ndarray] = None,
+      decoder_positions: Optional[jnp.ndarray] = None,
+      decoder_causal_attention: Optional[jnp.ndarray] = None,
+      *,
+      enable_dropout: bool = True,
+      decode: bool = False,
+      max_decode_length: Optional[int] = None,
+      prefill: Optional[bool] = None,
+      prefill_lengths: Optional[jnp.ndarray] = None,
+  ):
     """Applies LanguageModel on the inputs.
 
     For a decoder-only architecture with the notion of "prefix", e.g., a prefix
@@ -180,7 +189,8 @@ class Decoder(nn.Module):
           decoder_target_tokens=decoder_target_tokens,
           dtype=cfg.dtype,
           decoder_causal_attention=decoder_causal_attention,
-          decoder_segment_ids=decoder_segment_ids)
+          decoder_segment_ids=decoder_segment_ids,
+      )
 
     embedding = layers.Embed(
         num_embeddings=cfg.vocab_size,
@@ -189,12 +199,13 @@ class Decoder(nn.Module):
         attend_dtype=jnp.float32,  # for logit training stability
         embedding_init=nn.initializers.normal(stddev=1.0),
         one_hot=True,
-        name='token_embedder')
+        name='token_embedder',
+    )
     y = embedding(decoder_input_tokens.astype('int32'))
 
     y = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,), name='input_dropout')(
-            y, deterministic=deterministic)
+        rate=cfg.dropout_rate, broadcast_dims=(-2,), name='input_dropout'
+    )(y, deterministic=deterministic)
     y = y.astype(cfg.dtype)
 
     for lyr in range(cfg.num_layers):
@@ -213,8 +224,8 @@ class Decoder(nn.Module):
 
     y = layers.LayerNorm(dtype=cfg.dtype, name='decoder_norm')(y)
     y = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,), name='output_dropout')(
-            y, deterministic=deterministic)
+        rate=cfg.dropout_rate, broadcast_dims=(-2,), name='output_dropout'
+    )(y, deterministic=deterministic)
 
     # [batch, length, emb_dim] -> [batch, length, vocab_size]
     if cfg.logits_via_embedding:
@@ -228,8 +239,8 @@ class Decoder(nn.Module):
           cfg.vocab_size,
           dtype=jnp.float32,  # Use float32 for stabiliity.
           kernel_axes=('embed', 'vocab'),
-          name='logits_dense')(
-              y)
+          name='logits_dense',
+      )(y)
     return logits
 
 

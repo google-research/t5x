@@ -13,8 +13,8 @@
 # limitations under the License.
 
 """Fast decoding routines for inference from a trained model."""
-import functools
 
+import functools
 from typing import Any, Callable, Mapping, Optional, Tuple, Union
 import flax
 from flax import traverse_util
@@ -23,7 +23,6 @@ from jax import lax
 from jax import random
 import jax.numpy as jnp
 import numpy as np
-
 from t5x import binary_search
 
 PyTree = Any
@@ -60,6 +59,7 @@ class DecodingState:
       current tokens.
     cache: any mapping of arrays, e.g. flax attention cache.
   """
+
   cur_index: jnp.ndarray
   sequences: jnp.ndarray
   cur_token: jnp.ndarray
@@ -88,6 +88,7 @@ class SamplingLoopState:
     rng: Jax PRNGKey
     log_prob: [batch_size * num_decodes] array of log probs for each sequence.
   """
+
   step: jnp.ndarray
   cur_index: jnp.ndarray
   sequences: jnp.ndarray
@@ -99,7 +100,8 @@ class SamplingLoopState:
 
 
 _dynamic_update_vector_slice_in_dim = jax.vmap(
-    lax.dynamic_update_slice_in_dim, in_axes=(0, 0, 0, None))
+    lax.dynamic_update_slice_in_dim, in_axes=(0, 0, 0, None)
+)
 
 
 def _is_tracer(value: Any):
@@ -343,22 +345,28 @@ def temperature_sample(
   if decode_rng is None:
     decode_rng = jax.random.PRNGKey(0)
 
-  if (max_decode_steps_hard_limit is not None and
-      max_decode_steps_hard_limit > 0 and max_decode_steps is not None):
-    max_decode_steps = jnp.minimum(max_decode_steps,
-                                   max_decode_steps_hard_limit)
+  if (
+      max_decode_steps_hard_limit is not None
+      and max_decode_steps_hard_limit > 0
+      and max_decode_steps is not None
+  ):
+    max_decode_steps = jnp.minimum(
+        max_decode_steps, max_decode_steps_hard_limit
+    )
 
   if num_decodes > 1:
     # [batch, len] -> [batch * num_decodes, len]
     expanded_inputs = flat_batch_beam_expand(inputs, num_decodes)
     expanded_cache = cache_map(
         functools.partial(
-            flat_batch_beam_expand, beam_size=num_decodes, offset=cache_offset),
+            flat_batch_beam_expand, beam_size=num_decodes, offset=cache_offset
+        ),
         cache,
         # When we start with a prefilled cache, the cache index is no longer a
         # scalar that will broadcast across multiple decodes, it is a vector and
         # needs to be updated to handle the multiple decodes.
-        apply_to_index=initial_index is not None)
+        apply_to_index=initial_index is not None,
+    )
     if initial_index is not None:
       initial_index = flat_batch_beam_expand(initial_index, num_decodes)
   else:
@@ -381,7 +389,8 @@ def temperature_sample(
       max_decode_steps=max_decode_steps,
       rescale_log_probs=rescale_log_probs,
       state_callback_fn=state_callback_fn,
-      logit_callback_fn=logit_callback_fn)
+      logit_callback_fn=logit_callback_fn,
+  )
 
   batch_size = inputs.shape[0]
   # [batch * num_decodes, len] -> [batch, num_decodes, len]
@@ -395,9 +404,9 @@ def temperature_sample(
   idxs = jnp.expand_dims(jnp.argsort(log_prob, axis=-1), axis=-1)
 
   # returns [batch, num_decodes, len], [batch, num_decodes] in sorted order.
-  return jnp.take_along_axis(
-      decodes, idxs, axis=1), jnp.take_along_axis(
-          log_prob, jnp.squeeze(idxs, axis=-1), axis=-1)
+  return jnp.take_along_axis(decodes, idxs, axis=1), jnp.take_along_axis(
+      log_prob, jnp.squeeze(idxs, axis=-1), axis=-1
+  )
 
 
 def _temperature_sample_single_trial(
@@ -457,7 +466,8 @@ def _temperature_sample_single_trial(
   expanded_prompt_inputs = jnp.append(
       inputs,
       jnp.zeros((batch_size, extra_input_tokens), dtype=inputs.dtype),
-      axis=1)
+      axis=1,
+  )
   end_marker = jnp.array(eos_id)
 
   temperature = jnp.asarray(temperature)
@@ -478,7 +488,8 @@ def _temperature_sample_single_trial(
     # the per batch-item holding current token in loop.
     # Select the token that the initial index is pointing to.
     token0 = jnp.take_along_axis(
-        expanded_prompt_inputs, jnp.expand_dims(i0, axis=1), axis=1)
+        expanded_prompt_inputs, jnp.expand_dims(i0, axis=1), axis=1
+    )
   # per batch-item state bit indicating if sentence has finished.
   ended0 = jnp.zeros((batch_size, 1), dtype=jnp.bool_)
   # (batch, length+2) array containing prefix prompt tokens for sampling loop
@@ -517,7 +528,8 @@ def _temperature_sample_single_trial(
         cur_index=state.cur_index,
         sequences=state.sequences[:, :-extra_input_tokens],
         cur_token=state.cur_token,
-        cache=state.cache)
+        cache=state.cache,
+    )
     logits, new_cache = tokens_to_logits(decoding_state)
     if frozen:
       new_cache = flax.core.freeze(new_cache)
@@ -553,8 +565,10 @@ def _temperature_sample_single_trial(
       # [batch, vocab] -> [batch]
       next_log_prob = jnp.squeeze(
           jnp.take_along_axis(
-              log_probs, jnp.expand_dims(next_token, axis=1), axis=-1),
-          axis=-1)
+              log_probs, jnp.expand_dims(next_token, axis=1), axis=-1
+          ),
+          axis=-1,
+      )
 
       return (next_token, next_log_prob)
 
@@ -570,32 +584,41 @@ def _temperature_sample_single_trial(
         log_probs = jax.nn.log_softmax(logits)
         next_log_prob = jnp.squeeze(
             jnp.take_along_axis(
-                log_probs, jnp.expand_dims(next_token, axis=1), axis=-1),
-            axis=-1)
+                log_probs, jnp.expand_dims(next_token, axis=1), axis=-1
+            ),
+            axis=-1,
+        )
 
       return (next_token, next_log_prob)
 
     # Perform sampling with temperature
     if len(temperature.shape) == 1:
       # Each batch item can have different temperatures.
-      def map_logits_with_different_temperatures(logits_batch_item,
-                                                 temperature_batch_item):
-        return lax.cond(temperature_batch_item > MIN_TEMPERATURE,
-                        sample_logits_with_nonzero_temperature,
-                        sample_logits_with_zero_temperature,
-                        jnp.expand_dims(logits_batch_item,
-                                        axis=0), temperature_batch_item)
+      def map_logits_with_different_temperatures(
+          logits_batch_item, temperature_batch_item
+      ):
+        return lax.cond(
+            temperature_batch_item > MIN_TEMPERATURE,
+            sample_logits_with_nonzero_temperature,
+            sample_logits_with_zero_temperature,
+            jnp.expand_dims(logits_batch_item, axis=0),
+            temperature_batch_item,
+        )
 
-      (next_token,
-       next_log_prob) = jax.vmap(map_logits_with_different_temperatures)(
-           logits, jnp.repeat(temperature, num_decodes))
+      (next_token, next_log_prob) = jax.vmap(
+          map_logits_with_different_temperatures
+      )(logits, jnp.repeat(temperature, num_decodes))
       next_token = jnp.squeeze(next_token, axis=-1)
       next_log_prob = jnp.squeeze(next_log_prob, axis=-1)
     else:
       # Single temperature value is applied to all batch items.
       (next_token, next_log_prob) = lax.cond(
-          temperature > MIN_TEMPERATURE, sample_logits_with_nonzero_temperature,
-          sample_logits_with_zero_temperature, logits, temperature)
+          temperature > MIN_TEMPERATURE,
+          sample_logits_with_nonzero_temperature,
+          sample_logits_with_zero_temperature,
+          logits,
+          temperature,
+      )
 
     # When different batch elements are at different points in the loop counter,
     # it is possible that an element that started at a higher index will reach
@@ -612,22 +635,23 @@ def _temperature_sample_single_trial(
     # [batch]
     next_input_token = jnp.squeeze(
         jnp.take_along_axis(
-            state.sequences, jnp.expand_dims(i + 1, axis=1), axis=1),
-        axis=1)
+            state.sequences, jnp.expand_dims(i + 1, axis=1), axis=1
+        ),
+        axis=1,
+    )
     # Check if the next token is padding (a target) or non-padding (an input).
     # Mask will have `1` for targets and `0` for inputs.
-    out_of_prompt = (next_input_token == 0)
+    out_of_prompt = next_input_token == 0
     # Select the sampled next token for targets and the actual next token for
     # inputs (teacher forcing).
     # [batch]
-    next_token = (
-        next_token * out_of_prompt + next_input_token * ~out_of_prompt)
+    next_token = next_token * out_of_prompt + next_input_token * ~out_of_prompt
 
     # only add probability if outside prefix region
     # [batch] -> [batch]
     next_log_prob = state.log_prob + (
-        next_log_prob * out_of_prompt) * jnp.squeeze(
-            ~state.ended, axis=-1).astype(jnp.int32)
+        next_log_prob * out_of_prompt
+    ) * jnp.squeeze(~state.ended, axis=-1).astype(jnp.int32)
 
     # [batch] -> [batch, 1]
     next_token = jnp.expand_dims(next_token, axis=-1)
@@ -637,9 +661,11 @@ def _temperature_sample_single_trial(
     next_token_or_endpad = next_token * ~state.ended
     # Add current sampled tokens to recorded sequences.
     one_hot = jax.nn.one_hot(
-        i + 1, state.sequences.shape[1], dtype=state.sequences.dtype)
-    new_sequences = state.sequences * (1 -
-                                       one_hot) + next_token_or_endpad * one_hot
+        i + 1, state.sequences.shape[1], dtype=state.sequences.dtype
+    )
+    new_sequences = (
+        state.sequences * (1 - one_hot) + next_token_or_endpad * one_hot
+    )
     # new_sequences = dynamic_update_vector_slice_in_dim(sequences,
     #                                                    next_token_or_endpad,
     #                                                    i + 1,
@@ -656,8 +682,11 @@ def _temperature_sample_single_trial(
     # write to sequences[-1] which is our garbage collection token. Thus `i`
     # should be strictly less than max_decode_len.
     has_additional_eos = cur_eos_count > initial_eos_count
-    ended = state.ended | has_additional_eos | jnp.expand_dims(
-        i >= max_decode_len - 1, axis=1)
+    ended = (
+        state.ended
+        | has_additional_eos
+        | jnp.expand_dims(i >= max_decode_len - 1, axis=1)
+    )
 
     return SamplingLoopState(
         state.step + 1,
@@ -671,8 +700,9 @@ def _temperature_sample_single_trial(
     )
 
   # Run sampling loop and collect final state.
-  final_state = lax.while_loop(sampling_loop_cond_fn, sampling_loop_body_fn,
-                               sampling_loop_init_state)
+  final_state = lax.while_loop(
+      sampling_loop_cond_fn, sampling_loop_body_fn, sampling_loop_init_state
+  )
 
   if state_callback_fn is not None:
     final_state = state_callback_fn(final_state)
@@ -740,9 +770,9 @@ def cache_map(fn, cache, apply_to_index: bool = False):
   return new_cache
 
 
-def add_beam_dim(x: jnp.ndarray,
-                 beam_size: int,
-                 offset: int = 0) -> jnp.ndarray:
+def add_beam_dim(
+    x: jnp.ndarray, beam_size: int, offset: int = 0
+) -> jnp.ndarray:
   """Creates new beam dimension in non-scalar array and tiles into it."""
   x = jnp.expand_dims(x, axis=offset + 1)
   tile_dims = [1] * x.ndim
@@ -758,20 +788,19 @@ def flatten_beam_dim(x: jnp.ndarray, offset: int = 0) -> jnp.ndarray:
   return x.reshape(xshape)
 
 
-def unflatten_beam_dim(x: jnp.ndarray,
-                       batch_size: int,
-                       beam_size: int,
-                       offset: int = 0) -> jnp.ndarray:
+def unflatten_beam_dim(
+    x: jnp.ndarray, batch_size: int, beam_size: int, offset: int = 0
+) -> jnp.ndarray:
   """Unflattens the first, flat batch*beam dimension of a non-scalar array."""
   assert batch_size * beam_size == x.shape[offset]
   xshape = list(x.shape)
-  newshape = xshape[:offset] + [batch_size, beam_size] + xshape[offset + 1:]
+  newshape = xshape[:offset] + [batch_size, beam_size] + xshape[offset + 1 :]
   return x.reshape(newshape)
 
 
-def flat_batch_beam_expand(x: jnp.ndarray,
-                           beam_size: int,
-                           offset: int = 0) -> jnp.ndarray:
+def flat_batch_beam_expand(
+    x: jnp.ndarray, beam_size: int, offset: int = 0
+) -> jnp.ndarray:
   """Expands the each batch item by beam_size in batch_dimension."""
   return flatten_beam_dim(add_beam_dim(x, beam_size, offset), offset)
 
@@ -804,17 +833,21 @@ def cache_gather_beams(
   if one_hot:
     # Gather via one-hot contraction, needed for SPMD partitioning.
     oh_beam_indices = jax.nn.one_hot(
-        beam_indices, old_beam_size, dtype=jnp.int32)
+        beam_indices, old_beam_size, dtype=jnp.int32
+    )
     if offset == 0:
 
       def gather_fn(x):
-        return jnp.einsum('beo,bo...->be...', oh_beam_indices,
-                          x).astype(x.dtype)
+        return jnp.einsum('beo,bo...->be...', oh_beam_indices, x).astype(
+            x.dtype
+        )
+
     else:
 
       def gather_fn(x):
-        return jnp.einsum('beo,lbo...->lbe...', oh_beam_indices,
-                          x).astype(x.dtype)
+        return jnp.einsum('beo,lbo...->lbe...', oh_beam_indices, x).astype(
+            x.dtype
+        )
 
     return cache_map(gather_fn, nested)  # pytype: disable=bad-return-type  # jax-ndarray
 
@@ -822,11 +855,13 @@ def cache_gather_beams(
     # True gather via fancy indexing.
     batch_indices = jnp.reshape(
         jnp.arange(batch_size * new_beam_size) // new_beam_size,
-        (batch_size, new_beam_size))
+        (batch_size, new_beam_size),
+    )
     if offset == 0:
 
       def gather_fn(x):
         return x[batch_indices, beam_indices]
+
     else:
 
       def gather_fn(x):
@@ -860,7 +895,8 @@ def gather_beams(
   if one_hot:
     # Gather via one-hot contraction, needed for SPMD partitioning.
     oh_beam_indices = jax.nn.one_hot(
-        beam_indices, old_beam_size, dtype=jnp.int32)
+        beam_indices, old_beam_size, dtype=jnp.int32
+    )
 
     def gather_fn(x):
       return jnp.einsum('beo,bo...->be...', oh_beam_indices, x).astype(x.dtype)
@@ -870,7 +906,8 @@ def gather_beams(
     # True gather via fancy indexing.
     batch_indices = jnp.reshape(
         jnp.arange(batch_size * new_beam_size) // new_beam_size,
-        (batch_size, new_beam_size))
+        (batch_size, new_beam_size),
+    )
 
     def gather_fn(x):
       return x[batch_indices, beam_indices]
@@ -891,19 +928,21 @@ def top_k_two_stage(x, k):
 
   batch, num_samples = x.shape
   num_lanes = 128
-  if (isinstance(batch, int) and batch <= 8 and
-      num_samples > 8 * num_lanes * k):
+  if isinstance(batch, int) and batch <= 8 and num_samples > 8 * num_lanes * k:
     # At small batch, when num_samples is sufficiently large, optimize
     # execution on TPU by doing TopK in two stages. Reshaping 'x' to fill
     # lanes reduces tensor padding in TopK call.
     if num_samples % num_lanes != 0:
       # Pad input tensor to multiples of num_lanes.
       num_samples_rounded_up = num_samples + (
-          num_lanes - num_samples % num_lanes)
+          num_lanes - num_samples % num_lanes
+      )
       x = jnp.pad(
-          x, ((0, 0), (0, num_samples_rounded_up - num_samples)),
+          x,
+          ((0, 0), (0, num_samples_rounded_up - num_samples)),
           mode='constant',
-          constant_values=np.NINF)
+          constant_values=np.NINF,
+      )
       num_samples = num_samples_rounded_up
     # Reshape input tensor to fill lanes.
     num_samples_sublanes = int(num_samples / num_lanes)
@@ -911,10 +950,12 @@ def top_k_two_stage(x, k):
     # First stage top_k.
     vals, indices = lax.top_k(x_reshaped, k)
     indices = jnp.reshape(indices, (batch, num_lanes, k))
-    index_offsets = jnp.reshape(num_samples_sublanes * jnp.arange(num_lanes),
-                                (1, num_lanes, 1))
+    index_offsets = jnp.reshape(
+        num_samples_sublanes * jnp.arange(num_lanes), (1, num_lanes, 1)
+    )
     indices = jnp.reshape(
-        jnp.add(index_offsets, indices), (batch, num_lanes * k))
+        jnp.add(index_offsets, indices), (batch, num_lanes * k)
+    )
     vals = jnp.reshape(vals, (batch, num_lanes * k))
     # Second stage top_k.
     vals_s2, indices_s2 = lax.top_k(vals, k)
@@ -946,8 +987,13 @@ def gather_topk_beams(
   """
   _, topk_indices = lax.top_k(score_or_log_prob, k=new_beam_size)
   topk_indices = jnp.flip(topk_indices, axis=1)
-  return gather_beams(nested, topk_indices, batch_size,
-                      score_or_log_prob.shape[1], new_beam_size)
+  return gather_beams(
+      nested,
+      topk_indices,
+      batch_size,
+      score_or_log_prob.shape[1],
+      new_beam_size,
+  )
 
 
 # Beam search state:
@@ -956,6 +1002,7 @@ def gather_topk_beams(
 @flax.struct.dataclass
 class BeamState:
   """Holds beam search state data."""
+
   # The position of the decoding loop in the length dimension.
   cur_index: jax.Array  # scalar int32: current decoded length index
   # The active sequence log probabilities and finished sequence scores.
@@ -986,7 +1033,8 @@ def beam_init(
   """Initializes the beam search state data structure."""
   cur_index0 = jnp.array(0)
   live_logprobs0 = jnp.tile(
-      jnp.array([0.0] + [NEG_INF] * (beam_size - 1)), [batch_size, 1])
+      jnp.array([0.0] + [NEG_INF] * (beam_size - 1)), [batch_size, 1]
+  )
   finished_scores0 = jnp.ones((batch_size, beam_size)) * NEG_INF
   # If we prefill any part of the prompt, then the initial live sequences are
   # provided. In reality these will be the last token of the prompt or BOS if
@@ -1208,10 +1256,12 @@ def beam_search(
     best_live_scores = state.live_logprobs[:, -1:] / min_brevity_penalty
     # Get the worst scores from finished sequences.
     worst_finished_scores = jnp.min(
-        state.finished_scores, axis=1, keepdims=True)
+        state.finished_scores, axis=1, keepdims=True
+    )
     # Mask out scores from slots without any actual finished sequences.
-    worst_finished_scores = jnp.where(state.finished_flags,
-                                      worst_finished_scores, NEG_INF)
+    worst_finished_scores = jnp.where(
+        state.finished_flags, worst_finished_scores, NEG_INF
+    )
     # If no best possible live score is better than current worst finished
     # scores, the search cannot improve the finished set further.
     search_terminated = jnp.all(worst_finished_scores > best_live_scores)
@@ -1238,12 +1288,15 @@ def beam_search(
     # dimension for feeding into the model.
     # --> [batch * beam, 1]
     flat_ids = flatten_beam_dim(
-        lax.dynamic_slice(state.live_seqs, (0, 0, state.cur_index),
-                          (batch_size, beam_size, 1)))
+        lax.dynamic_slice(
+            state.live_seqs, (0, 0, state.cur_index), (batch_size, beam_size, 1)
+        )
+    )
     # Flatten beam dimension into batch to be compatible with model.
     # {[batch, beam, ...], ...} --> {[batch * beam, ...], ...}
     flat_cache = cache_map(
-        functools.partial(flatten_beam_dim, offset=cache_offset), state.cache)
+        functools.partial(flatten_beam_dim, offset=cache_offset), state.cache
+    )
 
     # Call fast-decoder model on current tokens to get next-position logits.
     # --> [batch * beam, vocab]
@@ -1251,7 +1304,8 @@ def beam_search(
         cur_index=state.cur_index,
         sequences=flatten_beam_dim(state.live_seqs),
         cur_token=flat_ids,
-        cache=flat_cache)
+        cache=flat_cache,
+    )
     flat_logits, new_flat_cache = tokens_to_logits(decoding_state)
 
     # unflatten beam dimension
@@ -1261,14 +1315,16 @@ def beam_search(
     # {[batch * beam, ...], ...} --> {[batch, beam, ...], ...}
     new_cache = cache_map(
         lambda x: unflatten_beam_dim(x, batch_size, beam_size, cache_offset),
-        new_flat_cache)
+        new_flat_cache,
+    )
 
     # Gather log probabilities from logits
     candidate_log_probs = jax.nn.log_softmax(logits)
     # Add new logprobs to existing prefix logprobs.
     # --> [batch, beam, vocab]
-    log_probs = (
-        candidate_log_probs + jnp.expand_dims(state.live_logprobs, axis=2))
+    log_probs = candidate_log_probs + jnp.expand_dims(
+        state.live_logprobs, axis=2
+    )
 
     # We'll need the vocab size, gather it from the log probability dimension.
     vocab_size = log_probs.shape[-1]
@@ -1284,7 +1340,8 @@ def beam_search(
     # Gather the top 2*K scores from _all_ beams.
     # --> [batch, 2*beams], [batch, 2*beams]
     topk_log_probs, topk_indices = top_k_two_stage(
-        flat_log_probs, k=beams_to_keep)
+        flat_log_probs, k=beams_to_keep
+    )
 
     # Append the most probable 2*K token IDs to the top 2*K sequences
     # Recover token id by modulo division.
@@ -1296,24 +1353,28 @@ def beam_search(
     # inputs so that at position 1 onwards (i.e. state.cur_index + 1 >= 1)
     # the tokens are 0 and we'll immediately be "out of prompt".
     # --> [batch_size, 1]
-    next_input_token = jnp.expand_dims(
-        inputs, axis=1).astype(jnp.int32)[:, :, state.cur_index + 1]
+    next_input_token = jnp.expand_dims(inputs, axis=1).astype(jnp.int32)[
+        :, :, state.cur_index + 1
+    ]
     # --> [batch_size, 1]
-    out_of_prompt = (next_input_token == 0)
+    out_of_prompt = next_input_token == 0
 
     # When forcing prompts, update log probabilities to `0` for the top of the
     # beam and -INF for the rest, effectively keeping only one beam alive.
     # This is necessary, because if two beams have the same prefix, then they
     # will both decode the exact same sequences and that's redundant.
     # --> [batch, 2*beams]
-    inside_prompt_log_probs = jnp.concatenate([
-        jnp.zeros((batch_size, 1), dtype=topk_log_probs.dtype),
-        jnp.full_like(topk_log_probs[:, :beams_to_keep - 1], NEG_INF)
-    ],
-                                              axis=1)
+    inside_prompt_log_probs = jnp.concatenate(
+        [
+            jnp.zeros((batch_size, 1), dtype=topk_log_probs.dtype),
+            jnp.full_like(topk_log_probs[:, : beams_to_keep - 1], NEG_INF),
+        ],
+        axis=1,
+    )
     topk_log_probs = (
-        topk_log_probs * out_of_prompt +
-        inside_prompt_log_probs * ~out_of_prompt)
+        topk_log_probs * out_of_prompt
+        + inside_prompt_log_probs * ~out_of_prompt
+    )
 
     topk_ids = topk_ids * out_of_prompt + next_input_token * ~out_of_prompt
 
@@ -1325,17 +1386,19 @@ def beam_search(
     topk_beam_indices = topk_indices // vocab_size
     # Gather 2*k top beams.
     # --> [batch, 2*beams, length]
-    topk_seq = gather_beams(state.live_seqs, topk_beam_indices, batch_size,
-                            beam_size, beams_to_keep)
+    topk_seq = gather_beams(
+        state.live_seqs, topk_beam_indices, batch_size, beam_size, beams_to_keep
+    )
     # Update sequences for the 2*K top-k new sequences.
     # --> [batch, 2*beams, length]
-    topk_seq = lax.dynamic_update_slice(topk_seq, topk_ids,
-                                        (0, 0, state.cur_index + 1))
+    topk_seq = lax.dynamic_update_slice(
+        topk_seq, topk_ids, (0, 0, state.cur_index + 1)
+    )
 
     # Update LIVE (in-progress) sequences:
     # Did any of these sequences reach an end marker?
     # --> [batch, 2*beams]
-    newly_finished = (topk_seq[:, :, state.cur_index + 1] == end_marker)
+    newly_finished = topk_seq[:, :, state.cur_index + 1] == end_marker
     # To prevent these newly finished sequences from being added to the LIVE
     # set of active beam search sequences, set their log probs to a very large
     # negative value.
@@ -1346,20 +1409,34 @@ def beam_search(
     new_topk_indices = jnp.flip(new_topk_indices, axis=1)
     # Gather the top k beams (from top 2*k beams).
     # --> [batch, beams, length], [batch, beams]
-    top_alive_seq, top_alive_log_probs = gather_beams([topk_seq, new_log_probs],
-                                                      new_topk_indices,
-                                                      batch_size, 2 * beam_size,
-                                                      beam_size)
+    top_alive_seq, top_alive_log_probs = gather_beams(
+        [topk_seq, new_log_probs],
+        new_topk_indices,
+        batch_size,
+        2 * beam_size,
+        beam_size,
+    )
 
     # Determine the top k beam indices from the original set of all beams.
     # --> [batch, beams]
-    top_alive_indices = gather_beams(topk_beam_indices, new_topk_indices,
-                                     batch_size, 2 * beam_size, beam_size)
+    top_alive_indices = gather_beams(
+        topk_beam_indices,
+        new_topk_indices,
+        batch_size,
+        2 * beam_size,
+        beam_size,
+    )
     # With these, gather the top k beam-associated caches.
     # --> {[batch, beams, ...], ...}
-    top_alive_cache = cache_gather_beams(new_cache, top_alive_indices,
-                                         batch_size, beam_size, beam_size, True,
-                                         cache_offset)
+    top_alive_cache = cache_gather_beams(
+        new_cache,
+        top_alive_indices,
+        batch_size,
+        beam_size,
+        beam_size,
+        True,
+        cache_offset,
+    )
 
     # Update FINISHED (reached end of sentence) sequences:
     # Calculate new seq scores from log probabilities.
@@ -1381,16 +1458,23 @@ def beam_search(
     # new finished sequence scores to existing finished scores and select the
     # best from the new set of beams.
     finished_seqs = jnp.concatenate(  # --> [batch, 3*beams, length]
-        [state.finished_seqs, topk_seq],
-        axis=1)
+        [state.finished_seqs, topk_seq], axis=1
+    )
     finished_scores = jnp.concatenate(  # --> [batch, 3*beams]
-        [state.finished_scores, new_scores], axis=1)
+        [state.finished_scores, new_scores], axis=1
+    )
     finished_flags = jnp.concatenate(  # --> [batch, 3*beams]
-        [state.finished_flags, newly_finished], axis=1)
+        [state.finished_flags, newly_finished], axis=1
+    )
     # --> [batch, beams, length], [batch, beams], [batch, beams]
     top_finished_seq, top_finished_scores, top_finished_flags = (
-        gather_topk_beams([finished_seqs, finished_scores, finished_flags],
-                          finished_scores, batch_size, beam_size))
+        gather_topk_beams(
+            [finished_seqs, finished_scores, finished_flags],
+            finished_scores,
+            batch_size,
+            beam_size,
+        )
+    )
 
     return BeamState(
         cur_index=state.cur_index + 1,
@@ -1404,8 +1488,9 @@ def beam_search(
     )
 
   # Run while loop and get final beam search state.
-  final_state = lax.while_loop(beam_search_loop_cond_fn,
-                               beam_search_loop_body_fn, beam_search_init_state)
+  final_state = lax.while_loop(
+      beam_search_loop_cond_fn, beam_search_loop_body_fn, beam_search_init_state
+  )
 
   # Account for the edge-case where there are no finished sequences for a
   # particular batch item. If so, return live sequences for that batch item.

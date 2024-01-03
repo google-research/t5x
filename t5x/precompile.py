@@ -52,8 +52,8 @@ def precompile(
     random_seed: Optional[int],
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
     verify_matching_vocabs_fn: Optional[
-        Callable[[utils.DatasetConfig, models.BaseTransformerModel],
-                 None]] = utils.verify_matching_vocabs,
+        Callable[[utils.DatasetConfig, models.BaseTransformerModel], None]
+    ] = utils.verify_matching_vocabs,
 ):
   """Compiles and dump the HLO to model dir, with HLO text dumps."""
   rng = random.PRNGKey(random_seed or 42)
@@ -68,20 +68,24 @@ def precompile(
   if verify_matching_vocabs_fn is not None:
     verify_matching_vocabs_fn(train_dataset_cfg, model)
 
-  train_iter = get_dataset_fn(train_dataset_cfg, ds_shard_id, num_ds_shards,
-                              model.FEATURE_CONVERTER_CLS)
+  train_iter = get_dataset_fn(
+      train_dataset_cfg, ds_shard_id, num_ds_shards, model.FEATURE_CONVERTER_CLS
+  )
   if isinstance(train_iter, tf.data.Dataset):
     train_iter = clu.data.TfDatasetIterator(train_iter, checkpoint=True)
   elif not isinstance(train_iter, clu.data.dataset_iterator.DatasetIterator):
     raise ValueError(
-        f'get_dataset_fn returned unsupported type {type(train_iter)}.')
+        f'get_dataset_fn returned unsupported type {type(train_iter)}.'
+    )
 
   # Need to use full batch size.
-  input_shapes = jax.tree_map(lambda x: (data_layout.batch_size, *x.shape[1:]),
-                              train_iter.element_spec)
+  input_shapes = jax.tree_map(
+      lambda x: (data_layout.batch_size, *x.shape[1:]), train_iter.element_spec
+  )
   input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
-  dummy_batch = jax.tree_map(lambda x: np.ones(x.shape, x.dtype),
-                             train_iter.element_spec)
+  dummy_batch = jax.tree_map(
+      lambda x: np.ones(x.shape, x.dtype), train_iter.element_spec
+  )
 
   # Compiling does not care about loading real weights.
   train_state_initializer = utils.TrainStateInitializer(
@@ -89,7 +93,8 @@ def precompile(
       init_fn=model.get_initial_variables,
       input_shapes=input_shapes,
       input_types=input_types,
-      partitioner=partitioner)
+      partitioner=partitioner,
+  )
   train_state_shape = train_state_initializer.global_train_state_shape
   train_state_axes = train_state_initializer.train_state_axes
 
@@ -101,13 +106,20 @@ def precompile(
         dropout_rng=trainer_rng,
         model=model,
         num_microbatches=None,
-        weight_metrics_computer=None)
+        weight_metrics_computer=None,
+    )
 
   partitioned_step = partitioner.partition(
       train_step,
-      in_axis_resources=(train_state_axes, partitioning.PartitionSpec('data',)),
+      in_axis_resources=(
+          train_state_axes,
+          partitioning.PartitionSpec(
+              'data',
+          ),
+      ),
       out_axis_resources=(train_state_axes, None),
-      donate_argnums=(0,))
+      donate_argnums=(0,),
+  )
 
   # PartitionedTrainCallable has lower() defined but isn't exposed in pytype.
   # TODO(hthu): Explicitly expose the lower() interface.
@@ -119,7 +131,8 @@ def precompile(
   # TODO(hthu): Make this a proper library without writing files by default.
   tf.io.gfile.makedirs(model_dir)
   with tf.io.gfile.GFile(
-      os.path.join(model_dir, 'lowered_hlo_pre_optimization'), 'w') as f:
+      os.path.join(model_dir, 'lowered_hlo_pre_optimization'), 'w'
+  ) as f:
     f.write(lowered.compiler_ir(dialect='hlo').as_serialized_hlo_module_proto())
   compiled = lowered.compile()
   output_path = os.path.join(model_dir, 'lowered_hlo_post_optimization')

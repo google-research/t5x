@@ -79,35 +79,55 @@ class PartitioningTest(absltest.TestCase):
 
     global_mesh = partitioning.default_mesh(4)
     self.assertEqual(global_mesh.axis_names, ('data', 'model'))
-    self.assertEqual(global_mesh.shape,
-                     collections.OrderedDict((('data', 8), ('model', 4))))
+    self.assertEqual(
+        global_mesh.shape, collections.OrderedDict((('data', 8), ('model', 4)))
+    )
     self.assertEqual(global_mesh.size, 32)
 
     for process_index in (0, 1, 2, 3):
       process_index_fn.return_value = process_index
       local_mesh = global_mesh.local_mesh
       self.assertEqual(local_mesh.axis_names, ('data', 'model'))
-      self.assertEqual(local_mesh.shape,
-                       collections.OrderedDict((('data', 2), ('model', 4))))
+      self.assertEqual(
+          local_mesh.shape, collections.OrderedDict((('data', 2), ('model', 4)))
+      )
       self.assertEqual(local_mesh.size, 8)
 
     process_index_fn.return_value = 0
     local_mesh = global_mesh.local_mesh
-    lds = np.array([
+    lds = np.array(
         [
-            TpuDevice(id=0, process_index=0, coords=(0, 0, 0), core_on_chip=0),
-            TpuDevice(id=1, process_index=0, coords=(0, 0, 0), core_on_chip=1),
-            TpuDevice(id=2, process_index=0, coords=(1, 0, 0), core_on_chip=0),
-            TpuDevice(id=3, process_index=0, coords=(1, 0, 0), core_on_chip=1)
+            [
+                TpuDevice(
+                    id=0, process_index=0, coords=(0, 0, 0), core_on_chip=0
+                ),
+                TpuDevice(
+                    id=1, process_index=0, coords=(0, 0, 0), core_on_chip=1
+                ),
+                TpuDevice(
+                    id=2, process_index=0, coords=(1, 0, 0), core_on_chip=0
+                ),
+                TpuDevice(
+                    id=3, process_index=0, coords=(1, 0, 0), core_on_chip=1
+                ),
+            ],
+            [
+                TpuDevice(
+                    id=8, process_index=0, coords=(0, 1, 0), core_on_chip=0
+                ),
+                TpuDevice(
+                    id=9, process_index=0, coords=(0, 1, 0), core_on_chip=1
+                ),
+                TpuDevice(
+                    id=10, process_index=0, coords=(1, 1, 0), core_on_chip=0
+                ),
+                TpuDevice(
+                    id=11, process_index=0, coords=(1, 1, 0), core_on_chip=1
+                ),
+            ],
         ],
-        [
-            TpuDevice(id=8, process_index=0, coords=(0, 1, 0), core_on_chip=0),
-            TpuDevice(id=9, process_index=0, coords=(0, 1, 0), core_on_chip=1),
-            TpuDevice(id=10, process_index=0, coords=(1, 1, 0), core_on_chip=0),
-            TpuDevice(id=11, process_index=0, coords=(1, 1, 0), core_on_chip=1)
-        ]
-    ],
-                   dtype=object)
+        dtype=object,
+    )
     np.testing.assert_array_equal(local_mesh.devices, lds)
 
   @unittest.skipIf(jax.__version_info__ < (0, 4, 5), 'Test requires jax 0.4.5')
@@ -143,15 +163,18 @@ class PartitioningTest(absltest.TestCase):
       self.assertEqual(local_chunker.chunk_ids['data'], expected_chunk)
       self.assertEqual(local_chunker.chunk_ids['model'], 0)
       # Sharded along both axes.
-      local_chunk_info = local_chunker.get_local_chunk_info((128, 16),
-                                                            ['data', 'model'])
+      local_chunk_info = local_chunker.get_local_chunk_info(
+          (128, 16), ['data', 'model']
+      )
       self.assertEqual(local_chunk_info.replica_id, 0)
-      self.assertEqual(local_chunk_info.slice,
-                       (slice(32 * expected_chunk, 32 *
-                              (expected_chunk + 1)), slice(0, 16)))
+      self.assertEqual(
+          local_chunk_info.slice,
+          (slice(32 * expected_chunk, 32 * (expected_chunk + 1)), slice(0, 16)),
+      )
       # Replicated across first axis.
-      local_chunk_info = local_chunker.get_local_chunk_info((128, 16),
-                                                            [None, 'model'])
+      local_chunk_info = local_chunker.get_local_chunk_info(
+          (128, 16), [None, 'model']
+      )
       self.assertEqual(local_chunk_info.replica_id, expected_chunk)
       self.assertEqual(local_chunk_info.slice, (slice(None), slice(0, 16)))
 
@@ -169,33 +192,28 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
             'embed': adafactor.FactorDim.ROW,
             'vocab': adafactor.FactorDim.COLUMN,
             'mlp': adafactor.FactorDim.COLUMN,
-        })
+        },
+    )
     state = train_state.FlaxOptimTrainState.create(
         opt_def,
         flax.core.freeze({
             'params': {
                 'logits_dense': np.ones((16, 16), np.float32),
-                'mlp': {
-                    'wo': {
-                        'kernel': np.ones((32, 16), np.float32)
-                    }
-                }
+                'mlp': {'wo': {'kernel': np.ones((32, 16), np.float32)}},
             },
             'params_axes': {
                 'logits_dense_axes': AxisMetadata(names=('vocab', 'embed')),
                 'mlp': {
-                    'wo': {
-                        'kernel_axes': AxisMetadata(names=('embed', 'mlp'))
-                    }
-                }
-            }
-        }))
+                    'wo': {'kernel_axes': AxisMetadata(names=('embed', 'mlp'))}
+                },
+            },
+        }),
+    )
     return partitioner.get_mesh_axes(state).state_dict()
 
-  def get_expected_axes_spec(self,
-                             spec_0,
-                             spec_1,
-                             kernel_spec=PartitionSpec(None, 'model')):
+  def get_expected_axes_spec(
+      self, spec_0, spec_1, kernel_spec=PartitionSpec(None, 'model')
+  ):
     return train_state.FlaxOptimTrainState(
         optimizers.Optimizer(
             # opt_def,
@@ -204,26 +222,26 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
                 step=None,
                 param_states={
                     'logits_dense': spec_0,
-                    'mlp': {
-                        'wo': {
-                            'kernel': spec_1
-                        }
-                    }
-                }),
+                    'mlp': {'wo': {'kernel': spec_1}},
+                },
+            ),
             target={
                 'logits_dense': PartitionSpec('model', None),
-                'mlp': {
-                    'wo': {
-                        'kernel': kernel_spec
-                    }
-                }
-            })).state_dict()
+                'mlp': {'wo': {'kernel': kernel_spec}},
+            },
+        )
+    ).state_dict()
 
   def test_get_mesh_axes(self):
     partitioner = partitioning.PjitPartitioner(
         num_partitions=1,
-        logical_axis_rules=(('batch', 'data'), ('embed', None),
-                            ('vocab', 'model'), ('mlp', 'model')))
+        logical_axis_rules=(
+            ('batch', 'data'),
+            ('embed', None),
+            ('vocab', 'model'),
+            ('mlp', 'model'),
+        ),
+    )
 
     p0_spec = PartitionSpec('model', None)
     p1_spec = PartitionSpec(None, 'model')
@@ -232,43 +250,58 @@ class ModelBasedPartitionerTest(parameterized.TestCase):
     axes_spec = self.get_axes_spec(partitioner, factored=True, momentum=False)
     expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(m=None, v=None, v_col=None, v_row=None),
-        adafactor._AdafactorParamState(m=None, v=None, v_col=None, v_row=None))
+        adafactor._AdafactorParamState(m=None, v=None, v_col=None, v_row=None),
+    )
     jax.tree_map(self.assertEqual, axes_spec, expected_axes_spec)
 
     axes_spec = self.get_axes_spec(partitioner, factored=True, momentum=True)
     expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(
-            m=p0_spec, v=None, v_col=None, v_row=None),
+            m=p0_spec, v=None, v_col=None, v_row=None
+        ),
         adafactor._AdafactorParamState(
-            m=p1_spec, v=None, v_col=None, v_row=None))
+            m=p1_spec, v=None, v_col=None, v_row=None
+        ),
+    )
     jax.tree_map(self.assertEqual, axes_spec, expected_axes_spec)
 
     axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=True)
     expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(
-            m=p0_spec, v=p0_spec, v_col=None, v_row=None),
+            m=p0_spec, v=p0_spec, v_col=None, v_row=None
+        ),
         adafactor._AdafactorParamState(
-            m=p1_spec, v=p1_spec, v_col=None, v_row=None))
+            m=p1_spec, v=p1_spec, v_col=None, v_row=None
+        ),
+    )
     jax.tree_map(self.assertEqual, axes_spec, expected_axes_spec)
 
     axes_spec = self.get_axes_spec(partitioner, factored=False, momentum=False)
     expected_axes_spec = self.get_expected_axes_spec(
         adafactor._AdafactorParamState(
-            m=None, v=p0_spec, v_col=None, v_row=None),
+            m=None, v=p0_spec, v_col=None, v_row=None
+        ),
         adafactor._AdafactorParamState(
-            m=None, v=p1_spec, v_col=None, v_row=None))
+            m=None, v=p1_spec, v_col=None, v_row=None
+        ),
+    )
     jax.tree_map(self.assertEqual, axes_spec, expected_axes_spec)
 
   @parameterized.product(activation_dims=(1, 2), param_dims=(1, 2))
   def test_standard_logical_axis_rules(self, activation_dims, param_dims):
     default_rules = partitioning.standard_logical_axis_rules(
-        activation_dims, param_dims, additional_rules=None)
-    custom_rules = (('my-new-axis', 'data'), ('another-axis', None),
-                    ('another-one', 'model'))
+        activation_dims, param_dims, additional_rules=None
+    )
+    custom_rules = (
+        ('my-new-axis', 'data'),
+        ('another-axis', None),
+        ('another-one', 'model'),
+    )
     new_rules = partitioning.standard_logical_axis_rules(
-        activation_dims, param_dims, additional_rules=custom_rules)
-    self.assertEqual(new_rules[:len(default_rules)], default_rules)
-    self.assertEqual(new_rules[len(default_rules):], list(custom_rules))
+        activation_dims, param_dims, additional_rules=custom_rules
+    )
+    self.assertEqual(new_rules[: len(default_rules)], default_rules)
+    self.assertEqual(new_rules[len(default_rules) :], list(custom_rules))
 
 
 if __name__ == '__main__':

@@ -25,6 +25,7 @@ from t5x.examples.t5 import layers
 @struct.dataclass
 class T5Config:
   """Global hyperparameters used to minimize obnoxious kwarg plumbing."""
+
   vocab_size: int
   # Activation dtypes.
   dtype: Any = jnp.float32
@@ -45,6 +46,7 @@ class T5Config:
 
 class EncoderLayer(nn.Module):
   """Transformer encoder layer."""
+
   config: T5Config
   relative_embedding: nn.Module
 
@@ -53,14 +55,15 @@ class EncoderLayer(nn.Module):
     cfg = self.config
 
     # Relative position embedding as attention biases.
-    encoder_bias = self.relative_embedding(inputs.shape[-2], inputs.shape[-2],
-                                           True)
+    encoder_bias = self.relative_embedding(
+        inputs.shape[-2], inputs.shape[-2], True
+    )
 
     # Attention block.
     assert inputs.ndim == 3
-    x = layers.LayerNorm(
-        dtype=cfg.dtype, name='pre_attention_layer_norm')(
-            inputs)
+    x = layers.LayerNorm(dtype=cfg.dtype, name='pre_attention_layer_norm')(
+        inputs
+    )
     # [batch, length, emb_dim] -> [batch, length, emb_dim]
     x = layers.MultiHeadDotProductAttention(
         num_heads=cfg.num_heads,
@@ -68,11 +71,11 @@ class EncoderLayer(nn.Module):
         head_dim=cfg.head_dim,
         dropout_rate=cfg.dropout_rate,
         float32_logits=cfg.float32_attention_logits,
-        name='attention')(
-            x, x, encoder_mask, encoder_bias, deterministic=deterministic)
-    x = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,))(
-            x, deterministic=deterministic)
+        name='attention',
+    )(x, x, encoder_mask, encoder_bias, deterministic=deterministic)
+    x = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(
+        x, deterministic=deterministic
+    )
     x = x + inputs
 
     # MLP block.
@@ -85,9 +88,9 @@ class EncoderLayer(nn.Module):
         dtype=cfg.dtype,
         name='mlp',
     )(y, deterministic=deterministic)
-    y = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,))(
-            y, deterministic=deterministic)
+    y = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(
+        y, deterministic=deterministic
+    )
     y = y + x
 
     return y
@@ -95,18 +98,21 @@ class EncoderLayer(nn.Module):
 
 class DecoderLayer(nn.Module):
   """Transformer decoder layer that attends to the encoder."""
+
   config: T5Config
   relative_embedding: nn.Module
 
   @nn.compact
-  def __call__(self,
-               inputs,
-               encoded,
-               decoder_mask=None,
-               encoder_decoder_mask=None,
-               deterministic=False,
-               decode=False,
-               max_decode_length=None):
+  def __call__(
+      self,
+      inputs,
+      encoded,
+      decoder_mask=None,
+      encoder_decoder_mask=None,
+      deterministic=False,
+      decode=False,
+      max_decode_length=None,
+  ):
     cfg = self.config
 
     # Relative position embedding as attention biases.
@@ -114,9 +120,9 @@ class DecoderLayer(nn.Module):
     decoder_bias = self.relative_embedding(l, l, False)
 
     # inputs: embedded inputs to the decoder with shape [batch, length, emb_dim]
-    x = layers.LayerNorm(
-        dtype=cfg.dtype, name='pre_self_attention_layer_norm')(
-            inputs)
+    x = layers.LayerNorm(dtype=cfg.dtype, name='pre_self_attention_layer_norm')(
+        inputs
+    )
 
     # Self-attention block
     x = layers.MultiHeadDotProductAttention(
@@ -125,33 +131,35 @@ class DecoderLayer(nn.Module):
         head_dim=cfg.head_dim,
         dropout_rate=cfg.dropout_rate,
         float32_logits=cfg.float32_attention_logits,
-        name='self_attention')(
-            x,
-            x,
-            decoder_mask,
-            decoder_bias,
-            deterministic=deterministic,
-            decode=decode)
-    x = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,))(
-            x, deterministic=deterministic)
+        name='self_attention',
+    )(
+        x,
+        x,
+        decoder_mask,
+        decoder_bias,
+        deterministic=deterministic,
+        decode=decode,
+    )
+    x = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(
+        x, deterministic=deterministic
+    )
     x = x + inputs
 
     # Encoder-Decoder block.
     y = layers.LayerNorm(
-        dtype=cfg.dtype, name='pre_cross_attention_layer_norm')(
-            x)
+        dtype=cfg.dtype, name='pre_cross_attention_layer_norm'
+    )(x)
     y = layers.MultiHeadDotProductAttention(
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
         head_dim=cfg.head_dim,
         dropout_rate=cfg.dropout_rate,
         float32_logits=cfg.float32_attention_logits,
-        name='encoder_decoder_attention')(
-            y, encoded, encoder_decoder_mask, deterministic=deterministic)
-    y = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,))(
-            y, deterministic=deterministic)
+        name='encoder_decoder_attention',
+    )(y, encoded, encoder_decoder_mask, deterministic=deterministic)
+    y = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(
+        y, deterministic=deterministic
+    )
     y = y + x
 
     # MLP block.
@@ -163,9 +171,9 @@ class DecoderLayer(nn.Module):
         dtype=cfg.dtype,
         name='mlp',
     )(z, deterministic=deterministic)
-    z = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,))(
-            z, deterministic=deterministic)
+    z = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(
+        z, deterministic=deterministic
+    )
     z = z + y
 
     return z
@@ -173,14 +181,14 @@ class DecoderLayer(nn.Module):
 
 class Encoder(nn.Module):
   """A stack of encoder layers."""
+
   config: T5Config
   shared_embedding: nn.Module
 
   @nn.compact
-  def __call__(self,
-               encoder_input_tokens,
-               encoder_mask=None,
-               deterministic=False):
+  def __call__(
+      self, encoder_input_tokens, encoder_mask=None, deterministic=False
+  ):
     cfg = self.config
     assert encoder_input_tokens.ndim == 2  # [batch, length]
     rel_emb = layers.RelativePositionBiases(
@@ -188,22 +196,24 @@ class Encoder(nn.Module):
         max_distance=128,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
-        embedding_init=nn.initializers.variance_scaling(1.0, 'fan_avg',
-                                                        'uniform'),
-        name='relpos_bias')
+        embedding_init=nn.initializers.variance_scaling(
+            1.0, 'fan_avg', 'uniform'
+        ),
+        name='relpos_bias',
+    )
 
     # [batch, length] -> [batch, length, emb_dim]
     x = self.shared_embedding(encoder_input_tokens.astype('int32'))
-    x = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,))(
-            x, deterministic=deterministic)
+    x = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(
+        x, deterministic=deterministic
+    )
     x = x.astype(cfg.dtype)
 
     for lyr in range(cfg.num_encoder_layers):
       # [batch, length, emb_dim] -> [batch, length, emb_dim]
       x = EncoderLayer(
-          config=cfg, relative_embedding=rel_emb,
-          name=f'layers_{lyr}')(x, encoder_mask, deterministic)
+          config=cfg, relative_embedding=rel_emb, name=f'layers_{lyr}'
+      )(x, encoder_mask, deterministic)
 
     x = layers.LayerNorm(dtype=cfg.dtype, name='encoder_norm')(x)
     return nn.Dropout(rate=cfg.dropout_rate)(x, deterministic=deterministic)
@@ -211,19 +221,22 @@ class Encoder(nn.Module):
 
 class Decoder(nn.Module):
   """A stack of decoder layers as a part of an encoder-decoder architecture."""
+
   config: T5Config
   shared_embedding: nn.Module
 
   @nn.compact
-  def __call__(self,
-               encoded,
-               decoder_input_tokens,
-               decoder_positions=None,
-               decoder_mask=None,
-               encoder_decoder_mask=None,
-               deterministic=False,
-               decode=False,
-               max_decode_length=None):
+  def __call__(
+      self,
+      encoded,
+      decoder_input_tokens,
+      decoder_positions=None,
+      decoder_mask=None,
+      encoder_decoder_mask=None,
+      deterministic=False,
+      decode=False,
+      max_decode_length=None,
+  ):
     cfg = self.config
     assert decoder_input_tokens.ndim == 2  # [batch, len]
     rel_emb = layers.RelativePositionBiases(
@@ -231,33 +244,37 @@ class Decoder(nn.Module):
         max_distance=128,
         num_heads=cfg.num_heads,
         dtype=cfg.dtype,
-        embedding_init=nn.initializers.variance_scaling(1.0, 'fan_avg',
-                                                        'uniform'),
-        name='relpos_bias')
+        embedding_init=nn.initializers.variance_scaling(
+            1.0, 'fan_avg', 'uniform'
+        ),
+        name='relpos_bias',
+    )
 
     # [batch, length] -> [batch, length, emb_dim]
     y = self.shared_embedding(decoder_input_tokens.astype('int32'))
-    y = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,))(
-            y, deterministic=deterministic)
+    y = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(
+        y, deterministic=deterministic
+    )
     y = y.astype(cfg.dtype)
 
     for lyr in range(cfg.num_decoder_layers):
       # [batch, length, emb_dim] -> [batch, length, emb_dim]
       y = DecoderLayer(
-          config=cfg, relative_embedding=rel_emb, name=f'layers_{lyr}')(
-              y,
-              encoded,
-              decoder_mask=decoder_mask,
-              encoder_decoder_mask=encoder_decoder_mask,
-              deterministic=deterministic,
-              decode=decode,
-              max_decode_length=max_decode_length)
+          config=cfg, relative_embedding=rel_emb, name=f'layers_{lyr}'
+      )(
+          y,
+          encoded,
+          decoder_mask=decoder_mask,
+          encoder_decoder_mask=encoder_decoder_mask,
+          deterministic=deterministic,
+          decode=decode,
+          max_decode_length=max_decode_length,
+      )
 
     y = layers.LayerNorm(dtype=cfg.dtype, name='decoder_norm')(y)
-    y = nn.Dropout(
-        rate=cfg.dropout_rate, broadcast_dims=(-2,))(
-            y, deterministic=deterministic)
+    y = nn.Dropout(rate=cfg.dropout_rate, broadcast_dims=(-2,))(
+        y, deterministic=deterministic
+    )
 
     # [batch, length, emb_dim] -> [batch, length, vocab_size]
     if cfg.logits_via_embedding:
@@ -270,13 +287,14 @@ class Decoder(nn.Module):
           cfg.vocab_size,
           dtype=jnp.float32,  # Use float32 for stabiliity.
           kernel_axes=('embed', 'vocab'),
-          name='logits_dense')(
-              y)
+          name='logits_dense',
+      )(y)
     return logits
 
 
 class Transformer(nn.Module):
   """An encoder-decoder Transformer model."""
+
   config: T5Config
 
   def setup(self):
@@ -288,24 +306,26 @@ class Transformer(nn.Module):
         attend_dtype=jnp.float32,  # for logit training stability
         embedding_init=nn.initializers.normal(stddev=1.0),
         one_hot=True,
-        name='token_embedder')
+        name='token_embedder',
+    )
 
     self.encoder = Encoder(config=cfg, shared_embedding=self.shared_embedding)
     self.decoder = Decoder(config=cfg, shared_embedding=self.shared_embedding)
 
-  def encode(self,
-             encoder_input_tokens,
-             encoder_segment_ids=None,
-             enable_dropout=True):
+  def encode(
+      self, encoder_input_tokens, encoder_segment_ids=None, enable_dropout=True
+  ):
     """Applies Transformer encoder-branch on the inputs."""
     cfg = self.config
     assert encoder_input_tokens.ndim == 2, (
-        f'Expected `encoder_input_tokens` to be of shape (batch, len). '
-        f'Got {encoder_input_tokens.shape}')
+        'Expected `encoder_input_tokens` to be of shape (batch, len). '
+        f'Got {encoder_input_tokens.shape}'
+    )
 
     # Make padding attention mask.
     encoder_mask = layers.make_attention_mask(
-        encoder_input_tokens > 0, encoder_input_tokens > 0, dtype=cfg.dtype)
+        encoder_input_tokens > 0, encoder_input_tokens > 0, dtype=cfg.dtype
+    )
     # Add segmentation block-diagonal attention mask if using segmented data.
     if encoder_segment_ids is not None:
       encoder_mask = layers.combine_masks(
@@ -314,10 +334,13 @@ class Transformer(nn.Module):
               encoder_segment_ids,
               encoder_segment_ids,
               jnp.equal,
-              dtype=cfg.dtype))
+              dtype=cfg.dtype,
+          ),
+      )
 
     return self.encoder(
-        encoder_input_tokens, encoder_mask, deterministic=not enable_dropout)
+        encoder_input_tokens, encoder_mask, deterministic=not enable_dropout
+    )
 
   def decode(
       self,
@@ -330,7 +353,8 @@ class Transformer(nn.Module):
       decoder_positions=None,
       enable_dropout=True,
       decode=False,
-      max_decode_length=None):
+      max_decode_length=None,
+  ):
     """Applies Transformer decoder-branch on encoded-input and target."""
     cfg = self.config
 
@@ -342,21 +366,25 @@ class Transformer(nn.Module):
       encoder_decoder_mask = layers.make_attention_mask(
           jnp.ones_like(decoder_target_tokens),
           encoder_input_tokens > 0,
-          dtype=cfg.dtype)
+          dtype=cfg.dtype,
+      )
     else:
       decoder_mask = layers.make_decoder_mask(
           decoder_target_tokens=decoder_target_tokens,
           dtype=cfg.dtype,
-          decoder_segment_ids=decoder_segment_ids)
+          decoder_segment_ids=decoder_segment_ids,
+      )
       encoder_decoder_mask = layers.make_attention_mask(
-          decoder_target_tokens > 0, encoder_input_tokens > 0, dtype=cfg.dtype)
+          decoder_target_tokens > 0, encoder_input_tokens > 0, dtype=cfg.dtype
+      )
 
     # Add segmentation block-diagonal attention masks if using segmented data.
     if encoder_segment_ids is not None:
       if decode:
         raise ValueError(
             'During decoding, packing should not be used but '
-            '`encoder_segment_ids` was passed to `Transformer.decode`.')
+            '`encoder_segment_ids` was passed to `Transformer.decode`.'
+        )
 
       encoder_decoder_mask = layers.combine_masks(
           encoder_decoder_mask,
@@ -364,7 +392,9 @@ class Transformer(nn.Module):
               decoder_segment_ids,
               encoder_segment_ids,
               jnp.equal,
-              dtype=cfg.dtype))
+              dtype=cfg.dtype,
+          ),
+      )
 
     logits = self.decoder(
         encoded,
@@ -374,20 +404,23 @@ class Transformer(nn.Module):
         encoder_decoder_mask=encoder_decoder_mask,
         deterministic=not enable_dropout,
         decode=decode,
-        max_decode_length=max_decode_length)
+        max_decode_length=max_decode_length,
+    )
     return logits
 
-  def __call__(self,
-               encoder_input_tokens,
-               decoder_input_tokens,
-               decoder_target_tokens,
-               encoder_segment_ids=None,
-               decoder_segment_ids=None,
-               encoder_positions=None,
-               decoder_positions=None,
-               *,
-               enable_dropout: bool = True,
-               decode: bool = False):
+  def __call__(
+      self,
+      encoder_input_tokens,
+      decoder_input_tokens,
+      decoder_target_tokens,
+      encoder_segment_ids=None,
+      decoder_segment_ids=None,
+      encoder_positions=None,
+      decoder_positions=None,
+      *,
+      enable_dropout: bool = True,
+      decode: bool = False,
+  ):
     """Applies Transformer model on the inputs.
 
     This method requires both decoder_target_tokens and decoder_input_tokens,
@@ -412,7 +445,8 @@ class Transformer(nn.Module):
     encoded = self.encode(
         encoder_input_tokens,
         encoder_segment_ids=encoder_segment_ids,
-        enable_dropout=enable_dropout)
+        enable_dropout=enable_dropout,
+    )
 
     return self.decode(
         encoded,
@@ -423,4 +457,5 @@ class Transformer(nn.Module):
         decoder_segment_ids=decoder_segment_ids,
         decoder_positions=decoder_positions,
         enable_dropout=enable_dropout,
-        decode=decode)
+        decode=decode,
+    )

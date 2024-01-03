@@ -19,6 +19,5 @@ import t5x.contrib.moe.models
 import t5x.contrib.moe.partitioning
 import t5x.contrib.moe.trainer
 import t5x.contrib.moe.training_utils
-
 # Version number.
 from t5x.version import __version__

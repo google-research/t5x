@@ -299,8 +299,8 @@ two ways: gin files and override flags.
     comma-separate list of search prefixes via `--gin_search_paths` and then
     only specify the relative path to the `--gin_file` flags. However, we
     strongly recommend against using `--gin_search_paths`. Using absolute paths
-    via the `--gin_file` flags will reduce sources of ambiguity and improve
-    the consistency of your scripts.
+    via the `--gin_file` flags will reduce sources of ambiguity and improve the
+    consistency of your scripts.
 
 1.  **Override Flags** Gin flags allow for more fine-grained overrides of any
     configurable aspect of your run. These flags follow the single-line binding

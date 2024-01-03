@@ -27,19 +27,21 @@ _INT32_MAX = np.iinfo(np.int32).max
 class BinarySearchTest(absltest.TestCase):
 
   def test_int32_bsearch(self):
-    a = jnp.asarray([
-        1,
-        43,
-        79,
-        2048,
-        0,
-        2047,
-        _INT32_MIN,
-        _INT32_MIN + 1,
-        _INT32_MAX,
-        _INT32_MAX - 1,
-    ],
-                    dtype=jnp.int32)
+    a = jnp.asarray(
+        [
+            1,
+            43,
+            79,
+            2048,
+            0,
+            2047,
+            _INT32_MIN,
+            _INT32_MIN + 1,
+            _INT32_MAX,
+            _INT32_MAX - 1,
+        ],
+        dtype=jnp.int32,
+    )
 
     def predicate(x):
       return x > a
@@ -48,20 +50,21 @@ class BinarySearchTest(absltest.TestCase):
     np.testing.assert_array_equal(a, r)
 
   def test_int32_bsearch_extreme_predicates(self):
-
     def predicate_false(x):
       return jnp.full_like(x, False)
 
     np.testing.assert_array_equal(
         jnp.asarray([_INT32_MAX]),
-        binary_search.int32_bsearch((1,), predicate_false))
+        binary_search.int32_bsearch((1,), predicate_false),
+    )
 
     def predicate_true(x):
       return jnp.full_like(x, True)
 
     np.testing.assert_array_equal(
         jnp.asarray([_INT32_MIN]),
-        binary_search.int32_bsearch((1,), predicate_true))
+        binary_search.int32_bsearch((1,), predicate_true),
+    )
 
   def test_float32_bsearch(self):
     a = jnp.asarray([1.23, 0.0, -0.0, 105.4, -1024, 4.3], dtype=jnp.float32)
@@ -170,37 +173,36 @@ class BinarySearchTest(absltest.TestCase):
                 jnp.log(0.2),
                 jnp.log(0.2),
                 jnp.log(0.2),
-                jnp.log(0.3), mask
+                jnp.log(0.3),
+                mask,
             ],
         ]),
         binary_search.topp_mask(logits, 0.4, mask),
     )
     np.testing.assert_array_equal(
         jnp.asarray([
-            [mask, jnp.log(0.7), mask, mask,
-             jnp.log(0.2), mask],
-            [
-                mask,
-                jnp.log(0.2),
-                jnp.log(0.2),
-                jnp.log(0.2),
-                jnp.log(0.3), mask
-            ],
-        ]),
-        binary_search.topp_mask(logits, 0.8, mask),
-    )
-    np.testing.assert_array_equal(
-        jnp.asarray([
-            [mask, jnp.log(0.7), mask,
-             jnp.log(0.06),
-             jnp.log(0.2), mask],
+            [mask, jnp.log(0.7), mask, mask, jnp.log(0.2), mask],
             [
                 mask,
                 jnp.log(0.2),
                 jnp.log(0.2),
                 jnp.log(0.2),
                 jnp.log(0.3),
-                jnp.log(0.1)
+                mask,
+            ],
+        ]),
+        binary_search.topp_mask(logits, 0.8, mask),
+    )
+    np.testing.assert_array_equal(
+        jnp.asarray([
+            [mask, jnp.log(0.7), mask, jnp.log(0.06), jnp.log(0.2), mask],
+            [
+                mask,
+                jnp.log(0.2),
+                jnp.log(0.2),
+                jnp.log(0.2),
+                jnp.log(0.3),
+                jnp.log(0.1),
             ],
         ]),
         binary_search.topp_mask(logits, 0.95, mask),

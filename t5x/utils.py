@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """General utility functions for t5x."""
+
 import collections
 import collections.abc
 from concurrent.futures import thread
@@ -2029,7 +2030,10 @@ class GetDatasetCallable(typing_extensions.Protocol):
       feature_converter_cls: Callable[..., seqio.FeatureConverter],
       num_epochs: Optional[int] = None,
       continue_from_last_checkpoint: bool = True,
-  ) -> Union[clu.data.dataset_iterator.DatasetIterator, tf.data.Dataset,]:
+  ) -> Union[
+      clu.data.dataset_iterator.DatasetIterator,
+      tf.data.Dataset,
+  ]:
     ...
 
 

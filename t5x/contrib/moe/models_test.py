@@ -24,7 +24,6 @@ import jax.numpy as jnp
 import numpy as np
 from t5x import decoding
 from t5x import metrics as metrics_lib
-
 from t5x.contrib.moe import models
 
 Accuracy = clu_metrics_lib.Accuracy
@@ -37,33 +36,35 @@ class ModelsTest(absltest.TestCase):
 
   def test_expert_losses(self):
     diversity_metrics = {
-        'auxiliary_loss': jnp.array([1., 2.]),
-        'router_z_loss': jnp.array([0., 1.]),
+        'auxiliary_loss': jnp.array([1.0, 2.0]),
+        'router_z_loss': jnp.array([0.0, 1.0]),
         'fraction_tokens_left_behind': jnp.array([0.5, 0.5]),
         'expert_usage': jnp.array([0.5, 0.5]),
-        'router_confidence': jnp.array([0.5, 0.5])
+        'router_confidence': jnp.array([0.5, 0.5]),
     }
     aux_loss, router_z_loss = models._expert_losses(
-        diversity_metrics, auxiliary_loss_factor=0.1, router_z_loss_factor=10)
+        diversity_metrics, auxiliary_loss_factor=0.1, router_z_loss_factor=10
+    )
 
     self.assertEqual(aux_loss, 0.15)
-    self.assertEqual(router_z_loss, 5.)
+    self.assertEqual(router_z_loss, 5.0)
 
   def test_expert_metrics(self):
     diversity_metrics = {
-        'auxiliary_loss': jnp.array([1., 2.]),
-        'router_z_loss': jnp.array([0., 1.]),
-        'fraction_tokens_left_behind': jnp.array([1., 0.5]),
+        'auxiliary_loss': jnp.array([1.0, 2.0]),
+        'router_z_loss': jnp.array([0.0, 1.0]),
+        'fraction_tokens_left_behind': jnp.array([1.0, 0.5]),
         'expert_usage': jnp.array([0.7, 0.5]),
-        'router_confidence': jnp.array([0.5, 0.5])
+        'router_confidence': jnp.array([0.5, 0.5]),
     }
     actual_metrics = models._expert_metrics(
         diversity_metrics,
-        total_loss=100.,
-        z_loss=1.,
-        auxiliary_loss=3.,
-        router_z_loss=7.,
-        num_tokens=2)
+        total_loss=100.0,
+        z_loss=1.0,
+        auxiliary_loss=3.0,
+        router_z_loss=7.0,
+        num_tokens=2,
+    )
     actual_metrics = metrics_lib.set_step_metrics_num_steps(actual_metrics, 1)
     actual_computed_metrics = {
         k: v.compute() for k, v in actual_metrics.items()
@@ -72,11 +73,11 @@ class ModelsTest(absltest.TestCase):
     expected_metrics = {
         'cross_ent_loss': 89.0,
         'cross_ent_loss_per_all_target_tokens': 44.5,
-        'experts/auxiliary_loss': 3.,
+        'experts/auxiliary_loss': 3.0,
         'experts/expert_usage': 0.6,
         'experts/fraction_tokens_left_behind': 0.75,
         'experts/router_confidence': 0.5,
-        'experts/router_z_loss': 7.
+        'experts/router_z_loss': 7.0,
     }
     self.assertEqual(actual_computed_metrics, expected_metrics)
 
@@ -88,32 +89,33 @@ class ModelsTest(absltest.TestCase):
                 'router_z_loss': (jnp.array([[0.1]]), jnp.array([[0.2]])),
                 'router_confidence': (jnp.array([[0.4]]), jnp.array([[0.2]])),
                 'expert_usage': (jnp.array([[0.9]]), jnp.array([[0.2]])),
-                'fraction_tokens_left_behind': (jnp.array([[0.1]]),
-                                                jnp.array([[0.2]])),
+                'fraction_tokens_left_behind': (
+                    jnp.array([[0.1]]),
+                    jnp.array([[0.2]]),
+                ),
             },
             'moe_layer_1': {
-                'auxiliary_loss': (jnp.array([[0.2]]), jnp.array([[0.]])),
-                'router_z_loss': (jnp.array([[0.1]]), jnp.array([[0.]])),
+                'auxiliary_loss': (jnp.array([[0.2]]), jnp.array([[0.0]])),
+                'router_z_loss': (jnp.array([[0.1]]), jnp.array([[0.0]])),
                 'router_confidence': (jnp.array([[0.4]]), jnp.array([[0.5]])),
                 'expert_usage': (jnp.array([[0.9]]), jnp.array([[0.8]])),
-                'fraction_tokens_left_behind': (jnp.array([[0.1]]),
-                                                jnp.array([[0.3]])),
-            }
+                'fraction_tokens_left_behind': (
+                    jnp.array([[0.1]]),
+                    jnp.array([[0.3]]),
+                ),
+            },
         }
     })
     extracted_metrics = models._extract_diversity_metrics(state)
 
     expected_raw_metrics = {
-        'auxiliary_loss':
-            jnp.array([[[0.2]], [[0.05]]], dtype=jnp.float32),
-        'router_z_loss':
-            jnp.array([[[0.1]], [[0.1]]], dtype=jnp.float32),
-        'fraction_tokens_left_behind':
-            jnp.array([[[0.1]], [[0.25]]], dtype=jnp.float32),
-        'expert_usage':
-            jnp.array([[[0.9]], [[0.5]]], dtype=jnp.float32),
-        'router_confidence':
-            jnp.array([[[0.4]], [[0.35]]], dtype=jnp.float32)
+        'auxiliary_loss': jnp.array([[[0.2]], [[0.05]]], dtype=jnp.float32),
+        'router_z_loss': jnp.array([[[0.1]], [[0.1]]], dtype=jnp.float32),
+        'fraction_tokens_left_behind': jnp.array(
+            [[[0.1]], [[0.25]]], dtype=jnp.float32
+        ),
+        'expert_usage': jnp.array([[[0.9]], [[0.5]]], dtype=jnp.float32),
+        'router_confidence': jnp.array([[[0.4]], [[0.35]]], dtype=jnp.float32),
     }
     for metric, expected_value in expected_raw_metrics.items():
       np.testing.assert_allclose(extracted_metrics[metric], expected_value)
@@ -139,42 +141,48 @@ class ModelsTest(absltest.TestCase):
         'encoder_input_tokens': encoder_input_tokens,
         'decoder_input_tokens': decoder_input_tokens,
         'decoder_target_tokens': decoder_target_tokens,
-        'decoder_loss_weights': decoder_loss_weights
+        'decoder_loss_weights': decoder_loss_weights,
     }
 
     def mock_init(self):
       self.module = mock_transformer
 
     with mock.patch.object(
-        models.MoeEncoderDecoderModel, '__init__', new=mock_init):
+        models.MoeEncoderDecoderModel, '__init__', new=mock_init
+    ):
       model = models.MoeEncoderDecoderModel()
       result = model.score_batch(params, batch)
 
-    mock_transformer.apply.assert_called_with({'params': params},
-                                              encoder_input_tokens,
-                                              decoder_input_tokens,
-                                              decoder_target_tokens,
-                                              encoder_segment_ids=None,
-                                              decoder_segment_ids=None,
-                                              encoder_positions=None,
-                                              decoder_positions=None,
-                                              decode=False,
-                                              enable_dropout=False,
-                                              rngs=None,
-                                              mutable=False)
+    mock_transformer.apply.assert_called_with(
+        {'params': params},
+        encoder_input_tokens,
+        decoder_input_tokens,
+        decoder_target_tokens,
+        encoder_segment_ids=None,
+        decoder_segment_ids=None,
+        encoder_positions=None,
+        decoder_positions=None,
+        decode=False,
+        enable_dropout=False,
+        rngs=None,
+        mutable=False,
+    )
     np.testing.assert_allclose(result, [-3.2228181, -1.8152122], rtol=1e-5)
 
   def test_decoder_only_model(self):
     batch = {
-        'decoder_input_tokens':
-            jnp.array([[0, 3, 4, 5, 6, 0, 0], [0, 7, 8, 9, 0, 0, 0]]),
-        'decoder_causal_attention':
-            jnp.array([[1, 1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0]]),
+        'decoder_input_tokens': jnp.array(
+            [[0, 3, 4, 5, 6, 0, 0], [0, 7, 8, 9, 0, 0, 0]]
+        ),
+        'decoder_causal_attention': jnp.array(
+            [[1, 1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0]]
+        ),
     }
     params = {}
 
     dummy_logits = jnp.expand_dims(
-        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1)
+        jnp.array([[-1e7, -1e7, 0, -1e7], [-1e7, -1e7, -1e7, 0]]), axis=1
+    )
 
     mock_transformer = mock.Mock()
     mock_transformer.apply.return_value = (dummy_logits, {'cache': {}})
@@ -187,7 +195,8 @@ class ModelsTest(absltest.TestCase):
       self._inputs_bidirectional_attention = False
 
     with mock.patch.object(
-        models.MoeDecoderOnlyModel, '__init__', new=mock_init):
+        models.MoeDecoderOnlyModel, '__init__', new=mock_init
+    ):
       model = models.MoeDecoderOnlyModel()
 
     actual = model.predict_batch(params, batch)
@@ -199,7 +208,7 @@ class ModelsTest(absltest.TestCase):
         'encoder_input_tokens': jnp.ones((2, 3)),
         'decoder_input_tokens': jnp.array([[1, 2, 1, 0], [0, 1, 0, 2]]),
         'decoder_target_tokens': jnp.array([[1, 2, 1, 0], [0, 1, 0, 2]]),
-        'decoder_loss_weights': jnp.array([[1, 1, 1, 0], [0, 1, 0, 1]])
+        'decoder_loss_weights': jnp.array([[1, 1, 1, 0], [0, 1, 0, 1]]),
     }
     logits = jnp.arange(0, 24).reshape((2, 4, 3))
     state = flax_core.freeze({
@@ -216,36 +225,45 @@ class ModelsTest(absltest.TestCase):
         batch,
         logits,
         state,
-        label_smoothing=0.,
-        z_loss=0.,
+        label_smoothing=0.0,
+        z_loss=0.0,
         loss_normalizing_factor=None,
         aux_loss_factor=0.1,
-        router_z_loss_factor=0.01)
+        router_z_loss_factor=0.01,
+    )
 
     self.assertAlmostEqual(loss, 5.0590305)
     self.assertContainsSubset(
         {
-            'experts/auxiliary_loss':
-                AveragePerStep(total=jnp.array(0.02), steps=1),
-            'experts/router_z_loss':
-                AveragePerStep(total=jnp.array(0.001), steps=1),
-            'experts/router_confidence':
-                AveragePerStep(total=jnp.array(0.5), steps=1),
-            'experts/expert_usage':
-                AveragePerStep(total=jnp.array(0.9), steps=1),
-            'experts/fraction_tokens_left_behind':
-                AveragePerStep(total=jnp.array(0.1), steps=1),
-            'accuracy':
-                Accuracy(total=jnp.array(2.), count=jnp.array(5)),
-            'cross_ent_loss':
-                AveragePerStep(steps=1, total=jnp.array(5.0590305)),
-            'loss':
-                AveragePerStep(steps=1, total=jnp.array(5.0590305)),
-            'timing/seqs_per_second':
-                metrics_lib.TimeRate(duration=None, numerator=2),
-            'timing/steps_per_second':
-                metrics_lib.StepsPerTime(duration=None, steps=1),
-        }, metrics)
+            'experts/auxiliary_loss': AveragePerStep(
+                total=jnp.array(0.02), steps=1
+            ),
+            'experts/router_z_loss': AveragePerStep(
+                total=jnp.array(0.001), steps=1
+            ),
+            'experts/router_confidence': AveragePerStep(
+                total=jnp.array(0.5), steps=1
+            ),
+            'experts/expert_usage': AveragePerStep(
+                total=jnp.array(0.9), steps=1
+            ),
+            'experts/fraction_tokens_left_behind': AveragePerStep(
+                total=jnp.array(0.1), steps=1
+            ),
+            'accuracy': Accuracy(total=jnp.array(2.0), count=jnp.array(5)),
+            'cross_ent_loss': AveragePerStep(
+                steps=1, total=jnp.array(5.0590305)
+            ),
+            'loss': AveragePerStep(steps=1, total=jnp.array(5.0590305)),
+            'timing/seqs_per_second': metrics_lib.TimeRate(
+                duration=None, numerator=2
+            ),
+            'timing/steps_per_second': metrics_lib.StepsPerTime(
+                duration=None, steps=1
+            ),
+        },
+        metrics,
+    )
 
 
 if __name__ == '__main__':

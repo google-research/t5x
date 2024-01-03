@@ -619,19 +619,14 @@ class InteractiveModel(abc.ABC):
     def compute_metrics_fn():
       task_metrics = []
       if predict_metric_fns:
-        task_metrics.extend(
-            [
-                metric_fn(targets, predictions)
-                for metric_fn in predict_metric_fns
-            ]
-        )
+        task_metrics.extend([
+            metric_fn(targets, predictions) for metric_fn in predict_metric_fns
+        ])
       if predict_with_aux_metric_fns:
-        task_metrics.extend(
-            [
-                metric_fn(targets, predictions, aux_values)
-                for metric_fn in predict_with_aux_metric_fns
-            ]
-        )
+        task_metrics.extend([
+            metric_fn(targets, predictions, aux_values)
+            for metric_fn in predict_with_aux_metric_fns
+        ])
       if score_metric_fns:
         is_tuple = isinstance(scores, tuple)
         if (not is_tuple and len(targets) != len(scores)) or (

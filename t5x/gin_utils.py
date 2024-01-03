@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Utilities for using gin configurations with T5X binaries."""
+
 import os
 from typing import Optional, Sequence, Union
 
@@ -47,11 +48,13 @@ def get_gin_config_str(show_provenance: bool = False) -> str:
     return gin.config_str()
 
 
-def parse_gin_flags(gin_search_paths: Sequence[str],
-                    gin_files: Sequence[str],
-                    gin_bindings: Sequence[str],
-                    skip_unknown: Union[bool, Sequence[str]] = False,
-                    finalize_config: bool = True):
+def parse_gin_flags(
+    gin_search_paths: Sequence[str],
+    gin_files: Sequence[str],
+    gin_bindings: Sequence[str],
+    skip_unknown: Union[bool, Sequence[str]] = False,
+    finalize_config: bool = True,
+):
   """Parses provided gin files override params.
 
   Args:
@@ -79,7 +82,8 @@ def parse_gin_flags(gin_search_paths: Sequence[str],
       gin_files,
       gin_bindings,
       skip_unknown=skip_unknown,
-      finalize_config=finalize_config)
+      finalize_config=finalize_config,
+  )
   logging.info('Gin Configuration:')
   for line in get_gin_config_str().splitlines():
     logging.info('%s', line)
@@ -93,8 +97,9 @@ def rewrite_gin_args(args: Sequence[str]) -> Sequence[str]:
       return arg
     if '=' not in arg:
       raise ValueError(
-          "Gin bindings must be of the form '--gin.<param>=<value>', got: " +
-          arg)
+          "Gin bindings must be of the form '--gin.<param>=<value>', got: "
+          + arg
+      )
     # Strip '--gin.'
     arg = arg[6:]
     name, value = arg.split('=', maxsplit=1)
@@ -106,9 +111,11 @@ def rewrite_gin_args(args: Sequence[str]) -> Sequence[str]:
 
 
 @gin.register
-def summarize_gin_config(model_dir: str,
-                         summary_writer: Optional[metric_writers.MetricWriter],
-                         step: int):
+def summarize_gin_config(
+    model_dir: str,
+    summary_writer: Optional[metric_writers.MetricWriter],
+    step: int,
+):
   """Writes gin config to the model dir and TensorBoard summary."""
   if jax.process_index() == 0:
     config_str = get_gin_config_str()
@@ -126,7 +133,10 @@ def run(main):
   """Wrapper for app.run that rewrites gin args before parsing."""
   app.run(
       main,
-      flags_parser=lambda a: app.parse_flags_with_usage(rewrite_gin_args(a)))  # pytype: disable=wrong-arg-types
+      flags_parser=lambda a: app.parse_flags_with_usage(
+          list(rewrite_gin_args(a))
+      ),
+  )  # pytype: disable=wrong-arg-types
 
 
 # ====================== Configurable Utility Functions ======================
@@ -145,10 +155,9 @@ def bool_fn(var1=gin.REQUIRED):
 
 
 @gin.configurable
-def string_split_fn(text=gin.REQUIRED,
-                    separator=gin.REQUIRED,
-                    maxsplit=-1,
-                    index=None):
+def string_split_fn(
+    text=gin.REQUIRED, separator=gin.REQUIRED, maxsplit=-1, index=None
+):
   """String split function to use inside gin files."""
   values = text.split(separator, maxsplit)
   if index is None:

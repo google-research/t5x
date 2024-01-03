@@ -16,6 +16,7 @@ r"""Exports a T5X model.
 
 
 """
+
 import os
 from typing import Sequence
 from absl import logging
@@ -43,22 +44,29 @@ if __name__ == '__main__':
   flags.DEFINE_multi_string(
       'gin_file',
       default=None,
-      help='Path to gin configuration file. Multiple paths may be passed and '
-      'will be imported in the given order, with later configurations  '
-      'overriding earlier ones.')
+      help=(
+          'Path to gin configuration file. Multiple paths may be passed and '
+          'will be imported in the given order, with later configurations  '
+          'overriding earlier ones.'
+      ),
+  )
 
   flags.DEFINE_multi_string(
       'gin_bindings',
       default=[],
-      help='Individual gin bindings. Also used to integrate gin and XManager.')
+      help='Individual gin bindings. Also used to integrate gin and XManager.',
+  )
 
   flags.DEFINE_list(
       'gin_search_paths',
       default=['t5x/configs'],
-      help='Comma-separated list of gin config path prefixes to be prepended '
-      'to suffixes given via `--gin_file`. If a file appears in. Only the '
-      'first prefix that produces a valid path for each suffix will be '
-      'used.')
+      help=(
+          'Comma-separated list of gin config path prefixes to be prepended '
+          'to suffixes given via `--gin_file`. If a file appears in. Only the '
+          'first prefix that produces a valid path for each suffix will be '
+          'used.'
+      ),
+  )
 
   def main(argv: Sequence[str]):
     """Wrapper for g3pdb post mortems."""

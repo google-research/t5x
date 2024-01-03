@@ -4,9 +4,9 @@
 ## Introduction
 
 T5X provides a flexible and customizable library for managing metrics. Metrics
-in T5X rely on [CLU](https://github.com/google/CommonLoopUtils/blob/main/README.md), which broadly provides utilities for writing
-training loops but specifically provides metric libraries that are extended by
-T5X.
+in T5X rely on [CLU](https://github.com/google/CommonLoopUtils/blob/main/README.md), which broadly provides utilities for
+writing training loops but specifically provides metric libraries that are
+extended by T5X.
 
 
 NOTE: This document currently only applies to train and 'train_eval' metrics,
@@ -16,8 +16,8 @@ these three in the future.
 ## Metrics and Writers
 
 CLU provides `Metric` and `MetricWriter` classes. Full details are provided in
-[go/clu-metrics](https://github.com/google/CommonLoopUtils/blob/main/README.md-metrics), but a simplified summary will suffice for our
-purposes.
+[go/clu-metrics](https://github.com/google/CommonLoopUtils/blob/main/README.md-metrics), but a simplified summary will suffice
+for our purposes.
 
 [`clu.metrics.Metric`](https://github.com/google/CommonLoopUtils/tree/main/clu/metrics.py?q=symbol:%5CbMetric%5Cb)
 provides an abstract interface for metrics. The interface can be simply

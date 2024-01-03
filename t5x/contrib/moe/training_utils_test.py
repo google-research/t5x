@@ -48,22 +48,25 @@ class ScaleShardedGradsTest(absltest.TestCase):
     grads = flax_core.freeze({
         'encoder': {
             'expert_layer': jnp.ones((2, 3)),
-            'regular_layer': jnp.ones((1, 2))
+            'regular_layer': jnp.ones((1, 2)),
         }
     })
     sharded_match_fn = training_utils.match_fn(r'.*expert.*')
     scaled_grads = training_utils.scale_sharded_grads(
-        grads, sharded_match_fn, scale_factor=100.)
+        grads, sharded_match_fn, scale_factor=100.0
+    )
 
     expected_grads = flax_core.freeze({
         'encoder': {
-            'expert_layer': 100. * jnp.ones((2, 3)),
-            'regular_layer': jnp.ones((1, 2))
+            'expert_layer': 100.0 * jnp.ones((2, 3)),
+            'regular_layer': jnp.ones((1, 2)),
         }
     })
     jax.tree_map(
-        functools.partial(np.testing.assert_allclose, rtol=3e-7), scaled_grads,
-        expected_grads)
+        functools.partial(np.testing.assert_allclose, rtol=3e-7),
+        scaled_grads,
+        expected_grads,
+    )
 
 
 class TreeTest(absltest.TestCase):
@@ -72,18 +75,24 @@ class TreeTest(absltest.TestCase):
     tree = {'ff_0': {'kernel': 0, 'bias': 1}, 'ff_1': {'kernel': 2, 'bias': 3}}
     names_and_values, _ = training_utils._tree_flatten_with_names(tree)
 
-    expected_names_and_values = [('ff_0/bias', 1), ('ff_0/kernel', 0),
-                                 ('ff_1/bias', 3), ('ff_1/kernel', 2)]
+    expected_names_and_values = [
+        ('ff_0/bias', 1),
+        ('ff_0/kernel', 0),
+        ('ff_1/bias', 3),
+        ('ff_1/kernel', 2),
+    ]
     self.assertEqual(names_and_values, expected_names_and_values)
 
     # Check that values match regular JAX tree_flatten.
-    self.assertEqual([x for _, x in names_and_values],
-                     jax.tree_util.tree_flatten(tree)[0])
+    self.assertEqual(
+        [x for _, x in names_and_values], jax.tree_util.tree_flatten(tree)[0]
+    )
 
   def test_tree_map_with_names(self):
     tree = {'a': 1, 'b': 2}
     mapped_tree = training_utils.tree_map_with_names(
-        f=lambda x: -x, param_tree=tree, match_name_fn=lambda name: name == 'b')
+        f=lambda x: -x, param_tree=tree, match_name_fn=lambda name: name == 'b'
+    )
 
     self.assertEqual(mapped_tree, {'a': 1, 'b': -2})
 

@@ -47,18 +47,21 @@ Activation = Callable[..., Array]
 Initializer = Callable[[PRNGKey, Shape, DType], Array]
 
 default_embed_init = nn.initializers.variance_scaling(
-    1.0, 'fan_in', 'normal', out_axis=0)
+    1.0, 'fan_in', 'normal', out_axis=0
+)
 
 
-def dot_product_attention(query: Array,
-                          key: Array,
-                          value: Array,
-                          bias: Optional[Array] = None,
-                          dropout_rng: Optional[PRNGKey] = None,
-                          dropout_rate: float = 0.,
-                          deterministic: bool = False,
-                          dtype: DType = jnp.float32,
-                          float32_logits: bool = False):
+def dot_product_attention(
+    query: Array,
+    key: Array,
+    value: Array,
+    bias: Optional[Array] = None,
+    dropout_rng: Optional[PRNGKey] = None,
+    dropout_rate: float = 0.0,
+    deterministic: bool = False,
+    dtype: DType = jnp.float32,
+    float32_logits: bool = False,
+):
   """Computes dot-product attention given query, key, and value.
 
   This is the core function for applying attention based on
@@ -86,10 +89,12 @@ def dot_product_attention(query: Array,
     Output of shape `[batch, length, num_heads, v_depth_per_head]`.
   """
   assert key.ndim == query.ndim == value.ndim, 'q, k, v must have same rank.'
-  assert query.shape[:-3] == key.shape[:-3] == value.shape[:-3], (
-      'q, k, v batch dims must match.')
-  assert query.shape[-2] == key.shape[-2] == value.shape[-2], (
-      'q, k, v num_heads must match.')
+  assert (
+      query.shape[:-3] == key.shape[:-3] == value.shape[:-3]
+  ), 'q, k, v batch dims must match.'
+  assert (
+      query.shape[-2] == key.shape[-2] == value.shape[-2]
+  ), 'q, k, v num_heads must match.'
   assert key.shape[-3] == value.shape[-3], 'k, v lengths must match.'
   assert query.shape[-1] == key.shape[-1], 'q, k depths must match.'
 
@@ -109,7 +114,7 @@ def dot_product_attention(query: Array,
   attn_weights = jax.nn.softmax(attn_weights).astype(dtype)
 
   # Apply attention dropout.
-  if not deterministic and dropout_rate > 0.:
+  if not deterministic and dropout_rate > 0.0:
     keep_prob = 1.0 - dropout_rate
     # T5 broadcasts along the "length" dim, but unclear which one that
     # corresponds to in positional dimensions here, assuming query dim.
@@ -117,8 +122,9 @@ def dot_product_attention(query: Array,
     dropout_shape[-2] = 1
     keep = random.bernoulli(dropout_rng, keep_prob, dropout_shape)
     keep = jnp.broadcast_to(keep, attn_weights.shape)
-    multiplier = (
-        keep.astype(attn_weights.dtype) / jnp.asarray(keep_prob, dtype=dtype))
+    multiplier = keep.astype(attn_weights.dtype) / jnp.asarray(
+        keep_prob, dtype=dtype
+    )
     attn_weights = attn_weights * multiplier
 
   # Take the linear combination of `value`.
@@ -128,28 +134,34 @@ def dot_product_attention(query: Array,
 class MultiHeadDotProductAttention(nn.Module):
   """Multi-head dot-product attention.
 
-    Attributes:
-      num_heads: number of attention heads. Features (i.e. inputs_q.shape[-1])
-        should be divisible by the number of heads.
-      head_dim: dimension of each head.
-      dtype: the dtype of the computation.
-      dropout_rate: dropout rate
-      kernel_init: initializer for the kernel of the Dense layers.
-      float32_logits: bool, if True then compute logits in float32 to avoid
-        numerical issues with bfloat16.
+  Attributes:
+    num_heads: number of attention heads. Features (i.e. inputs_q.shape[-1])
+      should be divisible by the number of heads.
+    head_dim: dimension of each head.
+    dtype: the dtype of the computation.
+    dropout_rate: dropout rate
+    kernel_init: initializer for the kernel of the Dense layers.
+    float32_logits: bool, if True then compute logits in float32 to avoid
+      numerical issues with bfloat16.
   """
+
   num_heads: int
   head_dim: int
   dtype: DType = jnp.float32
-  dropout_rate: float = 0.
+  dropout_rate: float = 0.0
   kernel_init: Initializer = nn.initializers.variance_scaling(
-      1.0, 'fan_in', 'normal')
+      1.0, 'fan_in', 'normal'
+  )
   float32_logits: bool = False
 
   def update_cache_prefill(
-      self, key: Array, value: Array, cached_key: variables.Variable,
-      cached_value: variables.Variable, cache_index: variables.Variable,
-      prefill_lengths: Array
+      self,
+      key: Array,
+      value: Array,
+      cached_key: variables.Variable,
+      cached_value: variables.Variable,
+      cache_index: variables.Variable,
+      prefill_lengths: Array,
   ) -> Tuple[Array, Array, Array, Array, Array, Array]:
     """Update the autoregressive cache for multiple timesteps at once.
 
@@ -192,27 +204,44 @@ class MultiHeadDotProductAttention(nn.Module):
     # broadcasting behavior is to add singleton dims to the front, but we need
     # them at the end.
     batch_first_index = jnp.reshape(
-        cur_index, (-1,) + tuple(1 for _ in range(cached_key.value.ndim - 1)))
+        cur_index, (-1,) + tuple(1 for _ in range(cached_key.value.ndim - 1))
+    )
     # Calculate a mask that will set any position past the prefix to zero
     # when applied to the key.
     key_mask = (
-        lax.broadcasted_iota(jnp.int32, cached_key.value.shape,
-                             cached_key.value.ndim - 1) < batch_first_index)
+        lax.broadcasted_iota(
+            jnp.int32, cached_key.value.shape, cached_key.value.ndim - 1
+        )
+        < batch_first_index
+    )
     value_mask = (
-        lax.broadcasted_iota(jnp.int32, cached_value.value.shape,
-                             cached_value.value.ndim - 1) < batch_first_index)
+        lax.broadcasted_iota(
+            jnp.int32, cached_value.value.shape, cached_value.value.ndim - 1
+        )
+        < batch_first_index
+    )
     # Set the caches with the calculated key and values but hide anything
     # past the prefix.
     cached_key_value = key_cached * key_mask
     cached_value_value = value_cached * value_mask
     # TODO(hwchung): remove the return values once direct assignment to
     # variables inside a method is possible.
-    return (key, value, cur_index, cached_key_value, cached_value_value,
-            prefill_lengths)
+    return (
+        key,
+        value,
+        cur_index,
+        cached_key_value,
+        cached_value_value,
+        prefill_lengths,
+    )
 
   def update_cache_decode(
-      self, key: Array, value: Array, cached_key: variables.Variable,
-      cached_value: variables.Variable, cache_index: variables.Variable
+      self,
+      key: Array,
+      value: Array,
+      cached_key: variables.Variable,
+      cached_value: variables.Variable,
+      cache_index: variables.Variable,
   ) -> Tuple[Array, Array, Array, Array, Array, Array]:
     """Update the next timestep in the autoregressive cache.
 
@@ -260,7 +289,8 @@ class MultiHeadDotProductAttention(nn.Module):
     # of prefixes. We need to add dims for num_heads and num_features as
     # broadcasting doesn't work for the batched version.
     one_hot_indices = jnp.expand_dims(
-        jnp.expand_dims(one_hot_indices, axis=1), axis=1)
+        jnp.expand_dims(one_hot_indices, axis=1), axis=1
+    )
     # Update key, value caches with our new 1d spatial slices.
     # We implement an efficient scatter into the cache via one-hot
     # broadcast and addition.
@@ -277,20 +307,28 @@ class MultiHeadDotProductAttention(nn.Module):
     value = jnp.moveaxis(value, -1, -3)
     # TODO(hwchung): remove the return values once direct assignment to
     # variables inside a method is possible.
-    return (key, value, cur_index, cached_key_value, cached_value_value,
-            cache_index_value)
+    return (
+        key,
+        value,
+        cur_index,
+        cached_key_value,
+        cached_value_value,
+        cache_index_value,
+    )
 
   @nn.compact
-  def __call__(self,
-               inputs_q: Array,
-               inputs_kv: Array,
-               mask: Optional[Array] = None,
-               bias: Optional[Array] = None,
-               *,
-               decode: bool = False,
-               deterministic: bool = False,
-               prefill: bool = False,
-               prefill_lengths: Optional[Array] = None) -> Array:
+  def __call__(
+      self,
+      inputs_q: Array,
+      inputs_kv: Array,
+      mask: Optional[Array] = None,
+      bias: Optional[Array] = None,
+      *,
+      decode: bool = False,
+      deterministic: bool = False,
+      prefill: bool = False,
+      prefill_lengths: Optional[Array] = None,
+  ) -> Array:
     """Applies multi-head dot product attention on the input data.
 
     Projects the inputs into multi-headed query, key, and value vectors,
@@ -331,7 +369,8 @@ class MultiHeadDotProductAttention(nn.Module):
         axis=-1,
         features=(self.num_heads, self.head_dim),
         kernel_axes=('embed', 'joined_kv'),
-        dtype=self.dtype)
+        dtype=self.dtype,
+    )
 
     # NOTE: T5 does not explicitly rescale the attention logits by
     #       1/sqrt(depth_kq)!  This is folded into the initializers of the
@@ -350,12 +389,14 @@ class MultiHeadDotProductAttention(nn.Module):
     value = with_sharding_constraint(value, ('batch', 'length', 'heads', 'kv'))
 
     if prefill and decode:
-      raise ValueError('prefill and decode cannot both be true at the same'
-                       'time. If you are using a prefix LM with bidirectional '
-                       'attention on the inputs, please make a call with '
-                       'prefill=True that includes an attention mask that '
-                       'covers your inputs first and then make your decoding '
-                       'calls.')
+      raise ValueError(
+          'prefill and decode cannot both be true at the same'
+          'time. If you are using a prefix LM with bidirectional '
+          'attention on the inputs, please make a call with '
+          'prefill=True that includes an attention mask that '
+          'covers your inputs first and then make your decoding '
+          'calls.'
+      )
     if prefill or decode:
       # Detect if we're initializing by absence of existing cache data.
       is_initialized = self.has_variable('cache', 'cached_key')
@@ -366,16 +407,24 @@ class MultiHeadDotProductAttention(nn.Module):
       # trick, which means we do a one-hot broadcast instead of a scatter/gather
       # operations, which gives a 3-4x speedup in practice.
       swap_dims = lambda x: x[:-3] + tuple(x[i] for i in [-2, -1, -3])
-      cached_key = self.variable('cache', 'cached_key', jnp.zeros,
-                                 swap_dims(key.shape), key.dtype)
-      cached_value = self.variable('cache', 'cached_value', jnp.zeros,
-                                   swap_dims(value.shape), value.dtype)
-      cache_index = self.variable('cache', 'cache_index',
-                                  lambda: jnp.array(0, dtype=jnp.int32))
+      cached_key = self.variable(
+          'cache', 'cached_key', jnp.zeros, swap_dims(key.shape), key.dtype
+      )
+      cached_value = self.variable(
+          'cache',
+          'cached_value',
+          jnp.zeros,
+          swap_dims(value.shape),
+          value.dtype,
+      )
+      cache_index = self.variable(
+          'cache', 'cache_index', lambda: jnp.array(0, dtype=jnp.int32)
+      )
       if is_initialized:
         # Here we are in "apply()".
         *batch_dims, num_heads, features_per_head, length = (
-            cached_key.value.shape)
+            cached_key.value.shape
+        )
         if prefill:
           if prefill_lengths is None:
             # Figure out how far each element in the batch fills the cache based
@@ -383,24 +432,40 @@ class MultiHeadDotProductAttention(nn.Module):
             # dim (because this is always set to one), and the first query
             # vector. If there is any prefix at all, the first element in the
             # prefix would be part of it.
-            prefill_lengths = jnp.sum(
-                mask[:, 0, 0, :], axis=-1).astype(cache_index.value.dtype)
-          (key, value, cur_index, cached_key_value, cached_value_value,
-           cache_index_value) = self.update_cache_prefill(
-               key, value, cached_key, cached_value, cache_index,
-               prefill_lengths)
+            prefill_lengths = jnp.sum(mask[:, 0, 0, :], axis=-1).astype(
+                cache_index.value.dtype
+            )
+          (
+              key,
+              value,
+              cur_index,
+              cached_key_value,
+              cached_value_value,
+              cache_index_value,
+          ) = self.update_cache_prefill(
+              key, value, cached_key, cached_value, cache_index, prefill_lengths
+          )
         # During fast autoregressive decoding, we feed one position at a time,
         # and cache the keys and values step by step.
         elif decode:
           # Check the shape of the cached key against the input query.
           expected_shape = tuple(batch_dims) + (1, num_heads, features_per_head)
           if expected_shape != query.shape:
-            raise ValueError('Autoregressive cache shape error, '
-                             'expected query shape %s instead got %s.' %
-                             (expected_shape, query.shape))
-          (key, value, cur_index, cached_key_value, cached_value_value,
-           cache_index_value) = self.update_cache_decode(
-               key, value, cached_key, cached_value, cache_index)
+            raise ValueError(
+                'Autoregressive cache shape error, '
+                'expected query shape %s instead got %s.'
+                % (expected_shape, query.shape)
+            )
+          (
+              key,
+              value,
+              cur_index,
+              cached_key_value,
+              cached_value_value,
+              cache_index_value,
+          ) = self.update_cache_decode(
+              key, value, cached_key, cached_value, cache_index
+          )
           # Enforcing the Causal mask over previous positions and selecting only
           # the bias value for the current index is only needed during decode
           # mode where a single example is feed at a time. In prefill mode we
@@ -421,9 +486,10 @@ class MultiHeadDotProductAttention(nn.Module):
           mask = combine_masks(
               mask,
               jnp.broadcast_to(
-                  jnp.arange(length),
-                  tuple(batch_dims) +
-                  (1, 1, length)) <= jnp.reshape(cur_index, (-1, 1, 1, 1)))
+                  jnp.arange(length), tuple(batch_dims) + (1, 1, length)
+              )
+              <= jnp.reshape(cur_index, (-1, 1, 1, 1)),
+          )
           # Grab the correct relative attention bias during decoding. This is
           # only required during single step decoding.
           if bias is not None:
@@ -439,7 +505,9 @@ class MultiHeadDotProductAttention(nn.Module):
 
             bias = jnp.einsum(
                 'bq, bhqk->bhk',
-                common_utils.onehot(cur_index, num_classes=length), bias)
+                common_utils.onehot(cur_index, num_classes=length),
+                bias,
+            )
             bias = jnp.expand_dims(bias, 2)
 
         # Currently, updating a variable inside of a method is not handled
@@ -457,8 +525,9 @@ class MultiHeadDotProductAttention(nn.Module):
       # attention mask in the form of attention bias
       attention_bias = lax.select(
           mask > 0,
-          jnp.full(mask.shape, 0.).astype(self.dtype),
-          jnp.full(mask.shape, -1e10).astype(self.dtype))
+          jnp.full(mask.shape, 0.0).astype(self.dtype),
+          jnp.full(mask.shape, -1e10).astype(self.dtype),
+      )
     else:
       attention_bias = None
 
@@ -467,7 +536,7 @@ class MultiHeadDotProductAttention(nn.Module):
       attention_bias = combine_biases(attention_bias, bias)
 
     dropout_rng = None
-    if not deterministic and self.dropout_rate > 0.:
+    if not deterministic and self.dropout_rate > 0.0:
       dropout_rng = self.make_rng('dropout')
 
     # Apply attention.
@@ -480,7 +549,8 @@ class MultiHeadDotProductAttention(nn.Module):
         dropout_rate=self.dropout_rate,
         deterministic=deterministic,
         dtype=self.dtype,
-        float32_logits=self.float32_logits)
+        float32_logits=self.float32_logits,
+    )
 
     # Back to the original inputs dimensions.
     out = DenseGeneral(
@@ -489,8 +559,8 @@ class MultiHeadDotProductAttention(nn.Module):
         kernel_init=self.kernel_init,
         kernel_axes=('joined_kv', 'embed'),
         dtype=self.dtype,
-        name='out')(
-            x)
+        name='out',
+    )(x)
     return out
 
 
@@ -512,17 +582,19 @@ def _canonicalize_tuple(x):
 class DenseGeneral(nn.Module):
   """A linear transformation (without bias) with flexible axes.
 
-    Attributes:
-      features: tuple with numbers of output features.
-      axis: tuple with axes to apply the transformation on.
-      dtype: the dtype of the computation (default: float32).
-      kernel_init: initializer function for the weight matrix.
+  Attributes:
+    features: tuple with numbers of output features.
+    axis: tuple with axes to apply the transformation on.
+    dtype: the dtype of the computation (default: float32).
+    kernel_init: initializer function for the weight matrix.
   """
+
   features: Union[Iterable[int], int]
   axis: Union[Iterable[int], int] = -1
   dtype: DType = jnp.float32
   kernel_init: Initializer = nn.initializers.variance_scaling(
-      1.0, 'fan_in', 'truncated_normal')
+      1.0, 'fan_in', 'truncated_normal'
+  )
   kernel_axes: Tuple[str, ...] = ()
 
   @nn.compact
@@ -542,14 +614,17 @@ class DenseGeneral(nn.Module):
     axis = _normalize_axes(axis, inputs.ndim)
 
     kernel_shape = tuple([inputs.shape[ax] for ax in axis]) + features
-    kernel_param_shape = (np.prod([inputs.shape[ax] for ax in axis]),
-                          np.prod(features))
+    kernel_param_shape = (
+        np.prod([inputs.shape[ax] for ax in axis]),
+        np.prod(features),
+    )
     kernel = param_with_axes(
         'kernel',
         self.kernel_init,
         kernel_param_shape,
         jnp.float32,
-        axes=self.kernel_axes)
+        axes=self.kernel_axes,
+    )
     kernel = jnp.asarray(kernel, self.dtype)
     kernel = jnp.reshape(kernel, kernel_shape)
 
@@ -558,7 +633,8 @@ class DenseGeneral(nn.Module):
 
 
 def _convert_to_activation_function(
-    fn_or_string: Union[str, Callable]) -> Callable:
+    fn_or_string: Union[str, Callable]
+) -> Callable:
   """Convert a string to an activation function."""
   if fn_or_string == 'linear':
     return lambda x: x
@@ -567,8 +643,10 @@ def _convert_to_activation_function(
   elif callable(fn_or_string):
     return fn_or_string
   else:
-    raise ValueError("don't know how to convert %s to an activation function" %
-                     (fn_or_string,))
+    raise ValueError(
+        "don't know how to convert %s to an activation function"
+        % (fn_or_string,)
+    )
 
 
 class MlpBlock(nn.Module):
@@ -583,10 +661,12 @@ class MlpBlock(nn.Module):
     intermediate_dropout_rate: Dropout rate used after the intermediate layers.
     dtype: Type for the dense layer.
   """
+
   intermediate_dim: int = 2048
   activations: Sequence[Union[str, Callable]] = ('relu',)
   kernel_init: Initializer = nn.initializers.variance_scaling(
-      1.0, 'fan_in', 'truncated_normal')
+      1.0, 'fan_in', 'truncated_normal'
+  )
   intermediate_dropout_rate: float = 0.1
   dtype: Any = jnp.float32
 
@@ -603,25 +683,25 @@ class MlpBlock(nn.Module):
           dtype=self.dtype,
           kernel_init=self.kernel_init,
           kernel_axes=('embed', 'mlp'),
-          name=dense_name)(
-              inputs)
+          name=dense_name,
+      )(inputs)
       x = _convert_to_activation_function(act_fn)(x)
       activations.append(x)
 
     # Take elementwise product of above intermediate activations.
     x = functools.reduce(operator.mul, activations)
     # Apply dropout and final dense output projection.
-    x = nn.Dropout(
-        rate=self.intermediate_dropout_rate, broadcast_dims=(-2,))(
-            x, deterministic=deterministic)  # Broadcast along length.
+    x = nn.Dropout(rate=self.intermediate_dropout_rate, broadcast_dims=(-2,))(
+        x, deterministic=deterministic
+    )  # Broadcast along length.
     x = with_sharding_constraint(x, ('batch', 'length', 'mlp'))
     output = DenseGeneral(
         inputs.shape[-1],
         dtype=self.dtype,
         kernel_init=self.kernel_init,
         kernel_axes=('mlp', 'embed'),
-        name='wo')(
-            x)
+        name='wo',
+    )(x)
     return output
 
 
@@ -636,6 +716,7 @@ class Embed(nn.Module):
     one_hot: performs the gather with a one-hot contraction rather than a true
       gather. This is currently needed for SPMD partitioning.
   """
+
   num_embeddings: int
   features: int
   cast_input_dtype: Optional[DType] = None
@@ -648,9 +729,11 @@ class Embed(nn.Module):
   def setup(self):
     self.embedding = param_with_axes(
         'embedding',
-        self.embedding_init, (self.num_embeddings, self.features),
+        self.embedding_init,
+        (self.num_embeddings, self.features),
         jnp.float32,
-        axes=('vocab', 'embed'))
+        axes=('vocab', 'embed'),
+    )
 
   def __call__(self, inputs: Array) -> Array:
     """Embeds the inputs along the last dimension.
@@ -705,6 +788,7 @@ class RelativePositionBiases(nn.Module):
     dtype: Type of arrays through this module.
     embedding_init: initializer for relative embedding table.
   """
+
   num_buckets: int
   max_distance: int
   num_heads: int
@@ -712,10 +796,9 @@ class RelativePositionBiases(nn.Module):
   embedding_init: Callable[..., Array] = nn.linear.default_embed_init
 
   @staticmethod
-  def _relative_position_bucket(relative_position,
-                                bidirectional=True,
-                                num_buckets=32,
-                                max_distance=128):
+  def _relative_position_bucket(
+      relative_position, bidirectional=True, num_buckets=32, max_distance=128
+  ):
     """Translate relative position to a bucket number for relative attention.
 
     The relative position is defined as memory_position - query_position, i.e.
@@ -749,11 +832,12 @@ class RelativePositionBiases(nn.Module):
       n = np.maximum(n, 0)
     # now n is in the range [0, inf)
     max_exact = num_buckets // 2
-    is_small = (n < max_exact)
+    is_small = n < max_exact
     val_if_large = max_exact + (
-        np.log(n.astype(np.float32) / max_exact + np.finfo(np.float32).eps) /
-        np.log(max_distance / max_exact) *
-        (num_buckets - max_exact)).astype(np.int32)
+        np.log(n.astype(np.float32) / max_exact + np.finfo(np.float32).eps)
+        / np.log(max_distance / max_exact)
+        * (num_buckets - max_exact)
+    ).astype(np.int32)
     val_if_large = np.minimum(val_if_large, num_buckets - 1)
     ret += np.where(is_small, n, val_if_large)
     return ret
@@ -777,7 +861,8 @@ class RelativePositionBiases(nn.Module):
     if decode and bidirectional:
       raise ValueError(
           'bidirectional RelativePositionBiases are not supported when '
-          '`decode=True`.')
+          '`decode=True`.'
+      )
 
     # We only cache the bias if the model was already initialized, i.e. if this
     # module is called with `model.apply` and `decode = True`. We raise an error
@@ -787,16 +872,19 @@ class RelativePositionBiases(nn.Module):
     if decode and not is_initialized:
       raise ValueError(
           'decode-mode cannot be enabled during init. use model.apply to '
-          'initialize the decoding cache.')
+          'initialize the decoding cache.'
+      )
 
     # Return pre-computed relative position bias in cache during decode steps.
     if decode and self.has_variable('cache', 'cached_bias'):
       cached_bias = self.get_variable('cache', 'cached_bias')
       expected_bias_shape = (1, self.num_heads, qlen, klen)
       if cached_bias.shape != expected_bias_shape:
-        raise ValueError(f'The cached relative position attention bias was '
-                         f'expected to have shape {expected_bias_shape} but '
-                         f'instead has the shape {cached_bias.shape}.')
+        raise ValueError(
+            'The cached relative position attention bias was '
+            f'expected to have shape {expected_bias_shape} but '
+            f'instead has the shape {cached_bias.shape}.'
+        )
       return cached_bias
 
     # TODO(levskaya): should we be computing this w. numpy as a program
@@ -808,12 +896,15 @@ class RelativePositionBiases(nn.Module):
         relative_position,
         bidirectional=bidirectional,
         num_buckets=self.num_buckets,
-        max_distance=self.max_distance)
+        max_distance=self.max_distance,
+    )
     relative_attention_bias = param_with_axes(
         'rel_embedding',
-        self.embedding_init, (self.num_heads, self.num_buckets),
+        self.embedding_init,
+        (self.num_heads, self.num_buckets),
         jnp.float32,
-        axes=('heads', 'relpos_buckets'))
+        axes=('heads', 'relpos_buckets'),
+    )
 
     relative_attention_bias = jnp.asarray(relative_attention_bias, self.dtype)
     # Instead of using a slow gather, we create a leading-dimension one-hot
@@ -823,14 +914,14 @@ class RelativePositionBiases(nn.Module):
     # This is equivalent to relative_attention_bias[:, rp_bucket]
     bcast_iota = lax.broadcasted_iota(jnp.int32, (self.num_buckets, 1, 1), 0)
     rp_bucket_one_hot = jnp.array(
-        rp_bucket[jnp.newaxis, ...] == bcast_iota, dtype=self.dtype)
+        rp_bucket[jnp.newaxis, ...] == bcast_iota, dtype=self.dtype
+    )
     # --> shape (qlen, klen, num_heads)
     values = lax.dot_general(
         relative_attention_bias,
         rp_bucket_one_hot,
-        (
-            ((1,), (0,)),  # rhs, lhs contracting dims
-            ((), ())))  # no batched dims
+        (((1,), (0,)), ((), ())),  # rhs, lhs contracting dims
+    )  # no batched dims
     # Add a singleton batch dimension.
     # --> shape (1, num_heads, qlen, klen)
     out = values[jnp.newaxis, ...]
@@ -847,6 +938,7 @@ class RelativePositionBiases(nn.Module):
 # ------------------------------------------------------------------------------
 class LayerNorm(nn.Module):
   """T5 Layer normalization operating on the last axis of the input data."""
+
   epsilon: float = 1e-6
   dtype: Any = jnp.float32
   scale_init: Initializer = nn.initializers.ones
@@ -859,7 +951,8 @@ class LayerNorm(nn.Module):
     mean2 = jnp.mean(lax.square(x), axis=-1, keepdims=True)
     y = jnp.asarray(x * lax.rsqrt(mean2 + self.epsilon), self.dtype)
     scale = param_with_axes(
-        'scale', self.scale_init, (features,), jnp.float32, axes=('embed',))
+        'scale', self.scale_init, (features,), jnp.float32, axes=('embed',)
+    )
 
     scale = jnp.asarray(scale, self.dtype)
     return y * scale
@@ -868,11 +961,13 @@ class LayerNorm(nn.Module):
 # ------------------------------------------------------------------------------
 # Mask-making utility functions.
 # ------------------------------------------------------------------------------
-def make_attention_mask(query_input: Array,
-                        key_input: Array,
-                        pairwise_fn: Callable = jnp.multiply,
-                        extra_batch_dims: int = 0,
-                        dtype: DType = jnp.float32) -> Array:
+def make_attention_mask(
+    query_input: Array,
+    key_input: Array,
+    pairwise_fn: Callable = jnp.multiply,
+    extra_batch_dims: int = 0,
+    dtype: DType = jnp.float32,
+) -> Array:
   """Mask-making helper for attention weights.
 
   In case of 1d inputs (i.e., `[batch, len_q]`, `[batch, len_kv]`, the
@@ -895,7 +990,8 @@ def make_attention_mask(query_input: Array,
       # [batch, len_q] -> [batch, len_q, 1]
       jnp.expand_dims(query_input, axis=-1),
       # [batch, len_q] -> [batch, 1, len_kv]
-      jnp.expand_dims(key_input, axis=-2))
+      jnp.expand_dims(key_input, axis=-2),
+  )
 
   # [batch, 1, len_q, len_kv]. This creates the head dim.
   mask = jnp.expand_dims(mask, axis=-3)
@@ -903,9 +999,9 @@ def make_attention_mask(query_input: Array,
   return mask.astype(dtype)
 
 
-def make_causal_mask(x: Array,
-                     extra_batch_dims: int = 0,
-                     dtype: DType = jnp.float32) -> Array:
+def make_causal_mask(
+    x: Array, extra_batch_dims: int = 0, dtype: DType = jnp.float32
+) -> Array:
   """Make a causal mask for self-attention.
 
   In case of 1d inputs (i.e., `[batch, len]`, the self-attention weights
@@ -931,7 +1027,8 @@ def make_causal_mask(x: Array,
       idxs,
       jnp.greater_equal,
       extra_batch_dims=extra_batch_dims,
-      dtype=dtype)
+      dtype=dtype,
+  )
 
 
 def combine_masks(*masks: Optional[Array], dtype: DType = jnp.float32):
@@ -947,8 +1044,9 @@ def combine_masks(*masks: Optional[Array], dtype: DType = jnp.float32):
   masks = [m for m in masks if m is not None]
   if not masks:
     return None
-  assert all(map(lambda x: x.ndim == masks[0].ndim, masks)), (
-      f'masks must have same rank: {tuple(map(lambda x: x.ndim, masks))}')
+  assert all(
+      map(lambda x: x.ndim == masks[0].ndim, masks)
+  ), f'masks must have same rank: {tuple(map(lambda x: x.ndim, masks))}'
   mask, *other_masks = masks
   for other_mask in other_masks:
     mask = jnp.logical_and(mask, other_mask)
@@ -967,18 +1065,21 @@ def combine_biases(*masks: Optional[Array]):
   masks = [m for m in masks if m is not None]
   if not masks:
     return None
-  assert all(map(lambda x: x.ndim == masks[0].ndim, masks)), (
-      f'masks must have same rank: {tuple(map(lambda x: x.ndim, masks))}')
+  assert all(
+      map(lambda x: x.ndim == masks[0].ndim, masks)
+  ), f'masks must have same rank: {tuple(map(lambda x: x.ndim, masks))}'
   mask, *other_masks = masks
   for other_mask in other_masks:
     mask = mask + other_mask
   return mask
 
 
-def make_decoder_mask(decoder_target_tokens: Array,
-                      dtype: DType,
-                      decoder_causal_attention: Optional[Array] = None,
-                      decoder_segment_ids: Optional[Array] = None) -> Array:
+def make_decoder_mask(
+    decoder_target_tokens: Array,
+    dtype: DType,
+    decoder_causal_attention: Optional[Array] = None,
+    decoder_segment_ids: Optional[Array] = None,
+) -> Array:
   """Compute the self-attention mask for a decoder.
 
   Decoder mask is formed by combining a causal mask, a padding mask and an
@@ -1055,7 +1156,8 @@ def make_decoder_mask(decoder_target_tokens: Array,
         decoder_causal_attention,
         decoder_causal_attention,
         jnp.logical_and,
-        dtype=dtype)
+        dtype=dtype,
+    )
     masks.append(jnp.logical_or(causal_mask, inputs_mask).astype(dtype))
   else:
     masks.append(causal_mask)
@@ -1063,12 +1165,16 @@ def make_decoder_mask(decoder_target_tokens: Array,
   # Padding mask.
   masks.append(
       make_attention_mask(
-          decoder_target_tokens > 0, decoder_target_tokens > 0, dtype=dtype))
+          decoder_target_tokens > 0, decoder_target_tokens > 0, dtype=dtype
+      )
+  )
 
   # Packing mask
   if decoder_segment_ids is not None:
     masks.append(
         make_attention_mask(
-            decoder_segment_ids, decoder_segment_ids, jnp.equal, dtype=dtype))
+            decoder_segment_ids, decoder_segment_ids, jnp.equal, dtype=dtype
+        )
+    )
 
   return combine_masks(*masks, dtype=dtype)  # pytype: disable=bad-return-type  # jax-ndarray

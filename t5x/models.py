@@ -384,9 +384,7 @@ class EncoderDecoderModel(BaseTransformerModel):
       default_decoder_params: Optional[DecoderParams] = None,
   ):
     if feature_converter_cls is not None:
-      self.FEATURE_CONVERTER_CLS = (
-          feature_converter_cls  # pylint: disable=invalid-name
-      )
+      self.FEATURE_CONVERTER_CLS = feature_converter_cls  # pylint: disable=invalid-name
     self._default_decoder_params = default_decoder_params or DecoderParams()
     super().__init__(
         module=module,
@@ -847,9 +845,7 @@ class DecoderOnlyModel(BaseTransformerModel):
       ] = None,
   ):
     if feature_converter_cls is not None:
-      self.FEATURE_CONVERTER_CLS = (
-          feature_converter_cls  # pylint: disable=invalid-name
-      )
+      self.FEATURE_CONVERTER_CLS = feature_converter_cls  # pylint: disable=invalid-name
     self._inputs_bidirectional_attention = inputs_bidirectional_attention
     super().__init__(
         module,

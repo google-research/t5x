@@ -27,6 +27,7 @@ This should be _relatively_ safe, because we don't expect that it's often that
 2. That memory pressure would have been sufficiently alleviated by garbage
    collection.
 """
+
 import builtins
 import contextlib
 import gc

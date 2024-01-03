@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Test utility for disable_gc_during_import_test.py."""
+
 import gc
 
 if gc.isenabled():

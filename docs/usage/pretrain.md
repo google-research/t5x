@@ -190,8 +190,8 @@ brief description of these configs:
 A training run may consist of various randomized operations, e.g. dataset
 shuffling, dropout, etc. However, it is often useful to have deterministic
 training, meaning that the random operations are reproducible and robust to
-preemption/restarts. To make your pretraining deterministic, in addition to
-the params configured in `pretrain.gin`, you need to add the following configs:
+preemption/restarts. To make your pretraining deterministic, in addition to the
+params configured in `pretrain.gin`, you need to add the following configs:
 
 +   sets the dataset seed to a fixed value: `train/utils.DatasetConfig.seed =
     42`.

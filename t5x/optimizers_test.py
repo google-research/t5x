@@ -54,11 +54,17 @@ def check_eq(xs, ys, atol=None, rtol=None):
   ys_leaves, ys_tree = jax.tree_util.tree_flatten(ys)
   assert xs_tree == ys_tree, f"Tree shapes don't match. \n{xs_tree}\n{ys_tree}"
   assert jax.tree_util.tree_all(
-      jax.tree_map(lambda x, y: np.array(x).shape == np.array(y).shape,
-                   xs_leaves, ys_leaves)), "Leaves' shapes don't match."
+      jax.tree_map(
+          lambda x, y: np.array(x).shape == np.array(y).shape,
+          xs_leaves,
+          ys_leaves,
+      )
+  ), "Leaves' shapes don't match."
   assert jax.tree_map(
       functools.partial(_assert_numpy_allclose, atol=atol, rtol=rtol),
-      xs_leaves, ys_leaves)
+      xs_leaves,
+      ys_leaves,
+  )
 
 
 def flattened_state_dict(x):
@@ -76,11 +82,13 @@ def tree_equals(x, y):
 
 def get_fake_tokenized_dataset_no_pretokenized(*_, split='validation', **__):
   return test_utils.get_fake_tokenized_dataset(split=split).map(
-      lambda x: {k: v for k, v in x.items() if not k.endswith('_pretokenized')})
+      lambda x: {k: v for k, v in x.items() if not k.endswith('_pretokenized')}
+  )
 
 
-def get_t5_test_model(optimizer_def,
-                      **config_overrides) -> models.EncoderDecoderModel:
+def get_t5_test_model(
+    optimizer_def, **config_overrides
+) -> models.EncoderDecoderModel:
   """Returns a tiny T5 1.1 model to use for testing."""
   tiny_config = network.T5Config(
       vocab_size=128,
@@ -101,7 +109,8 @@ def get_t5_test_model(optimizer_def,
       module=network.Transformer(tiny_config),
       input_vocabulary=vocabulary,
       output_vocabulary=vocabulary,
-      optimizer_def=optimizer_def)
+      optimizer_def=optimizer_def,
+  )
 
 
 def sgd_with_multi_transform():
@@ -162,19 +171,25 @@ class BasicTest(chex.TestCase):
             },
             'output_layer': {
                 'layer_norm': {
-                    'scale': partitioning.PartitionSpec('embed',),
+                    'scale': partitioning.PartitionSpec(
+                        'embed',
+                    ),
                 },
                 'proj': {
-                    'bias':
-                        partitioning.PartitionSpec('output_head',),
-                    'kernel':
-                        partitioning.PartitionSpec('embed', 'output_head'),
+                    'bias': partitioning.PartitionSpec(
+                        'output_head',
+                    ),
+                    'kernel': partitioning.PartitionSpec(
+                        'embed', 'output_head'
+                    ),
                 },
             },
         },
         'loss': {
             'loss_fn': {
-                'loss_biases': partitioning.PartitionSpec('unmodeled',),
+                'loss_biases': partitioning.PartitionSpec(
+                    'unmodeled',
+                ),
             },
         },
     })
@@ -192,11 +207,14 @@ class BasicTest(chex.TestCase):
                 optax.ScaleByAdamState(
                     count=None,
                     mu=self.get_param_logical_axes(),
-                    nu=self.get_param_logical_axes()),
+                    nu=self.get_param_logical_axes(),
+                ),
                 optax.EmptyState(),
                 optax.EmptyState(),
-            )),
-        target=self.get_param_logical_axes())
+            ),
+        ),
+        target=self.get_param_logical_axes(),
+    )
     chex.assert_trees_all_equal(got, want)
 
   @parameterized.parameters(
@@ -248,8 +266,9 @@ class BasicTest(chex.TestCase):
                     # '1': {},
                     # '2': {},
                 },
-            }
-        }))
+            },
+        }),
+    )
 
     new_optimizer = optimizer.restore_state(state_dict)
 
@@ -263,10 +282,8 @@ class OptaxWrapperTest(chex.TestCase):
 
     ds = get_fake_tokenized_dataset_no_pretokenized(split='validation')
     ds = seqio.EncDecFeatureConverter()(
-        ds, task_feature_lengths={
-            'inputs': 8,
-            'targets': 8
-        })
+        ds, task_feature_lengths={'inputs': 8, 'targets': 8}
+    )
     ds = ds.repeat().batch(8)
     ds_iter = ds.as_numpy_iterator()
     first_batch = next(ds_iter)
@@ -288,7 +305,8 @@ class OptaxWrapperTest(chex.TestCase):
         init_fn=model.get_initial_variables,
         input_shapes=input_shapes,
         input_types=input_types,
-        partitioner=partitioner)
+        partitioner=partitioner,
+    )
 
     train_state_axes = train_state_initializer.train_state_axes
     train_state = train_state_initializer.from_scratch(jax.random.PRNGKey(0))
@@ -302,7 +320,8 @@ class OptaxWrapperTest(chex.TestCase):
         train_state_axes=train_state_axes,
         rng=jax.random.PRNGKey(0),
         learning_rate_fn=learning_rate_fn,
-        num_microbatches=1)
+        num_microbatches=1,
+    )
 
     chex.assert_tree_all_finite(trainer_instance.train_state.params)
     for _ in range(2):

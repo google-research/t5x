@@ -24,7 +24,6 @@ import flax.serialization
 import flax.struct
 import jax.numpy as jnp
 from t5x import optimizers
-
 import typing_extensions
 
 EMPTY_DICT = flax.core.freeze({})
@@ -75,10 +74,9 @@ class TrainState(typing_extensions.Protocol):
   def replace_step(self, step: jnp.ndarray) -> 'TrainState':
     ...
 
-  def apply_gradient(self,
-                     grads,
-                     learning_rate,
-                     flax_mutables=EMPTY_DICT) -> 'TrainState':
+  def apply_gradient(
+      self, grads, learning_rate, flax_mutables=EMPTY_DICT
+  ) -> 'TrainState':
     """Applies gradient, increments step, and returns an updated TrainState."""
     ...
 
@@ -89,16 +87,17 @@ class TrainState(typing_extensions.Protocol):
 
 def _validate_params_axes(params_axes, params):
   axis_names = flax_partitioning.get_axis_names(params_axes)
-  missing_params_axes = (
-      set(traverse_util.flatten_dict(params, sep='/')) -
-      set(traverse_util.flatten_dict(axis_names, sep='/')))
+  missing_params_axes = set(traverse_util.flatten_dict(params, sep='/')) - set(
+      traverse_util.flatten_dict(axis_names, sep='/')
+  )
   if missing_params_axes:
     raise ValueError(
-        f'Missing axis names for parameters: {missing_params_axes}')
+        f'Missing axis names for parameters: {missing_params_axes}'
+    )
 
 
 def _split_variables_and_axes(
-    variables_and_axes: FrozenVariableDict
+    variables_and_axes: FrozenVariableDict,
 ) -> Tuple[FrozenVariableDict, FrozenVariableDict]:
   """Splits `variables_and_axes` into two separate dicts with the same keys."""
   # For each `key`, `key_axes` (if any) are its axes in `variables_and_axes`.
@@ -115,6 +114,7 @@ def _split_variables_and_axes(
 
 class FlaxOptimTrainState(flax.struct.PyTreeNode):
   """Simple train state for holding parameters, step, optimizer state."""
+
   _optimizer: optimizers.OptimizerType
   # Contains axis metadata (e.g., names) matching parameter tree.
   params_axes: Optional[FrozenVariableDict] = None
@@ -164,7 +164,8 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
         optimizer,
         params_axes=params_axes,
         flax_mutables=flax_mutables,
-        flax_mutables_axes=flax_mutables_axes)
+        flax_mutables_axes=flax_mutables_axes,
+    )
 
   @property
   def step(self) -> jnp.ndarray:
@@ -184,19 +185,20 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
       state_dict['flax_mutables'] = flax.core.unfreeze(self.flax_mutables)
     return state_dict
 
-  def apply_gradient(self,
-                     grads,
-                     learning_rate,
-                     flax_mutables=EMPTY_DICT) -> 'FlaxOptimTrainState':
+  def apply_gradient(
+      self, grads, learning_rate, flax_mutables=EMPTY_DICT
+  ) -> 'FlaxOptimTrainState':
     new_optimizer = self._optimizer.apply_gradient(
-        grads, learning_rate=learning_rate)
+        grads, learning_rate=learning_rate
+    )
     return self.replace(_optimizer=new_optimizer, flax_mutables=flax_mutables)
 
   def replace_params(self, params: VariableDict) -> 'FlaxOptimTrainState':
     return self.replace(_optimizer=self._optimizer.replace(target=params))
 
-  def replace_flax_mutables(self,
-                            flax_mutables: FrozenDict) -> 'FlaxOptimTrainState':
+  def replace_flax_mutables(
+      self, flax_mutables: FrozenDict
+  ) -> 'FlaxOptimTrainState':
     return self.replace(flax_mutables=flax_mutables)
 
   def replace_step(self, step: jnp.ndarray) -> 'FlaxOptimTrainState':
@@ -209,20 +211,24 @@ class FlaxOptimTrainState(flax.struct.PyTreeNode):
     return self.replace(
         _optimizer=new_optimizer,
         flax_mutables=flax.core.freeze(state_dict['flax_mutables'])
-        if 'flax_mutables' in state_dict else EMPTY_DICT)
+        if 'flax_mutables' in state_dict
+        else EMPTY_DICT,
+    )
 
   def as_logical_axes(self) -> 'FlaxOptimTrainState':
     if not hasattr(self._optimizer.optimizer_def, 'derive_logical_axes'):
       raise ValueError(
           f"Optimizer '{self._optimizer.optimizer_def.__class__.__name__}' "
           'requires a `derive_logical_axes` method to be used with named axis '
-          'partitioning.')
+          'partitioning.'
+      )
     flax_mutables_axes = self.flax_mutables_axes or EMPTY_DICT
     return FlaxOptimTrainState(
         _optimizer=self._optimizer.optimizer_def.derive_logical_axes(
-            self._optimizer,
-            flax_partitioning.get_axis_names(self.params_axes)),
-        flax_mutables=flax_partitioning.get_axis_names(flax_mutables_axes))
+            self._optimizer, flax_partitioning.get_axis_names(self.params_axes)
+        ),
+        flax_mutables=flax_partitioning.get_axis_names(flax_mutables_axes),
+    )
 
 
 class InferenceState(flax.struct.PyTreeNode):
@@ -267,14 +273,13 @@ class InferenceState(flax.struct.PyTreeNode):
 
   def apply_gradient(self, *args, **kwargs) -> 'InferenceState':
     raise NotImplementedError(
-        'InferenceState does not support `apply_gradient`.')
+        'InferenceState does not support `apply_gradient`.'
+    )
 
   def state_dict(self) -> MutableMapping[str, Any]:
     state_dict = {
         'target': flax.core.unfreeze(self.params),
-        'state': {
-            'step': self.step
-        }
+        'state': {'step': self.step},
     }
     if self.flax_mutables:
       state_dict['flax_mutables'] = flax.core.unfreeze(self.flax_mutables)
@@ -286,8 +291,9 @@ class InferenceState(flax.struct.PyTreeNode):
   def replace_params(self, params: FrozenVariableDict) -> 'InferenceState':
     return self.replace(params=params)
 
-  def replace_flax_mutables(self,
-                            flax_mutables: FrozenDict) -> 'InferenceState':
+  def replace_flax_mutables(
+      self, flax_mutables: FrozenDict
+  ) -> 'InferenceState':
     return self.replace(flax_mutables=flax_mutables)
 
   def restore_state(self, state_dict: Mapping[str, Any]) -> 'InferenceState':
@@ -295,7 +301,9 @@ class InferenceState(flax.struct.PyTreeNode):
         params=flax.core.freeze(state_dict['target']),
         step=state_dict['state']['step'],
         flax_mutables=flax.core.freeze(state_dict['flax_mutables'])
-        if 'flax_mutables' in state_dict else EMPTY_DICT)
+        if 'flax_mutables' in state_dict
+        else EMPTY_DICT,
+    )
 
   def as_logical_axes(self) -> 'InferenceState':
     # Set step to None so that when the logical axes are processed by the
@@ -306,4 +314,5 @@ class InferenceState(flax.struct.PyTreeNode):
     return InferenceState(
         step=None,
         params=flax_partitioning.get_axis_names(self.params_axes),
-        flax_mutables=flax_partitioning.get_axis_names(flax_mutables_axes))
+        flax_mutables=flax_partitioning.get_axis_names(flax_mutables_axes),
+    )

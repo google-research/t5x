@@ -18,6 +18,7 @@ To create a custom trainer, subclass `BaseTrainer` and implement
 `_partitioned_train_step` and `_partitioned_eval_step` methods,
 possibly by re-using the utility functions provided in this module.
 """
+
 import abc
 import enum
 import os
@@ -68,7 +69,8 @@ else:
 @jax.jit
 def _merge_metrics(a, b):
   return jax.tree_util.tree_map(
-      lambda a, b: a.merge(b), a, b, is_leaf=metrics_lib.is_metric_obj)
+      lambda a, b: a.merge(b), a, b, is_leaf=metrics_lib.is_metric_obj
+  )
 
 
 def _time() -> float:
@@ -112,8 +114,9 @@ class LearningRateCallable(typing_extensions.Protocol):
 class SummarizeMetricsCallable(typing_extensions.Protocol):
   """PyType template for a metrics summary function."""
 
-  def __call__(self, metrics: MetricMapType, duration: float,
-               num_steps: int) -> Mapping[str, jnp.ndarray]:
+  def __call__(
+      self, metrics: MetricMapType, duration: float, num_steps: int
+  ) -> Mapping[str, jnp.ndarray]:
     """Summarizes metrics accumulated across multiple steps.
 
     Args:
@@ -131,16 +134,17 @@ class PartitionedTrainCallable(typing_extensions.Protocol):
   """Protocol for a partitioned train step."""
 
   def __call__(
-      self, train_state: train_state_lib.TrainState,
-      batch: BatchType) -> Tuple[train_state_lib.TrainState, MetricMapType]:
+      self, train_state: train_state_lib.TrainState, batch: BatchType
+  ) -> Tuple[train_state_lib.TrainState, MetricMapType]:
     ...
 
 
 class PartitionedEvalCallable(typing_extensions.Protocol):
   """Protocol for a partitioned eval step."""
 
-  def __call__(self, train_state: train_state_lib.TrainState,
-               batch: jnp.ndarray) -> MetricMapType:
+  def __call__(
+      self, train_state: train_state_lib.TrainState, batch: jnp.ndarray
+  ) -> MetricMapType:
     ...
 
 
@@ -148,7 +152,10 @@ class WeightMetricsComputer(object):
   """Decides which weight metrics to compute during training."""
 
   _WEIGHT_METRICS = [
-      "weight_rms", "weight_gradient_rms", "weight_update_rms", "weight_max"
+      "weight_rms",
+      "weight_gradient_rms",
+      "weight_update_rms",
+      "weight_max",
   ]
 
   @staticmethod
@@ -156,7 +163,8 @@ class WeightMetricsComputer(object):
     """Calculates the root-mean-square metric for a pytree."""
     return {
         f"{name}/{k}": metrics_lib.AveragePerStep.from_model_output(
-            jnp.sqrt(jnp.mean(jnp.square(v))))
+            jnp.sqrt(jnp.mean(jnp.square(v)))
+        )
         for k, v in utils.flatten_dict_string_keys(tree).items()
     }
 
@@ -164,15 +172,18 @@ class WeightMetricsComputer(object):
   def _make_max_metrics(name, tree):
     """Calculates the L-inf norm for a pytree."""
     return {
-        f"{name}/{k}":
-        metrics_lib.AveragePerStep.from_model_output(jnp.max(jnp.abs(v)))
+        f"{name}/{k}": metrics_lib.AveragePerStep.from_model_output(
+            jnp.max(jnp.abs(v))
+        )
         for k, v in utils.flatten_dict_string_keys(tree).items()
     }
 
   def compute_metrics(
-      self, gradients: ModelWeights,
+      self,
+      gradients: ModelWeights,
       old_train_state: train_state_lib.TrainState,
-      new_train_state: train_state_lib.TrainState) -> MutableMetricMapType:
+      new_train_state: train_state_lib.TrainState,
+  ) -> MutableMetricMapType:
     """Compute some metrics about weights after having updating these weights.
 
     Args:
@@ -194,21 +205,28 @@ class WeightMetricsComputer(object):
     metrics.update(self._make_rms_metrics("weight_gradient_rms", gradients))
     grad_norm = jnp.sqrt(
         jnp.sum(
-            jnp.array([
-                jnp.vdot(x, x) for x in jax.tree_util.tree_leaves(gradients)
-            ])))
+            jnp.array(
+                [jnp.vdot(x, x) for x in jax.tree_util.tree_leaves(gradients)]
+            )
+        )
+    )
     metrics.update({
-        "weight_gradient_norm":
-            metrics_lib.AveragePerStep.from_model_output(grad_norm)
+        "weight_gradient_norm": metrics_lib.AveragePerStep.from_model_output(
+            grad_norm
+        )
     })
-    weight_update = jax.tree_util.tree_map(jnp.subtract, new_train_state.params,
-                                           old_train_state.params)
+    weight_update = jax.tree_util.tree_map(
+        jnp.subtract, new_train_state.params, old_train_state.params
+    )
     metrics.update(self._make_rms_metrics("weight_update_rms", weight_update))
-    weight_update_by_weight = jax.tree_util.tree_map(jnp.divide, weight_update,
-                                                     old_train_state.params)
+    weight_update_by_weight = jax.tree_util.tree_map(
+        jnp.divide, weight_update, old_train_state.params
+    )
     metrics.update(
-        self._make_rms_metrics("weight_update_divided_by_weight_rms",
-                               weight_update_by_weight))
+        self._make_rms_metrics(
+            "weight_update_divided_by_weight_rms", weight_update_by_weight
+        )
+    )
     metrics.update(self._make_max_metrics("weight_max", new_train_state.params))
 
     return metrics
@@ -240,10 +258,14 @@ class _AsyncTimer(object):
         jax.block_until_ready(block_on)
       except RuntimeError as e:
         # If the buffer no longer exists, we assume it was completed.
-        buffer_deleted_message = ("INVALID_ARGUMENT: BlockHostUntilReady() "
-                                  "called on deleted or donated buffer")
-        gda_buffer_deleted_message = ("INVALID_ARGUMENT: GetReadyFuture() "
-                                      "called on deleted or donated buffer")
+        buffer_deleted_message = (
+            "INVALID_ARGUMENT: BlockHostUntilReady() "
+            "called on deleted or donated buffer"
+        )
+        gda_buffer_deleted_message = (
+            "INVALID_ARGUMENT: GetReadyFuture() "
+            "called on deleted or donated buffer"
+        )
         if str(e) not in (buffer_deleted_message, gda_buffer_deleted_message):
           raise
       return _time()
@@ -337,14 +359,16 @@ class MetricsManager(object):
     assert self._writer is not None
     return self._writer
 
-  def write_scalar(self, key: str, val: metric_writers.interface.Scalar,
-                   step: int):
+  def write_scalar(
+      self, key: str, val: metric_writers.interface.Scalar, step: int
+  ):
     """Writes scalar value to metric writers in a threadsafe manner."""
     step = int(utils.get_local_data(step))
     self.write_scalars(step, {key: val})
 
-  def write_scalars(self, step: int,
-                    scalars: Mapping[str, metric_writers.interface.Scalar]):
+  def write_scalars(
+      self, step: int, scalars: Mapping[str, metric_writers.interface.Scalar]
+  ):
     """Writes scalar value to metric writers in a threadsafe manner."""
     step = utils.get_local_data(step)
     with self._writer_lock:
@@ -355,8 +379,9 @@ class MetricsManager(object):
     """Starts the duration timer."""
     self._duration_timer.start(block_on=block_on)
 
-  def write_metrics_summary(self, metrics: MetricMapType, step: int,
-                            num_steps: int) -> MetricValueMapFuture:
+  def write_metrics_summary(
+      self, metrics: MetricMapType, step: int, num_steps: int
+  ) -> MetricValueMapFuture:
     """Writes summary based on accumulated metrics in a background thread.
 
     Duration is automatically computed as the interval between completion of
@@ -386,18 +411,21 @@ class MetricsManager(object):
       duration = duration_future.result()
       # We set the duration on time-related metrics.
       final_metrics = metrics_lib.set_time_metrics_duration(
-          fetched_metrics, duration)
+          fetched_metrics, duration
+      )
       # Set num_steps for Step metrics (AveragePerStep, StepsPerTime, ...)
       final_metrics = metrics_lib.set_step_metrics_num_steps(
-          final_metrics, num_steps)
+          final_metrics, num_steps
+      )
 
       # Ensure the metrics are not on device, which could lead to a deadlock.
       def _ensure_not_on_device(x):
         assert not isinstance(x, jax.Array)
 
       jax.tree_util.tree_map(_ensure_not_on_device, final_metrics)
-      final_metrics = jax.tree_util.tree_map(utils.get_local_data,
-                                             final_metrics)
+      final_metrics = jax.tree_util.tree_map(
+          utils.get_local_data, final_metrics
+      )
 
       summary = {k: v.compute_value() for k, v in final_metrics.items()}
       with self._writer_lock:
@@ -427,11 +455,16 @@ class BaseTrainer(abc.ABC):
   order to wait for these threads to finish after training is done.
   """
 
-  def __init__(self, model: models.BaseModel,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               eval_names: Sequence[str], summary_dir: Optional[str],
-               train_state_axes: Any, rng: Rng):
+  def __init__(
+      self,
+      model: models.BaseModel,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      eval_names: Sequence[str],
+      summary_dir: Optional[str],
+      train_state_axes: Any,
+      rng: Rng,
+  ):
     """Trainer constructor.
 
     Args:
@@ -453,7 +486,8 @@ class BaseTrainer(abc.ABC):
     self._compiled_train_step: Optional[PartitionedTrainCallable] = None
     self._compiled_eval_steps: MutableMapping[str, PartitionedEvalCallable] = {}
     self._compiled_eval_step_cache: MutableMapping[
-        BatchSpec, PartitionedEvalCallable] = {}
+        BatchSpec, PartitionedEvalCallable
+    ] = {}
 
     self._train_state_mutex = threading.RLock()
     self._train_state = train_state
@@ -466,7 +500,8 @@ class BaseTrainer(abc.ABC):
     # The training metrics combine metrics added by the Model (e.g., loss and
     # accuracy) and Trainer (e.g., learning rate).
     self.train_metrics_manager = MetricsManager(
-        "train", summary_dir=summary_dir)
+        "train", summary_dir=summary_dir
+    )
 
     # The eval metrics only include metrics added by the Model.
     self.eval_metrics_managers = {  # pylint:disable=g-complex-comprehension
@@ -499,11 +534,14 @@ class BaseTrainer(abc.ABC):
     with self._train_state_mutex:
       self._train_state = train_state
 
-  def train(self,
-            batch_iter: Union[Iterator[BatchType],
-                              clu.data.dataset_iterator.DatasetIterator],
-            num_steps: int,
-            start_step: Optional[int] = None) -> ArrayMapFuture:
+  def train(
+      self,
+      batch_iter: Union[
+          Iterator[BatchType], clu.data.dataset_iterator.DatasetIterator
+      ],
+      num_steps: int,
+      start_step: Optional[int] = None,
+  ) -> ArrayMapFuture:
     """Runs the train loop for the given number of steps."""
     metrics = None
     # Use pre-compiled step, if available.
@@ -514,11 +552,13 @@ class BaseTrainer(abc.ABC):
       train_state = self.train_state
       # Compute step number on host to avoid communication overhead.
       start_step = int(
-          start_step if start_step is not None else train_state.step)
+          start_step if start_step is not None else train_state.step
+      )
       self.train_metrics_manager.start_duration_timer(block_on=train_state)
       for step_num in range(start_step, start_step + num_steps):
-        logging.log_every_n_seconds(logging.INFO, "Training: step %d", 10,
-                                    step_num)
+        logging.log_every_n_seconds(
+            logging.INFO, "Training: step %d", 10, step_num
+        )
         with jax.profiler.StepTraceAnnotation("train", step_num=step_num):
           batch = next(batch_iter)
           train_state, metrics_update = train_step_fn(train_state, batch)
@@ -535,7 +575,8 @@ class BaseTrainer(abc.ABC):
       )
 
     return self.train_metrics_manager.write_metrics_summary(
-        metrics, start_step + num_steps, num_steps)
+        metrics, start_step + num_steps, num_steps
+    )
 
   def compile_train(self, batch: BatchType) -> None:
     """Pre-compiles train step (if not yet compiled).
@@ -552,14 +593,18 @@ class BaseTrainer(abc.ABC):
     """
     tick = _time()
     self._compiled_train_step = self._partitioner.compile(
-        self._partitioned_train_step, self.train_state, batch)
+        self._partitioned_train_step, self.train_state, batch
+    )
     tock = _time()
-    self.train_metrics_manager.write_scalar("timing/compilation_seconds",  # pytype: disable=wrong-arg-types  # jax-ndarray
-                                            tock - tick, self.train_state.step)
+    self.train_metrics_manager.write_scalar(
+        "timing/compilation_seconds",  # pytype: disable=wrong-arg-types  # jax-ndarray
+        tock - tick,
+        self.train_state.step,
+    )
 
   def eval(
-      self, batch_iters: Mapping[str,
-                                 Iterator[BatchType]]) -> Mapping[str, Array]:
+      self, batch_iters: Mapping[str, Iterator[BatchType]]
+  ) -> Mapping[str, Array]:
     """Runs evaluation loop over the iterator and writes summary."""
     eval_summaries = {}
     train_state = self.train_state
@@ -567,8 +612,9 @@ class BaseTrainer(abc.ABC):
       logging.info("Evaluating: %s.", iter_name)
       metrics = None
       # Use a pre-compiled step function, if available.
-      eval_step_fn = self._compiled_eval_steps.get(iter_name,
-                                                   self._partitioned_eval_step)
+      eval_step_fn = self._compiled_eval_steps.get(
+          iter_name, self._partitioned_eval_step
+      )
       mm = self.eval_metrics_managers[iter_name]
 
       num_steps = 0
@@ -577,7 +623,8 @@ class BaseTrainer(abc.ABC):
         num_steps += 1
         utils.multihost_assert_equal(
             jnp.array(num_steps),
-            "Eval step mismatch across hosts. Check for empty dataset shard.")
+            "Eval step mismatch across hosts. Check for empty dataset shard.",
+        )
         if jax.process_count() > 1:
           batch = partitioning.host_local_array_to_global_array(
               batch,
@@ -591,10 +638,12 @@ class BaseTrainer(abc.ABC):
           metrics = metrics_update
       utils.multihost_assert_equal(
           jnp.array(-1),
-          "Eval step mismatch across hosts. Check for empty dataset shard.")
+          "Eval step mismatch across hosts. Check for empty dataset shard.",
+      )
 
       eval_summaries[iter_name] = mm.write_metrics_summary(  # pytype: disable=wrong-arg-types  # jax-ndarray
-          metrics, train_state.step, num_steps)
+          metrics, train_state.step, num_steps
+      )
 
     # TODO(adarob): Return futures.
     return {k: v.result() for k, v in eval_summaries.items()}
@@ -629,12 +678,15 @@ class BaseTrainer(abc.ABC):
               self._partitioner.data_partition_spec,
           )
         self._compiled_eval_step_cache[cache_key] = self._partitioner.compile(
-            self._partitioned_eval_step, self.train_state, batch)
+            self._partitioned_eval_step, self.train_state, batch
+        )
       self._compiled_eval_steps[eval_name] = self._compiled_eval_step_cache[
-          cache_key]
+          cache_key
+      ]
       tock = _time()
       self.eval_metrics_managers[eval_name].write_scalar(  # pytype: disable=wrong-arg-types  # jax-ndarray
-          "timing/compilation_seconds", tock - tick, self.train_state.step)
+          "timing/compilation_seconds", tock - tick, self.train_state.step
+      )
 
   @property
   @abc.abstractmethod
@@ -656,8 +708,9 @@ def accumulate_grads_microbatched(
     dropout_rng: Rng,
     num_microbatches: Optional[int],
     data_partition_spec: PartitionSpec = PartitionSpec("data"),
-) -> Tuple[train_state_lib.TrainState, MutableMetricMapType,
-           Optional[FlaxMutables]]:
+) -> Tuple[
+    train_state_lib.TrainState, MutableMetricMapType, Optional[FlaxMutables]
+]:
   """Implements optional microbatched gradient accumulation.
 
   Args:
@@ -695,16 +748,19 @@ def accumulate_grads_microbatched(
       (_, metrics), grad_accum = grad_fn(train_state.params, batch, dropout_rng)
       flax_mutables = None
     else:
-      (_, (metrics,
-           flax_mutables)), grad_accum = grad_fn(train_state.params, batch,
-                                                 dropout_rng,
-                                                 initial_flax_mutables)
+      (_, (metrics, flax_mutables)), grad_accum = grad_fn(
+          train_state.params, batch, dropout_rng, initial_flax_mutables
+      )
   else:
-    assert batch_size % num_microbatches == 0, (
-        "Batch size isn't divided evenly by num_microbatches.")
+    assert (
+        batch_size % num_microbatches == 0
+    ), "Batch size isn't divided evenly by num_microbatches."
     microbatch_size = batch_size // num_microbatches
-    logging.info("using microbatches: %d microbatches, %d size",
-                 num_microbatches, microbatch_size)
+    logging.info(
+        "using microbatches: %d microbatches, %d size",
+        num_microbatches,
+        microbatch_size,
+    )
 
     def get_microbatch(batch: BatchType, idx: int) -> Mapping[str, jnp.ndarray]:
       """Fetch microbatch slice from possibly-packed input data."""
@@ -723,37 +779,53 @@ def accumulate_grads_microbatched(
       # We need to annotate the microbatch sharding as we would a batch.
       mbatch = jax.tree_util.tree_map(
           lambda x: partitioning.with_sharding_constraint(  # pylint: disable=g-long-lambda
-              x, data_partition_spec),
-          mbatch)
+              x, data_partition_spec
+          ),
+          mbatch,
+      )
       if flax_mutables is None:
-        (_, metrics), grad = grad_fn(train_state.params, mbatch,
-                                     sub_dropout_rng)
+        (_, metrics), grad = grad_fn(
+            train_state.params, mbatch, sub_dropout_rng
+        )
       else:
-        (_, (metrics, flax_mutables)), grad = grad_fn(train_state.params,
-                                                      mbatch, sub_dropout_rng,
-                                                      flax_mutables)
+        (_, (metrics, flax_mutables)), grad = grad_fn(
+            train_state.params, mbatch, sub_dropout_rng, flax_mutables
+        )
       return metrics, grad, flax_mutables
 
     def per_microbatch_train_step(
-        loop_cnt: int, state: Tuple[jnp.ndarray, jnp.ndarray,
-                                    Mapping[str, jnp.ndarray],
-                                    Optional[FlaxMutables]]
-    ) -> Tuple[jnp.ndarray, jnp.ndarray, Mapping[str, jnp.ndarray],
-               Optional[FlaxMutables]]:
+        loop_cnt: int,
+        state: Tuple[
+            jnp.ndarray,
+            jnp.ndarray,
+            Mapping[str, jnp.ndarray],
+            Optional[FlaxMutables],
+        ],
+    ) -> Tuple[
+        jnp.ndarray,
+        jnp.ndarray,
+        Mapping[str, jnp.ndarray],
+        Optional[FlaxMutables],
+    ]:
       (dropout_rng, grad_accum, prev_metrics, flax_mutables) = state
-      metrics, grad, flax_mutables = metrics_and_grad(loop_cnt, dropout_rng,
-                                                      flax_mutables)
+      metrics, grad, flax_mutables = metrics_and_grad(
+          loop_cnt, dropout_rng, flax_mutables
+      )
 
       grad_accum = jax.tree_util.tree_map(jnp.add, grad_accum, grad)
-      metrics = jax.lax.cond(loop_cnt == 0, lambda _: metrics,
-                             lambda _: merge_metrics(prev_metrics, metrics),
-                             None)
+      metrics = jax.lax.cond(
+          loop_cnt == 0,
+          lambda _: metrics,
+          lambda _: merge_metrics(prev_metrics, metrics),
+          None,
+      )
       return dropout_rng, grad_accum, metrics, flax_mutables
 
     # Initialize gradient accumulation loop state.
     accum_dtype = jnp.float32
     grad_accum_init = jax.tree_util.tree_map(
-        lambda x: jnp.zeros(x.shape, accum_dtype), train_state.params)
+        lambda x: jnp.zeros(x.shape, accum_dtype), train_state.params
+    )
     initial_metrics_shape, _, _ = jax.eval_shape(
         metrics_and_grad,
         loop_cnt=0,
@@ -765,10 +837,15 @@ def accumulate_grads_microbatched(
         k: metrics_lib.shape_obj_to_defined_obj(v)
         for k, v in initial_metrics_shape.items()
     }
-    loop_init = (dropout_rng, grad_accum_init, initial_metrics,
-                 initial_flax_mutables)
+    loop_init = (
+        dropout_rng,
+        grad_accum_init,
+        initial_metrics,
+        initial_flax_mutables,
+    )
     new_dropout_rng, grad_accum, metrics, flax_mutables = jax.lax.fori_loop(
-        0, num_microbatches, per_microbatch_train_step, loop_init)
+        0, num_microbatches, per_microbatch_train_step, loop_init
+    )
 
     del new_dropout_rng
 
@@ -781,7 +858,7 @@ def apply_grads(
     metrics: MutableMetricMapType,
     learning_rate: jnp.ndarray,
     weight_metrics_computer: Optional[WeightMetricsComputer],
-    other_state_variables: Optional[Mapping[str, Any]] = None
+    other_state_variables: Optional[Mapping[str, Any]] = None,
 ) -> Tuple[train_state_lib.TrainState, MetricMapType]:
   """Applies gradients to the optimizer.
 
@@ -802,20 +879,28 @@ def apply_grads(
     other_state_variables = {}
   # Update optimizer using accumulated gradient.
   new_train_state = train_state.apply_gradient(
-      grad_accum, learning_rate=learning_rate, **other_state_variables)
+      grad_accum, learning_rate=learning_rate, **other_state_variables
+  )
   metrics["learning_rate"] = clu.metrics.Average.from_model_output(
-      jnp.asarray([learning_rate]))
+      jnp.asarray([learning_rate])
+  )
   metrics["learning_rate/current"] = clu.metrics.LastValue.from_model_output(
-      jnp.asarray([learning_rate]))
+      jnp.asarray([learning_rate])
+  )
   if weight_metrics_computer is not None:
     metrics.update(
-        weight_metrics_computer.compute_metrics(grad_accum, train_state,
-                                                new_train_state))
+        weight_metrics_computer.compute_metrics(
+            grad_accum, train_state, new_train_state
+        )
+    )
   return new_train_state, metrics
 
 
-def eval_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
-              batch: jnp.ndarray) -> MetricMapType:
+def eval_step(
+    model: models.BaseModel,
+    train_state: train_state_lib.TrainState,
+    batch: jnp.ndarray,
+) -> MetricMapType:
   """Default evaluation step."""
   if not train_state.flax_mutables:
     _, metrics = model.eval_fn(train_state.params, batch)  # pytype: disable=wrong-arg-types  # jax-ndarray
@@ -840,11 +925,17 @@ def train_with_lr(
     model: models.BaseModel,
     num_microbatches: Optional[int],
     weight_metrics_computer: Optional[WeightMetricsComputer] = None,
-    data_partition_spec: PartitionSpec = PartitionSpec("data")):
+    data_partition_spec: PartitionSpec = PartitionSpec("data"),
+):
   """Main training function with LR schedule."""
-  grad_accum, metrics, flax_mutables = (
-      accumulate_grads_microbatched(model, train_state, batch, dropout_rng,
-                                    num_microbatches, data_partition_spec))
+  grad_accum, metrics, flax_mutables = accumulate_grads_microbatched(
+      model,
+      train_state,
+      batch,
+      dropout_rng,
+      num_microbatches,
+      data_partition_spec,
+  )
   new_train_state, metrics = apply_grads(
       train_state,
       grad_accum,
@@ -852,7 +943,9 @@ def train_with_lr(
       learning_rate,
       weight_metrics_computer,
       other_state_variables={"flax_mutables": flax_mutables}
-      if flax_mutables else None)
+      if flax_mutables
+      else None,
+  )
 
   return new_train_state, metrics
 
@@ -860,28 +953,35 @@ def train_with_lr(
 class BaseTrainerConstructor(Protocol):
   """A function that returns a BaseTrainer."""
 
-  def __call__(self, model: models.BaseModel,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               eval_names: Sequence[str], summary_dir: Optional[str],
-               train_state_axes: Any, rng: Rng) -> BaseTrainer:
+  def __call__(
+      self,
+      model: models.BaseModel,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      eval_names: Sequence[str],
+      summary_dir: Optional[str],
+      train_state_axes: Any,
+      rng: Rng,
+  ) -> BaseTrainer:
     ...
 
 
 class Trainer(BaseTrainer):
   """Training loop with optional microbatches."""
 
-  def __init__(self,
-               model: models.BaseModel,
-               train_state: train_state_lib.TrainState,
-               partitioner: partitioning.BasePartitioner,
-               eval_names: Sequence[str],
-               summary_dir: Optional[str],
-               train_state_axes: Any,
-               rng: Rng,
-               learning_rate_fn: LearningRateCallable,
-               num_microbatches: Optional[int],
-               weight_metrics_computer: Optional[WeightMetricsComputer] = None):
+  def __init__(
+      self,
+      model: models.BaseModel,
+      train_state: train_state_lib.TrainState,
+      partitioner: partitioning.BasePartitioner,
+      eval_names: Sequence[str],
+      summary_dir: Optional[str],
+      train_state_axes: Any,
+      rng: Rng,
+      learning_rate_fn: LearningRateCallable,
+      num_microbatches: Optional[int],
+      weight_metrics_computer: Optional[WeightMetricsComputer] = None,
+  ):
     """Trainer constructor.
 
     Args:
@@ -912,11 +1012,11 @@ class Trainer(BaseTrainer):
         eval_names=eval_names,
         summary_dir=summary_dir,
         train_state_axes=train_state_axes,
-        rng=rng)
+        rng=rng,
+    )
 
   @cached_property
   def _partitioned_train_step(self) -> PartitionedTrainCallable:
-
     def train_step(train_state: train_state_lib.TrainState, batch: BatchType):
       return train_with_lr(
           train_state,
@@ -926,28 +1026,38 @@ class Trainer(BaseTrainer):
           model=self._model,
           num_microbatches=self._num_microbatches,
           weight_metrics_computer=self._weight_metrics_computer,
-          data_partition_spec=self._partitioner.data_partition_spec)
+          data_partition_spec=self._partitioner.data_partition_spec,
+      )
 
     return self._partitioner.partition(
         train_step,
-        in_axis_resources=(self._train_state_axes,
-                           self._partitioner.data_partition_spec),
+        in_axis_resources=(
+            self._train_state_axes,
+            self._partitioner.data_partition_spec,
+        ),
         out_axis_resources=(self._train_state_axes, None),
-        donate_argnums=(0,))
+        donate_argnums=(0,),
+    )
 
   @cached_property
   def _partitioned_eval_step(self) -> PartitionedEvalCallable:
     return self._partitioner.partition(
         lambda *args, **kwargs: eval_step(self._model, *args, **kwargs),
-        in_axis_resources=(self._train_state_axes,
-                           self._partitioner.data_partition_spec),
-        out_axis_resources=None)
+        in_axis_resources=(
+            self._train_state_axes,
+            self._partitioner.data_partition_spec,
+        ),
+        out_axis_resources=None,
+    )
 
 
 def _warn_action_not_run(action, task, metric):
   logging.warning(
-      "The action: %s that tracks metric: %s for task: %s is not run", action,
-      metric, task)
+      "The action: %s that tracks metric: %s for task: %s is not run",
+      action,
+      metric,
+      task,
+  )
 
 
 # TODO(b/200701930): Support dynamic registration for enum.
@@ -957,6 +1067,7 @@ class ActionMode(enum.Enum):
 
   For example, TRAIN means to run an action after a TRAIN loop is done.
   """
+
   TRAIN = 1
   TRAIN_EVAL = 2
   INFER_EVAL = 3
@@ -966,8 +1077,11 @@ class BaseAction(abc.ABC):
   """Base Action class for override. The action itself does nothing."""
 
   @abc.abstractmethod
-  def run(self, train_state: train_state_lib.TrainState,
-          metrics_by_task: Mapping[str, MetricValueMapType]) -> bool:
+  def run(
+      self,
+      train_state: train_state_lib.TrainState,
+      metrics_by_task: Mapping[str, MetricValueMapType],
+  ) -> bool:
     """Runs an action for the given train_state and metrics.
 
     Args:
@@ -991,12 +1105,14 @@ class EarlyStoppingAction(BaseAction):
   terminate the training process.
   """
 
-  def __init__(self,
-               metric: Tuple[str, str],
-               mode: str,
-               patience: int = 3,
-               atol: float = 0.,
-               rtol: float = 0.):
+  def __init__(
+      self,
+      metric: Tuple[str, str],
+      mode: str,
+      patience: int = 3,
+      atol: float = 0.0,
+      rtol: float = 0.0,
+  ):
     """Constructs the EarlyStoppingAction.
 
     Args:
@@ -1043,17 +1159,26 @@ class EarlyStoppingAction(BaseAction):
       delta *= -1
     return compare_fn(current, previous - delta)
 
-  def run(self, train_state: train_state_lib.TrainState,
-          metrics_by_task: Mapping[str, MetricValueMapType]) -> bool:
+  def run(
+      self,
+      train_state: train_state_lib.TrainState,
+      metrics_by_task: Mapping[str, MetricValueMapType],
+  ) -> bool:
     if self._task not in metrics_by_task.keys():
       logging.warning(
           "Monitoring task: %s does not exist in all task metrics. "
-          "Available tasks are : %s", self._task, metrics_by_task.keys())
+          "Available tasks are : %s",
+          self._task,
+          metrics_by_task.keys(),
+      )
       _warn_action_not_run(type(self), self._task, self._metric)
       return False
     if self._metric not in metrics_by_task[self._task].keys():
-      logging.warning("Metric : %s does not exist in metrics for task : %s",
-                      self._metric, self._task)
+      logging.warning(
+          "Metric : %s does not exist in metrics for task : %s",
+          self._metric,
+          self._task,
+      )
       _warn_action_not_run(type(self), self._task, self._metric)
       return False
 
@@ -1066,8 +1191,11 @@ class EarlyStoppingAction(BaseAction):
     elif isinstance(m, float):
       self._metric_history.append(m)
     else:
-      logging.warning("Metric %s does not have Scalar type. Found %s.",
-                      self._metric, type(m))
+      logging.warning(
+          "Metric %s does not have Scalar type. Found %s.",
+          self._metric,
+          type(m),
+      )
       _warn_action_not_run(type(self), self._task, self._metric)
       return False
 
@@ -1077,12 +1205,17 @@ class EarlyStoppingAction(BaseAction):
 
     if all(
         self._compare_fn(self._metric_history[i + 1], self._metric_history[i])
-        for i in range(self._patience - 1)):
+        for i in range(self._patience - 1)
+    ):
       logging.warning(
           "Requested `stop_training` in training loop (Details below).\n "
           "Metric: %s for Task: %s has not improved for %s iterations, detail "
-          "history of the metric: %s", self._metric, self._task, self._patience,
-          self._metric_history)
+          "history of the metric: %s",
+          self._metric,
+          self._task,
+          self._patience,
+          self._metric_history,
+      )
       return True
     # Remove extra histories that we don't need to keep.
     self._metric_history.pop(0)
@@ -1106,25 +1239,37 @@ class TerminateOnNanAction(BaseAction):
     self._task = task
     self._metric = metric
 
-  def run(self, train_state: train_state_lib.TrainState,
-          metrics_by_task: Mapping[str, MetricValueMapType]) -> bool:
+  def run(
+      self,
+      train_state: train_state_lib.TrainState,
+      metrics_by_task: Mapping[str, MetricValueMapType],
+  ) -> bool:
     if self._task not in metrics_by_task.keys():
       logging.warning(
           "Monitoring task: %s does not exist in all task metrics. "
-          "Available tasks are : %s", self._task, metrics_by_task.keys())
+          "Available tasks are : %s",
+          self._task,
+          metrics_by_task.keys(),
+      )
       _warn_action_not_run(type(self), self._task, self._metric)
       return False
     if self._metric not in metrics_by_task[self._task].keys():
-      logging.warning("Metric : %s does not exist in metrics for task : %s",
-                      self._metric, self._task)
+      logging.warning(
+          "Metric : %s does not exist in metrics for task : %s",
+          self._metric,
+          self._task,
+      )
       _warn_action_not_run(type(self), self._task, self._metric)
       return False
 
     metric = metrics_by_task[self._task][self._metric]
 
     if not isinstance(metric, clu.values.Scalar):
-      logging.warning("Metric %s does not have Scalar type. Found %s.",
-                      self._metric, type(metric))
+      logging.warning(
+          "Metric %s does not have Scalar type. Found %s.",
+          self._metric,
+          type(metric),
+      )
       _warn_action_not_run(type(self), self._task, self._metric)
       return False
 
@@ -1132,7 +1277,9 @@ class TerminateOnNanAction(BaseAction):
     if np.isnan(value) or np.isinf(value):
       logging.warning(
           "Requested `stop_training` in training loop (Details below).\n "
-          "NaN encountered in metric for task : %s", self._task)
+          "NaN encountered in metric for task : %s",
+          self._task,
+      )
       return True
 
     return False

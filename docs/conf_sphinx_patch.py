@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Set, Tuple
 import sphinx.ext.autodoc
 import sphinx.ext.autosummary.generate as ag
 
+
 # pylint:disable=all
 def generate_autosummary_content(
     name: str,

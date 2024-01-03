@@ -53,20 +53,23 @@ def flatten_state_dict(state_dict, keep_empty_nodes: bool = False):
       state_dict,
       is_leaf=tensorstore_leaf,
       keep_empty_nodes=keep_empty_nodes,
-      sep="/")
+      sep="/",
+  )
 
 
 def get_name_tree(state_dict, keep_empty_nodes: bool = False):
   """Returns new state_dict with leaves as joined path keys separated by "/"."""
   return traverse_util.unflatten_dict({
-      k: "/".join(k) for k in traverse_util.flatten_dict(
-          state_dict, keep_empty_nodes=keep_empty_nodes)
+      k: "/".join(k)
+      for k in traverse_util.flatten_dict(
+          state_dict, keep_empty_nodes=keep_empty_nodes
+      )
   })
 
 
 def intersect_state(
-    state_dict: Mapping[str, Any],
-    intersect_state_dict: Mapping[str, Any]) -> Mapping[str, Any]:
+    state_dict: Mapping[str, Any], intersect_state_dict: Mapping[str, Any]
+) -> Mapping[str, Any]:
   """Drops non-matching entries from `state_dict`.
 
   Args:
@@ -91,9 +94,11 @@ def intersect_state(
   return state_dict
 
 
-def merge_state(state_dict: Mapping[str, Any],
-                from_scratch_state: Mapping[str, Any],
-                overwrite: bool = False) -> Mapping[str, Any]:
+def merge_state(
+    state_dict: Mapping[str, Any],
+    from_scratch_state: Mapping[str, Any],
+    overwrite: bool = False,
+) -> Mapping[str, Any]:
   """Inserts new entries into `state_dict`.
 
   Args:
@@ -120,12 +125,14 @@ def merge_state(state_dict: Mapping[str, Any],
   return state_dict
 
 
-def apply_assignment_map(ckpt_optimizer_state,
-                         optimizer_state,
-                         assignment_map: Sequence[Tuple[str, Optional[str]]],
-                         require_all_rules_match: bool = True,
-                         *,
-                         is_resuming: bool = False):
+def apply_assignment_map(
+    ckpt_optimizer_state,
+    optimizer_state,
+    assignment_map: Sequence[Tuple[str, Optional[str]]],
+    require_all_rules_match: bool = True,
+    *,
+    is_resuming: bool = False,
+):
   """Applies an assignment map to a checkpoint optimizer state.
 
   In contrast to previous implementations, this has a switch whether to require
@@ -175,7 +182,10 @@ def apply_assignment_map(ckpt_optimizer_state,
           used_patterns.add(pattern)
           logging.info(
               "Skipping optimizer param=%s, which had a None "
-              "replacement using pattern=%s in the assignment map.", k, pattern)
+              "replacement using pattern=%s in the assignment map.",
+              k,
+              pattern,
+          )
           break
 
         old_k = p_match.expand(repl)
@@ -188,11 +198,16 @@ def apply_assignment_map(ckpt_optimizer_state,
           result[k] = flat_ckpt[old_k]
           logging.info(
               "Assigning checkpoint param=%s to optimizer param=%s "
-              "using pattern=%s", old_k, k, pattern)
+              "using pattern=%s",
+              old_k,
+              k,
+              pattern,
+          )
         except KeyError:
           raise ValueError(
               f"Parameter '{old_k}' does not exist in restore checkpoint. "
-              f"Must be one of: {sorted(flat_ckpt.keys())}")
+              f"Must be one of: {sorted(flat_ckpt.keys())}"
+          )
         break
 
   # Now re-add the unmapped keys. This is a 2-step process so that the `pop()`
@@ -210,12 +225,14 @@ def apply_assignment_map(ckpt_optimizer_state,
     else:
       logging.warning(
           "Skipping key=%s which did not match assignment map or checkpoint.",
-          key)
+          key,
+      )
 
   if require_all_rules_match and len(assignment_map) != len(used_patterns):
     unused_patterns = set(p for p, _ in assignment_map) - used_patterns
     unused_patterns_str = ", ".join(f"'{p}'" for p in unused_patterns)
-    raise ValueError("Unused patterns in `assignment_map`: {" +
-                     unused_patterns_str + "}")
+    raise ValueError(
+        "Unused patterns in `assignment_map`: {" + unused_patterns_str + "}"
+    )
 
   return traverse_util.unflatten_dict(result, sep="/")

@@ -89,7 +89,8 @@ _TFDS_DATA_DIR = flags.DEFINE_string(
 _SEQIO_CACHE_DIRS = flags.DEFINE_list(
     'seqio_additional_cache_dirs',
     [],
-    'Comma separated directories in "gs://cache_dir" format to search for cached Tasks in addition to defaults.',
+    'Comma separated directories in "gs://cache_dir" format to search for'
+    ' cached Tasks in addition to defaults.',
 )
 _PROJECT_DIRS = flags.DEFINE_list(
     'project_dirs',
@@ -126,9 +127,12 @@ async def main(_, gin_args: Dict[str, Any]):
     t5x_path = os.path.abspath(os.path.join(__file__, '..', '..', '..'))
     t5x_destination = os.path.join(staging, 't5x')
     if _COPYBARA_CONFIG.value:
-      t5x_path = copybara.run_workflow(_COPYBARA_CONFIG.value,
-                                       _COPYBARA_WORKFLOW.value,
-                                       _COPYBARA_ORIGIN.value, t5x_destination)
+      t5x_path = copybara.run_workflow(
+          _COPYBARA_CONFIG.value,
+          _COPYBARA_WORKFLOW.value,
+          _COPYBARA_ORIGIN.value,
+          t5x_destination,
+      )
 
     if _CLONE_GITHUB.value:
       copy_t5x = [
@@ -146,7 +150,8 @@ async def main(_, gin_args: Dict[str, Any]):
         project_name = os.path.basename(project_dir)
         shutil.copytree(project_dir, os.path.join(staging, project_name))
         staging_project_dir = os.path.join(
-            os.path.basename(staging), project_name)
+            os.path.basename(staging), project_name
+        )
         copy_projects.append(f'COPY {staging_project_dir}/ {project_name}')
 
     pip_install = []
@@ -165,34 +170,49 @@ async def main(_, gin_args: Dict[str, Any]):
             docker_instructions=[
                 *copy_t5x,
                 'WORKDIR t5x',
-
                 # Install gcloud. This is normally part of deeplearning image.
                 # Since we use python:3.9, we need to do this manually.
                 'RUN apt-get install apt-transport-https ca-certificates gnupg',
-                'RUN echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] http://packages.cloud.google.com/apt cloud-sdk main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key --keyring /usr/share/keyrings/cloud.google.gpg  add - && apt-get update -y && apt-get install google-cloud-cli -y',
-                'RUN python3 -m pip install -e ".[tpu]" -f https://storage.googleapis.com/jax-releases/libtpu_releases.html',
+                (
+                    'RUN echo "deb'
+                    ' [signed-by=/usr/share/keyrings/cloud.google.gpg]'
+                    ' http://packages.cloud.google.com/apt cloud-sdk main" |'
+                    ' tee -a /etc/apt/sources.list.d/google-cloud-sdk.list &&'
+                    ' curl'
+                    ' https://packages.cloud.google.com/apt/doc/apt-key.gpg |'
+                    ' apt-key --keyring /usr/share/keyrings/cloud.google.gpg '
+                    ' add - && apt-get update -y && apt-get install'
+                    ' google-cloud-cli -y'
+                ),
+                (
+                    'RUN python3 -m pip install -e ".[tpu]" -f'
+                    ' https://storage.googleapis.com/jax-releases/libtpu_releases.html'
+                ),
                 *pip_install,
                 *copy_projects,
             ],
             entrypoint=xm.CommandList([
                 f'export MODEL_DIR=\'"{_MODEL_DIR.value}/logs"\'',
                 f'export TFDS_DATA_DIR={_TFDS_DATA_DIR.value}',
-                'export SEQIO_CACHE_DIRS={}'.format(','.join(
-                    _SEQIO_CACHE_DIRS.value)),
+                'export SEQIO_CACHE_DIRS={}'.format(
+                    ','.join(_SEQIO_CACHE_DIRS.value)
+                ),
                 'export T5X_DIR=.',
-                ('python3 ${T5X_DIR}/t5x/main.py '
-                 f'--run_mode={_RUN_MODE.value} '
-                 '--gin.MODEL_DIR=${MODEL_DIR} '
-                 '--tfds_data_dir=${TFDS_DATA_DIR} '
-                 '--undefok=seqio_additional_cache_dirs '
-                 '--seqio_additional_cache_dirs=${SEQIO_CACHE_DIRS} '),
+                (
+                    'python3 ${T5X_DIR}/t5x/main.py '
+                    f'--run_mode={_RUN_MODE.value} '
+                    '--gin.MODEL_DIR=${MODEL_DIR} '
+                    '--tfds_data_dir=${TFDS_DATA_DIR} '
+                    '--undefok=seqio_additional_cache_dirs '
+                    '--seqio_additional_cache_dirs=${SEQIO_CACHE_DIRS} '
+                ),
             ]),
         ),
     ])
     args = []
     for k, l in gin_args.items():
       for v in l:
-        if '\'' or '"' in v:
+        if "'" or '"' in v:
           args.append(xm.ShellSafeArg(f'--{k}={v}'))
         else:
           args.append(f'--{k}={v}')
@@ -206,7 +226,7 @@ def _split_gin_args(argv, prefix='--gin'):
   gin_args = collections.defaultdict(list)
   for arg in argv[1:]:
     if arg.startswith(prefix):
-      k, v = arg[len('--'):].split('=', maxsplit=1)
+      k, v = arg[len('--') :].split('=', maxsplit=1)
       gin_args[k].append(v)
     else:
       other_args.append(arg)

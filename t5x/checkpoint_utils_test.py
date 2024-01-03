@@ -40,7 +40,8 @@ class CheckpointsUtilsTest(absltest.TestCase):
   def test_always_keep_checkpoint_file(self):
     self.assertEqual(
         "/path/to/ckpt/dir/PINNED",
-        checkpoint_utils.pinned_checkpoint_filepath("/path/to/ckpt/dir"))
+        checkpoint_utils.pinned_checkpoint_filepath("/path/to/ckpt/dir"),
+    )
 
   def test_is_pinned_checkpoint_false_by_default(self):
     # Ensure regular checkpoint without PINNED file.
@@ -61,7 +62,9 @@ class CheckpointsUtilsTest(absltest.TestCase):
   def test_is_pinned_missing_ckpt(self):
     self.assertFalse(
         checkpoint_utils.is_pinned_checkpoint(
-            os.path.join(self.ckpt_dir_path, "ckpt_does_not_exist")))
+            os.path.join(self.ckpt_dir_path, "ckpt_does_not_exist")
+        )
+    )
 
   def test_pin_checkpoint(self):
     # Ensure directory isn't already pinned.

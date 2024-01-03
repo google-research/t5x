@@ -13,8 +13,9 @@
 # limitations under the License.
 
 """Loss functions."""
+
 import enum
-from typing import Tuple, Mapping, Optional, Union
+from typing import Mapping, Optional, Tuple, Union
 
 from flax.training import common_utils
 import jax
@@ -23,8 +24,9 @@ import numpy as np
 
 
 @jax.custom_vjp
-def cross_entropy_with_logits(logits: jnp.ndarray, targets: jnp.ndarray,
-                              z_loss: float) -> Tuple[jnp.ndarray, jnp.ndarray]:
+def cross_entropy_with_logits(
+    logits: jnp.ndarray, targets: jnp.ndarray, z_loss: float
+) -> Tuple[jnp.ndarray, jnp.ndarray]:
   """Computes cross entropy loss with stable custom gradient.
 
   Computes a stabilized-gradient version of:
@@ -58,12 +60,19 @@ def cross_entropy_with_logits(logits: jnp.ndarray, targets: jnp.ndarray,
 
 
 def _cross_entropy_with_logits_fwd(
-    logits: jnp.ndarray,
-    targets: jnp.ndarray,
-    z_loss: float = 0.0
-) -> Tuple[Tuple[jnp.ndarray, jnp.ndarray],
-           Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray,
-                 jnp.ndarray, jnp.ndarray, jnp.ndarray]]:
+    logits: jnp.ndarray, targets: jnp.ndarray, z_loss: float = 0.0
+) -> Tuple[
+    Tuple[jnp.ndarray, jnp.ndarray],
+    Tuple[
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+    ],
+]:
   """Forward-mode of `cross_entropy_with_logits`."""
   max_logit = logits.max(axis=-1, keepdims=True)
   shifted = logits - max_logit
@@ -75,30 +84,49 @@ def _cross_entropy_with_logits_fwd(
   log_z = jnp.squeeze(jnp.log(sum_exp) + max_logit, axis=-1)
   total_z_loss = z_loss * jax.lax.square(log_z)
   loss += total_z_loss
-  return (loss, total_z_loss), (logits, targets, z_loss, exp_shifted, sum_exp,  # pytype: disable=bad-return-type  # jax-ndarray
-                                log_softmax, log_z)
+  return (loss, total_z_loss), (
+      logits,
+      targets,
+      z_loss,
+      exp_shifted,
+      sum_exp,  # pytype: disable=bad-return-type  # jax-ndarray
+      log_softmax,
+      log_z,
+  )
 
 
 def _cross_entropy_with_logits_bwd(
-    res: Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray,
-               jnp.ndarray, jnp.ndarray], g: Tuple[jnp.ndarray, jnp.ndarray]
+    res: Tuple[
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+        jnp.ndarray,
+    ],
+    g: Tuple[jnp.ndarray, jnp.ndarray],
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
   """Backward-mode of `cross_entropy_with_logits`."""
   g = g[0]  # Ignore z_loss component as that is only used for logging.
   logits, targets, z_loss, exp_shifted, sum_exp, log_softmax, log_z = res
   # z-loss term adds the (2 * z_loss * log_z) factor.
   deriv = (
-      jnp.expand_dims(1 + 2 * z_loss * log_z, -1) * exp_shifted / sum_exp -
-      targets)
+      jnp.expand_dims(1 + 2 * z_loss * log_z, -1) * exp_shifted / sum_exp
+      - targets
+  )
   g_logits = jnp.expand_dims(g, axis=-1) * deriv
   g_targets = -jnp.expand_dims(g, axis=-1) * log_softmax
-  return (jnp.asarray(g_logits,
-                      logits.dtype), jnp.asarray(g_targets, targets.dtype),
-          jnp.array(0.0))  # sets z-loss coeff gradient to 0
+  return (
+      jnp.asarray(g_logits, logits.dtype),
+      jnp.asarray(g_targets, targets.dtype),
+      jnp.array(0.0),
+  )  # sets z-loss coeff gradient to 0
 
 
-cross_entropy_with_logits.defvjp(_cross_entropy_with_logits_fwd,
-                                 _cross_entropy_with_logits_bwd)
+cross_entropy_with_logits.defvjp(
+    _cross_entropy_with_logits_fwd, _cross_entropy_with_logits_bwd
+)
 
 
 def compute_weighted_cross_entropy(
@@ -107,7 +135,7 @@ def compute_weighted_cross_entropy(
     weights: Optional[jnp.ndarray] = None,
     label_smoothing: float = 0.0,
     z_loss: float = 0.0,
-    loss_normalizing_factor: Optional[float] = None
+    loss_normalizing_factor: Optional[float] = None,
 ) -> Tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
   """Compute weighted cross entropy and entropy for log probs and targets.
 
@@ -126,18 +154,23 @@ def compute_weighted_cross_entropy(
     Tuple of scalar loss, z_loss, and weight sum.
   """
   if logits.ndim != targets.ndim + 1:
-    raise ValueError('Incorrect shapes. Got shape %s logits and %s targets' %
-                     (str(logits.shape), str(targets.shape)))
+    raise ValueError(
+        'Incorrect shapes. Got shape %s logits and %s targets'
+        % (str(logits.shape), str(targets.shape))
+    )
   vocab_size = logits.shape[-1]
   confidence = 1.0 - label_smoothing
   low_confidence = (1.0 - confidence) / (vocab_size - 1)
   normalizing_constant = -(
-      confidence * jnp.log(confidence) +
-      (vocab_size - 1) * low_confidence * jnp.log(low_confidence + 1e-20))
+      confidence * jnp.log(confidence)
+      + (vocab_size - 1) * low_confidence * jnp.log(low_confidence + 1e-20)
+  )
   soft_targets = common_utils.onehot(
-      targets, vocab_size, on_value=confidence, off_value=low_confidence)
+      targets, vocab_size, on_value=confidence, off_value=low_confidence
+  )
   total_loss, total_z_loss = cross_entropy_with_logits(
-      logits, soft_targets, z_loss=z_loss)
+      logits, soft_targets, z_loss=z_loss
+  )
   total_loss = total_loss - normalizing_constant
 
   weight_sum = np.prod(targets.shape)
@@ -175,13 +208,15 @@ class SpecialLossNormalizingFactor(enum.Enum):
       equally, regardless of sequence length (which can be especially important
       for multi-task finetuning).
   """
+
   NUM_REAL_TARGET_TOKENS = 1
   NUM_TOTAL_TARGET_TOKENS = 2
   AVERAGE_PER_SEQUENCE = 3
 
 
 def convert_special_loss_normalizing_factor_to_enum(
-    x: str) -> SpecialLossNormalizingFactor:
+    x: str,
+) -> SpecialLossNormalizingFactor:
   """Converts stringified version of LNF to an enum.
 
   This is useful because gin dynamic registration does not (currently)
@@ -201,18 +236,19 @@ def convert_special_loss_normalizing_factor_to_enum(
   if x == 'AVERAGE_PER_SEQUENCE':
     return SpecialLossNormalizingFactor.AVERAGE_PER_SEQUENCE
   raise ValueError(
-      'Could not convert string \"%s\" to SpecialLossNormalizingFactor' % x)
+      'Could not convert string "%s" to SpecialLossNormalizingFactor' % x
+  )
 
 
 @jax.vmap
-def _sum_weights_per_segment(positions: jnp.ndarray, segment_ids: jnp.ndarray,
-                             weights: jnp.ndarray) -> jnp.ndarray:
+def _sum_weights_per_segment(
+    positions: jnp.ndarray, segment_ids: jnp.ndarray, weights: jnp.ndarray
+) -> jnp.ndarray:
   """Sums weights per packed segment to produce a normalizing vector."""
 
   # NB: Assumes padding only occurs at the end of a sequence.
 
   def _repeat_last_nonnegative(xs, reverse=False):
-
     def fn(prev, x):
       y = jnp.where(x == 0, prev, x)
       return y, y
@@ -229,7 +265,7 @@ def _sum_weights_per_segment(positions: jnp.ndarray, segment_ids: jnp.ndarray,
   # Subtract sequences' final weights from cumulative weights of following ones.
   final_total_weights = jnp.concatenate([
       final_cumulative_weights[0:1],
-      jnp.diff(_repeat_last_nonnegative(final_cumulative_weights))
+      jnp.diff(_repeat_last_nonnegative(final_cumulative_weights)),
   ])
   # Copy final sequence weight to all positions in sequence.
   normalizer = _repeat_last_nonnegative(final_total_weights, reverse=True)
@@ -237,9 +273,11 @@ def _sum_weights_per_segment(positions: jnp.ndarray, segment_ids: jnp.ndarray,
 
 
 def get_loss_normalizing_factor_and_weights(
-    loss_normalizing_factor: Optional[Union[float, int, str,
-                                            SpecialLossNormalizingFactor]],
-    batch: Mapping[str, jnp.ndarray]):
+    loss_normalizing_factor: Optional[
+        Union[float, int, str, SpecialLossNormalizingFactor]
+    ],
+    batch: Mapping[str, jnp.ndarray],
+):
   """Get the float loss_normalizing_factor and loss weights.
 
   If loss_normalizing_factor is float or None, this will simply return the
@@ -262,14 +300,15 @@ def get_loss_normalizing_factor_and_weights(
   """
 
   loss_weights = batch.get('decoder_loss_weights', None)
-  if (loss_normalizing_factor is None or
-      not isinstance(loss_normalizing_factor,
-                     (str, SpecialLossNormalizingFactor))):
+  if loss_normalizing_factor is None or not isinstance(
+      loss_normalizing_factor, (str, SpecialLossNormalizingFactor)
+  ):
     return (loss_normalizing_factor, loss_weights)
 
   if isinstance(loss_normalizing_factor, str):
     loss_normalizing_factor = convert_special_loss_normalizing_factor_to_enum(
-        loss_normalizing_factor)
+        loss_normalizing_factor
+    )
 
   # If `loss_weights` are not provided, we assume that the padding id is 0 and
   # that non-padding tokens in the decoder all correspond to the positions
@@ -280,26 +319,35 @@ def get_loss_normalizing_factor_and_weights(
     loss_weights = jnp.asarray(batch['decoder_target_tokens'] > 0, jnp.float32)
 
   output_normalizing_factor = None
-  if (loss_normalizing_factor ==
-      SpecialLossNormalizingFactor.NUM_REAL_TARGET_TOKENS):
+  if (
+      loss_normalizing_factor
+      == SpecialLossNormalizingFactor.NUM_REAL_TARGET_TOKENS
+  ):
     output_normalizing_factor = jnp.sum(loss_weights)
-  elif (loss_normalizing_factor ==
-        SpecialLossNormalizingFactor.NUM_TOTAL_TARGET_TOKENS):
+  elif (
+      loss_normalizing_factor
+      == SpecialLossNormalizingFactor.NUM_TOTAL_TARGET_TOKENS
+  ):
     output_normalizing_factor = np.prod(batch['decoder_target_tokens'].shape)
-  elif (loss_normalizing_factor ==
-        SpecialLossNormalizingFactor.AVERAGE_PER_SEQUENCE):
+  elif (
+      loss_normalizing_factor
+      == SpecialLossNormalizingFactor.AVERAGE_PER_SEQUENCE
+  ):
     if 'decoder_segment_ids' in batch:  # is packed
-      norm_vec = _sum_weights_per_segment(batch['decoder_positions'],
-                                          batch['decoder_segment_ids'],
-                                          loss_weights)
+      norm_vec = _sum_weights_per_segment(
+          batch['decoder_positions'], batch['decoder_segment_ids'], loss_weights
+      )
     else:
       norm_vec = jnp.sum(loss_weights, axis=-1, keepdims=True)
     # Handle divide-by-zero.
     loss_weights = jnp.nan_to_num(
-        loss_weights / norm_vec, nan=0, posinf=0, neginf=0)
+        loss_weights / norm_vec, nan=0, posinf=0, neginf=0
+    )
     output_normalizing_factor = jnp.sum(loss_weights)
   else:
-    raise ValueError('Unsupported value of loss_normalizing_factor: %s' %
-                     str(loss_normalizing_factor))
+    raise ValueError(
+        'Unsupported value of loss_normalizing_factor: %s'
+        % str(loss_normalizing_factor)
+    )
 
   return (output_normalizing_factor, loss_weights)

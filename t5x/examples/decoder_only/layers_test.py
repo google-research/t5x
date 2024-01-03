@@ -41,13 +41,16 @@ class SelfAttention(layers.MultiHeadDotProductAttention):
   """Self-attention special case of multi-head dot-product attention."""
 
   @nn.compact
-  def __call__(self,
-               inputs_q: Array,
-               mask: Optional[Array] = None,
-               bias: Optional[Array] = None,
-               deterministic: bool = False):
+  def __call__(
+      self,
+      inputs_q: Array,
+      mask: Optional[Array] = None,
+      bias: Optional[Array] = None,
+      deterministic: bool = False,
+  ):
     return super().__call__(
-        inputs_q, inputs_q, mask, bias, deterministic=deterministic)
+        inputs_q, inputs_q, mask, bias, deterministic=deterministic
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -74,7 +77,8 @@ class SelfAttentionArgs:
         num_heads=self.num_heads,
         head_dim=self.head_dim,
         dropout_rate=self.dropout_rate,
-        float32_logits=self.float32_logits)
+        float32_logits=self.float32_logits,
+    )
 
   def apply_args(self):
     inputs_q = jnp.ones((self.batch_size, self.q_len, self.features))
@@ -84,7 +88,7 @@ class SelfAttentionArgs:
         'inputs_q': inputs_q,
         'mask': mask,
         'bias': bias,
-        'deterministic': self.deterministic
+        'deterministic': self.deterministic,
     }
 
 
@@ -117,7 +121,8 @@ class AttentionTest(parameterized.TestCase):
   def test_make_attention_mask_multiply_pairwise_fn(self):
     decoder_target_tokens = jnp.array([[7, 0, 0], [8, 5, 0]])
     attention_mask = layers.make_attention_mask(
-        decoder_target_tokens > 0, decoder_target_tokens > 0, dtype=jnp.int32)
+        decoder_target_tokens > 0, decoder_target_tokens > 0, dtype=jnp.int32
+    )
     expected0 = jnp.array([[1, 0, 0], [0, 0, 0], [0, 0, 0]])
     expected1 = jnp.array([[1, 1, 0], [1, 1, 0], [0, 0, 0]])
     self.assertEqual(attention_mask.shape, (2, 1, 3, 3))
@@ -127,15 +132,26 @@ class AttentionTest(parameterized.TestCase):
   def test_make_attention_mask_equal_pairwise_fn(self):
     segment_ids = jnp.array([[1, 1, 2, 2, 2, 0], [1, 1, 1, 2, 0, 0]])
     attention_mask = layers.make_attention_mask(
-        segment_ids, segment_ids, pairwise_fn=jnp.equal, dtype=jnp.int32)
+        segment_ids, segment_ids, pairwise_fn=jnp.equal, dtype=jnp.int32
+    )
     # Padding is not treated in a special way. So they need to be zeroed out
     # separately.
-    expected0 = jnp.array([[1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0],
-                           [0, 0, 1, 1, 1, 0], [0, 0, 1, 1, 1, 0],
-                           [0, 0, 1, 1, 1, 0], [0, 0, 0, 0, 0, 1]])
-    expected1 = jnp.array([[1, 1, 1, 0, 0, 0], [1, 1, 1, 0, 0, 0],
-                           [1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 0, 0],
-                           [0, 0, 0, 0, 1, 1], [0, 0, 0, 0, 1, 1]])
+    expected0 = jnp.array([
+        [1, 1, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0],
+        [0, 0, 1, 1, 1, 0],
+        [0, 0, 1, 1, 1, 0],
+        [0, 0, 1, 1, 1, 0],
+        [0, 0, 0, 0, 0, 1],
+    ])
+    expected1 = jnp.array([
+        [1, 1, 1, 0, 0, 0],
+        [1, 1, 1, 0, 0, 0],
+        [1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0],
+        [0, 0, 0, 0, 1, 1],
+        [0, 0, 0, 0, 1, 1],
+    ])
     self.assertEqual(attention_mask.shape, (2, 1, 6, 6))
     np.testing.assert_array_equal(attention_mask[0, 0], expected0)
     np.testing.assert_array_equal(attention_mask[1, 0], expected1)
@@ -146,8 +162,9 @@ class AttentionTest(parameterized.TestCase):
     self.assertEqual(y.shape, (2, 1, 3, 3))
     # Padding is not treated in a special way. So they need to be zeroed out
     # separately.
-    expected_y = jnp.array([[[1., 0., 0.], [1., 1., 0.], [1., 1., 1.]]],
-                           jnp.float32)
+    expected_y = jnp.array(
+        [[[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]]], jnp.float32
+    )
     np.testing.assert_allclose(y[0], expected_y)
     np.testing.assert_allclose(y[1], expected_y)
 
@@ -160,24 +177,27 @@ class AttentionTest(parameterized.TestCase):
     x = jnp.ones((1, 3))
     y = layers.make_causal_mask(x)
     self.assertEqual(y.shape, (1, 1, 3, 3))
-    expected_y = jnp.array([[[[1., 0., 0.], [1., 1., 0.], [1., 1., 1.]]]],
-                           jnp.float32)
+    expected_y = jnp.array(
+        [[[[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0]]]], jnp.float32
+    )
     np.testing.assert_allclose(y, expected_y)
 
   def test_combine_masks(self):
     masks = [
-        jnp.array([0, 1, 0, 1], jnp.float32), None,
+        jnp.array([0, 1, 0, 1], jnp.float32),
+        None,
         jnp.array([1, 1, 1, 1], jnp.float32),
-        jnp.array([1, 1, 1, 0], jnp.float32)
+        jnp.array([1, 1, 1, 0], jnp.float32),
     ]
     y = layers.combine_masks(*masks)
     np.testing.assert_allclose(y, jnp.array([0, 1, 0, 0], jnp.float32))
 
   def test_combine_biases(self):
     masks = [
-        jnp.array([0, 1, 0, 1], jnp.float32), None,
+        jnp.array([0, 1, 0, 1], jnp.float32),
+        None,
         jnp.array([0, 1, 1, 1], jnp.float32),
-        jnp.array([0, 1, 1, 0], jnp.float32)
+        jnp.array([0, 1, 1, 0], jnp.float32),
     ]
     y = layers.combine_biases(*masks)
     np.testing.assert_allclose(y, jnp.array([0, 3, 2, 2], jnp.float32))
@@ -185,9 +205,11 @@ class AttentionTest(parameterized.TestCase):
   def test_make_decoder_mask_lm_unpacked(self):
     decoder_target_tokens = jnp.array([6, 7, 3, 0])
     mask = layers.make_decoder_mask(
-        decoder_target_tokens=decoder_target_tokens, dtype=jnp.float32)
-    expected_mask = jnp.array([[[1, 0, 0, 0], [1, 1, 0, 0], [1, 1, 1, 0],
-                                [0, 0, 0, 0]]])
+        decoder_target_tokens=decoder_target_tokens, dtype=jnp.float32
+    )
+    expected_mask = jnp.array(
+        [[[1, 0, 0, 0], [1, 1, 0, 0], [1, 1, 1, 0], [0, 0, 0, 0]]]
+    )
     np.testing.assert_array_equal(mask, expected_mask)
 
   def test_make_decoder_mask_lm_packed(self):
@@ -196,10 +218,16 @@ class AttentionTest(parameterized.TestCase):
     mask = layers.make_decoder_mask(
         decoder_target_tokens=decoder_target_tokens,
         dtype=jnp.float32,
-        decoder_segment_ids=decoder_segment_ids)
-    expected_mask = jnp.array([[[[1, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0],
-                                 [1, 1, 1, 0, 0, 0], [0, 0, 0, 1, 0, 0],
-                                 [0, 0, 0, 1, 1, 0], [0, 0, 0, 0, 0, 0]]]])
+        decoder_segment_ids=decoder_segment_ids,
+    )
+    expected_mask = jnp.array([[[
+        [1, 0, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0],
+        [1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 1, 0, 0],
+        [0, 0, 0, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0],
+    ]]])
     np.testing.assert_array_equal(mask, expected_mask)
 
   def test_make_decoder_mask_prefix_lm_unpacked(self):
@@ -208,11 +236,19 @@ class AttentionTest(parameterized.TestCase):
     mask = layers.make_decoder_mask(
         decoder_target_tokens=decoder_target_tokens,
         dtype=jnp.float32,
-        decoder_causal_attention=decoder_causal_attention)
+        decoder_causal_attention=decoder_causal_attention,
+    )
     expected_mask = jnp.array(
-        [[[[1, 1, 1, 0, 0, 0], [1, 1, 1, 0, 0, 0], [1, 1, 1, 0, 0, 0],
-           [1, 1, 1, 1, 0, 0], [1, 1, 1, 1, 1, 0], [0, 0, 0, 0, 0, 0]]]],
-        dtype=jnp.float32)
+        [[[
+            [1, 1, 1, 0, 0, 0],
+            [1, 1, 1, 0, 0, 0],
+            [1, 1, 1, 0, 0, 0],
+            [1, 1, 1, 1, 0, 0],
+            [1, 1, 1, 1, 1, 0],
+            [0, 0, 0, 0, 0, 0],
+        ]]],
+        dtype=jnp.float32,
+    )
     np.testing.assert_array_equal(mask, expected_mask)
 
   def test_make_decoder_mask_prefix_lm_packed(self):
@@ -223,11 +259,17 @@ class AttentionTest(parameterized.TestCase):
         decoder_target_tokens=decoder_target_tokens,
         dtype=jnp.float32,
         decoder_causal_attention=decoder_causal_attention,
-        decoder_segment_ids=decoder_segment_ids)
-    expected_mask = jnp.array([[[[1, 1, 0, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0, 0],
-                                 [1, 1, 1, 0, 0, 0, 0], [0, 0, 0, 1, 1, 0, 0],
-                                 [0, 0, 0, 1, 1, 0, 0], [0, 0, 0, 1, 1, 1, 0],
-                                 [0, 0, 0, 0, 0, 0, 0]]]])
+        decoder_segment_ids=decoder_segment_ids,
+    )
+    expected_mask = jnp.array([[[
+        [1, 1, 0, 0, 0, 0, 0],
+        [1, 1, 0, 0, 0, 0, 0],
+        [1, 1, 1, 0, 0, 0, 0],
+        [0, 0, 0, 1, 1, 0, 0],
+        [0, 0, 0, 1, 1, 0, 0],
+        [0, 0, 0, 1, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+    ]]])
     np.testing.assert_array_equal(mask, expected_mask)
 
   def test_make_decoder_mask_prefix_lm_unpacked_multiple_elements(self):
@@ -236,11 +278,14 @@ class AttentionTest(parameterized.TestCase):
     mask = layers.make_decoder_mask(
         decoder_target_tokens=decoder_target_tokens,
         dtype=jnp.float32,
-        decoder_causal_attention=decoder_causal_attention)
-    expected_mask0 = jnp.array([[1, 1, 0, 0], [1, 1, 0, 0], [1, 1, 1, 0],
-                                [0, 0, 0, 0]])
-    expected_mask1 = jnp.array([[1, 0, 0, 0], [1, 1, 0, 0], [0, 0, 0, 0],
-                                [0, 0, 0, 0]])
+        decoder_causal_attention=decoder_causal_attention,
+    )
+    expected_mask0 = jnp.array(
+        [[1, 1, 0, 0], [1, 1, 0, 0], [1, 1, 1, 0], [0, 0, 0, 0]]
+    )
+    expected_mask1 = jnp.array(
+        [[1, 0, 0, 0], [1, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    )
     self.assertEqual(mask.shape, (2, 1, 4, 4))
     np.testing.assert_array_equal(mask[0, 0], expected_mask0)
     np.testing.assert_array_equal(mask[1, 0], expected_mask1)
@@ -251,11 +296,17 @@ class AttentionTest(parameterized.TestCase):
     mask = layers.make_decoder_mask(
         decoder_target_tokens=decoder_target_tokens,
         dtype=jnp.float32,
-        decoder_causal_attention=decoder_causal_attention)
-    expected_mask0 = jnp.array([[1, 1, 0, 0, 1, 1, 0], [1, 1, 0, 0, 1, 1, 0],
-                                [1, 1, 1, 0, 0, 0, 0], [1, 1, 1, 1, 0, 0, 0],
-                                [1, 1, 1, 1, 1, 1, 0], [1, 1, 1, 1, 1, 1, 0],
-                                [0, 0, 0, 0, 0, 0, 0]])
+        decoder_causal_attention=decoder_causal_attention,
+    )
+    expected_mask0 = jnp.array([
+        [1, 1, 0, 0, 1, 1, 0],
+        [1, 1, 0, 0, 1, 1, 0],
+        [1, 1, 1, 0, 0, 0, 0],
+        [1, 1, 1, 1, 0, 0, 0],
+        [1, 1, 1, 1, 1, 1, 0],
+        [1, 1, 1, 1, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+    ])
 
     self.assertEqual(mask.shape, (1, 1, 7, 7))
     np.testing.assert_array_equal(mask[0, 0], expected_mask0)
@@ -268,16 +319,19 @@ class AttentionTest(parameterized.TestCase):
         decoder_target_tokens=decoder_target_tokens,
         dtype=jnp.float32,
         decoder_causal_attention=decoder_causal_attention,
-        decoder_segment_ids=decoder_segment_ids)
-    expected_mask0 = jnp.array([[1, 1, 0, 0, 1, 1, 0, 0, 0],
-                                [1, 1, 0, 0, 1, 1, 0, 0, 0],
-                                [1, 1, 1, 0, 0, 0, 0, 0, 0],
-                                [1, 1, 1, 1, 0, 0, 0, 0, 0],
-                                [1, 1, 1, 1, 1, 1, 0, 0, 0],
-                                [1, 1, 1, 1, 1, 1, 0, 0, 0],
-                                [0, 0, 0, 0, 0, 0, 1, 1, 0],
-                                [0, 0, 0, 0, 0, 0, 1, 1, 0],
-                                [0, 0, 0, 0, 0, 0, 1, 1, 1]])
+        decoder_segment_ids=decoder_segment_ids,
+    )
+    expected_mask0 = jnp.array([
+        [1, 1, 0, 0, 1, 1, 0, 0, 0],
+        [1, 1, 0, 0, 1, 1, 0, 0, 0],
+        [1, 1, 1, 0, 0, 0, 0, 0, 0],
+        [1, 1, 1, 1, 0, 0, 0, 0, 0],
+        [1, 1, 1, 1, 1, 1, 0, 0, 0],
+        [1, 1, 1, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0, 1, 1, 0],
+        [0, 0, 0, 0, 0, 0, 1, 1, 1],
+    ])
 
     self.assertEqual(mask.shape, (1, 1, 9, 9))
     np.testing.assert_array_equal(mask[0, 0], expected_mask0)
@@ -304,21 +358,14 @@ class AttentionTest(parameterized.TestCase):
     out_kernel = np.random.randn(h, d, f)
 
     params = {
-        'query': {
-            'kernel': query_kernel.reshape(f, -1)
-        },
-        'key': {
-            'kernel': key_kernel.reshape(f, -1)
-        },
-        'value': {
-            'kernel': value_kernel.reshape(f, -1)
-        },
-        'out': {
-            'kernel': out_kernel.reshape(-1, f)
-        }
+        'query': {'kernel': query_kernel.reshape(f, -1)},
+        'key': {'kernel': key_kernel.reshape(f, -1)},
+        'value': {'kernel': value_kernel.reshape(f, -1)},
+        'out': {'kernel': out_kernel.reshape(-1, f)},
     }
     y = layers.MultiHeadDotProductAttention(**args).apply(
-        {'params': freeze(params)}, inputs_q, inputs_kv)
+        {'params': freeze(params)}, inputs_q, inputs_kv
+    )
 
     query = np.einsum('bqf,fhd->bqhd', inputs_q, query_kernel)
     key = np.einsum('bkf,fhd->bkhd', inputs_kv, key_kernel)
@@ -340,7 +387,7 @@ class AttentionTest(parameterized.TestCase):
     cache = {
         'cached_key': np.zeros((b, h, d, k)),
         'cached_value': np.zeros((b, h, d, k)),
-        'cache_index': np.array(0)
+        'cache_index': np.array(0),
     }
     inputs_q = np.random.randn(b, 1, f)
     inputs_kv = np.random.randn(b, 1, f)
@@ -351,13 +398,15 @@ class AttentionTest(parameterized.TestCase):
       return x.reshape(b, -1, h, d)
 
     with mock.patch.object(
-        layers.DenseGeneral, '__call__', new=mock_dense_general):
+        layers.DenseGeneral, '__call__', new=mock_dense_general
+    ):
       _, mutated = layers.MultiHeadDotProductAttention(**args).apply(
           {'cache': freeze(cache)},
           inputs_q,
           inputs_kv,
           decode=True,
-          mutable=['cache'])
+          mutable=['cache'],
+      )
       updated_cache = mutated['cache']
 
     # Perform the same mocked projection to generate the expected cache.
@@ -392,14 +441,13 @@ class AttentionTest(parameterized.TestCase):
     f = h * d
     prefill_lengths = np.array([3, 1])
 
-    base_args = SelfAttentionArgs(
-        num_heads=h, head_dim=d, dropout_rate=0)
+    base_args = SelfAttentionArgs(num_heads=h, head_dim=d, dropout_rate=0)
     args = base_args.init_args()
 
     cache = {
         'cached_key': np.zeros((b, h, d, k)),
         'cached_value': np.zeros((b, h, d, k)),
-        'cache_index': np.array([0, 0])
+        'cache_index': np.array([0, 0]),
     }
     inputs_q = np.random.randn(b, k, f)
     inputs_kv = np.random.randn(b, k, f)
@@ -410,7 +458,8 @@ class AttentionTest(parameterized.TestCase):
       return x.reshape(b, -1, h, d)
 
     with mock.patch.object(
-        layers.DenseGeneral, '__call__', new=mock_dense_general):
+        layers.DenseGeneral, '__call__', new=mock_dense_general
+    ):
       _, mutated = layers.MultiHeadDotProductAttention(**args).apply(
           {'cache': freeze(cache)},
           inputs_q,
@@ -418,7 +467,8 @@ class AttentionTest(parameterized.TestCase):
           decode=False,
           prefill=True,
           prefill_lengths=prefill_lengths,
-          mutable=['cache'])
+          mutable=['cache'],
+      )
       updated_cache = mutated['cache']
 
     # Perform the same mocked projection to generate the expected cache.
@@ -448,7 +498,8 @@ class EmbeddingTest(parameterized.TestCase):
     variables = embed.init(jax.random.PRNGKey(0), inputs)
     bad_inputs = inputs.astype(np.float32)
     with self.assertRaisesRegex(
-        ValueError, 'Input type must be an integer or unsigned integer.'):
+        ValueError, 'Input type must be an integer or unsigned integer.'
+    ):
       _ = embed.apply(variables, bad_inputs)
 
   @parameterized.named_parameters(
@@ -458,20 +509,22 @@ class EmbeddingTest(parameterized.TestCase):
           'num_embeddings': 10,
           'features': 5,
           'matrix_sum': 5 * 10,
-      }, {
+      },
+      {
           'testcase_name': 'with_zeros',
           'init_fn': jax.nn.initializers.zeros,
           'num_embeddings': 10,
           'features': 5,
           'matrix_sum': 0,
-      })
-  def test_embedding_initializes_correctly(self, init_fn, num_embeddings,
-                                           features, matrix_sum):
+      },
+  )
+  def test_embedding_initializes_correctly(
+      self, init_fn, num_embeddings, features, matrix_sum
+  ):
     """Tests if the Embed class initializes with the requested initializer."""
     embed = layers.Embed(
-        num_embeddings=num_embeddings,
-        features=features,
-        embedding_init=init_fn)
+        num_embeddings=num_embeddings, features=features, embedding_init=init_fn
+    )
     inputs = np.expand_dims(np.arange(5, dtype=np.int64), 1)
     variables = embed.init(jax.random.PRNGKey(0), inputs)
     embedding_matrix = variables['params']['embedding']
@@ -510,7 +563,7 @@ class DenseTest(parameterized.TestCase):
     )
     y, _ = model.init_with_output(rng, x)
     self.assertEqual(y.shape, (1, 4))
-    np.testing.assert_allclose(y, np.full((1, 4), 3.))
+    np.testing.assert_allclose(y, np.full((1, 4), 3.0))
 
   def test_dense_general_two_features(self):
     rng = random.PRNGKey(0)
@@ -521,7 +574,7 @@ class DenseTest(parameterized.TestCase):
     )
     y, _ = model.init_with_output(rng, x)
     # We transform the last input dimension to two output dimensions (2, 2).
-    np.testing.assert_allclose(y, np.full((1, 2, 2), 3.))
+    np.testing.assert_allclose(y, np.full((1, 2, 2), 3.0))
 
   def test_dense_general_two_axes(self):
     rng = random.PRNGKey(0)
@@ -533,7 +586,7 @@ class DenseTest(parameterized.TestCase):
     )
     y, _ = model.init_with_output(rng, x)
     # We transform the last two input dimensions (2, 2) to one output dimension.
-    np.testing.assert_allclose(y, np.full((1, 3), 4.))
+    np.testing.assert_allclose(y, np.full((1, 3), 4.0))
 
   def test_mlp_same_out_dim(self):
     module = layers.MlpBlock(
@@ -549,26 +602,36 @@ class DenseTest(parameterized.TestCase):
             # Batch 2.
             [[2, 2], [3, 1], [2, 2]],
         ],
-        dtype=np.float32)
+        dtype=np.float32,
+    )
     params = module.init(random.PRNGKey(0), inputs, deterministic=True)
     self.assertEqual(
-        jax.tree_map(lambda a: a.tolist(), params), {
+        jax.tree_map(lambda a: a.tolist(), params),
+        {
             'params': {
                 'wi': {
-                    'kernel': [[
-                        -0.8675811290740967, 0.08417510986328125,
-                        0.022586345672607422, -0.9124102592468262
+                    'kernel': [
+                        [
+                            -0.8675811290740967,
+                            0.08417510986328125,
+                            0.022586345672607422,
+                            -0.9124102592468262,
+                        ],
+                        [
+                            -0.19464373588562012,
+                            0.49809837341308594,
+                            0.7808468341827393,
+                            0.9267289638519287,
+                        ],
                     ],
-                               [
-                                   -0.19464373588562012, 0.49809837341308594,
-                                   0.7808468341827393, 0.9267289638519287
-                               ]],
                 },
                 'wo': {
-                    'kernel': [[0.01154780387878418, 0.1397249698638916],
-                               [0.974980354309082, 0.5903260707855225],
-                               [-0.05997943878173828, 0.616570234298706],
-                               [0.2934272289276123, 0.8181164264678955]],
+                    'kernel': [
+                        [0.01154780387878418, 0.1397249698638916],
+                        [0.974980354309082, 0.5903260707855225],
+                        [-0.05997943878173828, 0.616570234298706],
+                        [0.2934272289276123, 0.8181164264678955],
+                    ],
                 },
             },
             'params_axes': {
@@ -579,16 +642,23 @@ class DenseTest(parameterized.TestCase):
                     'kernel_axes': AxisMetadata(names=('mlp', 'embed')),
                 },
             },
-        })
+        },
+    )
     result = module.apply(params, inputs, deterministic=True)
     np.testing.assert_allclose(
         result.tolist(),
-        [[[0.5237172245979309, 0.8508185744285583],
-          [0.5237172245979309, 0.8508185744285583],
-          [1.2344461679458618, 2.3844780921936035]],
-         [[1.0474344491958618, 1.7016371488571167],
-          [0.6809444427490234, 0.9663378596305847],
-          [1.0474344491958618, 1.7016371488571167]]],
+        [
+            [
+                [0.5237172245979309, 0.8508185744285583],
+                [0.5237172245979309, 0.8508185744285583],
+                [1.2344461679458618, 2.3844780921936035],
+            ],
+            [
+                [1.0474344491958618, 1.7016371488571167],
+                [0.6809444427490234, 0.9663378596305847],
+                [1.0474344491958618, 1.7016371488571167],
+            ],
+        ],
         rtol=1e-6,
     )
 
@@ -610,18 +680,22 @@ class RelativePositionBiasesTest(absltest.TestCase):
   def test_relative_attention_bidirectional_params(self):
     """Tests that bidirectional relative position biases have expected params."""
     params = self.relative_attention.init(
-        random.PRNGKey(0), self.query_len, self.key_len, bidirectional=True)
+        random.PRNGKey(0), self.query_len, self.key_len, bidirectional=True
+    )
     param_shapes = jax.tree_map(lambda x: x.shape, params)
     self.assertEqual(
-        param_shapes, {
+        param_shapes,
+        {
             'params': {
                 'rel_embedding': (3, 12),
             },
             'params_axes': {
-                'rel_embedding_axes':
-                    AxisMetadata(names=('heads', 'relpos_buckets')),
-            }
-        })
+                'rel_embedding_axes': AxisMetadata(
+                    names=('heads', 'relpos_buckets')
+                ),
+            },
+        },
+    )
 
   def test_regression_relative_attention_bidirectional_values(self):
     """Tests that bidirectional relative position biases match expected values.
@@ -629,9 +703,11 @@ class RelativePositionBiasesTest(absltest.TestCase):
     See top docstring note on matching T5X behavior for these regression tests.
     """
     outputs, unused_params = self.relative_attention.init_with_output(
-        random.PRNGKey(0), self.query_len, self.key_len, bidirectional=True)
-    self.assertEqual(outputs.shape,
-                     (1, self.num_heads, self.query_len, self.key_len))
+        random.PRNGKey(0), self.query_len, self.key_len, bidirectional=True
+    )
+    self.assertEqual(
+        outputs.shape, (1, self.num_heads, self.query_len, self.key_len)
+    )
     self.assertAlmostEqual(outputs[0, 0, 0, 0], 0.55764728, places=5)
     self.assertAlmostEqual(outputs[0, 1, 2, 1], -0.10935841, places=5)
     self.assertAlmostEqual(outputs[0, 1, 4, 6], 0.14510104, places=5)
@@ -640,18 +716,22 @@ class RelativePositionBiasesTest(absltest.TestCase):
   def test_relative_attention_unidirectional_params(self):
     """Tests that unidirectional relative position biases have expected params."""
     params = self.relative_attention.init(
-        random.PRNGKey(0), self.query_len, self.key_len, bidirectional=False)
+        random.PRNGKey(0), self.query_len, self.key_len, bidirectional=False
+    )
     param_shapes = jax.tree_map(lambda x: x.shape, params)
     self.assertEqual(
-        param_shapes, {
+        param_shapes,
+        {
             'params': {
                 'rel_embedding': (3, 12),
             },
             'params_axes': {
-                'rel_embedding_axes':
-                    AxisMetadata(names=('heads', 'relpos_buckets')),
-            }
-        })
+                'rel_embedding_axes': AxisMetadata(
+                    names=('heads', 'relpos_buckets')
+                ),
+            },
+        },
+    )
 
   def test_regression_relative_attention_unidirectional_values(self):
     """Tests that unidirectional relative position biases match expected values.
@@ -659,9 +739,11 @@ class RelativePositionBiasesTest(absltest.TestCase):
     See top docstring note on matching T5X behavior for these regression tests.
     """
     outputs, unused_params = self.relative_attention.init_with_output(
-        random.PRNGKey(0), self.query_len, self.key_len, bidirectional=False)
-    self.assertEqual(outputs.shape,
-                     (1, self.num_heads, self.query_len, self.key_len))
+        random.PRNGKey(0), self.query_len, self.key_len, bidirectional=False
+    )
+    self.assertEqual(
+        outputs.shape, (1, self.num_heads, self.query_len, self.key_len)
+    )
     self.assertAlmostEqual(outputs[0, 0, 0, 0], 0.55764728, places=5)
     self.assertAlmostEqual(outputs[0, 1, 2, 1], -0.10935841, places=5)
     self.assertAlmostEqual(outputs[0, 1, 4, 6], -0.13101986, places=5)
@@ -672,13 +754,15 @@ class RelativePositionBiasesTest(absltest.TestCase):
     with self.assertRaisesRegex(
         ValueError,
         'decode-mode cannot be enabled during init. use model.apply to '
-        'initialize the decoding cache.'):
+        'initialize the decoding cache.',
+    ):
       self.relative_attention.init(
           jax.random.PRNGKey(0),
           self.query_len,
           self.key_len,
           bidirectional=False,
-          decode=True)
+          decode=True,
+      )
 
   def test_relative_attention_decode_cache_errror_with_bidirectional(self):
     """Tests that bidirectional relative embeddings fails when decoding."""
@@ -687,19 +771,22 @@ class RelativePositionBiasesTest(absltest.TestCase):
         self.query_len,
         self.key_len,
         bidirectional=False,
-        decode=False)
+        decode=False,
+    )
 
     with self.assertRaisesRegex(
         ValueError,
         'bidirectional RelativePositionBiases are not supported when '
-        '`decode=True`.'):
+        '`decode=True`.',
+    ):
       self.relative_attention.apply(
           params,
           self.query_len,
           self.key_len,
           bidirectional=True,
           decode=True,
-          mutable=['cache'])
+          mutable=['cache'],
+      )
 
   def test_relative_attention_decode_cache(self):
     """Tests that relative embeddings are correctly cached when decode=True."""
@@ -709,7 +796,8 @@ class RelativePositionBiasesTest(absltest.TestCase):
         self.query_len,
         self.key_len,
         bidirectional=False,
-        decode=False)
+        decode=False,
+    )
 
     # during init, cache is not actually initialized.
     self.assertNotIn('cache', params)
@@ -720,10 +808,12 @@ class RelativePositionBiasesTest(absltest.TestCase):
         self.key_len,
         bidirectional=False,
         decode=True,
-        mutable=['cache'])
+        mutable=['cache'],
+    )
 
-    self.assertEqual(outputs.shape,
-                     (1, self.num_heads, self.query_len, self.key_len))
+    self.assertEqual(
+        outputs.shape, (1, self.num_heads, self.query_len, self.key_len)
+    )
 
     self.assertIn('cached_bias', state['cache'])
 
@@ -747,7 +837,8 @@ class RelativePositionBiasesTest(absltest.TestCase):
         self.key_len,
         bidirectional=False,
         decode=True,
-        mutable=['cache'])
+        mutable=['cache'],
+    )
 
     np.testing.assert_array_equal(cached_bias, state['cache']['cached_bias'])
 

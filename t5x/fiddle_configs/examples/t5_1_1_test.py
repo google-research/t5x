@@ -15,7 +15,6 @@
 """Tests for t5_1_1 examples."""
 
 from absl.testing import absltest
-
 import fiddle as fdl
 from t5x import config_utils
 from t5x.fiddle_configs.examples import t5_1_1

@@ -44,8 +44,9 @@ class LazyArray(metaclass=abc.ABCMeta):
   where the data is only read from disk when explicitly needed by the user.
   """
 
-  def __init__(self, shape: Sequence[int], dtype: jnp.dtype,
-               get_fn: Callable[[], Any]):
+  def __init__(
+      self, shape: Sequence[int], dtype: jnp.dtype, get_fn: Callable[[], Any]
+  ):
     self._shape = tuple(shape) if shape is not None else shape
     self._dtype = jnp.dtype(dtype) if dtype is not None else dtype
     self._get_fn = get_fn
@@ -118,7 +119,6 @@ class LazyAwaitableArray(LazyArray):
   """
 
   async def get_async(self):
-
     async def _get_and_cast():
       # Pytype has a false positive here, where it treats our _get_fn (_read_ts
       # in this case) as having a return type of `np.ndarray` instead of
@@ -139,7 +139,8 @@ class LazyAwaitableArray(LazyArray):
       cls,
       ts_spec: ts.Spec,
       get_fn: Callable[[], np.ndarray],
-      dtype: Optional[jnp.dtype] = None) -> 'LazyAwaitableArray':
+      dtype: Optional[jnp.dtype] = None,
+  ) -> 'LazyAwaitableArray':
     """Create a LazyAwaitableArray based on a tensorstore.Spec."""
     ts_spec = ts_spec.to_json()
     shape = ts_spec['metadata']['shape']
@@ -159,10 +160,12 @@ class LazyAwaitableArray(LazyArray):
     return cls(shape, dtype, get_fn)
 
   @classmethod
-  def from_array(cls,
-                 array: np.ndarray,
-                 get_fn: Callable[[], np.ndarray],
-                 dtype: Optional[jnp.dtype] = None) -> 'LazyAwaitableArray':
+  def from_array(
+      cls,
+      array: np.ndarray,
+      get_fn: Callable[[], np.ndarray],
+      dtype: Optional[jnp.dtype] = None,
+  ) -> 'LazyAwaitableArray':
     """Create a LazyAwaitableArray based on an array or python number."""
     if dtype is None:
       dtype = array.dtype
@@ -175,7 +178,8 @@ class LazyAwaitableArray(LazyArray):
       cls,
       maybe_ts_spec: Union[ts.Spec, np.ndarray],
       get_fn: Callable[[], np.ndarray],
-      dtype: Optional[jnp.dtype] = None) -> 'LazyAwaitableArray':
+      dtype: Optional[jnp.dtype] = None,
+  ) -> 'LazyAwaitableArray':
     """Create a LazyAwaitableArray based on an array or a tensorstore.Spec."""
     if isinstance(maybe_ts_spec, ts.Spec):
       return cls.from_tensor_store_spec(maybe_ts_spec, get_fn, dtype=dtype)
@@ -262,8 +266,10 @@ TOWER_MAP = {'transformer': 'decoder'}
 @t5_importer.add(r'global_step')
 def global_step(opts, key, val):
   del opts, key
-  return 'state/step', val.astype(np.int32).get() if isinstance(
-      val, LazyArray) else val
+  return (
+      'state/step',
+      val.astype(np.int32).get() if isinstance(val, LazyArray) else val,
+  )
 
 
 @t5_importer.add(r'shared/embedding(\w*)')
@@ -300,7 +306,9 @@ def rel_embeddings(opts, key, val, encdec, blocknum, slot):
   # At this point, we can't determine whether the relpos bias was shared across
   # layers or not. We first assume that it was not shared. During post
   # processing, we remove the layers_0 scope if it was shared.
-  newkey = f'{prefix}/{encdec}/layers_{blocknum}/relpos_bias/rel_embedding{suffix}'
+  newkey = (
+      f'{prefix}/{encdec}/layers_{blocknum}/relpos_bias/rel_embedding{suffix}'
+  )
   return newkey, val
 
 
@@ -321,9 +329,11 @@ def attention_layers(opts, key, val, encdec, blocknum, attntype, qkvo, slot):
   else:
     attntype = {
         'SelfAttention': 'self_attention',
-        'EncDecAttention': 'encoder_decoder_attention'
+        'EncDecAttention': 'encoder_decoder_attention',
     }[attntype]
-  newkey = f'{prefix}/{encdec}/layers_{blocknum}/{attntype}/{matrix}/kernel{suffix}'
+  newkey = (
+      f'{prefix}/{encdec}/layers_{blocknum}/{attntype}/{matrix}/kernel{suffix}'
+  )
   return newkey, val
 
 
@@ -353,24 +363,29 @@ def layernorms(opts, key, val, encdec, blocknum, lyrnum, slot):
   lyrnum = int(lyrnum)
 
   if encdec == 'transformer':
-    layernorm_type = ['pre_self_attention_layer_norm',
-                      'pre_mlp_layer_norm'][lyrnum]
+    layernorm_type = ['pre_self_attention_layer_norm', 'pre_mlp_layer_norm'][
+        lyrnum
+    ]
 
   elif encdec == 'encoder':
     layernorm_type = ['pre_attention_layer_norm', 'pre_mlp_layer_norm'][lyrnum]
   else:  # decoder
     layernorm_type = [
-        'pre_self_attention_layer_norm', 'pre_cross_attention_layer_norm',
-        'pre_mlp_layer_norm'
+        'pre_self_attention_layer_norm',
+        'pre_cross_attention_layer_norm',
+        'pre_mlp_layer_norm',
     ][lyrnum]
 
   encdec = TOWER_MAP.get(encdec, encdec)
-  newkey = f'{prefix}/{encdec}/layers_{int(blocknum)}/{layernorm_type}/scale{suffix}'
+  newkey = (
+      f'{prefix}/{encdec}/layers_{int(blocknum)}/{layernorm_type}/scale{suffix}'
+  )
   return newkey, val
 
 
 @t5_importer.add(
-    r'(encoder|decoder|transformer)/(?:final_layer|rms)_norm/scale(\w*)')
+    r'(encoder|decoder|transformer)/(?:final_layer|rms)_norm/scale(\w*)'
+)
 def final_layernorms(opts, key, val, encdec, slot):
   """Process final layer norms."""
   del opts, key
@@ -379,7 +394,7 @@ def final_layernorms(opts, key, val, encdec, slot):
   norm = {
       'encoder': 'encoder_norm',
       'decoder': 'decoder_norm',
-      'transformer': 'decoder_norm'
+      'transformer': 'decoder_norm',
   }[encdec]
   encdec = TOWER_MAP.get(encdec, encdec)
   newkey = f'{prefix}/{encdec}/{norm}/scale{suffix}'
@@ -400,7 +415,7 @@ def _add_missing_param_states(t5_data):
   updates = {}
   for k in t5_data:
     if k.startswith('target'):
-      state_leaf = 'state/param_states' + k[len('target'):]
+      state_leaf = 'state/param_states' + k[len('target') :]
       updates[state_leaf + '/m'] = np.zeros((1,), np.float32)
       if state_leaf + '/v' in t5_data:
         updates[state_leaf + '/v_row'] = np.zeros((1,), np.float32)
@@ -445,15 +460,18 @@ def load_tf_ckpt(path):
       k: LazyThreadPoolArray(
           s,
           jnp.dtype(ckpt_dtype_map[k].as_numpy_dtype),
-          lambda x=k: ckpt_reader.get_tensor(x))
+          lambda x=k: ckpt_reader.get_tensor(x),
+      )
       for k, s in ckpt_shape_map.items()
   }
   return datamap
 
 
-def _update_state_dict(state_dict: Mapping[str, Any],
-                       t5_data: MutableMapping[str, LazyArray],
-                       strict: bool = True) -> Mapping[str, Any]:
+def _update_state_dict(
+    state_dict: Mapping[str, Any],
+    t5_data: MutableMapping[str, LazyArray],
+    strict: bool = True,
+) -> Mapping[str, Any]:
   """Update flax optimizer for T5 model.
 
   Args:
@@ -481,10 +499,12 @@ def _update_state_dict(state_dict: Mapping[str, Any],
   for k, v in t5_data.items():
     if flat_state_dict[k].shape != v.shape:
       raise ValueError(
-          f'Variable {k} has shape {v.shape} != {flat_state_dict[k].shape}')
+          f'Variable {k} has shape {v.shape} != {flat_state_dict[k].shape}'
+      )
   flat_state_dict = t5_data
   state_dict = traverse_util.unflatten_dict(
-      {tuple(k.split('/')): v for k, v in flat_state_dict.items()})
+      {tuple(k.split('/')): v for k, v in flat_state_dict.items()}
+  )
   return state_dict
 
 
@@ -493,7 +513,8 @@ def restore_from_t5_checkpoint(
     path: str,
     lazy_parameters: bool = False,
     strict: bool = True,
-    translator: Optional[CheckpointTranslator] = None) -> Mapping[str, Any]:
+    translator: Optional[CheckpointTranslator] = None,
+) -> Mapping[str, Any]:
   """Load T5 checkpoint and update Adafactor optimizer and T5 model from it.
 
   We require that the final translated checkpoint structure exactly matches
@@ -525,5 +546,6 @@ def restore_from_t5_checkpoint(
   state_dict = _update_state_dict(state_dict, t5_data, strict=strict)
   if not lazy_parameters:
     state_dict = jax.tree_map(
-        lambda x: x.get() if isinstance(x, LazyArray) else x, state_dict)
+        lambda x: x.get() if isinstance(x, LazyArray) else x, state_dict
+    )
   return state_dict

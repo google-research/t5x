@@ -506,12 +506,10 @@ def train(
   def _run_training_eval(first_run: bool = False):
     if first_run:
       logging.info('Compiling training eval loop.')
-      trainer.compile_eval(
-          {  # pytype: disable=wrong-arg-types  # jax-ndarray
-              task: utils.get_zeros_batch_like_dataset(ds)
-              for task, ds in train_eval_datasets.items()
-          }
-      )
+      trainer.compile_eval({  # pytype: disable=wrong-arg-types  # jax-ndarray
+          task: utils.get_zeros_batch_like_dataset(ds)
+          for task, ds in train_eval_datasets.items()
+      })
     logging.info('Computing training evaluation metrics.')
     eval_batch_iters = {}
     for task, ds in train_eval_datasets.items():

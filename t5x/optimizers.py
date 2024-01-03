@@ -21,12 +21,10 @@ Additional support for the legacy Adafactor implementation.
 """
 
 import functools
-from typing import Any, Optional, Union, Sequence, Tuple, Mapping
+from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
 import flax
-
 # just used for transitional type definitions
-
 from flax import serialization
 from flax import struct
 from flax import traverse_util
@@ -97,10 +95,9 @@ class OptimizerDef:
     return Optimizer(opt_def, state, target)
 
   def state_dict(self, target, state):
-    return to_state_dict({
-        'target': to_state_dict(target),
-        'state': to_state_dict(state)
-    })
+    return to_state_dict(
+        {'target': to_state_dict(target), 'state': to_state_dict(state)}
+    )
 
   def restore_state(self, opt_target, opt_state, state_dict):
     """Restore the optimizer target and state from the state dict.
@@ -150,17 +147,20 @@ class Optimizer(struct.PyTreeNode):
       A new optimizer with the updated target and state.
     """
     hyper_params = self.optimizer_def.update_hyper_params(
-        **hyper_param_overrides)
+        **hyper_param_overrides
+    )
     new_target, new_state = self.optimizer_def.apply_gradient(
-        hyper_params, self.target, self.state, grads)
+        hyper_params, self.target, self.state, grads
+    )
     return self.replace(target=new_target, state=new_state)
 
   def state_dict(self):
     return self.optimizer_def.state_dict(self.target, self.state)
 
   def restore_state(self, state):
-    target, state = self.optimizer_def.restore_state(self.target, self.state,
-                                                     state)
+    target, state = self.optimizer_def.restore_state(
+        self.target, self.state, state
+    )
     return self.replace(target=target, state=state)
 
 
@@ -333,8 +333,8 @@ class OptaxStatePartitionRules:
     # A solution from stack overflow. Note that isinstance(x, NamedTuple) would
     # not work.
     is_named_tuple = (
-        isinstance(x, tuple) and hasattr(x, '_asdict') and
-        hasattr(x, '_fields'))
+        isinstance(x, tuple) and hasattr(x, '_asdict') and hasattr(x, '_fields')
+    )
     result = is_named_tuple and type(x).__name__.endswith('State')
     return result
 
@@ -343,13 +343,15 @@ class OptaxStatePartitionRules:
     """Derived logical axes for optax state."""
     # Flatten the optax state but do not go into the registered states.
     flattened_state, tree_def = jax.tree_util.tree_flatten(
-        optax_state, is_leaf=cls._is_optax_state)
+        optax_state, is_leaf=cls._is_optax_state
+    )
 
     def derive_fn(x):
       if type(x) not in cls._RULES:
         if cls._is_optax_state(x):
           raise ValueError(
-              f'Encountered unregistered optax state type {type(x).__name__}')
+              f'Encountered unregistered optax state type {type(x).__name__}'
+          )
         return None
       return cls._RULES[type(x)](x, params_axes)
 
@@ -371,6 +373,7 @@ class OptaxStatePartitionRules:
 @struct.dataclass
 class _OptaxWrapperHyperParams:
   """Dummy hyper params struct, not used."""
+
   # Required by t5x trainer. Unused as learning rate scheduling is done using
   # optax.Schedule.
   learning_rate: Optional[float] = None
@@ -398,7 +401,8 @@ class OptaxWrapper(OptimizerDef):
       Initial optimizer state.
     """
     state = OptimizerState(  # pytype: disable=wrong-arg-types  # jax-ndarray
-        step=0, param_states=self.optax_optimizer.init(params))
+        step=0, param_states=self.optax_optimizer.init(params)
+    )
     return state
 
   def apply_gradient(self, hyper_params, params, state, grads):
@@ -416,10 +420,12 @@ class OptaxWrapper(OptimizerDef):
     del hyper_params
 
     updates, new_optax_state = self.optax_optimizer.update(
-        grads, state.param_states, params)
+        grads, state.param_states, params
+    )
     new_params = optax.apply_updates(params, updates)
     return new_params, OptimizerState(
-        step=state.step + 1, param_states=new_optax_state)
+        step=state.step + 1, param_states=new_optax_state
+    )
 
   def derive_logical_axes(self, optimizer, param_logical_axes):
     """Derives optimizer state logical axes from params logical axes.
@@ -432,15 +438,18 @@ class OptaxWrapper(OptimizerDef):
       An `optimizers.Optimizer` instance, with all the leafs replaced by t5x
       PartitionSpec or None (no partition).
     """
-    optimizer_logical_axes = jax.tree_map(lambda x: None,
-                                          optimizer.state_dict())
+    optimizer_logical_axes = jax.tree_map(
+        lambda x: None, optimizer.state_dict()
+    )
     optimizer_logical_axes['target'] = param_logical_axes
 
     optax_state_axes = OptaxStatePartitionRules.derive_optax_logical_axes(
-        optimizer.state.param_states, param_logical_axes)
+        optimizer.state.param_states, param_logical_axes
+    )
 
     optimizer_logical_axes['state']['param_states'] = (
-        serialization.to_state_dict(optax_state_axes))
+        serialization.to_state_dict(optax_state_axes)
+    )
 
     return optimizer.restore_state(frozen_dict.unfreeze(optimizer_logical_axes))
 
@@ -467,7 +476,8 @@ class OptaxWrapper(OptimizerDef):
 
     # This step removes any empty dict (recursively) in the state dict.
     state_dict = traverse_util.unflatten_dict(
-        traverse_util.flatten_dict(state_dict, sep='/'), sep='/')
+        traverse_util.flatten_dict(state_dict, sep='/'), sep='/'
+    )
 
     return to_state_dict({
         'target': to_state_dict(target),
@@ -491,10 +501,12 @@ class OptaxWrapper(OptimizerDef):
 
     # Get all the possible keys in the reference optimizer state.
     flat_ref_opt_state_dict = traverse_util.flatten_dict(
-        to_state_dict(opt_state), keep_empty_nodes=True, sep='/')
+        to_state_dict(opt_state), keep_empty_nodes=True, sep='/'
+    )
 
     flat_src_opt_state_dict = dict(
-        traverse_util.flatten_dict(state_dict['state'], sep='/'))
+        traverse_util.flatten_dict(state_dict['state'], sep='/')
+    )
     # Adding the empty paths back to flat_src_opt_state_dict.
     for k, v in flat_ref_opt_state_dict.items():
       if k in flat_src_opt_state_dict:
@@ -504,13 +516,15 @@ class OptaxWrapper(OptimizerDef):
       if v != traverse_util.empty_node:
         raise ValueError(
             f'Failed to restore optimizer state, path {k} is not present '
-            'in the input optimizer state dict.')
+            'in the input optimizer state dict.'
+        )
       flat_src_opt_state_dict[k] = v
 
     # Restore state from the enhanced state dict.
     opt_state = from_state_dict(
         opt_state,
-        traverse_util.unflatten_dict(flat_src_opt_state_dict, sep='/'))
+        traverse_util.unflatten_dict(flat_src_opt_state_dict, sep='/'),
+    )
     return opt_target, opt_state
 
 
@@ -538,7 +552,7 @@ def wrap_optax_optimizer(optax_optimizer):
 
 
 def chain(
-    transformations: Sequence[optax.GradientTransformation]
+    transformations: Sequence[optax.GradientTransformation],
 ) -> optax.GradientTransformation:
   return optax.chain(*transformations)
 
@@ -582,7 +596,8 @@ def _tree_of_paths(tree):
   is_frozen = isinstance(tree, flax.core.frozen_dict.FrozenDict)
   flat_tree = traverse_util.flatten_dict(unfreeze(tree))
   path_tree = traverse_util.unflatten_dict(
-      {k: '/'.join(k) for k in flat_tree.keys()})
+      {k: '/'.join(k) for k in flat_tree.keys()}
+  )
   if is_frozen:
     path_tree = freeze(path_tree)
   return path_tree
@@ -593,10 +608,12 @@ def _subtree_from_traversal(traversal, tree):
   is_frozen = isinstance(tree, flax.core.frozen_dict.FrozenDict)
   flat_tree = {}
   for path, leaf in zip(
-      traversal.iterate(_tree_of_paths(tree)), traversal.iterate(tree)):
+      traversal.iterate(_tree_of_paths(tree)), traversal.iterate(tree)
+  ):
     flat_tree[path] = leaf
   new_tree = traverse_util.unflatten_dict(
-      {tuple(k.split('/')): v for k, v in flat_tree.items()})
+      {tuple(k.split('/')): v for k, v in flat_tree.items()}
+  )
   if is_frozen:
     new_tree = freeze(new_tree)
   return new_tree
@@ -608,10 +625,12 @@ def _update_subtree_of_traversal(traversal, tree, update):
   flat_tree = traverse_util.flatten_dict(unfreeze(tree))
   flat_tree = {'/'.join(k): v for k, v in flat_tree.items()}
   for path, leaf in zip(
-      traversal.iterate(_tree_of_paths(update)), traversal.iterate(update)):
+      traversal.iterate(_tree_of_paths(update)), traversal.iterate(update)
+  ):
     flat_tree[path] = leaf
   nested_d = traverse_util.unflatten_dict(
-      {tuple(k.split('/')): v for k, v in flat_tree.items()})
+      {tuple(k.split('/')): v for k, v in flat_tree.items()}
+  )
   if is_frozen:
     nested_d = freeze(nested_d)
   return nested_d
@@ -659,8 +678,11 @@ class MultiOptimizer(OptimizerDef):
   """
 
   def __init__(
-      self, traversals_and_optimizers: Sequence[Tuple[traverse_util.Traversal,
-                                                      OptimizerDef]]):
+      self,
+      traversals_and_optimizers: Sequence[
+          Tuple[traverse_util.Traversal, OptimizerDef]
+      ],
+  ):
     """Create a new MultiOptimizer.
 
     See docstring of :class:`MultiOptimizer` for more details.
@@ -684,18 +706,21 @@ class MultiOptimizer(OptimizerDef):
         overlap |= len(match._indices) > 1  # pylint: disable=protected-access
     if overlap:
       raise ValueError(
-          'Multiple optimizers match the same leaves : ' +
-          str(jax.tree_map(lambda match: match._indices, param_states)))  # pylint: disable=protected-access
+          'Multiple optimizers match the same leaves : '
+          + str(jax.tree_map(lambda match: match._indices, param_states))  # pylint: disable=protected-access
+      )
 
     param_states = jax.tree_map(lambda x: _Marker(), params)
     for focus, opt_def in zip(self.traversals, self.sub_optimizers):
       ps = _subtree_from_traversal(focus, params)
       ss = opt_def.init_state(ps)
-      param_states = _update_subtree_of_traversal(focus, param_states,
-                                                  ss.param_states)
+      param_states = _update_subtree_of_traversal(
+          focus, param_states, ss.param_states
+      )
     # Update state to None when param is not optimized by any sub optimizer.
     param_states = jax.tree_map(
-        lambda x: (None if isinstance(x, _Marker) else x), param_states)
+        lambda x: (None if isinstance(x, _Marker) else x), param_states
+    )
     return OptimizerState(jnp.asarray(0, dtype=jnp.int32), param_states)
 
   def apply_gradient(self, hyper_params, params, state, grads):
@@ -709,11 +734,13 @@ class MultiOptimizer(OptimizerDef):
       prev_ss = OptimizerState(state.step, ss)
       new_ps, new_ss = opt_def.apply_gradient(hp, ps, prev_ss, gs)
       new_params = _update_subtree_of_traversal(focus, new_params, new_ps)
-      new_param_states = _update_subtree_of_traversal(focus, new_param_states,
-                                                      new_ss.param_states)
+      new_param_states = _update_subtree_of_traversal(
+          focus, new_param_states, new_ss.param_states
+      )
     # Update state to None when param is not optimized by any sub optimizer.
     new_param_states = jax.tree_map(
-        lambda x: (None if isinstance(x, _Marker) else x), new_param_states)
+        lambda x: (None if isinstance(x, _Marker) else x), new_param_states
+    )
     return new_params, OptimizerState(state.step + 1, new_param_states)
 
   def update_hyper_params(self, **hyper_param_overrides):
@@ -745,21 +772,28 @@ class MultiOptimizer(OptimizerDef):
 
   def derive_logical_axes(self, optimizer, param_logical_axes):
     """Derives optimizer logical partitioning from model logical partitions."""
-    param_states = jax.tree_map(lambda x: _Marker(),
-                                optimizer.state.param_states)
+    param_states = jax.tree_map(
+        lambda x: _Marker(), optimizer.state.param_states
+    )
     for focus, opt_def in zip(self.traversals, self.sub_optimizers):
       if hasattr(opt_def, 'derive_logical_axes'):
         ps = _subtree_from_traversal(focus, param_logical_axes)
         ss = _subtree_from_traversal(focus, optimizer.state.param_states)
         new_opt = opt_def.derive_logical_axes(
-            Optimizer(opt_def, OptimizerState(None, ss), ps), ps)  # pytype: disable=wrong-arg-types  # jax-ndarray
-        param_states = _update_subtree_of_traversal(focus, param_states,
-                                                    new_opt.state.param_states)
+            Optimizer(opt_def, OptimizerState(None, ss), ps), ps  # pytype: disable=wrong-arg-types  # jax-ndarray
+        )
+        param_states = _update_subtree_of_traversal(
+            focus, param_states, new_opt.state.param_states
+        )
     # Update axes to None when param is not optimized by any sub optimizer.
     param_states = jax.tree_map(
-        lambda x: (None if isinstance(x, _Marker) else x), param_states)
-    return Optimizer(optimizer.optimizer_def,
-                     OptimizerState(None, param_states), param_logical_axes)  # pytype: disable=wrong-arg-types  # jax-ndarray
+        lambda x: (None if isinstance(x, _Marker) else x), param_states
+    )
+    return Optimizer(
+        optimizer.optimizer_def,
+        OptimizerState(None, param_states),  # pytype: disable=wrong-arg-types  # jax-ndarray
+        param_logical_axes,
+    )
 
   # TODO(levskaya): add traversal handling for state_dict / restore_state
   # this is required to make this work w. optax optimizers...

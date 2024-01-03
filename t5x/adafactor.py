@@ -44,6 +44,7 @@ obtain the correct second moment estimator even for higher dimensional
 parameters.
 
 """
+
 import enum
 import re
 import typing
@@ -131,7 +132,7 @@ def factor_name_to_factordim(name):
       'column': FactorDim.COLUMN,
       'batch': FactorDim.BATCH,
       'none': FactorDim.NONE,
-      'unfactorized': FactorDim.NONE
+      'unfactorized': FactorDim.NONE,
   }[name]
 
 
@@ -161,6 +162,7 @@ class HParamMap:
 @struct.dataclass
 class _AdafactorHyperParams:
   """Hparams for Adafactor optimizer."""
+
   learning_rate: Optional[float]
   factored: bool
   multiply_by_parameter_scale: Union[bool, HParamMap]
@@ -194,25 +196,27 @@ class Adafactor(OptimizerDef):
   Adafactor is described in https://arxiv.org/abs/1804.04235.
   """
 
-  def __init__(self,
-               learning_rate: Optional[float] = None,
-               factored: bool = True,
-               multiply_by_parameter_scale: Union[bool, HParamMap] = True,
-               beta1: Optional[float] = None,
-               decay_rate: float = 0.8,
-               step_offset: int = 0,
-               clipping_threshold: Optional[float] = 1.0,
-               weight_decay_rate: Optional[float] = None,
-               min_dim_size_to_factor: int = 128,
-               epsilon1: float = 1e-30,
-               epsilon2: float = 1e-3,
-               dtype_momentum: Dtype = jnp.float32,
-               factor_map: Optional[HParamMap] = None,
-               logical_factor_rules: Optional[Mapping[str, FactorDim]] = None,
-               weight_decay_rate_lr_exponent: Optional[float] = None,
-               global_norm_clip_threshold: Optional[float] = None,
-               max_parameter_scale: Optional[float] = None,
-               skip_nan_updates: Optional[bool] = False):
+  def __init__(
+      self,
+      learning_rate: Optional[float] = None,
+      factored: bool = True,
+      multiply_by_parameter_scale: Union[bool, HParamMap] = True,
+      beta1: Optional[float] = None,
+      decay_rate: float = 0.8,
+      step_offset: int = 0,
+      clipping_threshold: Optional[float] = 1.0,
+      weight_decay_rate: Optional[float] = None,
+      min_dim_size_to_factor: int = 128,
+      epsilon1: float = 1e-30,
+      epsilon2: float = 1e-3,
+      dtype_momentum: Dtype = jnp.float32,
+      factor_map: Optional[HParamMap] = None,
+      logical_factor_rules: Optional[Mapping[str, FactorDim]] = None,
+      weight_decay_rate_lr_exponent: Optional[float] = None,
+      global_norm_clip_threshold: Optional[float] = None,
+      max_parameter_scale: Optional[float] = None,
+      skip_nan_updates: Optional[bool] = False,
+  ):
     """Constructor for the Adafactor optimizer.
 
 
@@ -255,24 +259,41 @@ class Adafactor(OptimizerDef):
         it had.
     """
     if not factored and factor_map is not None:
-      raise ValueError('Adafactor factored is False but factorization rules '
-                       'have been provided.')
+      raise ValueError(
+          'Adafactor factored is False but factorization rules '
+          'have been provided.'
+      )
     if not isinstance(multiply_by_parameter_scale, (bool, HParamMap)):
       raise TypeError(
           '`multiply_by_parameter_scale` must be either bool or `HParamMap` '
-          f'type. Got {type(multiply_by_parameter_scale)}')
+          f'type. Got {type(multiply_by_parameter_scale)}'
+      )
 
     if not isinstance(factor_map, (type(None), HParamMap)):
       raise TypeError(
           '`factor_map` must be either None or `HParamMap` type. Got '
-          f'{type(factor_map)}')
+          f'{type(factor_map)}'
+      )
 
     hyper_params = _AdafactorHyperParams(
-        learning_rate, factored, multiply_by_parameter_scale, beta1, decay_rate,
-        step_offset, clipping_threshold, weight_decay_rate,
-        min_dim_size_to_factor, epsilon1, epsilon2, factor_map,
-        logical_factor_rules, weight_decay_rate_lr_exponent,
-        global_norm_clip_threshold, max_parameter_scale, skip_nan_updates)
+        learning_rate,
+        factored,
+        multiply_by_parameter_scale,
+        beta1,
+        decay_rate,
+        step_offset,
+        clipping_threshold,
+        weight_decay_rate,
+        min_dim_size_to_factor,
+        epsilon1,
+        epsilon2,
+        factor_map,
+        logical_factor_rules,
+        weight_decay_rate_lr_exponent,
+        global_norm_clip_threshold,
+        max_parameter_scale,
+        skip_nan_updates,
+    )
     self.dtype_momentum = jax.dtypes.canonicalize_dtype(dtype_momentum)
     super().__init__(hyper_params)
 
@@ -298,9 +319,11 @@ class Adafactor(OptimizerDef):
       rule: Optional[FactorRule],
       shape: Sequence[int],
       path: str,
-      fallback_to_heuristics=True
-  ) -> Tuple[Tuple[int, ...], Optional[Union[HeuristicRule, Tuple[Tuple[
-      int, ...], Tuple[int, ...]]]]]:
+      fallback_to_heuristics=True,
+  ) -> Tuple[
+      Tuple[int, ...],
+      Optional[Union[HeuristicRule, Tuple[Tuple[int, ...], Tuple[int, ...]]]],
+  ]:
     """Parses specification and return factored dims and dims for averaging.
 
     Adafactor needs to know the two largest dimensions to factorize along.
@@ -335,20 +358,24 @@ class Adafactor(OptimizerDef):
     if rule is HEURISTIC_RULE:
       if param_ndim > 2:
         raise ValueError(
-            f'A parameter with rank strictly higher than 2 must have an '
-            f'explicit factorization rule: {path}, {shape}')
+            'A parameter with rank strictly higher than 2 must have an '
+            f'explicit factorization rule: {path}, {shape}'
+        )
       # Even if no explicit rule is provided for the param, we still want to
       # average over all the dimensions for computing the RMS scale.
       return tuple(np.arange(param_ndim)), HEURISTIC_RULE
 
     if len(rule) != param_ndim:
-      raise ValueError(f'Factorization rule {rule} has incorrect rank '
-                       f'for param of rank {param_ndim}: {path}, {shape}')
+      raise ValueError(
+          f'Factorization rule {rule} has incorrect rank '
+          f'for param of rank {param_ndim}: {path}, {shape}'
+      )
 
     row_dims = tuple(idx for idx, d in enumerate(rule) if d == FactorDim.ROW)
     col_dims = tuple(idx for idx, d in enumerate(rule) if d == FactorDim.COLUMN)
     batched_dims = tuple(
-        idx for idx, d in enumerate(rule) if d == FactorDim.BATCH)
+        idx for idx, d in enumerate(rule) if d == FactorDim.BATCH
+    )
     averaging_dims = tuple(np.delete(np.arange(param_ndim), batched_dims))
     factor_dims = (row_dims, col_dims)
     if factor_dims == ((), ()):
@@ -358,13 +385,18 @@ class Adafactor(OptimizerDef):
       logging.warning(
           'Since rank of parameter %s %d is less than or equal to 2, the '
           'factorization method falls back to heuristics and the provided '
-          'factor rule %s is ignored.', path, param_ndim, rule)
+          'factor rule %s is ignored.',
+          path,
+          param_ndim,
+          rule,
+      )
       return tuple(np.arange(param_ndim)), HEURISTIC_RULE
 
     return averaging_dims, factor_dims
 
   def _factored_dims(
-      self, shape: Sequence[int]) -> Optional[Tuple[Tuple[int], Tuple[int]]]:
+      self, shape: Sequence[int]
+  ) -> Optional[Tuple[Tuple[int], Tuple[int]]]:
     """Whether to use a factored second moment estimator.
 
     If there are not two dimensions of size >= min_dim_size_to_factor, then we
@@ -390,7 +422,9 @@ class Adafactor(OptimizerDef):
     if self.hyper_params.factored:
       factor_rule = (
           self.hyper_params.factor_map[path]
-          if self.hyper_params.factor_map else HEURISTIC_RULE)
+          if self.hyper_params.factor_map
+          else HEURISTIC_RULE
+      )
     else:
       factor_rule = None
     _, factored_dims = self._parse_rule(factor_rule, param.shape, path)
@@ -441,17 +475,20 @@ class Adafactor(OptimizerDef):
     epsilon2 = hyper_params.epsilon2
     if hyper_params.weight_decay_rate_lr_exponent:
       weight_decay_rate = (
-          (weight_decay_rate or 1.0) *
-          learning_rate**hyper_params.weight_decay_rate_lr_exponent)
+          weight_decay_rate or 1.0
+      ) * learning_rate**hyper_params.weight_decay_rate_lr_exponent
 
     if self.hyper_params.factored:
       factor_rule = (
           self.hyper_params.factor_map[path]
-          if self.hyper_params.factor_map else HEURISTIC_RULE)
+          if self.hyper_params.factor_map
+          else HEURISTIC_RULE
+      )
     else:
       factor_rule = None
-    averaging_dims, factored_dims = self._parse_rule(factor_rule, param.shape,
-                                                     path)
+    averaging_dims, factored_dims = self._parse_rule(
+        factor_rule, param.shape, path
+    )
 
     grad = grad.astype(jnp.float32)
 
@@ -463,7 +500,8 @@ class Adafactor(OptimizerDef):
       multiply_by_parameter_scale = multiply_by_parameter_scale[path]
     if multiply_by_parameter_scale:
       param_scale = jnp.sqrt(
-          jnp.mean(param * param, axis=averaging_dims, keepdims=True))
+          jnp.mean(param * param, axis=averaging_dims, keepdims=True)
+      )
       # Clip param_scale to a minimum value of epsilon2.
       param_scale = jnp.maximum(param_scale, epsilon2)
       # Clip param_scale to a maximum value, if specified.
@@ -483,31 +521,35 @@ class Adafactor(OptimizerDef):
           Tuple[Tuple[int, ...], Tuple[int, ...]], factored_dims
       )
       d1, d0 = factored_dims
-      new_v_row = (
-          decay_rate * state.v_row + mixing_rate * jnp.mean(grad_sqr, axis=d0))
-      new_v_col = (
-          decay_rate * state.v_col + mixing_rate * jnp.mean(grad_sqr, axis=d1))
+      new_v_row = decay_rate * state.v_row + mixing_rate * jnp.mean(
+          grad_sqr, axis=d0
+      )
+      new_v_col = decay_rate * state.v_col + mixing_rate * jnp.mean(
+          grad_sqr, axis=d1
+      )
       updates['v_row'] = new_v_row
       updates['v_col'] = new_v_col
       reduced_d1 = tuple(d - len([e for e in d0 if e < d]) for d in d1)
 
       row_col_mean = jnp.mean(new_v_row, axis=reduced_d1, keepdims=True)
-      row_factor = (new_v_row / row_col_mean)**-0.5
-      col_factor = (new_v_col)**-0.5
+      row_factor = (new_v_row / row_col_mean) ** -0.5
+      col_factor = (new_v_col) ** -0.5
       y = (
-          grad * jnp.expand_dims(row_factor, axis=d0) *
-          jnp.expand_dims(col_factor, axis=d1))
+          grad
+          * jnp.expand_dims(row_factor, axis=d0)
+          * jnp.expand_dims(col_factor, axis=d1)
+      )
     else:
       new_v = decay_rate * state.v + mixing_rate * grad_sqr
       updates['v'] = new_v
-      y = grad * (new_v)**-0.5
+      y = grad * (new_v) ** -0.5
 
     if clipping_threshold is not None:
-      clipping_denom = (
-          jnp.maximum(
-              1.0,
-              jnp.sqrt(jnp.mean(y * y, axis=averaging_dims, keepdims=True)) /
-              clipping_threshold))
+      clipping_denom = jnp.maximum(
+          1.0,
+          jnp.sqrt(jnp.mean(y * y, axis=averaging_dims, keepdims=True))
+          / clipping_threshold,
+      )
       y /= clipping_denom
 
     subtrahend = update_scale * y
@@ -523,9 +565,11 @@ class Adafactor(OptimizerDef):
 
     if hyper_params.skip_nan_updates:
       updates['v_row'] = jnp.where(
-          jnp.isnan(updates['v_row']), state.v_row, updates['v_row'])
+          jnp.isnan(updates['v_row']), state.v_row, updates['v_row']
+      )
       updates['v_col'] = jnp.where(
-          jnp.isnan(updates['v_col']), state.v_col, updates['v_col'])
+          jnp.isnan(updates['v_col']), state.v_col, updates['v_col']
+      )
       updates['v'] = jnp.where(jnp.isnan(updates['v']), state.v, updates['v'])
       updates['m'] = jnp.where(jnp.isnan(updates['m']), state.m, updates['m'])
       new_param = jnp.where(jnp.isnan(new_param), param, new_param)
@@ -562,13 +606,15 @@ class Adafactor(OptimizerDef):
       squared_l2_norms = [jnp.sum(jnp.square(g)) for g in grads_flat]
       global_norm = jnp.sqrt(jnp.sum(jnp.array(squared_l2_norms)))
       scale = hyper_params.global_norm_clip_threshold * jnp.minimum(
-          1.0 / hyper_params.global_norm_clip_threshold, 1.0 / global_norm)
+          1.0 / hyper_params.global_norm_clip_threshold, 1.0 / global_norm
+      )
       grads_flat = [g * scale for g in grads_flat]
 
     out = [
         self.apply_param_gradient(step, hyper_params, param, state, grad, path)
-        for param, state, grad, path in zip(params_flat, states_flat,
-                                            grads_flat, params_paths)
+        for param, state, grad, path in zip(
+            params_flat, states_flat, grads_flat, params_paths
+        )
     ]
 
     new_params_flat, new_states_flat = list(zip(*out)) if out else ((), ())
@@ -604,7 +650,8 @@ class Adafactor(OptimizerDef):
         raise ValueError(f'Incomplete adafactor spec {axis_rules} for {axes}!')
       if ROW not in axis_rules or COLUMN not in axis_rules:
         axis_rules = tuple(
-            NONE if x in (ROW, COLUMN) else x for x in axis_rules)
+            NONE if x in (ROW, COLUMN) else x for x in axis_rules
+        )
       return axis_rules
 
     factor_map = jax.tree_util.tree_map(apply_rules, param_logical_axes)
@@ -615,7 +662,8 @@ class Adafactor(OptimizerDef):
   def derive_logical_axes(self, optimizer_state, param_logical_axes):
     """Derives optimizer logical partitioning from model logical partitions."""
     optimizer_logical_axes = jax.tree_util.tree_map(
-        lambda x: None, optimizer_state.state_dict())
+        lambda x: None, optimizer_state.state_dict()
+    )
     optimizer_logical_axes['target'] = param_logical_axes
 
     def factor_rule(logical_axes, adafactor_leaf):
@@ -623,10 +671,13 @@ class Adafactor(OptimizerDef):
           v_row=None,
           v_col=None,
           v=logical_axes if adafactor_leaf['v'].shape != (1,) else None,
-          m=logical_axes if self.hyper_params.beta1 else None)
+          m=logical_axes if self.hyper_params.beta1 else None,
+      )
 
     optimizer_logical_axes['state']['param_states'] = jax.tree_util.tree_map(
-        factor_rule, unfreeze(param_logical_axes),
-        optimizer_state.state_dict()['state']['param_states'])
+        factor_rule,
+        unfreeze(param_logical_axes),
+        optimizer_state.state_dict()['state']['param_states'],
+    )
 
     return optimizer_state.restore_state(unfreeze(optimizer_logical_axes))

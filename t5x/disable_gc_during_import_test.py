@@ -13,6 +13,7 @@
 # limitations under the License.
 
 """Tests for disable_gc_during_import."""
+
 # pylint: disable=g-import-not-at-top,unused-import
 
 import builtins

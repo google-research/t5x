@@ -8,8 +8,8 @@ defined with [SeqIO](https://github.com/google/seqio/blob/main/README.md).
 
 Refer to this tutorial when you have an existing model that you want to
 evaluate. If you would like to fine-tune your model before evaluation, please
-refer to the [fine-tuning](finetune.md) tutorial. You can run evals as part of your
-fine-tuning run as well.
+refer to the [fine-tuning](finetune.md) tutorial. You can run evals as part of
+your fine-tuning run as well.
 
 ## Overview
 
