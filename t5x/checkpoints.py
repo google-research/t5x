@@ -35,7 +35,6 @@ import os
 import re
 import subprocess
 import time
-import typing
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple, Union
 
 from absl import logging
@@ -2112,7 +2111,7 @@ def _construct_orbax_param_infos(
 
 
 def _construct_orbax_restoration_transforms(
-    manager: ocp.CheckpointManager,
+    state_handler: ocp.PyTreeCheckpointHandler,
     step: int,
     directory: epath.Path,
     state_dict: PyTree,
@@ -2122,18 +2121,12 @@ def _construct_orbax_restoration_transforms(
   """Construct transformations and restoration arguments for Orbax classes."""
   # After transforms, may be a subset of keys: only the ones we actually need
   # to restore.
-  state_subdir = manager._get_save_directory(  # pylint: disable=protected-access
-      step, directory, key_name=_STATE_KEY
+  state_subdir = ocp.utils.get_save_directory(
+      step, directory, name=_STATE_KEY, step_prefix='checkpoint'
   )
   assert state_subdir.is_dir()
   use_orbax_format = state_subdir.stem == _STATE_KEY  # Standard Orbax format
-  checkpointer = typing.cast(
-      ocp.Checkpointer, manager._checkpointers[_STATE_KEY]  # pylint: disable=protected-access
-  )
-  handler = typing.cast(
-      ocp.PyTreeCheckpointHandler, checkpointer._handler  # pylint: disable=protected-access
-  )
-  structure = handler._read_aggregate_file(  # pylint: disable=protected-access
+  structure = state_handler._read_aggregate_file(  # pylint: disable=protected-access
       state_subdir
   )
   # Note: Ideally we would use Orbax's `transform_fn` to do this logic, but
@@ -2181,8 +2174,8 @@ def _construct_orbax_restoration_transforms(
             aggregate_value=value,
         )
 
-    directory_ = manager._get_save_directory(  # pylint: disable=protected-access
-        step, directory, key_name=_STATE_KEY
+    directory_ = ocp.utils.get_save_directory(
+        step, directory, name=_STATE_KEY, step_prefix='checkpoint'
     )
 
     def _modify_orbax_param_info(info, value):
@@ -2299,17 +2292,14 @@ class OrbaxCheckpointManagerInterface:
     self._should_write_dataset_ckpt = (
         self._dataset_iterator and data_layout.is_first_host_in_replica_set
     )
-
-    checkpointers = {
-        _STATE_KEY: ocp.Checkpointer(
-            # TODO(b/273803615) Enable OCDBT.
-            ocp.PyTreeCheckpointHandler(use_ocdbt=False)
-        ),
-    }
+    # TODO(b/273803615) Enable OCDBT.
+    self._state_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=False)
+    checkpointers = {_STATE_KEY: ocp.Checkpointer(self._state_handler)}
     if self._should_write_dataset_ckpt:
       checkpointers[_DATASET_KEY] = ocp.Checkpointer(
           DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name)
       )
+    self._checkpointers = checkpointers
 
     def best_fn(metrics):
       return metrics[metric_name_to_monitor]
@@ -2325,11 +2315,14 @@ class OrbaxCheckpointManagerInterface:
         step_prefix='checkpoint',
     )
     options.metric_name_to_monitor = metric_name_to_monitor
+    self._options = options
 
     if not gfile.isdir(directory):
       directory = os.path.dirname(directory)
     self._manager = self._CheckpointManagerImpl(
-        directory=directory, checkpointers=checkpointers, options=options
+        directory=directory,
+        checkpointers=self._checkpointers,
+        options=self._options,
     )
 
   @property
@@ -2500,7 +2493,7 @@ class OrbaxCheckpointManagerInterface:
     # than native Orbax transformation functions.
     state_dict_to_restore, restore_args, transform_fn = (
         _construct_orbax_restoration_transforms(
-            self._manager,
+            self._state_handler,
             step,
             directory,
             state_dict,
