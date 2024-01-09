@@ -32,6 +32,7 @@ import warnings
 from absl import flags
 from absl import logging
 import airio
+from airio.grain import dataset_iterators
 import clu.data
 import flax
 from flax import traverse_util
@@ -717,7 +718,7 @@ def prepare_train_iter(
     data_layout,
 ) -> clu.data.dataset_iterator.PeekableDatasetIterator:
   """Prepares the training input iterator."""
-  if isinstance(train_iter, airio.PyGrainDatasetIteratorWrapper):
+  if isinstance(train_iter, dataset_iterators.PyGrainDatasetIteratorWrapper):
     return train_iter
   if isinstance(train_iter, tf.data.Dataset):
     train_iter = clu.data.dataset_iterator.TfDatasetIterator(
@@ -791,7 +792,9 @@ def get_zeros_batch_like_spec(
 
 
 def get_zeros_batch_like_dataset(
-    dataset: Union[tf.data.Dataset, airio.PyGrainDatasetIteratorWrapper],
+    dataset: Union[
+        tf.data.Dataset, dataset_iterators.PyGrainDatasetIteratorWrapper
+    ],
     batch_size=None,
 ) -> Mapping[str, jnp.ndarray]:
   """Get zeros batch like the dataset spec."""
@@ -2048,7 +2051,8 @@ class GetEvalDatasetCallable(typing_extensions.Protocol):
       eval_steps: int,
       feature_converter_cls: Callable[..., seqio.FeatureConverter],
   ) -> Mapping[
-      str, Union[tf.data.Dataset, airio.PyGrainDatasetIteratorWrapper]
+      str,
+      Union[tf.data.Dataset, dataset_iterators.PyGrainDatasetIteratorWrapper],
   ]:
     ...
 
