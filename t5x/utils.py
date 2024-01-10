@@ -717,7 +717,7 @@ def prepare_train_iter(
     data_layout,
 ) -> clu.data.dataset_iterator.PeekableDatasetIterator:
   """Prepares the training input iterator."""
-  if isinstance(train_iter, airio.PyGrainDatasetIteratorWrapper):
+  if isinstance(train_iter, airio.AirIODatasetIterator):
     return train_iter
   if isinstance(train_iter, tf.data.Dataset):
     train_iter = clu.data.dataset_iterator.TfDatasetIterator(
@@ -791,7 +791,7 @@ def get_zeros_batch_like_spec(
 
 
 def get_zeros_batch_like_dataset(
-    dataset: Union[tf.data.Dataset, airio.PyGrainDatasetIteratorWrapper],
+    dataset: Union[tf.data.Dataset, airio.AirIODatasetIterator],
     batch_size=None,
 ) -> Mapping[str, jnp.ndarray]:
   """Get zeros batch like the dataset spec."""
@@ -2047,9 +2047,7 @@ class GetEvalDatasetCallable(typing_extensions.Protocol):
       num_shards: int,
       eval_steps: int,
       feature_converter_cls: Callable[..., seqio.FeatureConverter],
-  ) -> Mapping[
-      str, Union[tf.data.Dataset, airio.PyGrainDatasetIteratorWrapper]
-  ]:
+  ) -> Mapping[str, Union[tf.data.Dataset, airio.AirIODatasetIterator]]:
     ...
 
 
