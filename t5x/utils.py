@@ -32,6 +32,7 @@ import warnings
 from absl import flags
 from absl import logging
 import airio
+from airio.grain import feature_converters
 import clu.data
 import flax
 from flax import traverse_util
