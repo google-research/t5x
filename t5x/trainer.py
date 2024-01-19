@@ -604,7 +604,7 @@ class BaseTrainer(abc.ABC):
 
   def eval(
       self, batch_iters: Mapping[str, Iterator[BatchType]]
-  ) -> Mapping[str, Array]:
+  ) -> Mapping[str, Any]:
     """Runs evaluation loop over the iterator and writes summary."""
     eval_summaries = {}
     train_state = self.train_state

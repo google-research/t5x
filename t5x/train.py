@@ -24,7 +24,7 @@ import gc
 import math
 import os
 import time
-from typing import Callable, Mapping, Optional, Sequence, Tuple, Type
+from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Type
 
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
@@ -188,7 +188,11 @@ def train(
       matches the model vocabulary, if the model is a BaseTransformerModel
       instance. Should raise an exception on error.
     gc_period: The number of train steps between runs of the garbage collector.
-      If 0, the garbage collector will run at the normal frequency.
+      If 0, the garbage collector will run at the normal frequency. # BEGIN
+    training_eval_average_metrics: Averages the metric over the list of tasks
+      for training_eval (e.g., {'task_average/accuracy': ['task_a', 'task_b']}).
+    infer_eval_average_metrics: Averages the metric over the list of tasks for
+      infer_eval (e.g., {'task_average/accuracy': ['task_a', 'task_b']}). # END
 
   Returns:
     The tuple of (last_step, last_train_state).
@@ -503,6 +507,7 @@ def train(
   # ----------------------------------------------------------------------------
   # Setup Eval Utility Functions
   # ----------------------------------------------------------------------------
+
   def _run_training_eval(first_run: bool = False):
     if first_run:
       logging.info('Compiling training eval loop.')
