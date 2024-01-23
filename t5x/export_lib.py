@@ -282,15 +282,12 @@ def flatten(
   return tuple(values)
 
 
-_BUILTIN_INFERENCE_MODES = {
-    'predict': CustomInferenceMode(
-        model_fn_name='predict_batch_with_aux',
-        fetch_output=functools.partial(flatten, assert_output_len=2),
-    ),
-    'score': CustomInferenceMode(
-        model_fn_name='score_batch',
-        fetch_output=functools.partial(flatten, assert_output_len=1),
-    ),
+_BUILTIN_INFERENCE_MODE_PARAMS = {
+    'predict': {
+        'model_fn_name': 'predict_batch_with_aux',
+        'default_output_len': 2,
+    },
+    'score': {'model_fn_name': 'score_batch', 'default_output_len': 1},
 }
 
 
@@ -308,6 +305,7 @@ def create_inference_function(
     native_lowering_platforms: Optional[Sequence[str]] = None,
     model_fn_extra_kwargs: Optional[Mapping[str, Any]] = None,
     jax2tf_disable_platform_checks: bool = False,
+    output_len: Optional[int] = None,
 ) -> Callable[[Mapping[str, Any], Any], PyTree]:
   """Fetches a model and returns the inference function based on inference_mode."""
   if partitioner and train_state_initializer:
@@ -331,14 +329,24 @@ def create_inference_function(
     maybe_partition = lambda fn: fn
 
   if not isinstance(inference_mode, CustomInferenceMode):
-    if inference_mode in _BUILTIN_INFERENCE_MODES:
-      inference_mode = _BUILTIN_INFERENCE_MODES[inference_mode]
-    else:
+    if inference_mode not in _BUILTIN_INFERENCE_MODE_PARAMS:
       raise ValueError(
           '`inference_mode` must be a string in '
-          f'{list(_BUILTIN_INFERENCE_MODES.keys())} or a '
+          f'{list(_BUILTIN_INFERENCE_MODE_PARAMS.keys())} or a '
           f'`CustomInferenceMode`. Got inference_mode={inference_mode}.'
       )
+    default_mode_params = _BUILTIN_INFERENCE_MODE_PARAMS[inference_mode]
+    assert_output_len = (
+        default_mode_params['default_output_len']
+        if output_len is None
+        else output_len
+    )
+    inference_mode = CustomInferenceMode(
+        default_mode_params['model_fn_name'],
+        fetch_output=functools.partial(
+            flatten, assert_output_len=assert_output_len
+        ),
+    )
 
   inference_mode = typing.cast(CustomInferenceMode, inference_mode)
 
