@@ -24,6 +24,8 @@ import unittest
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
+import airio
+from airio.grain.common import feature_converters
 import flax.core
 from flax.linen import partitioning as flax_partitioning
 import jax
