@@ -541,9 +541,10 @@ class DatasetConfig:
   use_memory_cache: bool = True
   # Whether to trim output features from tasks.
   trim_output_features: bool = True
-  # AirIO-only: a list of runtime preprocessors to pass to airio. Generally used
-  # to configure feature converters and packing. Ignored for non-airio configs.
-  runtime_preprocessors: Sequence[Any] | None = None
+  # AirIO-only: a callable that returns a list of runtime preprocessors to pass
+  # to airio. Generally used to configure feature converters and packing.
+  # Ignored for non-airio configs.
+  runtime_preprocessors_fn: Callable[[], Sequence[Any]] | None = None
 
 
 def _hashed_index(x) -> int:
