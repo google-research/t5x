@@ -276,6 +276,9 @@ class OptaxStatePartitionRules:
           lambda state, params_axes: optax.InjectHyperparamsState(  # pytype: disable=wrong-arg-types  # jax-ndarray
               count=None,
               hyperparams=jax.tree_map(lambda x: None, state.hyperparams),
+              hyperparams_states=jax.tree_map(
+                  lambda x: None, state.hyperparams_states
+              ),
               inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
                   state.inner_state, params_axes
               ),
