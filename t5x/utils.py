@@ -32,7 +32,6 @@ import warnings
 from absl import flags
 from absl import logging
 import airio
-from airio.grain import dataset_providers
 import clu.data
 import flax
 from flax import traverse_util
@@ -1850,7 +1849,7 @@ def get_vocabulary(
 
   if isinstance(cfg.mixture_or_task_name, airio.DatasetProviderBase):
     mixture_or_task = cfg.mixture_or_task_name
-    vocab_map = dataset_providers.get_vocabularies(mixture_or_task)
+    vocab_map = airio.dataset_providers.get_vocabularies(mixture_or_task)
     if not vocab_map:
       raise ValueError(
           f'No vocabularies found for AirIO task/mixture {mixture_or_task}'
