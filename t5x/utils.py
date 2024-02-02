@@ -541,9 +541,18 @@ class DatasetConfig:
   use_memory_cache: bool = True
   # Whether to trim output features from tasks.
   trim_output_features: bool = True
-  # AirIO-only: a list of runtime preprocessors to pass to airio. Generally used
+  ### AirIO-only ###
+  # A list of runtime preprocessors to pass to airio. Generally used
   # to configure feature converters and packing. Ignored for non-airio configs.
   runtime_preprocessors: Sequence[Any] | None = None
+  # The number of threads reading from the data source in parallel. Passing None
+  # or 0 will use the default number of threads.
+  num_prefetch_threads: int | None = None
+  # Number of Python worker processes. More processes can speed up
+  # the pipeline if it's compute bound and bottlenecked on the CPython's GIL.
+  # 0 means no Python multiprocessing. All data loading and transformation
+  # will run in the main Python process.
+  num_workers: int | None = 0
 
 
 def _hashed_index(x) -> int:
