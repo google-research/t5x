@@ -31,7 +31,7 @@ import warnings
 
 from absl import flags
 from absl import logging
-import airio
+import airio.core as airio
 import clu.data
 import flax
 from flax import traverse_util
@@ -522,7 +522,11 @@ class DatasetConfig:
   """Configuration for loading a dataset from a SeqIO Task or Mixture."""
 
   mixture_or_task_name: Union[
-      str, seqio.Task, seqio.Mixture, airio.Task, airio.Mixture
+      str,
+      seqio.Task,
+      seqio.Mixture,
+      airio.dataset_providers.Task,
+      airio.dataset_providers.Mixture,
   ]
   task_feature_lengths: Mapping[str, int]
   split: str
@@ -729,7 +733,7 @@ def prepare_train_iter(
     data_layout,
 ) -> clu.data.dataset_iterator.PeekableDatasetIterator:
   """Prepares the training input iterator."""
-  if isinstance(train_iter, airio.AirIODatasetIterator):
+  if isinstance(train_iter, airio.dataset_iterators.AirIODatasetIterator):
     return train_iter
   if isinstance(train_iter, tf.data.Dataset):
     train_iter = clu.data.dataset_iterator.TfDatasetIterator(
@@ -803,7 +807,9 @@ def get_zeros_batch_like_spec(
 
 
 def get_zeros_batch_like_dataset(
-    dataset: Union[tf.data.Dataset, airio.AirIODatasetIterator],
+    dataset: Union[
+        tf.data.Dataset, airio.dataset_iterators.AirIODatasetIterator
+    ],
     batch_size=None,
 ) -> Mapping[str, jnp.ndarray]:
   """Get zeros batch like the dataset spec."""
@@ -1856,7 +1862,9 @@ def get_vocabulary(
     )
     import_module(cfg.module)
 
-  if isinstance(cfg.mixture_or_task_name, airio.DatasetProviderBase):
+  if isinstance(
+      cfg.mixture_or_task_name, airio.dataset_providers.DatasetProviderBase
+  ):
     mixture_or_task = cfg.mixture_or_task_name
     vocab_map = airio.dataset_providers.get_vocabularies(mixture_or_task)
     if not vocab_map:
@@ -1989,7 +1997,7 @@ def get_dataset_inner(
   batch_size = cfg.batch_size // shard_info.num_shards
   if isinstance(
       cfg.mixture_or_task_name,
-      (seqio.DatasetProviderBase, airio.DatasetProviderBase),
+      (seqio.DatasetProviderBase, airio.dataset_providers.DatasetProviderBase),
   ):
     mixture_or_task = cfg.mixture_or_task_name
   else:
@@ -2059,7 +2067,9 @@ class GetEvalDatasetCallable(typing_extensions.Protocol):
       num_shards: int,
       eval_steps: int,
       feature_converter_cls: Callable[..., seqio.FeatureConverter],
-  ) -> Mapping[str, Union[tf.data.Dataset, airio.AirIODatasetIterator]]:
+  ) -> Mapping[
+      str, Union[tf.data.Dataset, airio.dataset_iterators.AirIODatasetIterator]
+  ]:
     ...
 
 
@@ -2083,7 +2093,7 @@ def get_training_eval_datasets(
   """Returns a mapping from eval task name to its dataset."""
   if isinstance(
       cfg.mixture_or_task_name,
-      (seqio.DatasetProviderBase, airio.DatasetProviderBase),
+      (seqio.DatasetProviderBase, airio.dataset_providers.DatasetProviderBase),
   ):
     mixture_or_task = cfg.mixture_or_task_name
   else:
@@ -2096,7 +2106,10 @@ def get_training_eval_datasets(
         get_deterministic_dataset, model_dir=model_dir, start_step=start_step
     )
 
-  if isinstance(mixture_or_task, (airio.Task, airio.Mixture)):
+  if isinstance(
+      mixture_or_task,
+      (airio.dataset_providers.Task, airio.dataset_providers.Mixture),
+  ):
     data_iter = get_dataset_fn(
         dataclasses.replace(cfg, batch_size=1),
         shard_id=0,
