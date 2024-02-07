@@ -22,6 +22,7 @@ from absl import logging
 from clu import metric_writers
 import gin
 import jax
+from t5x import utils
 import tensorflow as tf
 
 
@@ -131,7 +132,7 @@ def summarize_gin_config(
 
 def run(main):
   """Wrapper for app.run that rewrites gin args before parsing."""
-  app.run(
+  utils.run_main(
       main,
       flags_parser=lambda a: app.parse_flags_with_usage(
           list(rewrite_gin_args(a))

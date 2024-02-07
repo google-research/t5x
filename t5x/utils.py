@@ -29,6 +29,7 @@ import typing
 from typing import Any, Callable, Iterable, Mapping, Optional, Sequence, Tuple, Type, Union
 import warnings
 
+from absl import app  # pylint: disable=unused-import
 from absl import flags
 from absl import logging
 import airio
@@ -2372,3 +2373,7 @@ def find_first_checkpoint_step(
   return checkpoint_steps_index
 
 
+
+
+def run_main(main, flags_parser):
+  app.run(main, flags_parser=flags_parser)
