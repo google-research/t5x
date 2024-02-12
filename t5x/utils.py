@@ -1720,6 +1720,7 @@ def get_infer_fn(
         )
         logging.info('Inference of batch %s done.', index)
 
+
       def _copy_to_host_async(x):
         if hasattr(x, 'addressable_data'):
           # Array is fully replicated.
