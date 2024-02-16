@@ -46,7 +46,6 @@ from flax import traverse_util
 import gin
 import jax
 from jax import monitoring
-import jax.config
 from jax.experimental import multihost_utils
 from jax.experimental.array_serialization import serialization as array_serialization
 import jax.numpy as jnp

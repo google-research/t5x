@@ -19,7 +19,6 @@ from typing import Any, Optional, Union
 
 import clu.data
 import jax
-import jax.config
 from jax.experimental.array_serialization import serialization as array_serialization
 from jax.experimental.pjit import pjit
 import jax.numpy as jnp
