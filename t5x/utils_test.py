@@ -24,8 +24,8 @@ import unittest
 from absl import flags
 from absl.testing import absltest
 from absl.testing import parameterized
-import airio
-from airio.pygrain.common import feature_converters
+import airio.core as airio
+import airio.pygrain_common as airio_common
 import flax.core
 from flax.linen import partitioning as flax_partitioning
 import jax
