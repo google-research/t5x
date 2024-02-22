@@ -32,7 +32,7 @@ import warnings
 from absl import app  # pylint: disable=unused-import
 from absl import flags
 from absl import logging
-import airio
+import airio.core as airio
 import clu.data
 import flax
 from flax import traverse_util
