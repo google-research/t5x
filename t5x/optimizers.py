@@ -348,7 +348,7 @@ class OptaxStatePartitionRules:
 
     def derive_fn(x):
       if type(x) not in cls._RULES:
-        if cls._is_optax_state(x):
+        if not cls._is_optax_state(x):
           raise ValueError(
               f'Encountered unregistered optax state type {type(x).__name__}'
           )
