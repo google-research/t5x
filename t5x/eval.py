@@ -218,7 +218,7 @@ def evaluate(
     ] = utils.TrainStateInitializer,
     train_eval_get_dataset_fn: utils.GetEvalDatasetCallable = utils.get_training_eval_datasets,
     fallback_init_rng: Optional[int] = None,
-    use_orbax: bool = False,
+    use_orbax: bool = True,
 ):
   """Evaluation function.
 

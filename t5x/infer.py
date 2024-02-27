@@ -392,7 +392,7 @@ def infer(
     output_vocab_feature_name: str = 'targets',
     file_extension: str = 'jsonl',
     keep_aux_as_numpy: bool = False,
-    use_orbax: bool = False,
+    use_orbax: bool = True,
 ):
   """Infer function.
 
