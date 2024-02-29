@@ -1119,7 +1119,9 @@ class Checkpointer(object):
       ckpt_contents = _maybe_update_ts_from_gcs_to_file(ckpt_contents)
 
     ckpt_state_dict = self._get_optimizer_state_dict(
-        ckpt_contents, state_transformation_fns
+        ckpt_contents,
+        state_transformation_fns,
+        use_orbax_format=ckpt_type is checkpoint_utils.CheckpointTypes.ORBAX,
     )
 
     # The state dict may contain TensorStore specs that need to be read.
@@ -1363,9 +1365,13 @@ class Checkpointer(object):
       self,
       ckpt_contents: PyTree,
       state_transformation_fns: Sequence[RestoreStateTransformationFn],
+      use_orbax_format: bool = False,
   ):
     return _get_optimizer_state_dict(
-        ckpt_contents, self._train_state.state_dict(), state_transformation_fns
+        ckpt_contents,
+        self._train_state.state_dict(),
+        state_transformation_fns,
+        use_orbax_format,
     )
 
 
