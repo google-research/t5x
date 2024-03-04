@@ -1363,6 +1363,116 @@ class DecodeTest(parameterized.TestCase):
     )
     np.testing.assert_array_equal(expected, beam_search_sequences)
 
+  def test_beam_search_max_decode_step(self):
+    beam_size = 2
+
+    def token_to_logits(decoding_state: decoding.DecodingState):
+      del decoding_state
+      # Use id 2 then 3 for batch element 0 and id 3 then 2 for element 1.
+      logits = np.repeat(
+          np.expand_dims(
+              np.array(
+                  [[-1e7, -1e10, -0.1, -0.9], [-1e7, -1e10, -0.9, -0.1]],
+                  dtype=np.float32,
+              ),
+              axis=1,
+          ),
+          [beam_size],
+          axis=1,
+      )
+      logits = decoding.flatten_beam_dim(logits)
+      return logits, {}
+
+    # No prefix is passed.
+    inputs = np.array([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0]], dtype=np.int32)
+    beam_search_sequences, decoding_scores = decoding.beam_search(
+        inputs,
+        {},
+        token_to_logits,
+        EOS_ID,
+        num_decodes=beam_size,
+        max_decode_step=2,
+    )
+
+    # Prefixes are forced depending on inputs.
+    # Beam search sequences and corresponding scores are in reverse order.
+    self.assertTrue(np.all(np.diff(decoding_scores) >= 0))
+    expected = np.array(
+        [[[3, 2, 0, 0, 0], [2, 2, 0, 0, 0]], [[2, 3, 0, 0, 0], [3, 3, 0, 0, 0]]]
+    )
+    np.testing.assert_array_equal(expected, beam_search_sequences)
+
+  def test_beam_search_force_decode_prefix_with_initial_index_max_decode_step(
+      self,
+  ):
+    beam_size = 2
+
+    record_decoding_states = []
+
+    def token_to_logits(decoding_state: decoding.DecodingState):
+      # Record the decoding_state coming in.
+      # pdb.set_trace()
+      record_decoding_states.append(decoding_state)
+
+      # Use id 2 then 3 for batch element 0 and id 3, 2 then EOS for element 1.
+      logits = np.repeat(
+          np.expand_dims(
+              np.array(
+                  [
+                      [-1e7, -1e10, -0.1, -0.9, -1e4, -1e4, -1e4, -1e4],
+                      [-1e7, -1.0, -0.9, -0.1, -1e4, -1e4, -1e4, -1e4],
+                  ],
+                  dtype=np.float32,
+              ),
+              axis=1,
+          ),
+          [beam_size],
+          axis=1,
+      )
+
+      logits = decoding.flatten_beam_dim(logits)
+      # Return the cache as-is.
+      return logits, decoding_state.cache
+
+    # batch element 0 has length 1 and element 1 has length 2.
+    inputs = np.array([[0, 7, 0, 0, 0], [0, 4, 5, 0, 0]], dtype=np.int32)
+    batch_size = inputs.shape[0]
+    initial_index = np.array([1, 2], dtype=np.int32)
+    REST_OF_THE_SHAPE = 1024  # dummy  pylint: disable=invalid-name
+    dummy_cache = {
+        'cached_bias': np.ones((1, REST_OF_THE_SHAPE), dtype=np.float32),
+        'decoder/layers_0/self_attention/cached_key': np.ones(
+            (batch_size, REST_OF_THE_SHAPE), dtype=np.float32
+        ),
+        'decoder/layers_0/self_attention/cache_index': np.ones(
+            (batch_size,), dtype=np.float32
+        ),
+    }
+
+    # Since we are capturing the cache, etc.
+    with jax.disable_jit():
+      beam_search_sequences, decoding_scores = decoding.beam_search(
+          inputs,
+          dummy_cache,
+          token_to_logits,
+          EOS_ID,
+          num_decodes=beam_size,
+          alpha=0,
+          initial_index=initial_index,
+          max_decode_step=2,
+      )
+
+    # Prefixes are forced depending on inputs.
+    # Beam search sequences and corresponding scores are in reverse order.
+    self.assertTrue(np.all(np.diff(decoding_scores) >= 0))
+    # batch element 0 failed to find any finished sequence as EOS has logits
+    # -1e10 << NEG_INF, it extends just two steps. batch element 1 found two
+    # finished sequences along the way.
+    expected = np.array(
+        [[[7, 3, 2, 0, 0], [7, 2, 2, 0, 0]], [[4, 5, 3, 1, 0], [4, 5, 1, 0, 0]]]
+    )
+    np.testing.assert_array_equal(expected, beam_search_sequences)
+
 
 if __name__ == '__main__':
   absltest.main()

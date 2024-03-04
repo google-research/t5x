@@ -1138,6 +1138,7 @@ def beam_search(
     num_decodes: int = 4,
     alpha: float = 0.6,
     max_decode_len: Optional[int] = None,
+    max_decode_step: int = -1,
     min_log_prob: float = NEG_INF_VALUE,
     decode_rng: Optional[jnp.ndarray] = None,
     cache_offset: int = 0,
@@ -1173,6 +1174,12 @@ def beam_search(
     alpha: float: scaling factor for brevity penalty.
     max_decode_len: int: an optional maximum length of decoded sequence. If
       None, it uses `inputs.shape[1]` as `max_decode_len`.
+    max_decode_step: int: maximum number of extra beam search steps allowed.
+      While using initial_index with prompts of variable lengths, max_decode_len
+      controls the output length, min_log_prob only stops the beam search if all
+      beam entries fail to pass the threshold, this will set a hard limit of
+      number of beam search steps to run. Useful to set a hard limit for the
+      serving latency.
     min_log_prob: the beam search will stop if there is no live beam entry with
       higher raw score (ignoring brevity penalty) than this.
     decode_rng: Unused decoder RNG seed.
@@ -1250,6 +1257,12 @@ def beam_search(
     # Because we mutate the "i+1" position, we stop one token before the end.
     not_at_end = cur_index < max_decode_len - 1
 
+    # If we have ran out of max number of allowed beam search steps.
+    # Note braces are needed as & has higher precedence than >.
+    exceed_max_decode_step = (max_decode_step > 0) & jnp.all(
+        state.cur_index >= max_decode_step
+    )
+
     # Is no further progress in the beam search possible?
     # Get the best possible scores from alive sequences.
     min_brevity_penalty = brevity_penalty(alpha, max_decode_len)
@@ -1272,14 +1285,19 @@ def beam_search(
     # - state.cur_index > 0 is needed as beam search just starts and live
     # beams are empty.
     raw_min_log_prob = min_log_prob / min_brevity_penalty
-    none_pass_min_prob_check = (
-        jnp.all(best_live_scores < raw_min_log_prob) & state.cur_index > 0
+    none_pass_min_prob_check = jnp.all(best_live_scores < raw_min_log_prob) & (
+        state.cur_index > 0
     )
 
     # If we're not at the max decode length, there is at least one beam passing
-    # the minimum probability threshold, and the search hasn't terminated,
-    # continue looping.
-    return not_at_end & (~search_terminated) & ~none_pass_min_prob_check
+    # the minimum probability threshold, the search hasn't terminated, and it
+    # doesn't exceed the maximum number of beam search steps, continue looping.
+    return (
+        not_at_end
+        & (~search_terminated)
+        & (~none_pass_min_prob_check)
+        & (~exceed_max_decode_step)
+    )
 
   def beam_search_loop_body_fn(state: BeamState) -> BeamState:
     """Beam search loop state update function."""
