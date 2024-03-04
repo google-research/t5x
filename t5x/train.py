@@ -202,21 +202,6 @@ def train(
 
   if use_orbax:
     logging.info('Checkpointing with Orbax enabled.')
-    if (
-        checkpoint_cfg.save
-        and isinstance(
-            checkpoint_cfg.save.checkpointer_cls, pw_checkpoints.Checkpointer
-        )
-    ) or (
-        checkpoint_cfg.restore
-        and isinstance(
-            checkpoint_cfg.restore.checkpointer_cls, pw_checkpoints.Checkpointer
-        )
-    ):
-      raise ValueError(
-          'Requested use_orbax with Pathways checkpointing, which is currently'
-          ' unsupported.'
-      )
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.
