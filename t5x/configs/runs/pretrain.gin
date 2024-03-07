@@ -42,6 +42,7 @@ SHUFFLE_TRAIN_EXAMPLES = True
 USE_HARDWARE_RNG = False
 # None always uses faster, hardware RNG
 RANDOM_SEED = None
+TRAIN_STEPS_RELATIVE = None
 
 # Can be overridden with `train.*`.`
 train_script.train:
@@ -56,6 +57,7 @@ train_script.train:
   total_steps = %TRAIN_STEPS
   eval_steps = 20
   eval_period = 1000
+  relative_steps = %TRAIN_STEPS_RELATIVE
   random_seed = %RANDOM_SEED
   use_hardware_rng = %USE_HARDWARE_RNG
   summarize_config_fn = @gin_utils.summarize_gin_config

@@ -108,6 +108,7 @@ def train(
     total_steps: int,
     eval_steps: int,
     eval_period: int,
+    relative_steps: Optional[int] = None,
     stats_period: Optional[int] = None,
     random_seed: Optional[int],
     use_hardware_rng: bool = False,
@@ -154,6 +155,8 @@ def train(
     eval_steps: The number of batches to process for each train-eval loop.
     eval_period: The number of train steps between each evaluation (both
       train-eval and infer-eval).
+    relative_steps: The number of train steps to take relative to the current
+      step loaded from the checkpoint. If this is set, total_steps is ignored.
     stats_period: The number of train steps between writing scalar stats. If
       None, defaults to eval_period.
     random_seed: A random seed to use for dropout and initialization. If None, a
@@ -213,27 +216,6 @@ def train(
   checkpoint_steps = (
       checkpoint_cfg.save.checkpoint_steps if checkpoint_cfg.save else []
   )
-
-  if eval_period or checkpoint_period or gc_period:
-    steps_per_epoch = min(
-        eval_period or np.inf, checkpoint_period or np.inf, gc_period or np.inf
-    )
-  else:
-    steps_per_epoch = total_steps
-  stats_period = stats_period or steps_per_epoch
-  if (
-      eval_period
-      and eval_period % steps_per_epoch
-      or checkpoint_period
-      and checkpoint_period % steps_per_epoch
-      or gc_period
-      and gc_period % steps_per_epoch
-  ):
-    raise ValueError(
-        f'Checkpoint period ({checkpoint_period}), eval '
-        f'period ({eval_period}), and GC period ({gc_period}) must all be '
-        'multiples of each other.'
-    )
 
   if use_hardware_rng or random_seed is None:
     logging.info(
@@ -419,6 +401,30 @@ def train(
 
   # Restore step from last checkpoint or set to 0 if training from scratch.
   host_step = int(utils.get_local_data(train_state.step))  # pytype: disable=attribute-error
+
+  if relative_steps:
+    total_steps = host_step + relative_steps
+
+  if eval_period or checkpoint_period or gc_period:
+    steps_per_epoch = min(
+        eval_period or np.inf, checkpoint_period or np.inf, gc_period or np.inf
+    )
+  else:
+    steps_per_epoch = total_steps
+  stats_period = stats_period or steps_per_epoch
+  if (
+      eval_period
+      and eval_period % steps_per_epoch
+      or checkpoint_period
+      and checkpoint_period % steps_per_epoch
+      or gc_period
+      and gc_period % steps_per_epoch
+  ):
+    raise ValueError(
+        f'Checkpoint period ({checkpoint_period}), eval '
+        f'period ({eval_period}), and GC period ({gc_period}) must all be '
+        'multiples of each other.'
+    )
 
   # ---------------------------------------------------------------------------
   # Trainer

@@ -16,6 +16,9 @@
 # `TRAIN_STEPS` should include pre-training steps, e.g., if pre-trained ckpt
 # has 1M steps, TRAIN_STEPS = 1.1M will perform 0.1M fine-tuning steps.
 #
+# Otherwise, use TRAIN_STEPS_RELATIVE to specify the number of additional
+# training steps to perform on top of the initial checkpoint.
+#
 # Commonly overridden options:
 # - DROPOUT_RATE
 # - BATCH_SIZE
@@ -61,6 +64,7 @@ JSON_WRITE_N_RESULTS = None  # Write all inferences.
 USE_HARDWARE_RNG = False
 # None always uses faster, hardware RNG
 RANDOM_SEED = None
+TRAIN_STEPS_RELATIVE = None
 
 # DEPRECATED: Import the this module in your gin file.
 MIXTURE_OR_TASK_MODULE = None
@@ -77,6 +81,7 @@ train_script.train:
   total_steps = %TRAIN_STEPS
   eval_steps = %EVAL_STEPS
   eval_period = %EVAL_PERIOD
+  relative_steps = %TRAIN_STEPS_RELATIVE
   random_seed = %RANDOM_SEED
   use_hardware_rng = %USE_HARDWARE_RNG
   summarize_config_fn = @gin_utils.summarize_gin_config
