@@ -1865,7 +1865,7 @@ def get_vocabulary(
       raise ValueError(
           f'No vocabularies found for AirIO task/mixture {mixture_or_task}'
       )
-    features = {k: seqio.Feature(vocabulary=v) for k, v in vocab_map.items()}
+    features = {k: seqio.Feature(vocabulary=v) for k, v in vocab_map.items()}  # pytype: disable=wrong-arg-types
   elif isinstance(cfg.mixture_or_task_name, seqio.DatasetProviderBase):
     mixture_or_task = cfg.mixture_or_task_name
     features = mixture_or_task.output_features
