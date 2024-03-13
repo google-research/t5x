@@ -1854,17 +1854,9 @@ def find_checkpoint(
   """
   # If you aren't pointing at the msgpack checkpoint file
   if gfile.isdir(path):
-    # If you didn't specify a step
-    if step is None:
-      # Try to get the most recent step.
-      step = latest_step(path)
-      # If you found a step then you were pointing at model_dir, set the path to
-      # the msgpack file in the checkpoint dir.
-      if step:
-        path = get_checkpoint_dir(path, step)
-    # You gave a step, use it.
-    else:
-      path = get_checkpoint_dir(path, step)
+    # If you didn't specify a step, try to get most recent step
+    step = latest_step(path) if step is None else step
+    path = get_checkpoint_dir(path, step) if step is not None else path
     # Whether you supplied a step, found a step, or were already pointing at the
     # step, you are not pointing at a step directory, so now point to the
     # msgpack file.
