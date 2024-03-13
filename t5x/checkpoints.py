@@ -2081,7 +2081,7 @@ def _construct_restore_args(
   """Create RestoreArgs for Orbax restoration."""
   if not isinstance(param_info, _OrbaxParamInfo):  # from fallback
     return ocp.RestoreArgs(dtype=dtype)
-  if param_info.name.split('.')[0] != 'target':
+  if param_info.name.split('/')[0] != 'target':
     dtype = None
   if param_info.mesh_axes is None:
     return ocp.RestoreArgs(dtype=dtype)
