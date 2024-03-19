@@ -30,6 +30,7 @@ from typing import Callable, Collection, Mapping, Optional, Sequence, Set, Tuple
 os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
+import gin
 import jax
 import seqio
 from t5x import checkpoints
@@ -61,6 +62,7 @@ class SummarizeConfigFn(Protocol):
     ...
 
 
+# @gin.configurable
 class InferenceEvaluator:
   """Runs evaluation of the model against a given SeqIo task."""
 
@@ -402,7 +404,6 @@ if __name__ == '__main__':
   from absl import app
   from absl import flags
   import fiddle as fdl
-  import gin
   from t5x import config_utils
 
   FLAGS = flags.FLAGS
