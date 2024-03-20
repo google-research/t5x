@@ -236,13 +236,13 @@ def detect_checkpoint_type(
       )
       return checkpoint_type
     else:
-      checkpoint_type = CheckpointTypes.T5X
+      checkpoint_type = CheckpointTypes.ORBAX
       _warn_if_unexpected_type(
           checkpoint_path,
           checkpoint_type,
           expected,
           'Did not detect ts.Spec nor the {"version", "optimizer"} keys in the'
           'checkpoint msgpack file, so the checkpoint was assumed to be '
-          'written with T5X.',
+          'written with Orbax.',
       )
       return checkpoint_type
