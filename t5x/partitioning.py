@@ -31,6 +31,7 @@ from jax import random
 from jax.experimental import multihost_utils
 from jax.experimental.mesh_utils import create_hybrid_device_mesh
 from jax.experimental.pjit import pjit
+from jax.interpreters import pxla
 from jax.sharding import Mesh
 from jax.sharding import PartitionSpec
 import numpy as np
@@ -97,7 +98,7 @@ def get_coords(device: jax.Device) -> HardwareMesh:
 
 def global_mesh_defined():
   """Checks if global xmap/pjit mesh resource environment is defined."""
-  maps_env = jax.experimental.maps.thread_resources.env
+  maps_env = pxla.thread_resources.env
   return maps_env.physical_mesh.devices.shape != ()  # pylint: disable=g-explicit-bool-comparison
 
 
