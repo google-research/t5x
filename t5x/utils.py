@@ -667,14 +667,14 @@ def _create_sharded_array(
 
     return device_buffers
 
-  device_buffers = jax.tree_map(_put_to_devices, host_arrays, global_shapes)
+  device_buffers = jax.tree.map(_put_to_devices, host_arrays, global_shapes)
 
   def _jax_array(dbs, global_shape):
     return jax.make_array_from_single_device_arrays(
         global_shape, jax.sharding.NamedSharding(global_mesh, axes), dbs
     )
 
-  return jax.tree_map(
+  return jax.tree.map(
       _jax_array,
       device_buffers,
       global_shapes,
@@ -742,7 +742,7 @@ def prepare_train_iter(
     )
 
 
-  input_shapes = jax.tree_map(
+  input_shapes = jax.tree.map(
       lambda x: (data_layout.batch_size, *x.shape[1:]), train_iter.element_spec
   )
   train_iter = ShardedDatasetIterator(train_iter, partitioner, input_shapes)
@@ -1388,12 +1388,12 @@ def log_model_info(
 
   state_dict = full_train_state.state_dict()
   total_num_params = jax.tree_util.tree_reduce(
-      np.add, jax.tree_map(np.size, state_dict['target'])
+      np.add, jax.tree.map(np.size, state_dict['target'])
   )
 
   logical_axes = partitioner.get_logical_axes(full_train_state).state_dict()
 
-  mesh_axes = jax.tree_map(
+  mesh_axes = jax.tree.map(
       lambda x: tuple(x) if x is not None else None,
       partitioner.get_mesh_axes(full_train_state).state_dict(),
   )
@@ -1441,7 +1441,7 @@ def log_model_info(
           mesh_axes,
       )
 
-    jax.tree_map(
+    jax.tree.map(
         _log_variable,
         state_utils.get_name_tree(state_dict['target'], keep_empty_nodes=True),
         state_dict['target'],
@@ -1456,7 +1456,7 @@ def log_model_info(
     # Add a blank line between params and states.
     _log_info_and_write_to_file(writer, '')
 
-    jax.tree_map(
+    jax.tree.map(
         _log_variable,
         state_utils.get_name_tree(state_dict['state'], keep_empty_nodes=True),
         state_dict['state'],
@@ -1528,7 +1528,7 @@ def _remove_padding(all_inferences, all_indices):
   """
   non_pad_idxs = np.where(all_indices >= 0)
   all_indices = all_indices[non_pad_idxs]
-  all_inferences = jax.tree_map(lambda x: x[non_pad_idxs], all_inferences)
+  all_inferences = jax.tree.map(lambda x: x[non_pad_idxs], all_inferences)
   return all_inferences, all_indices
 
 
@@ -1617,7 +1617,7 @@ def get_infer_fn(
       train_state: train_state_lib.TrainState,
       rng: Optional[jnp.ndarray] = None,
   ):
-    ds_shapes = jax.tree_map(lambda x: jnp.array(x.shape), ds.element_spec)
+    ds_shapes = jax.tree.map(lambda x: jnp.array(x.shape), ds.element_spec)
     multihost_assert_equal(
         ds_shapes,
         (
@@ -1731,8 +1731,8 @@ def get_infer_fn(
           return x
 
       try:
-        batch_result = jax.tree_map(_copy_to_host_async, batch_result)
-        batch_indices = jax.tree_map(_copy_to_host_async, batch_indices)
+        batch_result = jax.tree.map(_copy_to_host_async, batch_result)
+        batch_indices = jax.tree.map(_copy_to_host_async, batch_indices)
       except AttributeError:
         # Similar to jax.device_get, we skip transfers for non DeviceArrays.
         pass
@@ -1744,7 +1744,7 @@ def get_infer_fn(
     all_inferences = batched_results
 
     # List[B * shard_count, ...] -> [B * shard_count * batch_count, ...]
-    all_inferences = jax.tree_map(
+    all_inferences = jax.tree.map(
         lambda *args: np.concatenate(args), *all_inferences
     )
     all_indices = np.concatenate(all_indices)
@@ -1755,7 +1755,7 @@ def get_infer_fn(
     # Note: remove padding first, as -1 indices would mess up this operation.
     # Note: all_inferences may be a PyTree, not just an array, e.g. if
     # `infer_step` is `model.predict_batch_with_aux`.
-    all_inferences = jax.tree_map(lambda x: x[all_indices], all_inferences)
+    all_inferences = jax.tree.map(lambda x: x[all_indices], all_inferences)
     all_indices = all_indices[all_indices]
 
     # aux_values is supposed to be a dictionary that maps strings to a set of
@@ -1787,7 +1787,7 @@ def get_infer_fn(
         zip(*all_inferences),
     )
     indices_and_outputs = list(zip(all_indices, all_inferences))
-    indices_and_outputs = jax.tree_map(
+    indices_and_outputs = jax.tree.map(
         lambda x: np.array(x).tolist(), indices_and_outputs
     )
     if len(indices_and_outputs) != original_ds_length:
@@ -1801,9 +1801,9 @@ def get_infer_fn(
       return indices_and_outputs
     else:
       if keep_aux_as_numpy:
-        aux_values = jax.tree_map(lambda x: list(np.array(x)), aux_values)
+        aux_values = jax.tree.map(lambda x: list(np.array(x)), aux_values)
       else:
-        aux_values = jax.tree_map(lambda x: np.array(x).tolist(), aux_values)
+        aux_values = jax.tree.map(lambda x: np.array(x).tolist(), aux_values)
       return indices_and_outputs, aux_values
 
   return infer_fn
