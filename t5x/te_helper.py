@@ -241,7 +241,7 @@ class TEInstalledHelper(TransformerEngineHelperBase):
         relative_embedding=relative_embedding,
         dtype=config.dtype,
         layer_type=te.flax.TransformerLayerType.DECODER,
-        self_attn_mask_type='causal',
+        self_attn_mask_type='padding_causal',
         name=name)
 
 
