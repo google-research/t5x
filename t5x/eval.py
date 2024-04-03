@@ -354,16 +354,18 @@ def evaluate(
         'Skipping evaluated checkpoints:\n %s',
         '\n '.join(_sorted_ckpt_paths(ckpt_paths & evaluated_ckpt_paths)),
     )
-    restore_checkpoint_cfg.mode = 'specific'
-    restore_checkpoint_cfg.path = _sorted_ckpt_paths(
-        ckpt_paths - evaluated_ckpt_paths
+    ckpt_paths = _sorted_ckpt_paths(ckpt_paths - evaluated_ckpt_paths)
+    restore_cfg = restore_checkpoint_cfg
+    restore_cfg.mode = 'specific'
+
+  else:
+    restore_cfg, ckpt_paths = utils.get_first_valid_restore_config_and_paths(
+        [restore_checkpoint_cfg]
     )
 
   if fallback_init_rng is not None:
     fallback_init_rng = jax.random.PRNGKey(fallback_init_rng)
-  restore_cfg, ckpt_paths = utils.get_first_valid_restore_config_and_paths(
-      [restore_checkpoint_cfg]
-  )
+
   for ckpt_path in ckpt_paths:
     train_state, _ = utils.create_checkpoint_manager_and_restore(
         train_state_initializer,
