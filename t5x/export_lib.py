@@ -1434,7 +1434,7 @@ def save(
       postprocessor.
     write_warmup_example_fn: a callable which writes a set of warmup examples to
       a pbtxt file for use validating a converted model.
-    mixture_or_task_name: Optioanl SeqIO task name used to get output features.
+    mixture_or_task_name: Optional SeqIO task name used to get output features.
       In order to set this output_features must be None.
     validation_examples: Optional list of validation examples. If proveded, they
       will be used to validate the latency and numeric accuracy of the TPU saved
