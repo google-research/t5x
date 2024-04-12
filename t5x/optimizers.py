@@ -196,10 +196,8 @@ class OptaxStatePartitionRules:
       optax.AddNoiseState: lambda state, params_axes: optax.AddNoiseState(  # pytype: disable=wrong-arg-types  # numpy-scalars
           count=None, rng_key=None
       ),
-      optax.DifferentiallyPrivateAggregateState: (
-          lambda state, params_axes: optax.DifferentiallyPrivateAggregateState(
-              rng_key=None
-          )
+      optax.contrib.DifferentiallyPrivateAggregateState: lambda state, params_axes: optax.contrib.DifferentiallyPrivateAggregateState(
+          rng_key=None
       ),
       optax.EmaState: lambda state, params_axes: optax.EmaState(  # pytype: disable=wrong-arg-types  # numpy-scalars
           count=None,
@@ -572,7 +570,7 @@ radam = wrap_optax_optimizer(optax.radam)
 rmsprop = wrap_optax_optimizer(optax.rmsprop)
 sgd = wrap_optax_optimizer(optax.sgd)
 yogi = wrap_optax_optimizer(optax.yogi)
-dpsgd = wrap_optax_optimizer(optax.dpsgd)
+dpsgd = wrap_optax_optimizer(optax.contrib.dpsgd)
 
 # Excluded optimizers:
 # TODO(levskaya): add shampoo, sm3
