@@ -196,10 +196,8 @@ class OptaxStatePartitionRules:
       optax.AddNoiseState: lambda state, params_axes: optax.AddNoiseState(  # pytype: disable=wrong-arg-types  # numpy-scalars
           count=None, rng_key=None
       ),
-      optax.DifferentiallyPrivateAggregateState: (
-          lambda state, params_axes: optax.DifferentiallyPrivateAggregateState(
-              rng_key=None
-          )
+      optax.contrib.DifferentiallyPrivateAggregateState: lambda state, params_axes: optax.contrib.DifferentiallyPrivateAggregateState(
+          rng_key=None
       ),
       optax.EmaState: lambda state, params_axes: optax.EmaState(  # pytype: disable=wrong-arg-types  # numpy-scalars
           count=None,
