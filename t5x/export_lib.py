@@ -1315,7 +1315,7 @@ def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
 
 
 def create_fake_input(signature: Dict[str, tf.TensorSpec]) -> Any:
-  """Create all zeros fake inputs accroding to signature spec.
+  """Create all zeros fake inputs according to signature spec.
 
   Args:
     signature: A dictionary of tensor specs that will used for serving.
@@ -1328,7 +1328,7 @@ def create_fake_input(signature: Dict[str, tf.TensorSpec]) -> Any:
     shape = ts.shape.as_list()
     if not all(shape[1:]):
       raise ValueError(
-          'Only supports polymorphic batch size at leading dimenstion, got '
+          'Only supports polymorphic batch size at leading dimension, got '
           f'{ts} in the input signature.'
       )
     if shape and shape[0] is None:
