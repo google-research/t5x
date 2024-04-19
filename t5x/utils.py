@@ -39,6 +39,7 @@ from flax import traverse_util
 import flax.core
 from flax.core import scope as flax_scope
 from flax.linen import partitioning as flax_partitioning
+import gin
 import jax
 from jax.experimental import multihost_utils
 import jax.numpy as jnp
@@ -54,7 +55,6 @@ from t5x import train_state as train_state_lib
 import tensorflow as tf
 from tensorflow.io import gfile
 import typing_extensions
-
 
 FLAGS = flags.FLAGS
 
@@ -1818,7 +1818,8 @@ def import_module(module: str):
   """Imports the given module at runtime."""
   logging.info('Importing %s.', module)
   try:
-    importlib.import_module(module)
+    with gin.unlock_config():
+      importlib.import_module(module)
   except RuntimeError as e:
     if (
         str(e)
