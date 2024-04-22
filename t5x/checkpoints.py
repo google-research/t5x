@@ -219,7 +219,7 @@ def latest_step(checkpoints_dir: str) -> Optional[int]:
 def get_local_data(x):
   """Get local buffer for input data."""
   if isinstance(x, jax.Array) and not isinstance(x, jax.core.Tracer):
-    return x.addressable_data(0)
+    return np.asarray(x.addressable_data(0))
   else:
     return x
 
@@ -2310,7 +2310,7 @@ class OrbaxCheckpointManagerInterface:
     )
     # TODO(b/273803615) Enable OCDBT.
     self._state_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=False)
-    checkpointers = {_STATE_KEY: ocp.Checkpointer(self._state_handler)}
+    checkpointers = {_STATE_KEY: ocp.AsyncCheckpointer(self._state_handler)}
     if self._should_write_dataset_ckpt:
       checkpointers[_DATASET_KEY] = ocp.Checkpointer(
           DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name)
@@ -2353,6 +2353,12 @@ class OrbaxCheckpointManagerInterface:
 
   def should_save(self, step: int) -> bool:
     return self._manager.should_save(step)
+
+  def wait_until_finished(self):
+    return self._manager.wait_until_finished()
+
+  def close(self):
+    return self._manager.close()
 
   def save(
       self,

@@ -753,6 +753,7 @@ def train(
             trainer.train_state,
             checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
         )
+        checkpoint_manager.wait_until_finished()
         logging.info('Saving emergency checkpoint done.')
       raise e
 
@@ -773,6 +774,9 @@ def train(
           trainer.train_state,
           checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
       )
+      # `_run_training_eval`` depends upon the result of the checkpoint,
+      # thus calling `wait_until_finished()`` here.
+      checkpoint_manager.wait_until_finished()
       checkpoint_tock = time.time()
       train_metrics.write_scalar(
           'timing/checkpoint_seconds',
@@ -793,6 +797,7 @@ def train(
     # Inference Evaluation (i.e., with decoding or scoring).
     if is_eval_epoch and evaluator is not None:
       _run_inference_eval()
+  checkpoint_manager.close()
 
   # Wait until computations are done before exiting
   _cleanup()
