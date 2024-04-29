@@ -199,7 +199,7 @@ class BaseModel(abc.ABC):
       batch: Mapping[str, jnp.ndarray],
       rng: Optional[jax.Array] = None,
   ) -> Tuple[jnp.ndarray, Mapping[str, jnp.ndarray]]:
-    """Predict a batch from the modelwith auxiliary outputs.
+    """Predict a batch from the model with auxiliary outputs.
 
     Args:
       params: model parameters.
