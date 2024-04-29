@@ -2310,7 +2310,9 @@ class OrbaxCheckpointManagerInterface:
     )
     # TODO(b/273803615) Enable OCDBT.
     self._state_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=False)
-    checkpointers = {_STATE_KEY: ocp.AsyncCheckpointer(self._state_handler)}
+    checkpointers = {
+        _STATE_KEY: ocp.AsyncCheckpointer(self._state_handler, timeout_secs=600)
+    }
     if self._should_write_dataset_ckpt:
       checkpointers[_DATASET_KEY] = ocp.Checkpointer(
           DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name)
