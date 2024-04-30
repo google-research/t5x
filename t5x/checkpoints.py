@@ -69,6 +69,7 @@ PyTreeDef = jax.tree_util.PyTreeDef
 LazyArray = checkpoint_importer.LazyArray
 LazyAwaitableArray = checkpoint_importer.LazyAwaitableArray
 LazyThreadPoolArray = checkpoint_importer.LazyThreadPoolArray
+Dataset = Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]
 
 # Version 3 is used since 2021-06-10, compared to version 2 the only change is
 # that `bfloat16` arrays are written in Tensorstore using its native `bfloat16`
@@ -2018,14 +2019,17 @@ class DatasetCheckpointHandler(ocp.CheckpointHandler):
   def save(
       self,
       directory: epath.Path,
-      item: Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator],
+      args: 'DatasetArgs',
   ):
     """Saves the given item.
 
     Args:
       directory: save location directory.
-      item: a tf.data.Iterator to be saved.
+      args: DatasetArgs (see below).
     """
+    item = args.item
+    if item is None:
+      raise ValueError('Must provide item to save.')
     if jax.process_count() > 1:
       directory /= f'process_{jax.process_index()}-of-{jax.process_count()}'
       directory.mkdir(parents=False, exist_ok=False)
@@ -2039,21 +2043,20 @@ class DatasetCheckpointHandler(ocp.CheckpointHandler):
   def restore(
       self,
       directory: epath.Path,
-      item: Optional[
-          Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]
-      ] = None,
-  ) -> Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]:
+      args: Optional['DatasetArgs'] = None,
+  ) -> Dataset:
     """Restores the given item.
 
     Args:
       directory: restore location directory.
-      item: a tf.data.Iterator to be restored. Not Optional
+      args: DatasetArgs (see below).
 
     Returns:
       a tf.data.Iterator restored from `directory`.
     """
-    if item is None:
-      raise ValueError('Must provide item to restore')
+    if args is None:
+      raise ValueError('Must provide args to restore.')
+    item = args.item
     if jax.process_count() > 1:
       directory /= f'process_{jax.process_index()}-of-{jax.process_count()}'
     if isinstance(item, tf.data.Iterator):
@@ -2065,9 +2068,13 @@ class DatasetCheckpointHandler(ocp.CheckpointHandler):
       item.load(os.fspath(directory / self._checkpoint_filename))
     return item
 
-  def structure(self, directory: epath.Path) -> Any:
-    """Unimplemented. See parent class."""
-    pass
+
+@ocp.args.register_with_handler(
+    DatasetCheckpointHandler, for_save=True, for_restore=True
+)
+@dataclasses.dataclass
+class DatasetArgs(ocp.args.CheckpointArgs):
+  item: Optional[Dataset] = None
 
 
 def _step_from_train_state(train_state: train_state_lib.TrainState) -> int:
@@ -2310,14 +2317,11 @@ class OrbaxCheckpointManagerInterface:
     )
     # TODO(b/273803615) Enable OCDBT.
     self._state_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=False)
-    checkpointers = {
-        _STATE_KEY: ocp.AsyncCheckpointer(self._state_handler, timeout_secs=600)
-    }
+    item_handlers = {_STATE_KEY: self._state_handler}
     if self._should_write_dataset_ckpt:
-      checkpointers[_DATASET_KEY] = ocp.Checkpointer(
-          DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name)
+      item_handlers[_DATASET_KEY] = DatasetCheckpointHandler(
+          checkpoint_filename=dataset_ckpt_name
       )
-    self._checkpointers = checkpointers
 
     def best_fn(metrics):
       return metrics[metric_name_to_monitor]
@@ -2331,6 +2335,9 @@ class OrbaxCheckpointManagerInterface:
         keep_checkpoints_without_metrics=keep_checkpoints_without_metrics,
         cleanup_tmp_directories=True,
         step_prefix='checkpoint',
+        async_options=ocp.AsyncOptions(
+            timeout_secs=600,
+        ),
     )
     options.metric_name_to_monitor = metric_name_to_monitor
     self._options = options
@@ -2339,8 +2346,8 @@ class OrbaxCheckpointManagerInterface:
       directory = os.path.dirname(directory)
     self._manager = self._CheckpointManagerImpl(
         directory=directory,
-        checkpointers=self._checkpointers,
         options=self._options,
+        item_handlers=item_handlers,
     )
 
   @property
@@ -2407,17 +2414,16 @@ class OrbaxCheckpointManagerInterface:
     )
 
     # Separate savable items.
-    items = {_STATE_KEY: state_dict}
-    if self._should_write_dataset_ckpt:
-      items[_DATASET_KEY] = self._dataset_iterator
-    save_kwargs = {
-        _STATE_KEY: {
-            'save_args': save_args,
-        },
+    args = {
+        _STATE_KEY: ocp.args.PyTreeSave(
+            state_dict,
+            save_args=save_args,
+        ),
     }
-    saved = self._manager.save(
-        step, items, save_kwargs=save_kwargs, force=force
-    )
+    if self._should_write_dataset_ckpt:
+      args[_DATASET_KEY] = DatasetArgs(self._dataset_iterator)
+    args = ocp.args.Composite(**args)
+    saved = self._manager.save(step, args=args, force=force)
 
     # Record JAX monitoring events.
     end_time = time.time()
@@ -2527,18 +2533,17 @@ class OrbaxCheckpointManagerInterface:
     )
 
     # Construct separate items to restore.
-    items = {_STATE_KEY: state_dict_to_restore}
-    if self._should_write_dataset_ckpt:
-      items[_DATASET_KEY] = self._dataset_iterator
-    restore_kwargs = {
-        _STATE_KEY: {
-            'restore_args': restore_args,
-            'legacy_transform_fn': transform_fn,
-        },
+    args = {
+        _STATE_KEY: ocp.args.PyTreeRestore(
+            state_dict_to_restore,
+            restore_args=restore_args,
+            legacy_transform_fn=transform_fn,
+        ),
     }
-    restored = self._manager.restore(
-        step, items, restore_kwargs=restore_kwargs, directory=directory
-    )
+    if self._should_write_dataset_ckpt:
+      args[_DATASET_KEY] = DatasetArgs(self._dataset_iterator)
+    args = ocp.args.Composite(**args)
+    restored = self._manager.restore(step, args=args, directory=directory)
     state_dict = restored[_STATE_KEY]
     if self._should_write_dataset_ckpt:
       self._dataset_iterator = restored[_DATASET_KEY]
