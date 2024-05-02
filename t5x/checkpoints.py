@@ -693,7 +693,6 @@ class Checkpointer(object):
       if isinstance(arr, jax.Array):
         local_chunk_info = None
         metadata = array_serialization._get_metadata(arr)  # pylint: disable=protected-access
-        del metadata['dtype']
       else:
         local_chunk_info = self._partitioner.get_local_chunk_info(
             arr.shape, axes
