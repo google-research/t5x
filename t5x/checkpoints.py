@@ -2597,6 +2597,7 @@ class OrbaxCheckpointManagerInterface:
     )
 
 
+@gin.configurable
 class CheckpointManagerConstructor(typing_extensions.Protocol):
   """A function that returns a checkpoints.CheckpointManager.
 
