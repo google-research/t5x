@@ -86,6 +86,11 @@ _WRITE_CHECKPOINT_EVENT: str = '/jax/checkpoint/write/durations_sec'
 _TS_CONTEXT = ts.Context({'file_io_concurrency': {'limit': 128}})
 
 
+@gin.configurable
+def get_checkpoint_prefix(prefix='checkpoint'):
+  return prefix
+
+
 def _choose_chunk_shape(
     write_shape: Sequence[int], target_elements: int
 ) -> List[int]:
@@ -242,7 +247,7 @@ def get_checkpoint_dir(
       if step_format_fixed_length is not None
       else str(step)
   )
-  return os.path.join(checkpoints_dir, f'checkpoint_{step_str}')
+  return os.path.join(checkpoints_dir, f'{get_checkpoint_prefix()}_{step_str}')
 
 
 def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
@@ -250,9 +255,9 @@ def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
   if checkpoints_dir.endswith('/'):
     checkpoints_dir = checkpoints_dir[:-1]
   parent, checkpoint = os.path.split(checkpoints_dir)
-  if 'checkpoint_' not in checkpoint:
+  if get_checkpoint_prefix() not in checkpoint:
     raise ValueError('Found improperly formatted checkpoint directory.')
-  return parent, int(checkpoint.replace('checkpoint_', ''))
+  return parent, int(checkpoint.replace(f'{get_checkpoint_prefix()}_', ''))
 
 
 def _cast(target: PyTree, dtype: jnp.dtype):
@@ -804,7 +809,9 @@ class Checkpointer(object):
     # Share a timestamp across devices.
     timestamp = multihost_utils.broadcast_one_to_all(np.int32(time.time()))
 
-    final_dir = os.path.join(self.checkpoints_dir, f'checkpoint_{step}')
+    final_dir = os.path.join(
+        self.checkpoints_dir, f'{get_checkpoint_prefix()}_{step}'
+    )
     tmp_dir = final_dir + f'.tmp-{timestamp}'
 
     if gfile.exists(final_dir):
@@ -2139,9 +2146,9 @@ def _construct_orbax_restoration_transforms(
   # After transforms, may be a subset of keys: only the ones we actually need
   # to restore.
   state_subdir = ocp.utils.get_save_directory(
-      step, directory, name=_STATE_KEY, step_prefix='checkpoint'
+      step, directory, name=_STATE_KEY, step_prefix=get_checkpoint_prefix()
   )
-  assert state_subdir.is_dir()
+  assert state_subdir.is_dir(), state_subdir
   use_orbax_format = state_subdir.stem == _STATE_KEY  # Standard Orbax format
   structure = state_handler._read_aggregate_file(  # pylint: disable=protected-access
       state_subdir
@@ -2192,7 +2199,7 @@ def _construct_orbax_restoration_transforms(
         )
 
     directory_ = ocp.utils.get_save_directory(
-        step, directory, name=_STATE_KEY, step_prefix='checkpoint'
+        step, directory, name=_STATE_KEY, step_prefix=get_checkpoint_prefix()
     )
 
     def _modify_orbax_param_info(info, value):
@@ -2333,7 +2340,7 @@ class OrbaxCheckpointManagerInterface:
         best_mode=metric_mode,
         keep_checkpoints_without_metrics=keep_checkpoints_without_metrics,
         cleanup_tmp_directories=True,
-        step_prefix='checkpoint',
+        step_prefix=get_checkpoint_prefix(),
         async_options=ocp.AsyncOptions(
             timeout_secs=600,
         ),
