@@ -62,7 +62,7 @@ class ScaleShardedGradsTest(absltest.TestCase):
             'regular_layer': jnp.ones((1, 2)),
         }
     })
-    jax.tree_map(
+    jax.tree.map(
         functools.partial(np.testing.assert_allclose, rtol=3e-7),
         scaled_grads,
         expected_grads,

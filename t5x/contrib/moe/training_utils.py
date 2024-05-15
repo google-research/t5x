@@ -74,7 +74,7 @@ def scale_sharded_grads(
 
 
 def tree_map_with_names(f, param_tree, match_name_fn=lambda name: True):
-  """Like jax.tree_map but with a filter on the leaf path name.
+  """Like jax.tree.map but with a filter on the leaf path name.
 
   Args:
     f: The function to be applied to each parameter in `param_tree`.
