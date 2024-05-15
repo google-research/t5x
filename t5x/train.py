@@ -366,6 +366,7 @@ def train(
 
   # Skip initialization if neither save nor restore is requested.
   train_state = None
+  checkpoint_manager = None
   if valid_restore_cfg or checkpoint_period or checkpoint_steps:
     train_state, checkpoint_manager = (
         utils.create_checkpoint_manager_and_restore(
@@ -554,7 +555,7 @@ def train(
       _run_inference_eval()
 
   # Save checkpoints before the training loop starts.
-  if checkpoint_period:
+  if checkpoint_period and checkpoint_manager:
     # If not using Orbax, always save checkpoint, otherwise, only save a
     # checkpoint if a checkpoint does not already exist for that step. This is
     # because Orbax will error out if we try to save a checkpoint that already
@@ -680,7 +681,7 @@ def train(
       logging.info('Training for %d steps.', epoch_end_step - host_step)
       while host_step < epoch_end_step:
         if trainer.stop_training:
-          if checkpoint_period:
+          if checkpoint_period and checkpoint_manager:
             logging.info('Saving a checkpoint before early stopping...')
             checkpoint_manager.save(
                 trainer.train_state,
@@ -732,7 +733,7 @@ def train(
               {TRAIN_METRIC_KEY: train_summary.result()},
           )
 
-        if is_checkpoint_step:
+        if is_checkpoint_step and checkpoint_manager:
           logging.info('Saving a checkpoint at specified checkpoint step')
           checkpoint_manager.save(
               trainer.train_state,
@@ -747,7 +748,7 @@ def train(
         host_step += inner_num_steps
       logging.info('END Train loop.')
     except trainer_lib.PreemptionError as e:
-      if checkpoint_period:
+      if checkpoint_period and checkpoint_manager:
         logging.info('Saving emergency checkpoint.')
         checkpoint_manager.save(
             trainer.train_state,
@@ -763,8 +764,10 @@ def train(
       gc.collect()
 
     # Maybe save a checkpoint if step is at period.
-    if checkpoint_period and (
-        final_epoch or step_offset % checkpoint_period == 0
+    if (
+        checkpoint_period
+        and (final_epoch or step_offset % checkpoint_period == 0)
+        and checkpoint_manager
     ):
       train_summary.result()
       logging.info('Saving checkpoint.')
@@ -797,7 +800,8 @@ def train(
     # Inference Evaluation (i.e., with decoding or scoring).
     if is_eval_epoch and evaluator is not None:
       _run_inference_eval()
-  checkpoint_manager.close()
+  if checkpoint_manager:
+    checkpoint_manager.close()
 
   # Wait until computations are done before exiting
   _cleanup()
