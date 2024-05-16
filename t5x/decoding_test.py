@@ -891,7 +891,7 @@ class DecodeTest(parameterized.TestCase):
         },
     }
 
-    jax.tree_map(
+    jax.tree.map(
         np.testing.assert_array_equal, decoding.cache_map(fn, cache), gold_cache
     )
 
@@ -956,7 +956,7 @@ class DecodeTest(parameterized.TestCase):
         },
     }
 
-    jax.tree_map(
+    jax.tree.map(
         np.testing.assert_array_equal,
         decoding.cache_map(fn, cache, apply_to_index=True),
         gold_cache,

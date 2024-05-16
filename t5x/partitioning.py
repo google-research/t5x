@@ -873,7 +873,8 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     """Returns a copy of TrainState with Optional[AxisNames] as leaves."""
     # By default, return None for the logical axes.
     return train_state.restore_state(
-        jax.tree_map(lambda x: None, train_state.state_dict()))
+        jax.tree.map(lambda x: None, train_state.state_dict())
+    )
 
   def get_mesh_axes(self, train_state: TrainState) -> TrainState:
     """Returns a copy of TrainState with Optional[PartitionSpecs] as leaves."""
@@ -1136,7 +1137,7 @@ class PjitPartitioner(BasePjitPartitioner):
 # arr_tree is a PyTree of jax.Array or np.ndarray and
 # pspecs is PyTree[jax.sharding.PartitionSpec]
 def host_local_array_to_global_array(arr_tree, mesh: jax.sharding.Mesh, pspecs):
-  pspecs = jax.tree_map(
+  pspecs = jax.tree.map(
       lambda x: PartitionSpec() if x is None else x,
       pspecs,
       is_leaf=lambda x: x is None,

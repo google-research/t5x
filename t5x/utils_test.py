@@ -276,7 +276,7 @@ class UtilsTest(parameterized.TestCase):
     )
 
     self.assertSameElements(ds.keys(), ["mock_task"])
-    jax.tree_map(
+    jax.tree.map(
         np.testing.assert_equal,
         list(ds["mock_task"]),
         [
@@ -308,7 +308,7 @@ class UtilsTest(parameterized.TestCase):
     )
 
     self.assertSameElements(ds.keys(), ["mock_task"])
-    jax.tree_map(
+    jax.tree.map(
         np.testing.assert_equal,
         list(ds["mock_task"]),
         [
@@ -340,7 +340,7 @@ class UtilsTest(parameterized.TestCase):
     )
 
     self.assertSameElements(ds.keys(), ["mock_task"])
-    jax.tree_map(
+    jax.tree.map(
         np.testing.assert_equal,
         list(ds["mock_task"]),
         [
@@ -436,7 +436,7 @@ class UtilsTest(parameterized.TestCase):
         res.keys(), ["mock_task1", "mock_task2", "mock_mix"]
     )
     for ds in res.values():
-      jax.tree_map(
+      jax.tree.map(
           np.testing.assert_equal,
           list(ds),
           [
@@ -518,7 +518,7 @@ class UtilsTest(parameterized.TestCase):
         res_obj.keys(), ["mock_task3", "mock_task4", "mock_mix2"]
     )
     for ds in res_obj.values():
-      jax.tree_map(
+      jax.tree.map(
           np.testing.assert_equal,
           list(ds),
           [
@@ -579,7 +579,7 @@ class UtilsTest(parameterized.TestCase):
         ],
     )
 
-    jax.tree_map(
+    jax.tree.map(
         np.testing.assert_equal,
         overridden_variables,
         flax.core.freeze({

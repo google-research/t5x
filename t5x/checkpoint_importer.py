@@ -545,7 +545,7 @@ def restore_from_t5_checkpoint(
   t5_data = _maybe_correct_relpos_bias(t5_data)
   state_dict = _update_state_dict(state_dict, t5_data, strict=strict)
   if not lazy_parameters:
-    state_dict = jax.tree_map(
+    state_dict = jax.tree.map(
         lambda x: x.get() if isinstance(x, LazyArray) else x, state_dict
     )
   return state_dict

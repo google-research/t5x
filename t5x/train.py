@@ -276,11 +276,11 @@ def train(
       partitioner=partitioner,
       data_layout=data_layout,
   )
-  input_shapes = jax.tree_map(
+  input_shapes = jax.tree.map(
       lambda x: (data_layout.batch_size, *x.shape[1:]),
       train_iter.element_spec,
   )
-  input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
+  input_types = jax.tree.map(lambda x: x.dtype, train_iter.element_spec)
 
   if train_eval_dataset_cfg:
     _verify_matching_vocabs(train_eval_dataset_cfg)
@@ -631,7 +631,7 @@ def train(
     )
 
   # Construct dummy batch for compiling the model.
-  dummy_batch = jax.tree_map(_as_gda, train_iter.element_spec)
+  dummy_batch = jax.tree.map(_as_gda, train_iter.element_spec)
   if not isinstance(dummy_batch, Mapping):
     raise ValueError(
         'Training loop expects batches to have type '

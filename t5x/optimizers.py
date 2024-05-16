@@ -275,7 +275,7 @@ class OptaxStatePartitionRules:
       optax.InjectHyperparamsState: (
           lambda state, params_axes: optax.InjectHyperparamsState(  # pytype: disable=wrong-arg-types  # jax-ndarray
               count=None,
-              hyperparams=jax.tree_map(lambda x: None, state.hyperparams),
+              hyperparams=jax.tree.map(lambda x: None, state.hyperparams),
               inner_state=OptaxStatePartitionRules.derive_optax_logical_axes(
                   state.inner_state, params_axes
               ),
@@ -438,7 +438,7 @@ class OptaxWrapper(OptimizerDef):
       An `optimizers.Optimizer` instance, with all the leafs replaced by t5x
       PartitionSpec or None (no partition).
     """
-    optimizer_logical_axes = jax.tree_map(
+    optimizer_logical_axes = jax.tree.map(
         lambda x: None, optimizer.state_dict()
     )
     optimizer_logical_axes['target'] = param_logical_axes
@@ -698,7 +698,7 @@ class MultiOptimizer(OptimizerDef):
     self.sub_optimizers = sub_optimizers
 
   def init_state(self, params):
-    param_states = jax.tree_map(lambda x: _Marker(), params)
+    param_states = jax.tree.map(lambda x: _Marker(), params)
     overlap = False
     for idx, traversal in enumerate(self.traversals):
       for match in traversal.iterate(param_states):
@@ -707,10 +707,10 @@ class MultiOptimizer(OptimizerDef):
     if overlap:
       raise ValueError(
           'Multiple optimizers match the same leaves : '
-          + str(jax.tree_map(lambda match: match._indices, param_states))  # pylint: disable=protected-access
+          + str(jax.tree.map(lambda match: match._indices, param_states))  # pylint: disable=protected-access
       )
 
-    param_states = jax.tree_map(lambda x: _Marker(), params)
+    param_states = jax.tree.map(lambda x: _Marker(), params)
     for focus, opt_def in zip(self.traversals, self.sub_optimizers):
       ps = _subtree_from_traversal(focus, params)
       ss = opt_def.init_state(ps)
@@ -718,7 +718,7 @@ class MultiOptimizer(OptimizerDef):
           focus, param_states, ss.param_states
       )
     # Update state to None when param is not optimized by any sub optimizer.
-    param_states = jax.tree_map(
+    param_states = jax.tree.map(
         lambda x: (None if isinstance(x, _Marker) else x), param_states
     )
     return OptimizerState(jnp.asarray(0, dtype=jnp.int32), param_states)
@@ -726,7 +726,7 @@ class MultiOptimizer(OptimizerDef):
   def apply_gradient(self, hyper_params, params, state, grads):
     new_params = params
     it = zip(self.traversals, self.sub_optimizers, hyper_params)
-    new_param_states = jax.tree_map(lambda x: _Marker(), params)
+    new_param_states = jax.tree.map(lambda x: _Marker(), params)
     for focus, opt_def, hp in it:
       ps = _subtree_from_traversal(focus, params)
       gs = _subtree_from_traversal(focus, grads)
@@ -738,7 +738,7 @@ class MultiOptimizer(OptimizerDef):
           focus, new_param_states, new_ss.param_states
       )
     # Update state to None when param is not optimized by any sub optimizer.
-    new_param_states = jax.tree_map(
+    new_param_states = jax.tree.map(
         lambda x: (None if isinstance(x, _Marker) else x), new_param_states
     )
     return new_params, OptimizerState(state.step + 1, new_param_states)
@@ -772,7 +772,7 @@ class MultiOptimizer(OptimizerDef):
 
   def derive_logical_axes(self, optimizer, param_logical_axes):
     """Derives optimizer logical partitioning from model logical partitions."""
-    param_states = jax.tree_map(
+    param_states = jax.tree.map(
         lambda x: _Marker(), optimizer.state.param_states
     )
     for focus, opt_def in zip(self.traversals, self.sub_optimizers):
@@ -786,7 +786,7 @@ class MultiOptimizer(OptimizerDef):
             focus, param_states, new_opt.state.param_states
         )
     # Update axes to None when param is not optimized by any sub optimizer.
-    param_states = jax.tree_map(
+    param_states = jax.tree.map(
         lambda x: (None if isinstance(x, _Marker) else x), param_states
     )
     return Optimizer(

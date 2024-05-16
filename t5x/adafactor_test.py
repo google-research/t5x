@@ -58,13 +58,13 @@ def check_eq(xs, ys, atol=None, rtol=None):
   ys_leaves, ys_tree = jax.tree_util.tree_flatten(ys)
   assert xs_tree == ys_tree, f"Tree shapes don't match. \n{xs_tree}\n{ys_tree}"
   assert jax.tree_util.tree_all(
-      jax.tree_map(
+      jax.tree.map(
           lambda x, y: np.array(x).shape == np.array(y).shape,
           xs_leaves,
           ys_leaves,
       )
   ), "Leaves' shapes don't match."
-  assert jax.tree_map(
+  assert jax.tree.map(
       functools.partial(_assert_numpy_allclose, atol=atol, rtol=rtol),
       xs_leaves,
       ys_leaves,
@@ -77,11 +77,11 @@ def flattened_state_dict(x):
 
 
 def tree_shape(x):
-  return jax.tree_map(jnp.shape, x)
+  return jax.tree.map(jnp.shape, x)
 
 
 def tree_equals(x, y):
-  return jax.tree_util.tree_all(jax.tree_map(operator.eq, x, y))
+  return jax.tree_util.tree_all(jax.tree.map(operator.eq, x, y))
 
 
 def _get_multi_adafactor(
@@ -483,7 +483,7 @@ class AdafactorTest(parameterized.TestCase):
 
     # create fake model parameters
     k = jax.random.PRNGKey(0)
-    params = jax.tree_map(
+    params = jax.tree.map(
         lambda shape: jax.random.uniform(k, shape),
         MODEL_SHAPE,
         is_leaf=lambda x: isinstance(x, list),

@@ -273,7 +273,7 @@ def write_inferences_to_file(
   with gfile.GFile(path, 'w') as f:
     for i, inp in task_ds.enumerate().as_numpy_iterator():
       predictions = all_predictions[i]
-      aux_values = jax.tree_map(
+      aux_values = jax.tree.map(
           f=lambda v, i=i: v[i],
           tree=all_aux_values,
           is_leaf=lambda v: isinstance(v, (np.ndarray, list)),
@@ -311,7 +311,7 @@ def write_inferences_to_file(
       elif mode == 'score':
         json_dict['score'] = _json_compat(predictions)
         if aux_values:
-          json_dict['aux'] = jax.tree_map(_json_compat, aux_values)
+          json_dict['aux'] = jax.tree.map(_json_compat, aux_values)
       elif mode == 'predict_with_aux':
         assert vocabulary is not None
         json_dict['prediction'] = _json_compat(
@@ -322,7 +322,7 @@ def write_inferences_to_file(
           # Truncate padding tokens.
           pred = pred[: pred.index(0)] if 0 in pred else pred
           json_dict['prediction_tokens'] = pred
-        json_dict['aux'] = jax.tree_map(_json_compat, aux_values)
+        json_dict['aux'] = jax.tree.map(_json_compat, aux_values)
       else:
         raise ValueError(f'Invalid mode: {mode}')
       json_str = json.dumps(json_dict, cls=json_encoder_cls)
@@ -353,7 +353,7 @@ def _extract_tokens_and_aux_values(inference_fn_outputs) -> Inferences:
     permutation = np.argsort(indices)
     permute = lambda v: [v[permutation[i]] for i in range(len(permutation))]
     tokens = permute(tokens)
-    all_aux_values = jax.tree_map(
+    all_aux_values = jax.tree.map(
         f=permute,
         tree=all_aux_values,
         is_leaf=lambda v: isinstance(v, (np.ndarray, list)),

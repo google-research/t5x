@@ -80,7 +80,7 @@ def coords_to_idx(coords: Tuple[int, ...], bounds: Tuple[int, ...]) -> int:
   # Calculate stride multipliers.
   strides = tuple(itertools.accumulate((1,) + bounds[:-1], operator.mul))
   # Sum linear index from strides and coords
-  return sum(jax.tree_map(lambda x, y: x * y, coords, strides))
+  return sum(jax.tree.map(lambda x, y: x * y, coords, strides))
 
 
 def make_devices(
@@ -94,11 +94,11 @@ def make_devices(
   """Create mock TPU devices."""
   devices = []
   device_bounds = (nx, ny, nz, nc)
-  hnx, hny, hnz, hnc = jax.tree_map(
+  hnx, hny, hnz, hnc = jax.tree.map(
       lambda a, b: a // b, device_bounds, host_layout
   )
   for x, y, z, c in itertools.product(*map(range, device_bounds)):
-    hx, hy, hz, hc = jax.tree_map(
+    hx, hy, hz, hc = jax.tree.map(
         lambda a, b: a // b, (x, y, z, c), host_layout
     )
     # TODO(levskaya, jekbradbury): verify this id/host ordering on TPU v4
@@ -165,7 +165,7 @@ def make_train_state(
       global_input_shape, step=step, dtype=dtype
   )
 
-  return jax.tree_map(
+  return jax.tree.map(
       functools.partial(
           create_sharded_array,
           global_shape=global_input_shape,
@@ -332,7 +332,7 @@ def assert_equal(a, b):
 def assert_same(tree_a, tree_b):
   """Asserts that both trees are the same."""
   tree_a, tree_b = jax.device_get((tree_a, tree_b))
-  jax.tree_map(assert_equal, tree_a, tree_b)
+  jax.tree.map(assert_equal, tree_a, tree_b)
 
 
 def get_train_state_from_variables(
@@ -384,7 +384,7 @@ class FakePartitioner(partitioning.BasePartitioner):
     return train_state
 
   def get_mesh_axes(self, train_state):
-    mesh_axes = jax.tree_map(lambda _: self._mesh_axes, train_state)
+    mesh_axes = jax.tree.map(lambda _: self._mesh_axes, train_state)
     return mesh_axes.replace_step(None)
 
   def _local_chunker(self):

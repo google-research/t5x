@@ -79,11 +79,11 @@ def precompile(
     )
 
   # Need to use full batch size.
-  input_shapes = jax.tree_map(
+  input_shapes = jax.tree.map(
       lambda x: (data_layout.batch_size, *x.shape[1:]), train_iter.element_spec
   )
-  input_types = jax.tree_map(lambda x: x.dtype, train_iter.element_spec)
-  dummy_batch = jax.tree_map(
+  input_types = jax.tree.map(lambda x: x.dtype, train_iter.element_spec)
+  dummy_batch = jax.tree.map(
       lambda x: np.ones(x.shape, x.dtype), train_iter.element_spec
   )
 
