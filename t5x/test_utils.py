@@ -30,6 +30,7 @@ import numpy as np
 import seqio
 import t5.data
 from t5x import adafactor
+from t5x import checkpoints
 from t5x import models
 from t5x import optimizers
 from t5x import partitioning
@@ -409,3 +410,51 @@ class FakePartitioner(partitioning.BasePartitioner):
 
   def compile(self, partitioned_fn, *args):
     return None
+
+# -------------------- Checkpoint helpers --------------------
+
+
+def _train_state_shapes(train_state):
+  def _maybe_get(x):
+    if isinstance(x, LazyArray):
+      return x.get()
+    return x
+
+  train_state = jax.tree_util.tree_map(_maybe_get, train_state)
+  return jax.eval_shape(lambda: train_state)
+
+
+def save(checkpointer_or_manager, train_state, force=False):
+  saved = checkpointer_or_manager.save(train_state, force=force)
+  checkpointer_or_manager.wait_until_finished()
+  return saved
+
+
+def create_checkpointer_or_manager(
+    train_state_shapes,
+    partitioner,
+    directory,
+    dataset_iterator=None,
+    save_dtype=None,
+    restore_dtype=None,
+    best=False,
+    keep=None,
+    period=1,
+    checkpoint_steps=None,
+    keep_checkpoints_without_metrics=True,
+):
+  """Creates an Orbax CheckpointManagerInterface."""
+  metric_name_to_monitor = 'train/accuracy' if best else None
+  return checkpoints.OrbaxCheckpointManagerInterface(
+      directory,
+      train_state_shapes,
+      partitioner,
+      dataset_iterator=dataset_iterator,
+      save_dtype=save_dtype,
+      restore_dtype=restore_dtype,
+      keep=keep,
+      period=period,
+      checkpoint_steps=checkpoint_steps,
+      metric_name_to_monitor=metric_name_to_monitor,
+      keep_checkpoints_without_metrics=keep_checkpoints_without_metrics,
+  )
