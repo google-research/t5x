@@ -2264,6 +2264,7 @@ def _restore_from_tf_checkpoint(
   return train_state.restore_state(state_dict)
 
 
+@gin.configurable
 class OrbaxCheckpointManagerInterface:
   """Wrapper for ocp.CheckpointManager."""
 
