@@ -2154,7 +2154,7 @@ def _construct_orbax_restoration_transforms(
   )
   assert state_subdir.is_dir(), state_subdir
   use_orbax_format = state_subdir.stem == _STATE_KEY  # Standard Orbax format
-  structure = state_handler._read_aggregate_file(  # pylint: disable=protected-access
+  structure = state_handler._handler_impl._read_aggregate_file(  # pylint: disable=protected-access
       state_subdir
   )
   # Note: Ideally we would use Orbax's `transform_fn` to do this logic, but
