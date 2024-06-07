@@ -227,7 +227,7 @@ def latest_step(checkpoints_dir: str) -> Optional[int]:
 def get_local_data(x):
   """Get local buffer for input data."""
   if isinstance(x, jax.Array) and not isinstance(x, jax.core.Tracer):
-    return np.asarray(x.addressable_data(0))
+    return x.addressable_data(0)
   else:
     return x
 
@@ -2101,7 +2101,7 @@ def _construct_save_args(
   """Create SaveArgs for Orbax saving."""
   if param_info.name.split('.')[0] != 'target':
     dtype = None
-  return ocp.SaveArgs(aggregate=param_info.mesh_axes is None, dtype=dtype)
+  return ocp.SaveArgs(aggregate=False, dtype=dtype)
 
 
 def _construct_restore_args(
@@ -2154,7 +2154,7 @@ def _construct_orbax_restoration_transforms(
   )
   assert state_subdir.is_dir(), state_subdir
   use_orbax_format = state_subdir.stem == _STATE_KEY  # Standard Orbax format
-  structure = state_handler._handler_impl._read_aggregate_file(  # pylint: disable=protected-access
+  structure, _ = state_handler._handler_impl._get_internal_metadata(  # pylint: disable=protected-access
       state_subdir
   )
   # Note: Ideally we would use Orbax's `transform_fn` to do this logic, but
@@ -2187,7 +2187,13 @@ def _construct_orbax_restoration_transforms(
     del structure_, param_infos_
 
     def _make_orbax_internal_metadata(value: Any, args: ocp.RestoreArgs):
-      if ocp.utils.leaf_is_placeholder(value):
+      if isinstance(
+          value, ocp.pytree_checkpoint_handler._InternalValueMetadata  # pylint: disable=protected-access
+      ):
+        if value.restore_type == 'scalar':
+          return ocp.pytree_checkpoint_handler._InternalValueMetadata(  # pylint: disable=protected-access
+              restore_type='scalar'
+          )
         if isinstance(args, ocp.ArrayRestoreArgs):
           restore_type = 'jax.Array'
         else:
@@ -2419,13 +2425,6 @@ class OrbaxCheckpointManagerInterface:
         functools.partial(_construct_save_args, dtype=self._save_dtype),
         param_infos,
     )
-    # If the params are to be aggregated, then get locally addressable data.
-    state_dict = jax.tree_util.tree_map(
-        lambda v, arg: get_local_data(v) if arg.aggregate else v,
-        state_dict,
-        save_args,
-    )
-
     # Separate savable items.
     args = {
         _STATE_KEY: ocp.args.PyTreeSave(
@@ -2577,6 +2576,22 @@ class OrbaxCheckpointManagerInterface:
 
     state_dict = jax.tree_util.tree_map(
         _maybe_make_sharded_array_helper, state_dict, param_infos
+    )
+
+    def convert_scalars(v, metadata):
+      if (
+          isinstance(
+              metadata, ocp.pytree_checkpoint_handler._InternalValueMetadata  # pylint: disable=protected-access
+          )
+          and metadata.restore_type == 'scalar'
+      ):
+        return np.int32(v)
+      return v
+
+    state_dict = jax.tree_util.tree_map(
+        convert_scalars,
+        state_dict,
+        state_dict_to_restore,
     )
 
     train_state = self._train_state.restore_state(state_dict)
