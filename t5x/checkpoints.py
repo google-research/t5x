@@ -227,7 +227,7 @@ def latest_step(checkpoints_dir: str) -> Optional[int]:
 def get_local_data(x):
   """Get local buffer for input data."""
   if isinstance(x, jax.Array) and not isinstance(x, jax.core.Tracer):
-    return np.asarray(x.addressable_data(0))
+    return x.addressable_data(0)
   else:
     return x
 
