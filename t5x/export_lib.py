@@ -1471,6 +1471,7 @@ def save(
   train_state_initializer = get_train_state_initializer(
       model, partitioner, task_feature_lengths, batch_size, trailing_shapes
   )
+  utils.import_module('pmmx.projects.maxo.export_task')
 
   output_features = _standardize_output_features(
       mixture_or_task_name, output_features
