@@ -227,7 +227,7 @@ def latest_step(checkpoints_dir: str) -> Optional[int]:
 def get_local_data(x):
   """Get local buffer for input data."""
   if isinstance(x, jax.Array) and not isinstance(x, jax.core.Tracer):
-    return np.asarray(x.addressable_data(0))
+    return x.addressable_data(0)
   else:
     return x
 
@@ -2101,7 +2101,7 @@ def _construct_save_args(
   """Create SaveArgs for Orbax saving."""
   if param_info.name.split('.')[0] != 'target':
     dtype = None
-  return ocp.SaveArgs(aggregate=param_info.mesh_axes is None, dtype=dtype)
+  return ocp.SaveArgs(aggregate=False, dtype=dtype)
 
 
 def _construct_restore_args(
@@ -2418,12 +2418,6 @@ class OrbaxCheckpointManagerInterface:
     save_args = jax.tree_util.tree_map(
         functools.partial(_construct_save_args, dtype=self._save_dtype),
         param_infos,
-    )
-    # If the params are to be aggregated, then get locally addressable data.
-    state_dict = jax.tree_util.tree_map(
-        lambda v, arg: get_local_data(v) if arg.aggregate else v,
-        state_dict,
-        save_args,
     )
 
     # Separate savable items.
