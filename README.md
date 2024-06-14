@@ -99,13 +99,18 @@ the TPU VM instance unless otherwise stated.
 
 3.  With Cloud TPU VMs, you ssh directly into the host machine of the TPU VM.
     You can install packages, run your code run, etc. in the host machine. Once
-    the TPU instance is created, ssh into it with
+    the TPU instance is created, You need to set proper firewall rules to be able to ssh into the VM.
+    ```
+    gcloud compute firewall-rules create default-allow-ssh --allow tcp:22
+    ```
+    
+    ssh into it with
 
     ```sh
     gcloud alpha compute tpus tpu-vm ssh ${TPU_NAME} --zone=${ZONE}
     ```
 
-    where `TPU_NAME` and `ZONE` are the name and the zone used in step 2.
+    where `TPU_NAME` and `ZONE` are the name and the zone used in step 2. 
 
 4.  Install T5X and the dependencies.
 
