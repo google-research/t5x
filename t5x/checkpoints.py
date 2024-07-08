@@ -2154,7 +2154,7 @@ def _construct_orbax_restoration_transforms(
   )
   assert state_subdir.is_dir(), state_subdir
   use_orbax_format = state_subdir.stem == _STATE_KEY  # Standard Orbax format
-  structure, _ = state_handler._get_internal_metadata(  # pylint: disable=protected-access
+  structure = state_handler._handler_impl._read_aggregate_file(  # pylint: disable=protected-access
       state_subdir
   )
   # Note: Ideally we would use Orbax's `transform_fn` to do this logic, but
@@ -2187,16 +2187,20 @@ def _construct_orbax_restoration_transforms(
     del structure_, param_infos_
 
     def _make_orbax_internal_metadata(value: Any, args: ocp.RestoreArgs):
-      if isinstance(value, ocp.metadata.tree.ValueMetadataEntry):
-        if value.value_type == 'scalar':
-          return ocp.metadata.tree.ValueMetadataEntry(value_type='scalar')
+      if ocp.utils.leaf_is_placeholder(value):
         if isinstance(args, ocp.ArrayRestoreArgs):
-          value_type = 'jax.Array'
+          restore_type = 'jax.Array'
         else:
-          value_type = 'np.ndarray'
-        return ocp.metadata.tree.ValueMetadataEntry(value_type=value_type)
+          restore_type = 'np.ndarray'
+        return ocp.pytree_checkpoint_handler._InternalValueMetadata(  # pylint: disable=protected-access
+            restore_type=restore_type
+        )
       else:
-        return value
+        return ocp.pytree_checkpoint_handler._InternalValueMetadata(  # pylint: disable=protected-access
+            restore_type=None,
+            skip_deserialize=True,
+            aggregate_value=value,
+        )
 
     directory_ = ocp.utils.get_save_directory(
         step, directory, name=_STATE_KEY, step_prefix=get_checkpoint_prefix()
@@ -2217,7 +2221,6 @@ def _construct_orbax_restoration_transforms(
         directory_,
         None,
         item_,
-        None,
         None,
         None,
     )
