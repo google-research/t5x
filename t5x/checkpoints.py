@@ -2323,8 +2323,7 @@ class OrbaxCheckpointManagerInterface:
     self._should_write_dataset_ckpt = (
         self._dataset_iterator and data_layout.is_first_host_in_replica_set
     )
-    # TODO(b/273803615) Enable OCDBT.
-    self._state_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=False)
+    self._state_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=True)
     item_handlers = {
         _STATE_KEY: self._state_handler,
         _DATASET_KEY: DatasetCheckpointHandler(
