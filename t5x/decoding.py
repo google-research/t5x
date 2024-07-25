@@ -941,7 +941,7 @@ def top_k_two_stage(x, k):
           x,
           ((0, 0), (0, num_samples_rounded_up - num_samples)),
           mode='constant',
-          constant_values=np.NINF,
+          constant_values=-np.inf,
       )
       num_samples = num_samples_rounded_up
     # Reshape input tensor to fill lanes.
