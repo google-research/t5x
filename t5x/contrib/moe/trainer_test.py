@@ -35,7 +35,7 @@ def fake_accum_grads(
   del model, num_microbatches, rng, data_partition_spec
   # Add `i` to each optimzer value.
   i = batch['i'].sum()
-  grad_accum = jax.tree_map(lambda x: i, optimizer)
+  grad_accum = jax.tree.map(lambda x: i, optimizer)
   # Add j to each metric.
   j = batch['j'].sum()
   metrics = {
@@ -56,7 +56,7 @@ def fake_apply_grads(
   del weight_metrics_computer
   del other_state_variables
   metrics['learning_rate'] = metrics_lib.Sum.from_model_output(learning_rate)
-  optimizer = jax.tree_map(lambda x, g: x + g, optimizer, grad_accum)
+  optimizer = jax.tree.map(lambda x, g: x + g, optimizer, grad_accum)
   return optimizer, metrics
 
 
@@ -74,7 +74,7 @@ class MoeTrainerTest(absltest.TestCase):
     self.init_train_state = train_state_lib.FlaxOptimTrainState(
         self.init_optimizer
     )
-    train_state_axes = jax.tree_map(lambda x: None, self.init_train_state)
+    train_state_axes = jax.tree.map(lambda x: None, self.init_train_state)
     model_dir = self.create_tempdir().full_path
 
     mapfn = lambda i: {'i': [tf.cast(i, tf.int32)], 'j': [tf.cast(1, tf.int32)]}
@@ -138,7 +138,7 @@ class MoeTrainerTest(absltest.TestCase):
     expected_train_state = train_state_lib.FlaxOptimTrainState(
         expected_optimizer
     )
-    jax.tree_map(
+    jax.tree.map(
         np.testing.assert_allclose, trainer.train_state, expected_train_state
     )
 

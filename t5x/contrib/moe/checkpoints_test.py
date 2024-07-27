@@ -78,7 +78,7 @@ def shard_train_state(
     mesh_axes: Optional[PartitionSpec],
 ) -> FlaxOptimTrainState:
   """Helper to construct a sharded train state from NumPy arrays."""
-  return jax.tree_map(
+  return jax.tree.map(
       functools.partial(
           create_sharded_array, global_mesh=global_mesh, mesh_axes=mesh_axes
       ),
@@ -374,7 +374,7 @@ class CheckpointsTest(parameterized.TestCase):
           restore_dtype=expected_restore_dtype,
       )
       if lazy_parameters:
-        actual_train_state = jax.tree_map(lambda x: x.get(), actual_train_state)
+        actual_train_state = jax.tree.map(lambda x: x.get(), actual_train_state)
 
       # Validate.
 
@@ -418,12 +418,12 @@ class CheckpointsTest(parameterized.TestCase):
           },
       }
 
-      jax.tree_map(
+      jax.tree.map(
           np.testing.assert_array_equal,
           actual_train_state.params,
           expected_per_host_params,
       )
-      jax.tree_map(
+      jax.tree.map(
           np.testing.assert_array_equal,
           actual_train_state.param_states,
           expected_per_host_param_states,
@@ -442,8 +442,8 @@ class CheckpointsTest(parameterized.TestCase):
 
       self.assertTrue(
           all(
-              jax.tree_leaves(
-                  jax.tree_map(
+              jax.tree.leaves(
+                  jax.tree.map(
                       lambda x: x.dtype == expected_restore_dtype,
                       actual_train_state.params,
                   )
@@ -519,7 +519,7 @@ class CheckpointsTest(parameterized.TestCase):
           i,
           host_count,
           num_partitions,
-          mesh_axes=jax.tree_map(lambda x: None, self.dense_model_mesh_axes)
+          mesh_axes=jax.tree.map(lambda x: None, self.dense_model_mesh_axes)
           if disable_partitioning
           else self.dense_model_mesh_axes,
       )

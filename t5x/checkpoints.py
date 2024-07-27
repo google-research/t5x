@@ -69,6 +69,9 @@ PyTreeDef = jax.tree_util.PyTreeDef
 LazyArray = checkpoint_importer.LazyArray
 LazyAwaitableArray = checkpoint_importer.LazyAwaitableArray
 LazyThreadPoolArray = checkpoint_importer.LazyThreadPoolArray
+Dataset = Union[
+    tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator, None
+]
 
 # Version 3 is used since 2021-06-10, compared to version 2 the only change is
 # that `bfloat16` arrays are written in Tensorstore using its native `bfloat16`
@@ -83,6 +86,11 @@ _TRAIN_DS_PREFIX = 'train_ds'
 _READ_CHECKPOINT_EVENT: str = '/jax/checkpoint/read/durations_sec'
 _WRITE_CHECKPOINT_EVENT: str = '/jax/checkpoint/write/durations_sec'
 _TS_CONTEXT = ts.Context({'file_io_concurrency': {'limit': 128}})
+
+
+@gin.configurable
+def get_checkpoint_prefix(prefix='checkpoint'):
+  return prefix
 
 
 def _choose_chunk_shape(
@@ -241,7 +249,7 @@ def get_checkpoint_dir(
       if step_format_fixed_length is not None
       else str(step)
   )
-  return os.path.join(checkpoints_dir, f'checkpoint_{step_str}')
+  return os.path.join(checkpoints_dir, f'{get_checkpoint_prefix()}_{step_str}')
 
 
 def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
@@ -249,9 +257,9 @@ def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
   if checkpoints_dir.endswith('/'):
     checkpoints_dir = checkpoints_dir[:-1]
   parent, checkpoint = os.path.split(checkpoints_dir)
-  if 'checkpoint_' not in checkpoint:
+  if get_checkpoint_prefix() not in checkpoint:
     raise ValueError('Found improperly formatted checkpoint directory.')
-  return parent, int(checkpoint.replace('checkpoint_', ''))
+  return parent, int(checkpoint.replace(f'{get_checkpoint_prefix()}_', ''))
 
 
 def _cast(target: PyTree, dtype: jnp.dtype):
@@ -692,7 +700,6 @@ class Checkpointer(object):
       if isinstance(arr, jax.Array):
         local_chunk_info = None
         metadata = array_serialization._get_metadata(arr)  # pylint: disable=protected-access
-        del metadata['dtype']
       else:
         local_chunk_info = self._partitioner.get_local_chunk_info(
             arr.shape, axes
@@ -804,7 +811,9 @@ class Checkpointer(object):
     # Share a timestamp across devices.
     timestamp = multihost_utils.broadcast_one_to_all(np.int32(time.time()))
 
-    final_dir = os.path.join(self.checkpoints_dir, f'checkpoint_{step}')
+    final_dir = os.path.join(
+        self.checkpoints_dir, f'{get_checkpoint_prefix()}_{step}'
+    )
     tmp_dir = final_dir + f'.tmp-{timestamp}'
 
     if gfile.exists(final_dir):
@@ -2012,62 +2021,70 @@ class _OrbaxParamInfo:
 class DatasetCheckpointHandler(ocp.CheckpointHandler):
   """A CheckpointHandler implementation that handles tf.data.Iterator."""
 
-  def __init__(self, checkpoint_filename: str):
+  def __init__(self, checkpoint_filename: str, should_write_dataset_ckpt: bool):
     self._checkpoint_filename = checkpoint_filename
+    self._should_write_dataset_ckpt = should_write_dataset_ckpt
 
   def save(
       self,
       directory: epath.Path,
-      item: Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator],
+      args: 'DatasetArgs',
   ):
     """Saves the given item.
 
     Args:
       directory: save location directory.
-      item: a tf.data.Iterator to be saved.
+      args: DatasetArgs (see below).
     """
-    if jax.process_count() > 1:
-      directory /= f'process_{jax.process_index()}-of-{jax.process_count()}'
-      directory.mkdir(parents=False, exist_ok=False)
-    if isinstance(item, tf.data.Iterator):
-      ckpt = tf.train.Checkpoint(ds=item)
-      ckpt.write(os.fspath(directory / self._checkpoint_filename))
-    elif isinstance(item, clu.data.dataset_iterator.DatasetIterator):
-      item.save(os.fspath(directory / self._checkpoint_filename))
-    multihost_utils.sync_global_devices('DatasetCheckpointHandler:save')
+    if self._should_write_dataset_ckpt:
+      item = args.item
+      if item is None:
+        raise ValueError('Must provide item to save.')
+      if jax.process_count() > 1:
+        directory /= f'process_{jax.process_index()}-of-{jax.process_count()}'
+        directory.mkdir(parents=False, exist_ok=False)
+      if isinstance(item, tf.data.Iterator):
+        ckpt = tf.train.Checkpoint(ds=item)
+        ckpt.write(os.fspath(directory / self._checkpoint_filename))
+      elif isinstance(item, clu.data.dataset_iterator.DatasetIterator):
+        item.save(os.fspath(directory / self._checkpoint_filename))
 
   def restore(
       self,
       directory: epath.Path,
-      item: Optional[
-          Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]
-      ] = None,
-  ) -> Union[tf.data.Iterator, clu.data.dataset_iterator.DatasetIterator]:
+      args: Optional['DatasetArgs'] = None,
+  ) -> Dataset:
     """Restores the given item.
 
     Args:
       directory: restore location directory.
-      item: a tf.data.Iterator to be restored. Not Optional
+      args: DatasetArgs (see below).
 
     Returns:
       a tf.data.Iterator restored from `directory`.
     """
-    if item is None:
-      raise ValueError('Must provide item to restore')
-    if jax.process_count() > 1:
-      directory /= f'process_{jax.process_index()}-of-{jax.process_count()}'
-    if isinstance(item, tf.data.Iterator):
-      ckpt = tf.train.Checkpoint(ds=item)
-      ckpt.read(
-          os.fspath(directory / self._checkpoint_filename)
-      ).assert_consumed()
-    elif isinstance(item, clu.data.dataset_iterator.DatasetIterator):
-      item.load(os.fspath(directory / self._checkpoint_filename))
-    return item
+    if self._should_write_dataset_ckpt:
+      if args is None:
+        raise ValueError('Must provide args to restore.')
+      item = args.item
+      if jax.process_count() > 1:
+        directory /= f'process_{jax.process_index()}-of-{jax.process_count()}'
+      if isinstance(item, tf.data.Iterator):
+        ckpt = tf.train.Checkpoint(ds=item)
+        ckpt.read(
+            os.fspath(directory / self._checkpoint_filename)
+        ).assert_consumed()
+      elif isinstance(item, clu.data.dataset_iterator.DatasetIterator):
+        item.load(os.fspath(directory / self._checkpoint_filename))
+      return item
 
-  def structure(self, directory: epath.Path) -> Any:
-    """Unimplemented. See parent class."""
-    pass
+
+@ocp.args.register_with_handler(
+    DatasetCheckpointHandler, for_save=True, for_restore=True
+)
+@dataclasses.dataclass
+class DatasetArgs(ocp.args.CheckpointArgs):
+  item: Optional[Dataset] = None
 
 
 def _step_from_train_state(train_state: train_state_lib.TrainState) -> int:
@@ -2084,7 +2101,7 @@ def _construct_save_args(
   """Create SaveArgs for Orbax saving."""
   if param_info.name.split('.')[0] != 'target':
     dtype = None
-  return ocp.SaveArgs(aggregate=param_info.mesh_axes is None, dtype=dtype)
+  return ocp.SaveArgs(aggregate=False, dtype=dtype)
 
 
 def _construct_restore_args(
@@ -2133,11 +2150,11 @@ def _construct_orbax_restoration_transforms(
   # After transforms, may be a subset of keys: only the ones we actually need
   # to restore.
   state_subdir = ocp.utils.get_save_directory(
-      step, directory, name=_STATE_KEY, step_prefix='checkpoint'
+      step, directory, name=_STATE_KEY, step_prefix=get_checkpoint_prefix()
   )
-  assert state_subdir.is_dir()
+  assert state_subdir.is_dir(), state_subdir
   use_orbax_format = state_subdir.stem == _STATE_KEY  # Standard Orbax format
-  structure = state_handler._read_aggregate_file(  # pylint: disable=protected-access
+  structure, _ = state_handler._get_internal_metadata(  # pylint: disable=protected-access
       state_subdir
   )
   # Note: Ideally we would use Orbax's `transform_fn` to do this logic, but
@@ -2170,23 +2187,19 @@ def _construct_orbax_restoration_transforms(
     del structure_, param_infos_
 
     def _make_orbax_internal_metadata(value: Any, args: ocp.RestoreArgs):
-      if ocp.utils.leaf_is_placeholder(value):
+      if isinstance(value, ocp.metadata.tree.ValueMetadataEntry):
+        if value.value_type == 'scalar':
+          return ocp.metadata.tree.ValueMetadataEntry(value_type='scalar')
         if isinstance(args, ocp.ArrayRestoreArgs):
-          restore_type = 'jax.Array'
+          value_type = 'jax.Array'
         else:
-          restore_type = 'np.ndarray'
-        return ocp.pytree_checkpoint_handler._InternalValueMetadata(  # pylint: disable=protected-access
-            restore_type=restore_type
-        )
+          value_type = 'np.ndarray'
+        return ocp.metadata.tree.ValueMetadataEntry(value_type=value_type)
       else:
-        return ocp.pytree_checkpoint_handler._InternalValueMetadata(  # pylint: disable=protected-access
-            restore_type=None,
-            skip_deserialize=True,
-            aggregate_value=value,
-        )
+        return value
 
     directory_ = ocp.utils.get_save_directory(
-        step, directory, name=_STATE_KEY, step_prefix='checkpoint'
+        step, directory, name=_STATE_KEY, step_prefix=get_checkpoint_prefix()
     )
 
     def _modify_orbax_param_info(info, value):
@@ -2204,6 +2217,7 @@ def _construct_orbax_restoration_transforms(
         directory_,
         None,
         item_,
+        None,
         None,
         None,
     )
@@ -2247,6 +2261,7 @@ def _restore_from_tf_checkpoint(
   return train_state.restore_state(state_dict)
 
 
+@gin.configurable
 class OrbaxCheckpointManagerInterface:
   """Wrapper for ocp.CheckpointManager."""
 
@@ -2308,14 +2323,14 @@ class OrbaxCheckpointManagerInterface:
     self._should_write_dataset_ckpt = (
         self._dataset_iterator and data_layout.is_first_host_in_replica_set
     )
-    # TODO(b/273803615) Enable OCDBT.
-    self._state_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=False)
-    checkpointers = {_STATE_KEY: ocp.Checkpointer(self._state_handler)}
-    if self._should_write_dataset_ckpt:
-      checkpointers[_DATASET_KEY] = ocp.Checkpointer(
-          DatasetCheckpointHandler(checkpoint_filename=dataset_ckpt_name)
-      )
-    self._checkpointers = checkpointers
+    self._state_handler = ocp.PyTreeCheckpointHandler(use_ocdbt=True)
+    item_handlers = {
+        _STATE_KEY: self._state_handler,
+        _DATASET_KEY: DatasetCheckpointHandler(
+            checkpoint_filename=dataset_ckpt_name,
+            should_write_dataset_ckpt=self._should_write_dataset_ckpt,
+        ),
+    }
 
     def best_fn(metrics):
       return metrics[metric_name_to_monitor]
@@ -2328,7 +2343,10 @@ class OrbaxCheckpointManagerInterface:
         best_mode=metric_mode,
         keep_checkpoints_without_metrics=keep_checkpoints_without_metrics,
         cleanup_tmp_directories=True,
-        step_prefix='checkpoint',
+        step_prefix=get_checkpoint_prefix(),
+        async_options=ocp.AsyncOptions(
+            timeout_secs=600,
+        ),
     )
     options.metric_name_to_monitor = metric_name_to_monitor
     self._options = options
@@ -2337,8 +2355,8 @@ class OrbaxCheckpointManagerInterface:
       directory = os.path.dirname(directory)
     self._manager = self._CheckpointManagerImpl(
         directory=directory,
-        checkpointers=self._checkpointers,
         options=self._options,
+        item_handlers=item_handlers,
     )
 
   @property
@@ -2353,6 +2371,12 @@ class OrbaxCheckpointManagerInterface:
 
   def should_save(self, step: int) -> bool:
     return self._manager.should_save(step)
+
+  def wait_until_finished(self):
+    return self._manager.wait_until_finished()
+
+  def close(self):
+    return self._manager.close()
 
   def save(
       self,
@@ -2391,25 +2415,17 @@ class OrbaxCheckpointManagerInterface:
         functools.partial(_construct_save_args, dtype=self._save_dtype),
         param_infos,
     )
-    # If the params are to be aggregated, then get locally addressable data.
-    state_dict = jax.tree_util.tree_map(
-        lambda v, arg: get_local_data(v) if arg.aggregate else v,
-        state_dict,
-        save_args,
-    )
 
     # Separate savable items.
-    items = {_STATE_KEY: state_dict}
-    if self._should_write_dataset_ckpt:
-      items[_DATASET_KEY] = self._dataset_iterator
-    save_kwargs = {
-        _STATE_KEY: {
-            'save_args': save_args,
-        },
+    args = {
+        _STATE_KEY: ocp.args.PyTreeSave(
+            state_dict,
+            save_args=save_args,
+        ),
+        _DATASET_KEY: DatasetArgs(self._dataset_iterator),
     }
-    saved = self._manager.save(
-        step, items, save_kwargs=save_kwargs, force=force
-    )
+    args = ocp.args.Composite(**args)
+    saved = self._manager.save(step, args=args, force=force)
 
     # Record JAX monitoring events.
     end_time = time.time()
@@ -2519,18 +2535,17 @@ class OrbaxCheckpointManagerInterface:
     )
 
     # Construct separate items to restore.
-    items = {_STATE_KEY: state_dict_to_restore}
-    if self._should_write_dataset_ckpt:
-      items[_DATASET_KEY] = self._dataset_iterator
-    restore_kwargs = {
-        _STATE_KEY: {
-            'restore_args': restore_args,
-            'legacy_transform_fn': transform_fn,
-        },
+    args = {
+        _STATE_KEY: ocp.args.PyTreeRestore(
+            state_dict_to_restore,
+            restore_args=restore_args,
+            legacy_transform_fn=transform_fn,
+        ),
     }
-    restored = self._manager.restore(
-        step, items, restore_kwargs=restore_kwargs, directory=directory
-    )
+    if self._should_write_dataset_ckpt:
+      args[_DATASET_KEY] = DatasetArgs(self._dataset_iterator)
+    args = ocp.args.Composite(**args)
+    restored = self._manager.restore(step, args=args, directory=directory)
     state_dict = restored[_STATE_KEY]
     if self._should_write_dataset_ckpt:
       self._dataset_iterator = restored[_DATASET_KEY]
@@ -2585,6 +2600,7 @@ class OrbaxCheckpointManagerInterface:
     )
 
 
+@gin.configurable
 class CheckpointManagerConstructor(typing_extensions.Protocol):
   """A function that returns a checkpoints.CheckpointManager.
 

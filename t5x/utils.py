@@ -391,6 +391,12 @@ class LegacyCheckpointManager(orbax.checkpoint.CheckpointManager):
         strict=strict,
     )
 
+  def wait_until_finished(self):
+    pass
+
+  def close(self):
+    pass
+
   def save(
       self,
       train_state: train_state_lib.TrainState,

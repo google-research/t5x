@@ -762,7 +762,7 @@ def cache_map(fn, cache, apply_to_index: bool = False):
   exclusion_list = ['cached_bias', 'position_embedder_index']
   keyvals = {k: v for k, v in keyvals.items() if k[-1] not in exclusion_list}
 
-  keyvals = jax.tree_map(fn, keyvals)
+  keyvals = jax.tree.map(fn, keyvals)
   flat_cache.update(keyvals)
   new_cache = traverse_util.unflatten_dict(flat_cache)
   if frozen:
@@ -901,7 +901,7 @@ def gather_beams(
     def gather_fn(x):
       return jnp.einsum('beo,bo...->be...', oh_beam_indices, x).astype(x.dtype)
 
-    return jax.tree_map(gather_fn, nested)
+    return jax.tree.map(gather_fn, nested)
   else:
     # True gather via fancy indexing.
     batch_indices = jnp.reshape(
@@ -912,7 +912,7 @@ def gather_beams(
     def gather_fn(x):
       return x[batch_indices, beam_indices]
 
-    return jax.tree_map(gather_fn, nested)
+    return jax.tree.map(gather_fn, nested)
 
 
 def top_k_two_stage(x, k):
@@ -941,7 +941,7 @@ def top_k_two_stage(x, k):
           x,
           ((0, 0), (0, num_samples_rounded_up - num_samples)),
           mode='constant',
-          constant_values=np.NINF,
+          constant_values=-np.inf,
       )
       num_samples = num_samples_rounded_up
     # Reshape input tensor to fill lanes.

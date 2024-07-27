@@ -30,6 +30,7 @@ import numpy as np
 import seqio
 import t5.data
 from t5x import adafactor
+from t5x import checkpoints
 from t5x import models
 from t5x import optimizers
 from t5x import partitioning
@@ -80,7 +81,7 @@ def coords_to_idx(coords: Tuple[int, ...], bounds: Tuple[int, ...]) -> int:
   # Calculate stride multipliers.
   strides = tuple(itertools.accumulate((1,) + bounds[:-1], operator.mul))
   # Sum linear index from strides and coords
-  return sum(jax.tree_map(lambda x, y: x * y, coords, strides))
+  return sum(jax.tree.map(lambda x, y: x * y, coords, strides))
 
 
 def make_devices(
@@ -94,11 +95,11 @@ def make_devices(
   """Create mock TPU devices."""
   devices = []
   device_bounds = (nx, ny, nz, nc)
-  hnx, hny, hnz, hnc = jax.tree_map(
+  hnx, hny, hnz, hnc = jax.tree.map(
       lambda a, b: a // b, device_bounds, host_layout
   )
   for x, y, z, c in itertools.product(*map(range, device_bounds)):
-    hx, hy, hz, hc = jax.tree_map(
+    hx, hy, hz, hc = jax.tree.map(
         lambda a, b: a // b, (x, y, z, c), host_layout
     )
     # TODO(levskaya, jekbradbury): verify this id/host ordering on TPU v4
@@ -165,7 +166,7 @@ def make_train_state(
       global_input_shape, step=step, dtype=dtype
   )
 
-  return jax.tree_map(
+  return jax.tree.map(
       functools.partial(
           create_sharded_array,
           global_shape=global_input_shape,
@@ -332,7 +333,7 @@ def assert_equal(a, b):
 def assert_same(tree_a, tree_b):
   """Asserts that both trees are the same."""
   tree_a, tree_b = jax.device_get((tree_a, tree_b))
-  jax.tree_map(assert_equal, tree_a, tree_b)
+  jax.tree.map(assert_equal, tree_a, tree_b)
 
 
 def get_train_state_from_variables(
@@ -384,7 +385,7 @@ class FakePartitioner(partitioning.BasePartitioner):
     return train_state
 
   def get_mesh_axes(self, train_state):
-    mesh_axes = jax.tree_map(lambda _: self._mesh_axes, train_state)
+    mesh_axes = jax.tree.map(lambda _: self._mesh_axes, train_state)
     return mesh_axes.replace_step(None)
 
   def _local_chunker(self):
@@ -409,3 +410,51 @@ class FakePartitioner(partitioning.BasePartitioner):
 
   def compile(self, partitioned_fn, *args):
     return None
+
+# -------------------- Checkpoint helpers --------------------
+
+
+def _train_state_shapes(train_state):
+  def _maybe_get(x):
+    if isinstance(x, LazyArray):
+      return x.get()
+    return x
+
+  train_state = jax.tree_util.tree_map(_maybe_get, train_state)
+  return jax.eval_shape(lambda: train_state)
+
+
+def save(checkpointer_or_manager, train_state, force=False):
+  saved = checkpointer_or_manager.save(train_state, force=force)
+  checkpointer_or_manager.wait_until_finished()
+  return saved
+
+
+def create_checkpointer_or_manager(
+    train_state_shapes,
+    partitioner,
+    directory,
+    dataset_iterator=None,
+    save_dtype=None,
+    restore_dtype=None,
+    best=False,
+    keep=None,
+    period=1,
+    checkpoint_steps=None,
+    keep_checkpoints_without_metrics=True,
+):
+  """Creates an Orbax CheckpointManagerInterface."""
+  metric_name_to_monitor = 'train/accuracy' if best else None
+  return checkpoints.OrbaxCheckpointManagerInterface(
+      directory,
+      train_state_shapes,
+      partitioner,
+      dataset_iterator=dataset_iterator,
+      save_dtype=save_dtype,
+      restore_dtype=restore_dtype,
+      keep=keep,
+      period=period,
+      checkpoint_steps=checkpoint_steps,
+      metric_name_to_monitor=metric_name_to_monitor,
+      keep_checkpoints_without_metrics=keep_checkpoints_without_metrics,
+  )

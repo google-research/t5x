@@ -1,6 +1,10 @@
 # T5X
 
 
+Note: T5X is community-supported since ~2023. For critical use cases, consider
+using libraries like TuneLab (go/tunelab) and Gemax Prod (go/gemax-prod). See
+https://github.com/google-research/text-to-text-transfer-transformer/blob/main/README.mdx-to-gemax-prod for useful tips on transitioning.
+
 ## Overview
 
 T5X is a modular, composable, research-friendly framework for high-performance,

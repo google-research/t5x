@@ -54,13 +54,13 @@ def check_eq(xs, ys, atol=None, rtol=None):
   ys_leaves, ys_tree = jax.tree_util.tree_flatten(ys)
   assert xs_tree == ys_tree, f"Tree shapes don't match. \n{xs_tree}\n{ys_tree}"
   assert jax.tree_util.tree_all(
-      jax.tree_map(
+      jax.tree.map(
           lambda x, y: np.array(x).shape == np.array(y).shape,
           xs_leaves,
           ys_leaves,
       )
   ), "Leaves' shapes don't match."
-  assert jax.tree_map(
+  assert jax.tree.map(
       functools.partial(_assert_numpy_allclose, atol=atol, rtol=rtol),
       xs_leaves,
       ys_leaves,
@@ -73,11 +73,11 @@ def flattened_state_dict(x):
 
 
 def tree_shape(x):
-  return jax.tree_map(jnp.shape, x)
+  return jax.tree.map(jnp.shape, x)
 
 
 def tree_equals(x, y):
-  return jax.tree_util.tree_all(jax.tree_map(operator.eq, x, y))
+  return jax.tree_util.tree_all(jax.tree.map(operator.eq, x, y))
 
 
 def get_fake_tokenized_dataset_no_pretokenized(*_, split='validation', **__):
@@ -160,7 +160,7 @@ class BasicTest(chex.TestCase):
 
   @classmethod
   def get_params_shapes(cls):
-    return jax.tree_map(jnp.shape, cls.get_params())
+    return jax.tree.map(jnp.shape, cls.get_params())
 
   @classmethod
   def get_param_logical_axes(cls):
@@ -249,7 +249,7 @@ class BasicTest(chex.TestCase):
     state_dict = optimizer.state_dict()
 
     chex.assert_trees_all_equal(
-        frozen_dict.FrozenDict(jax.tree_map(jnp.shape, state_dict)),
+        frozen_dict.FrozenDict(jax.tree.map(jnp.shape, state_dict)),
         frozen_dict.FrozenDict({
             'target': self.get_params_shapes(),
             'state': {
@@ -292,8 +292,8 @@ class OptaxWrapperTest(chex.TestCase):
 
     learning_rate_fn = utils.create_learning_rate_scheduler()
 
-    input_shapes = jax.tree_map(jnp.shape, first_batch)
-    input_types = jax.tree_map(lambda x: jnp.dtype(x.dtype), first_batch)
+    input_shapes = jax.tree.map(jnp.shape, first_batch)
+    input_types = jax.tree.map(lambda x: jnp.dtype(x.dtype), first_batch)
 
     partitioner = partitioning.PjitPartitioner(
         num_partitions=2,
