@@ -62,6 +62,9 @@ from tensorflow.io import gfile
 import tensorstore as ts
 import typing_extensions
 
+from tensorboard.backend.event_processing import directory_watcher
+from tensorboard.backend.event_processing import event_file_loader
+from tensorboard.backend.event_processing import io_wrapper
 
 PartitionSpec = partitioning.PartitionSpec
 PyTree = Any
