@@ -602,7 +602,7 @@ class EncoderDecoderModel(BaseTransformerModel):
 
     This method can be used with a customizable decoding function as long as it
     follows the signature of `DecodeFnCallable`. In order to provide a unified
-    interface for the decoding functions, we use a generic names. For example, a
+    interface for the decoding functions, we use generic names. For example, a
     beam size is a concept unique to beam search. Conceptually, it corresponds
     to the number of sequences returned by the beam search.  Therefore, the
     generic argument `num_decodes` corresponds to the beam size if
