@@ -20,12 +20,15 @@ removal process.
 
 import enum
 import os
-from typing import Any, BinaryIO, Optional
+from typing import Any, BinaryIO, Optional, Tuple, Union
 
 from absl import logging
 from etils import epath
+import jax
 import msgpack
+import orbax.checkpoint as ocp
 from tensorflow.io import gfile
+
 
 # PINNED file in the checkpoint directory indicates that the checkpoint should
 # not be removed during the automatic pruning of old checkpoints.
@@ -246,3 +249,59 @@ def detect_checkpoint_type(
           'written with T5X.',
       )
       return checkpoint_type
+
+
+def get_restore_parameters(
+    directory: epath.Path,
+    structure: PyTree,
+) -> Tuple[PyTree, PyTree]:
+  """Construct parameters needed for restoration.
+
+  ParamInfos are
+  constructed from the structure of the original checkpoint, and restore_args
+  are serialized to a tree structure compatible with param_infos and structure.
+
+  Args:
+    directory: Checkpoint directory.
+    structure: The structure of the original checkpoint.
+
+  Returns:
+    Tuple of param_infos, and restore_args.
+  """
+  flat_structure = ocp.tree.to_flat_dict(structure, keep_empty_nodes=True)
+  param_names = ocp.tree.get_param_names(structure)
+  flat_param_names = ocp.tree.to_flat_dict(param_names, keep_empty_nodes=True)
+  restore_args = jax.tree.map(lambda x: ocp.RestoreArgs(), structure)
+  flat_param_infos = {}
+  is_ocdbt_checkpoint = ocp.type_handlers.is_ocdbt_checkpoint(directory)
+  ts_context = ocp.type_handlers.get_ts_context()
+
+  def _get_param_info(
+      name: str,
+      meta_or_value: Union[Any, ocp.metadata.tree.ValueMetadataEntry],
+  ) -> Union[ocp.type_handlers.ParamInfo, Any]:
+    if ocp.type_handlers.is_supported_empty_aggregation_type(meta_or_value):
+      # Empty node, ParamInfo should not be returned.
+      return meta_or_value
+    elif not isinstance(meta_or_value, ocp.metadata.tree.ValueMetadataEntry):
+      # Aggregated value.
+      skip_deserialize = True
+    else:
+      skip_deserialize = meta_or_value.skip_deserialize
+    return ocp.type_handlers.ParamInfo(
+        name=name,
+        path=directory / name,
+        parent_dir=directory,
+        skip_deserialize=skip_deserialize,
+        is_ocdbt_checkpoint=is_ocdbt_checkpoint,
+        ts_context=ts_context,
+    )
+
+  for key, meta in flat_structure.items():
+    flat_param_infos[key] = _get_param_info(flat_param_names[key], meta)
+  restore_args = ocp.tree.serialize_tree(restore_args, keep_empty_nodes=True)
+
+  return (
+      ocp.tree.from_flat_dict(flat_param_infos, target=structure),
+      restore_args,
+  )
