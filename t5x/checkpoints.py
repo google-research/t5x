@@ -2165,18 +2165,9 @@ def _construct_orbax_restoration_transforms(
         )
       return info
 
-    item_ = jax.tree_util.tree_map(
-        _make_orbax_internal_metadata, item_, restore_args
-    )
-    param_infos_, _ = ocp.pytree_checkpoint_handler._get_restore_parameters(  # pylint: disable=protected-access
-        directory_,
-        None,
-        item_,
-        None,
-        None,
-        None,
-    )
-    param_infos_ = jax.tree_util.tree_map(
+    item_ = jax.tree.map(_make_orbax_internal_metadata, item_, restore_args)
+    param_infos_, _ = checkpoint_utils.get_restore_parameters(directory_, item_)
+    param_infos_ = jax.tree.map(
         _modify_orbax_param_info, param_infos_, state_dict_to_restore
     )
     return item_, param_infos_
