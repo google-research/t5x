@@ -2056,7 +2056,7 @@ def _construct_save_args(
   """Create SaveArgs for Orbax saving."""
   if param_info.name.split('.')[0] != 'target':
     dtype = None
-  return ocp.SaveArgs(aggregate=False, dtype=dtype)
+  return ocp.SaveArgs(dtype=dtype)
 
 
 def _construct_restore_args(
