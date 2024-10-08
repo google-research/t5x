@@ -119,6 +119,7 @@ def standard_logical_factor_rules():
       'kv_fused': FactorDim.COLUMN,
       'layer_norm_scale': FactorDim.NONE,
       'mlp_activations': FactorDim.COLUMN,
+      'unsharded': FactorDim.ROW,
   })
 
 
