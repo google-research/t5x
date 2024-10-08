@@ -145,7 +145,7 @@ utils.SaveCheckpointConfig:
   dtype = 'float32'
   keep = None  # keep all checkpoints
   save_dataset = False  # don't checkpoint dataset state
-
+  restore_dataset = True
 trainer.Trainer:
   num_microbatches = None
   learning_rate_fn = @utils.create_learning_rate_scheduler()
