@@ -117,10 +117,13 @@ def train(
     ],
     inference_evaluator_cls: utils.EvaluatorConstructor = seqio.Evaluator,
     get_dataset_fn: utils.GetDatasetCallable = utils.get_dataset,
+    prepare_train_iter_fn: Optional[Callable] = utils.prepare_train_iter,
     concurrent_metrics: bool = True,
     actions: Optional[Mapping[str, Sequence[trainer_lib.BaseAction]]] = None,
     train_eval_get_dataset_fn: utils.GetEvalDatasetCallable = utils.get_training_eval_datasets,
+    prepare_eval_iter_fn: Optional[Callable] = None,
     run_eval_before_training: bool = False,
+    run_dali_eval: bool = False,
     train_state_initializer_cls: Type[
         utils.TrainStateInitializer
     ] = utils.TrainStateInitializer,
@@ -172,6 +175,8 @@ def train(
       evaluation, potentially with bound configuration args.
     get_dataset_fn: The callable use to get the train and train-eval datasets
       based on the DatasetConfig and shard information.
+    prepare_train_iter_fn: An optional function that prepares the training input
+      iterator. Defaults to `utils.prepare_train_iter`.
     concurrent_metrics: If True, allow metrics computation and logging to
       overlap with training. Will likely result in additional TPU memory usage.
     actions: A mapping of actions that runs after train, eval or infer_eval, to
@@ -182,8 +187,11 @@ def train(
     train_eval_get_dataset_fn: Optional callable use to get the train-eval
       datasets based on the DatasetConfig and shard information. If missing, it
       defaults to `utils.get_training_eval_datasets`.
+    prepare_eval_iter_fn: An optional function that prepares the eval input
+      iterators.
     run_eval_before_training: If True, calculate training eval and inference
       eval metrics before training begins.
+    run_dali_eval: Whether to run interleaved evaluation on a DALI dataset.
     train_state_initializer_cls: t5x.utils.TrainStateInitializer class for
       initializing partitioned TrainState from checkpoints or scratch.
     use_orbax: if True, uses Orbax for checkpointing. Experimental feature.
@@ -270,12 +278,15 @@ def train(
   train_iter = get_dataset_fn(
       train_dataset_cfg, ds_shard_id, num_ds_shards, model.FEATURE_CONVERTER_CLS
   )
-  train_iter = utils.prepare_train_iter(
-      train_iter,
-      checkpoint_cfg=checkpoint_cfg,
-      partitioner=partitioner,
-      data_layout=data_layout,
-  )
+
+  if prepare_train_iter_fn:
+    train_iter = prepare_train_iter_fn(
+        train_iter,
+        checkpoint_cfg=checkpoint_cfg,
+        partitioner=partitioner,
+        data_layout=data_layout,
+    )
+
   input_shapes = jax.tree.map(
       lambda x: (data_layout.batch_size, *x.shape[1:]),
       train_iter.element_spec,
@@ -291,6 +302,12 @@ def train(
         eval_steps,
         model.FEATURE_CONVERTER_CLS,
     )  # type: Mapping[str, tf.data.Dataset]
+    if prepare_eval_iter_fn:
+      for k in train_eval_datasets:
+        train_eval_datasets[k] = prepare_eval_iter_fn(train_eval_datasets[k],
+                                                checkpoint_cfg=checkpoint_cfg,
+                                                partitioner=partitioner,
+                                                data_layout=data_layout)
     if not train_eval_datasets:
       logging.warning(
           'No train_eval datasets loaded from config `train_eval_dataset_cfg`: '
@@ -503,10 +520,17 @@ def train(
   def _run_training_eval(first_run: bool = False):
     if first_run:
       logging.info('Compiling training eval loop.')
-      trainer.compile_eval({  # pytype: disable=wrong-arg-types  # jax-ndarray
-          task: utils.get_zeros_batch_like_dataset(ds)
-          for task, ds in train_eval_datasets.items()
-      })
+      if run_dali_eval:
+        trainer.compile_eval_dali({
+            task: utils.get_zeros_batch_like_dataset(ds)
+            for task, ds in train_eval_datasets.items()},
+            jnp.ones((train_eval_dataset_cfg.batch_size,)).astype(jnp.bool_)
+        )
+      else:
+        trainer.compile_eval({  # pytype: disable=wrong-arg-types  # jax-ndarray
+            task: utils.get_zeros_batch_like_dataset(ds)
+            for task, ds in train_eval_datasets.items()
+        })
     logging.info('Computing training evaluation metrics.')
     eval_batch_iters = {}
     for task, ds in train_eval_datasets.items():
@@ -515,13 +539,20 @@ def train(
       else:
         eval_batch_iters[task] = ds
 
-    eval_summaries = trainer.eval(eval_batch_iters)
-    trainer.stop_training = run_actions(
-        trainer_lib.ActionMode.TRAIN_EVAL,  # pytype: disable=wrong-arg-types  # jax-ndarray
-        actions,
-        trainer.train_state,
-        eval_summaries,
-    )
+    if run_dali_eval:
+      eval_summaries = trainer.eval_dali(eval_batch_iters,
+                                         train_eval_dataset_cfg.batch_size,
+                                         ds_shard_id,
+                                         num_ds_shards,
+                                         eval_steps)
+    else:
+      eval_summaries = trainer.eval(eval_batch_iters)
+      trainer.stop_training = run_actions(
+          trainer_lib.ActionMode.TRAIN_EVAL,  # pytype: disable=wrong-arg-types  # jax-ndarray
+          actions,
+          trainer.train_state,
+          eval_summaries,
+      )
 
   def _run_inference_eval():
     """Run prediction based inference eval."""
@@ -550,6 +581,19 @@ def train(
     if train_eval_datasets:
       logging.info('Running training eval before training.')
       _run_training_eval(first_run=True)
+      if run_dali_eval:
+        ## reset eval dataset
+        train_eval_datasets = train_eval_get_dataset_fn(
+          train_eval_dataset_cfg, ds_shard_id, num_ds_shards, eval_steps,
+          model.FEATURE_CONVERTER_CLS)
+        if prepare_eval_iter_fn:
+          for k in train_eval_datasets:
+            train_eval_datasets[k] = prepare_eval_iter_fn(train_eval_datasets[k],
+                                                    checkpoint_cfg=checkpoint_cfg,
+                                                    partitioner=partitioner,
+                                                    data_layout=data_layout)
+
+
     if evaluator is not None:
       logging.info('Running inference eval before training.')
       _run_inference_eval()
@@ -796,6 +840,18 @@ def train(
       # Maybe less if final step < period.
       first_run = step_offset // eval_period <= 1
       _run_training_eval(first_run and not run_eval_before_training)
+      if run_dali_eval:
+        ## reset eval dataset
+        train_eval_datasets = train_eval_get_dataset_fn(
+          train_eval_dataset_cfg, ds_shard_id, num_ds_shards, eval_steps,
+          model.FEATURE_CONVERTER_CLS)
+        if prepare_eval_iter_fn:
+          for k in train_eval_datasets:
+            train_eval_datasets[k] = prepare_eval_iter_fn(train_eval_datasets[k],
+                                                    checkpoint_cfg=checkpoint_cfg,
+                                                    partitioner=partitioner,
+                                                    data_layout=data_layout)
+
 
     # Inference Evaluation (i.e., with decoding or scoring).
     if is_eval_epoch and evaluator is not None:
