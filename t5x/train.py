@@ -46,6 +46,8 @@ from t5x import partitioning
 from t5x import train_state as train_state_lib
 from t5x import trainer as trainer_lib
 from t5x import utils
+from t5x.te_helper import TransformerEngineConfig, TransformerEngineHelper
+import atexit
 import tensorflow as tf
 # pylint:enable=g-import-not-at-top
 
@@ -109,6 +111,7 @@ def train(
     eval_steps: int,
     eval_period: int,
     relative_steps: Optional[int] = None,
+    te_config_cls: Type[TransformerEngineConfig] = TransformerEngineConfig,
     stats_period: Optional[int] = None,
     random_seed: Optional[int],
     use_hardware_rng: bool = False,
@@ -129,6 +132,7 @@ def train(
         Callable[[utils.DatasetConfig, models.BaseTransformerModel], None]
     ] = utils.verify_matching_vocabs,
     gc_period: int = 0,
+    reset_state_after: Optional[int] = None,
 ) -> Tuple[int, train_state_lib.TrainState]:
   """Train function.
 
@@ -196,6 +200,12 @@ def train(
       for training_eval (e.g., {'task_average/accuracy': ['task_a', 'task_b']}).
     infer_eval_average_metrics: Averages the metric over the list of tasks for
       infer_eval (e.g., {'task_average/accuracy': ['task_a', 'task_b']}). # END
+    reset_state_after: Optional number of steps after which to reset the
+      optimizer states and fp8 metadata. In finetuning, you may not want to
+      keep fp8 metas due to the distribution change messing up `amax`
+      statistics. Ex: to reset to finetuning, set this to the number of
+      pretraining steps. Only triggered if the train step on restore equals
+      reset_state_after. Otherwise ignored
 
   Returns:
     The tuple of (last_step, last_train_state).
@@ -205,6 +215,18 @@ def train(
 
   if use_orbax:
     logging.info('Checkpointing with Orbax enabled.')
+
+  te_config = te_config_cls()
+  logging.info(te_config)
+
+  # Note(terry): The proper usage of the TE API is to use fp8_autocast as a
+  # contextmanager using the "with" statement. The reason it is done this
+  # way here is to avoid indenting the code. Please refer to TE documentation
+  # for more details.
+  te_ctx_mgr = TransformerEngineHelper.fp8_autocast(te_config)
+  # Register a hook with atexit in case exception raised
+  atexit.register(lambda: te_ctx_mgr.__exit__(None, None, None))
+  te_ctx_mgr.__enter__()
 
   # Each "epoch" of the training loop should be the min of the eval period,
   # checkpoint period or the full training.
@@ -245,6 +267,8 @@ def train(
   # Initialize datasets
   # ---------------------------------------------------------------------------
 
+  TransformerEngineHelper.check_dataset_cfg(train_dataset_cfg)
+
   if train_dataset_cfg.seed and not (
       checkpoint_cfg.save and checkpoint_cfg.save.save_dataset
   ):
@@ -283,6 +307,7 @@ def train(
   input_types = jax.tree.map(lambda x: x.dtype, train_iter.element_spec)
 
   if train_eval_dataset_cfg:
+    TransformerEngineHelper.check_dataset_cfg(train_eval_dataset_cfg)
     _verify_matching_vocabs(train_eval_dataset_cfg)
     train_eval_datasets = train_eval_get_dataset_fn(
         train_eval_dataset_cfg,
@@ -382,6 +407,37 @@ def train(
         )
     )
 
+  if train_state is not None:
+    # Only triggered if the train step is equal to reset_state_after right after
+    # restore
+    host_step = int(utils.get_local_data(train_state.step))  # pytype: disable=attribute-error
+    if reset_state_after and reset_state_after == host_step:
+      logging.info('Resetting optimizer and fp8 states. Preserving only optimizer targets')
+      assert use_orbax == False, "resetting the states in the train loop is not\
+                                  supported with orbax. If you need to do this,\
+                                  please delete the optimizer state and fp8 metas\
+                                  from the checkpoint folder directly "
+      old_step = train_state.step
+      train_state_initializer = train_state_initializer_cls(
+          optimizer_def=model.optimizer_def,
+          init_fn=model.get_initial_variables,
+          input_shapes=input_shapes,
+          input_types=input_types,
+          partitioner=partitioner)
+      from_scratch_state = train_state_initializer.from_scratch(init_rng)
+      _optimizer = from_scratch_state._optimizer.replace(
+          target=train_state.params)
+      train_state = from_scratch_state.replace(_optimizer=_optimizer)
+      train_state = train_state.replace_step(old_step)
+
+      checkpoint_manager = utils.LegacyCheckpointManager(
+          save_cfg=checkpoint_cfg.save,
+          restore_cfg=valid_restore_cfg,
+          train_state_shape=train_state_initializer.global_train_state_shape,
+          partitioner=partitioner,
+          ds_iter=train_iter,
+          model_dir=model_dir)
+
   # Start warming up the input pipeline in the background. This must happen
   # after input pipeline checkpoints were restored.
   first_batch_ready = train_iter.peek_async()
@@ -455,6 +511,7 @@ def train(
   # Init evaluator to set up cached datasets
   evaluator = None
   if infer_eval_dataset_cfg is not None:
+    TransformerEngineHelper.check_dataset_cfg(infer_eval_dataset_cfg)
     evaluator = eval_lib.InferenceEvaluator(
         infer_eval_dataset_cfg=infer_eval_dataset_cfg,
         inference_evaluator_cls=inference_evaluator_cls,
@@ -811,6 +868,7 @@ def train(
     # the same interpreter.
     gc.enable()
 
+  te_ctx_mgr.__exit__(None, None, None)
   return host_step, trainer.train_state
 
 
