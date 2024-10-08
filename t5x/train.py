@@ -327,6 +327,11 @@ def train(
               checkpoint_cfg.save and checkpoint_cfg.save.save_dataset
           ),
           state_transformation_fns=state_transforms_for_restore,
+          strict=(checkpoint_cfg.restore.strict
+                  if checkpoint_cfg.restore is not None else True
+          ),
+          fallback_to_scratch=(checkpoint_cfg.restore.fallback_to_scratch
+                               if checkpoint_cfg.restore is not None else False)
       )
   ]
   # 2. From a checkpoint specified by `checkpoint_cfg.restore.path`, if set.
