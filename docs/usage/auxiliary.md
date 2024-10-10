@@ -137,7 +137,7 @@ thus create two new gin files: `base_c4_pretrain.gin` for the train job and
 ### Step 4: Launch your experiment.
 
 Our script is quite similar to the first example, with the same flags as before
-but with the appropiate changes. The main distinction is that we must change the
+but with the appropriate changes. The main distinction is that we must change the
 flag `final_auxiliary_job_steps` to be non-zero to start finetuning. We will
 settle for a modest 200 steps for the sake of demonstration (and evaluate every
 100 steps), but users should use larger steps in realistic scenarios. We also
