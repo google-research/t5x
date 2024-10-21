@@ -26,8 +26,6 @@ import re
 from typing import Callable, Collection, Mapping, Optional, Sequence, Set, Tuple, Type
 
 # pylint:disable=g-import-not-at-top
-# TODO(adarob): Re-enable once users are notified and tests are updated.
-os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
 import jax

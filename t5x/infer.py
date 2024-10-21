@@ -30,10 +30,6 @@ import shutil
 import time
 from typing import Any, Callable, Iterator, List, Mapping, Optional, Sequence, Tuple, Type
 
-# TODO(adarob): Re-enable once users are notified and tests are updated.
-# Must be set before flax imports.
-# pylint:disable=g-import-not-at-top
-os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
 import jax

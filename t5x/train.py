@@ -29,8 +29,6 @@ from typing import Callable, Dict, Mapping, Optional, Sequence, Tuple, Type
 # Set Linen to add profiling information when constructing Modules.
 # Must be set before flax imports.
 os.environ['FLAX_PROFILE'] = 'true'
-# TODO(adarob): Re-enable once users are notified and tests are updated.
-os.environ['FLAX_LAZY_RNG'] = 'no'
 from absl import logging
 from clu import metric_writers
 import jax
