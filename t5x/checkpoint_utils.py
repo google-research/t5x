@@ -280,8 +280,12 @@ def get_restore_parameters(
   restore_args = jax.tree.map(lambda x: ocp.RestoreArgs(), structure)
   flat_param_infos = {}
   is_ocdbt_checkpoint = ocp.type_handlers.is_ocdbt_checkpoint(directory)
-  ts_context = ocp.type_handlers.get_ts_context()
-
+  if hasattr(ocp.serialization, 'ts_utils'):
+    ts_context = ocp.serialization.ts_utils.get_ts_context(
+        use_ocdbt=is_ocdbt_checkpoint
+    )
+  else:
+    ts_context = ocp.type_handlers.get_ts_context()
   def _get_param_info(
       name: str,
       meta_or_value: Union[Any, ocp.metadata.tree.ValueMetadataEntry],
