@@ -51,6 +51,7 @@ from jax.experimental.array_serialization import serialization as array_serializ
 import jax.numpy as jnp
 import numpy as np
 import orbax.checkpoint as ocp
+from orbax.checkpoint._src.metadata import tree as ocp_tree_metadata  # pylint: disable=protected-access
 from t5x import checkpoint_importer
 from t5x import checkpoint_utils
 from t5x import checkpoints_utils
@@ -2142,14 +2143,14 @@ def _construct_orbax_restoration_transforms(
     del structure_, param_infos_
 
     def _make_orbax_internal_metadata(value: Any, args: ocp.RestoreArgs):
-      if isinstance(value, ocp.metadata.tree.ValueMetadataEntry):
+      if isinstance(value, ocp_tree_metadata.ValueMetadataEntry):
         if value.value_type == 'scalar':
-          return ocp.metadata.tree.ValueMetadataEntry(value_type='scalar')
+          return ocp_tree_metadata.ValueMetadataEntry(value_type='scalar')
         if isinstance(args, ocp.ArrayRestoreArgs):
           value_type = 'jax.Array'
         else:
           value_type = 'np.ndarray'
-        return ocp.metadata.tree.ValueMetadataEntry(value_type=value_type)
+        return ocp_tree_metadata.ValueMetadataEntry(value_type=value_type)
       else:
         return value
 

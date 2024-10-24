@@ -27,6 +27,7 @@ from etils import epath
 import jax
 import msgpack
 import orbax.checkpoint as ocp
+from orbax.checkpoint._src.metadata import tree as ocp_tree_metadata  # pylint: disable=protected-access
 from tensorflow.io import gfile
 
 
@@ -284,12 +285,12 @@ def get_restore_parameters(
 
   def _get_param_info(
       name: str,
-      meta_or_value: Union[Any, ocp.metadata.tree.ValueMetadataEntry],
+      meta_or_value: Union[Any, ocp_tree_metadata.ValueMetadataEntry],
   ) -> Union[ocp.type_handlers.ParamInfo, Any]:
     if _is_supported_empty_value(meta_or_value):
       # Empty node, ParamInfo should not be returned.
       return meta_or_value
-    elif not isinstance(meta_or_value, ocp.metadata.tree.ValueMetadataEntry):
+    elif not isinstance(meta_or_value, ocp_tree_metadata.ValueMetadataEntry):
       # Aggregated value.
       skip_deserialize = True
     else:
