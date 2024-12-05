@@ -1,0 +1,37 @@
+# Trains a base-sized noncausal decoder-only model with a prefix LM objective on C4.
+
+from __gin__ import dynamic_registration
+# Register necessary SeqIO Tasks/Mixtures.
+import t5.data.mixtures
+import t5x.models
+import __main__ as train_script
+
+
+# Replace 'base' with a different size model (e.g., 'xxl'), if desired.
+include 't5x/examples/decoder_only/base.gin'
+include 't5x/configs/runs/pretrain.gin'
+
+TRAIN_STEPS = 100_000
+DROPOUT_RATE = 0.0
+BATCH_SIZE = 2048
+
+# This is a pre-packed task with no padding.
+MIXTURE_OR_TASK_NAME = "c4_prefix_lm_objective_decoder_architecture"
+
+# Task features include packing information.
+TASK_FEATURE_LENGTHS =     {
+     'decoder_causal_attention': 626,
+     'decoder_input_tokens': 626,
+     'decoder_segment_ids': 626,
+     'decoder_target_tokens': 626,
+     'targets': 626
+}
+
+models.DecoderOnlyModel:
+  # Enable bidirectional attention for noncausal model.
+  inputs_bidirectional_attention = True
+  # Use a pass-through converter since we have pre-packed examples.
+  feature_converter_cls = @seqio.PassThroughFeatureConverter
+
+train_script.train:
+  eval_period = 2000
