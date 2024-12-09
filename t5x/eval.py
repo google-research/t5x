@@ -71,6 +71,7 @@ class InferenceEvaluator:
       model: models.BaseModel,
       partitioner: partitioning.BasePartitioner,
       log_dir: Optional[str] = None,
+      num_examples: Optional[str] = None,
       verify_matching_vocabs_fn: Optional[
           Callable[[utils.DatasetConfig, models.BaseTransformerModel], None]
       ] = utils.verify_matching_vocabs,
@@ -112,6 +113,7 @@ class InferenceEvaluator:
         seed=infer_eval_dataset_cfg.seed,
         sequence_length=infer_eval_dataset_cfg.task_feature_lengths,
         use_memory_cache=infer_eval_dataset_cfg.use_memory_cache,
+        num_examples=num_examples,
         **kwargs,
     )
     # Lazily initialized upon the first `evaluate` call.
