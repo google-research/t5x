@@ -425,5 +425,5 @@ partitioning.PjitPartitioner.logical_axis_rules = [
 [minimal]: https://github.com/google-research/t5x/blob/main/t5x/examples/
 [optimus]: https://arxiv.org/abs/2104.05343
 [param_with_axes]: https://github.com/google-research/t5x/blob/main/t5x/examples/t5/layers.py;rcl=427300354;l=462
-[pjit]: https://github.com/google/jax/tree/main/jax/experimental/pjit.py
+[pjit]: https://github.com/jax-ml/jax/tree/main/jax/experimental/pjit.py
 [standard-rules]: https://github.com/google-research/t5x/blob/main/t5x/partitioning.py?l=438&rcl=421294093
