@@ -1724,7 +1724,7 @@ def get_infer_fn(
             index,
             train_state.flax_mutables,
         )
-        logging.info('Inference of batch %s done.', index)
+        # logging.info('Inference of batch %s done.', index)
 
 
       def _copy_to_host_async(x):
