@@ -382,14 +382,14 @@ class Adafactor(OptimizerDef):
       factor_dims = None
 
     if fallback_to_heuristics and param_ndim <= 2 and not batched_dims:
-      logging.warning(
-          'Since rank of parameter %s %d is less than or equal to 2, the '
-          'factorization method falls back to heuristics and the provided '
-          'factor rule %s is ignored.',
-          path,
-          param_ndim,
-          rule,
-      )
+      # logging.warning(
+      #     'Since rank of parameter %s %d is less than or equal to 2, the '
+      #     'factorization method falls back to heuristics and the provided '
+      #     'factor rule %s is ignored.',
+      #     path,
+      #     param_ndim,
+      #     rule,
+      # )
       return tuple(np.arange(param_ndim)), HEURISTIC_RULE
 
     return averaging_dims, factor_dims
