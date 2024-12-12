@@ -1405,7 +1405,7 @@ def log_model_info(
   )
 
   def _log_info_and_write_to_file(writer, format_str, *args):
-    logging.info(format_str, *args)
+    # logging.info(format_str, *args)
     if writer is not None:
       writer.write(format_str % args + '\n')
 
