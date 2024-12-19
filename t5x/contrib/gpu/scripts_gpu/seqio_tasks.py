@@ -34,11 +34,20 @@ TaskRegistry = seqio.TaskRegistry
 
 DEFAULT_OUTPUT_FEATURES = {
     "inputs":
-        seqio.Feature(vocabulary=t5.data.get_default_vocabulary(),
-                      add_eos=True,
-                      required=False),
+        seqio.Feature(
+            vocabulary=seqio.SentencePieceVocabulary(
+                sentencepiece_model_file="gs://t5-data/vocabs/cc_all.32000.100extra/sentencepiece.model",
+            ),
+            add_eos=True,
+            required=False
+        ),
     "targets":
-        seqio.Feature(vocabulary=t5.data.get_default_vocabulary(), add_eos=True)
+        seqio.Feature(
+            vocabulary=seqio.SentencePieceVocabulary(
+                sentencepiece_model_file="gs://t5-data/vocabs/cc_all.32000.100extra/sentencepiece.model",
+            ),
+            add_eos=True
+        )
 }
 
 # ================================== The Pile ====================================
