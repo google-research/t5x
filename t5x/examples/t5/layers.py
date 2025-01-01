@@ -487,74 +487,74 @@ class MlpBlock(nn.Module):
     return output
 
 
-class Embed(nn.Module):
-  """A parameterized function from integers [0, n) to d-dimensional vectors.
+# class Embed(nn.Module):
+#   """A parameterized function from integers [0, n) to d-dimensional vectors.
 
-  Attributes:
-    num_embeddings: number of embeddings.
-    features: number of feature dimensions for each embedding.
-    dtype: the dtype of the embedding vectors (default: float32).
-    embedding_init: embedding initializer.
-    one_hot: performs the gather with a one-hot contraction rather than a true
-      gather. This is currently needed for SPMD partitioning.
-  """
+#   Attributes:
+#     num_embeddings: number of embeddings.
+#     features: number of feature dimensions for each embedding.
+#     dtype: the dtype of the embedding vectors (default: float32).
+#     embedding_init: embedding initializer.
+#     one_hot: performs the gather with a one-hot contraction rather than a true
+#       gather. This is currently needed for SPMD partitioning.
+#   """
 
-  num_embeddings: int
-  features: int
-  cast_input_dtype: Optional[DType] = None
-  dtype: DType = jnp.float32
-  attend_dtype: Optional[DType] = None
-  embedding_init: Initializer = default_embed_init
-  one_hot: bool = False
-  embedding: Array = dataclasses.field(init=False)
+#   num_embeddings: int
+#   features: int
+#   cast_input_dtype: Optional[DType] = None
+#   dtype: DType = jnp.float32
+#   attend_dtype: Optional[DType] = None
+#   embedding_init: Initializer = default_embed_init
+#   one_hot: bool = False
+#   embedding: Array = dataclasses.field(init=False)
 
-  def setup(self):
-    self.embedding = param_with_axes(
-        'embedding',
-        self.embedding_init,
-        (self.num_embeddings, self.features),
-        jnp.float32,
-        axes=('vocab', 'embed'),
-    )
+#   def setup(self):
+#     self.embedding = param_with_axes(
+#         'embedding',
+#         self.embedding_init,
+#         (self.num_embeddings, self.features),
+#         jnp.float32,
+#         axes=('vocab', 'embed'),
+#     )
 
-  def __call__(self, inputs: Array) -> Array:
-    """Embeds the inputs along the last dimension.
+#   def __call__(self, inputs: Array) -> Array:
+#     """Embeds the inputs along the last dimension.
 
-    Args:
-      inputs: input data, all dimensions are considered batch dimensions.
+#     Args:
+#       inputs: input data, all dimensions are considered batch dimensions.
 
-    Returns:
-      Output which is embedded input data.  The output shape follows the input,
-      with an additional `features` dimension appended.
-    """
-    if self.cast_input_dtype:
-      inputs = inputs.astype(self.cast_input_dtype)
-    if not jnp.issubdtype(inputs.dtype, jnp.integer):
-      raise ValueError('Input type must be an integer or unsigned integer.')
-    if self.one_hot:
-      iota = lax.iota(jnp.int32, self.num_embeddings)
-      one_hot = jnp.array(inputs[..., jnp.newaxis] == iota, dtype=self.dtype)
-      output = jnp.dot(one_hot, jnp.asarray(self.embedding, self.dtype))
-    else:
-      output = jnp.asarray(self.embedding, self.dtype)[inputs]
-      output = with_sharding_constraint(output, ('batch', 'length', 'embed'))
-    return output
+#     Returns:
+#       Output which is embedded input data.  The output shape follows the input,
+#       with an additional `features` dimension appended.
+#     """
+#     if self.cast_input_dtype:
+#       inputs = inputs.astype(self.cast_input_dtype)
+#     if not jnp.issubdtype(inputs.dtype, jnp.integer):
+#       raise ValueError('Input type must be an integer or unsigned integer.')
+#     if self.one_hot:
+#       iota = lax.iota(jnp.int32, self.num_embeddings)
+#       one_hot = jnp.array(inputs[..., jnp.newaxis] == iota, dtype=self.dtype)
+#       output = jnp.dot(one_hot, jnp.asarray(self.embedding, self.dtype))
+#     else:
+#       output = jnp.asarray(self.embedding, self.dtype)[inputs]
+#       output = with_sharding_constraint(output, ('batch', 'length', 'embed'))
+#     return output
 
-  def attend(self, query: Array) -> Array:
-    """Attend over the embedding using a query array.
+#   def attend(self, query: Array) -> Array:
+#     """Attend over the embedding using a query array.
 
-    Args:
-      query: array with last dimension equal the feature depth `features` of the
-        embedding.
+#     Args:
+#       query: array with last dimension equal the feature depth `features` of the
+#         embedding.
 
-    Returns:
-      An array with final dim `num_embeddings` corresponding to the batched
-      inner-product of the array of query vectors against each embedding.
-      Commonly used for weight-sharing between embeddings and logit transform
-      in NLP models.
-    """
-    dtype = self.attend_dtype if self.attend_dtype is not None else self.dtype
-    return jnp.dot(query, jnp.asarray(self.embedding, dtype).T)
+#     Returns:
+#       An array with final dim `num_embeddings` corresponding to the batched
+#       inner-product of the array of query vectors against each embedding.
+#       Commonly used for weight-sharing between embeddings and logit transform
+#       in NLP models.
+#     """
+#     dtype = self.attend_dtype if self.attend_dtype is not None else self.dtype
+#     return jnp.dot(query, jnp.asarray(self.embedding, dtype).T)
 
 
 class RelativePositionBiases(nn.Module):
