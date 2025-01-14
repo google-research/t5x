@@ -39,6 +39,8 @@ INFER_OUTPUT_DIR = %gin.REQUIRED
 # DEPRECATED: Import the this module in your gin file.
 MIXTURE_OR_TASK_MODULE = None
 
+MIXTURE_OR_TASK_SPLIT = 'test'
+
 infer_script.infer:
   mode = 'predict'
   model = %MODEL  # imported from separate gin file
@@ -59,7 +61,7 @@ utils.DatasetConfig:
   module = %MIXTURE_OR_TASK_MODULE
   task_feature_lengths = %TASK_FEATURE_LENGTHS
   use_cached = False
-  split = 'test'
+  split = %MIXTURE_OR_TASK_SPLIT
   batch_size = 32
   shuffle = False
   seed = 0
