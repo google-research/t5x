@@ -36,6 +36,7 @@ from jax.sharding import Mesh
 from jax.sharding import PartitionSpec
 import numpy as np
 from t5x import train_state as train_state_lib
+from t5x.te_helper import TransformerEngineHelper
 
 JaxDevice = jax.Device
 TpuMesh = Tuple[int, int, int, int]  # (x, y, z, num_cores).
@@ -622,6 +623,8 @@ def standard_logical_axis_rules(
   if additional_rules:
     rules.extend(additional_rules)
 
+  rules = TransformerEngineHelper.extend_logical_axis_rules(rules)
+
   return rules
 
 
@@ -959,6 +962,13 @@ class PjittedFnWithContext(PartitionedCallable):
                   self._logical_axis_rules):
       return self._pjitted_fn.lower(*args, **kwargs)
 
+  def lower_and_compile(self, *args, **kwargs):
+    with Mesh(self._mesh.devices,
+              self._mesh.axis_names), flax_partitioning.axis_rules(
+                  self._logical_axis_rules):
+      return self._pjitted_fn.lower(*args, **kwargs).compile()
+
+
 
 class BasePjitPartitioner(BasePartitioner):
   """Partitioner that uses T5X version of jax.pjit."""
@@ -997,7 +1007,7 @@ class BasePjitPartitioner(BasePartitioner):
 
   def compile(self, partitioned_fn: PjittedFnWithContext,
               *args) -> CompiledPartitionedCallable:
-    return partitioned_fn.lower(*args).compile()
+    return partitioned_fn.lower_and_compile(*args)
 
 
 class PjitPartitioner(BasePjitPartitioner):
