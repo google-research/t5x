@@ -53,15 +53,27 @@ import numpy as np
 import orbax.checkpoint as ocp
 from t5x import checkpoint_importer
 from t5x import checkpoint_utils
+from t5x import checkpoints_utils
 from t5x import optimizers
 from t5x import partitioning
 from t5x import state_utils
 from t5x import train_state as train_state_lib
+# pylint: disable=g-importing-member
+from t5x.checkpoints_utils import all_dataset_checkpoint_steps
+from t5x.checkpoints_utils import all_steps
+from t5x.checkpoints_utils import get_checkpoint_dir
+from t5x.checkpoints_utils import get_checkpoint_prefix
+from t5x.checkpoints_utils import get_step_from_checkpoint_dir
+from t5x.checkpoints_utils import latest_step
+# pylint: enable=g-importing-member
 import tensorflow as tf
 from tensorflow.io import gfile
 import tensorstore as ts
 import typing_extensions
 
+from tensorboard.backend.event_processing import directory_watcher
+from tensorboard.backend.event_processing import event_file_loader
+from tensorboard.backend.event_processing import io_wrapper
 
 PartitionSpec = partitioning.PartitionSpec
 PyTree = Any
@@ -82,15 +94,10 @@ VERSION = 3
 # range of partitionings.
 _DESIRED_CHUNK_SIZE_BYTES = 64 * 1024 * 1024
 # TODO(levskaya, adarob): how should we handle stacked/fused variables??
-_TRAIN_DS_PREFIX = 'train_ds'
+_TRAIN_DS_PREFIX = checkpoints_utils._TRAIN_DS_PREFIX  # pylint: disable=protected-access
 _READ_CHECKPOINT_EVENT: str = '/jax/checkpoint/read/durations_sec'
 _WRITE_CHECKPOINT_EVENT: str = '/jax/checkpoint/write/durations_sec'
 _TS_CONTEXT = ts.Context({'file_io_concurrency': {'limit': 128}})
-
-
-@gin.configurable
-def get_checkpoint_prefix(prefix='checkpoint'):
-  return prefix
 
 
 def _choose_chunk_shape(
@@ -196,34 +203,6 @@ def _run_future_tree(future_tree):
   return jax.tree_util.tree_unflatten(treedef, leaves)
 
 
-def all_steps(checkpoints_dir: str) -> Sequence[int]:
-  """Returns list of available step numbers in ascending order."""
-  glob_pattern = os.path.join(checkpoints_dir, 'checkpoint_*')
-  checkpoint_paths = gfile.glob(glob_pattern)
-  re_pattern = re.compile(r'.*/checkpoint_(\d+)$')
-  matches = [re_pattern.match(ckpt) for ckpt in checkpoint_paths]
-  return sorted(int(match.group(1)) for match in matches if match)
-
-
-def all_dataset_checkpoint_steps(checkpoints_dir: str) -> Sequence[int]:
-  """Returns available dataset checkpoint step numbers in ascending order."""
-  glob_pattern = os.path.join(
-      checkpoints_dir, 'checkpoint_*', f'{_TRAIN_DS_PREFIX}-*'
-  )
-  train_ds_paths = gfile.glob(glob_pattern)
-  re_pattern = re.compile(r'.*/checkpoint_(\d+)/.*$')
-  matches = [re_pattern.match(path) for path in train_ds_paths]
-  return sorted(set(int(match.group(1)) for match in matches if match))
-
-
-def latest_step(checkpoints_dir: str) -> Optional[int]:
-  """Returns latest step number or None if no checkpoints exist."""
-  steps = all_steps(checkpoints_dir)
-  if not steps:
-    return None
-  return steps[-1]
-
-
 def get_local_data(x):
   """Get local buffer for input data."""
   if isinstance(x, jax.Array) and not isinstance(x, jax.core.Tracer):
@@ -236,30 +215,6 @@ def _sync_global_devices(name: str) -> None:
   """Sync across all hosts/devices."""
   # Internal mock TPU handling
   multihost_utils.sync_global_devices(name)
-
-
-def get_checkpoint_dir(
-    checkpoints_dir: epath.PathLike,
-    step: int,
-    step_format_fixed_length: Optional[int] = None,
-) -> epath.PathLike:
-  """Returns path to a checkpoint dir given a parent directory and step."""
-  step_str = (
-      f'{step:0{step_format_fixed_length}d}'
-      if step_format_fixed_length is not None
-      else str(step)
-  )
-  return os.path.join(checkpoints_dir, f'{get_checkpoint_prefix()}_{step_str}')
-
-
-def get_step_from_checkpoint_dir(checkpoints_dir: str) -> Tuple[str, int]:
-  """Returns a step number and the parent directory."""
-  if checkpoints_dir.endswith('/'):
-    checkpoints_dir = checkpoints_dir[:-1]
-  parent, checkpoint = os.path.split(checkpoints_dir)
-  if get_checkpoint_prefix() not in checkpoint:
-    raise ValueError('Found improperly formatted checkpoint directory.')
-  return parent, int(checkpoint.replace(f'{get_checkpoint_prefix()}_', ''))
 
 
 def _cast(target: PyTree, dtype: jnp.dtype):
@@ -2101,7 +2056,7 @@ def _construct_save_args(
   """Create SaveArgs for Orbax saving."""
   if param_info.name.split('.')[0] != 'target':
     dtype = None
-  return ocp.SaveArgs(aggregate=False, dtype=dtype)
+  return ocp.SaveArgs(dtype=dtype)
 
 
 def _construct_restore_args(
@@ -2210,18 +2165,9 @@ def _construct_orbax_restoration_transforms(
         )
       return info
 
-    item_ = jax.tree_util.tree_map(
-        _make_orbax_internal_metadata, item_, restore_args
-    )
-    param_infos_, _ = ocp.pytree_checkpoint_handler._get_restore_parameters(  # pylint: disable=protected-access
-        directory_,
-        None,
-        item_,
-        None,
-        None,
-        None,
-    )
-    param_infos_ = jax.tree_util.tree_map(
+    item_ = jax.tree.map(_make_orbax_internal_metadata, item_, restore_args)
+    param_infos_ = checkpoint_utils.get_restore_parameters(directory_, item_)
+    param_infos_ = jax.tree.map(
         _modify_orbax_param_info, param_infos_, state_dict_to_restore
     )
     return item_, param_infos_
@@ -2558,15 +2504,19 @@ class OrbaxCheckpointManagerInterface:
     # After restoration, some values may still be non-sharded arrays from
     # fallback state.
     def _maybe_make_sharded_array_helper(arr, info):
-      return _maybe_make_sharded_array(
-          arr,
-          self._partitioner.mesh,
-          axes=info.mesh_axes,
-          restore_dtype=self._restore_dtype,
-      )
+      if arr is not None:
+        return _maybe_make_sharded_array(
+            arr,
+            self._partitioner.mesh,
+            axes=info.mesh_axes,
+            restore_dtype=self._restore_dtype,
+        )
 
     state_dict = jax.tree_util.tree_map(
-        _maybe_make_sharded_array_helper, state_dict, param_infos
+        _maybe_make_sharded_array_helper,
+        state_dict,
+        param_infos,
+        is_leaf=lambda x: x is None,
     )
 
     train_state = self._train_state.restore_state(state_dict)

@@ -166,12 +166,12 @@ async def main(_, gin_args: Dict[str, Any]):
             path=staging,
             # TODO(chenandrew): deeplearning image is still on python3.7
             # base_image='gcr.io/deeplearning-platform-release/base-cpu',
-            base_image='python:3.9',
+            base_image='python:3.10',
             docker_instructions=[
                 *copy_t5x,
                 'WORKDIR t5x',
                 # Install gcloud. This is normally part of deeplearning image.
-                # Since we use python:3.9, we need to do this manually.
+                # Since we use python:3.10, we need to do this manually.
                 'RUN apt-get install apt-transport-https ca-certificates gnupg',
                 (
                     'RUN echo "deb'
