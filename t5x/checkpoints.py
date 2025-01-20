@@ -1,3 +1,4 @@
+
 # Copyright 2024 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -2165,18 +2166,9 @@ def _construct_orbax_restoration_transforms(
         )
       return info
 
-    item_ = jax.tree_util.tree_map(
-        _make_orbax_internal_metadata, item_, restore_args
-    )
-    param_infos_, _ = ocp.pytree_checkpoint_handler._get_restore_parameters(  # pylint: disable=protected-access
-        directory_,
-        None,
-        item_,
-        None,
-        None,
-        None,
-    )
-    param_infos_ = jax.tree_util.tree_map(
+    item_ = jax.tree.map(_make_orbax_internal_metadata, item_, restore_args)
+    param_infos_ = checkpoint_utils.get_restore_parameters(directory_, item_)
+    param_infos_ = jax.tree.map(
         _modify_orbax_param_info, param_infos_, state_dict_to_restore
     )
     return item_, param_infos_
@@ -2513,15 +2505,19 @@ class OrbaxCheckpointManagerInterface:
     # After restoration, some values may still be non-sharded arrays from
     # fallback state.
     def _maybe_make_sharded_array_helper(arr, info):
-      return _maybe_make_sharded_array(
-          arr,
-          self._partitioner.mesh,
-          axes=info.mesh_axes,
-          restore_dtype=self._restore_dtype,
-      )
+      if arr is not None:
+        return _maybe_make_sharded_array(
+            arr,
+            self._partitioner.mesh,
+            axes=info.mesh_axes,
+            restore_dtype=self._restore_dtype,
+        )
 
     state_dict = jax.tree_util.tree_map(
-        _maybe_make_sharded_array_helper, state_dict, param_infos
+        _maybe_make_sharded_array_helper,
+        state_dict,
+        param_infos,
+        is_leaf=lambda x: x is None,
     )
 
     train_state = self._train_state.restore_state(state_dict)
