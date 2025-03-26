@@ -739,7 +739,7 @@ class EncoderDecoderModel(BaseTransformerModel):
     scanned = hasattr(self.module, 'scan_layers') and self.module.scan_layers
 
     if 'eos_id' not in decoder_params:
-      decoder_params['eos_id'] = self.output_vocabulary.eos_id
+      decoder_params['eos_id'] = self.output_vocabulary.eos_id or 1
     decodes, scores = self._decode_fn(
         inputs=decoder_prompt_inputs,
         cache=cache,
@@ -1219,7 +1219,7 @@ class DecoderOnlyModel(BaseTransformerModel):
     scanned = hasattr(self.module, 'scan_layers') and self.module.scan_layers
 
     if 'eos_id' not in decoder_params:
-      decoder_params['eos_id'] = self.output_vocabulary.eos_id
+      decoder_params['eos_id'] = self.output_vocabulary.eos_id or 1
     decoded_sequences, scores = self._decode_fn(
         inputs=inputs,
         cache=prefilled_cache,
