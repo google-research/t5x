@@ -152,7 +152,7 @@ class TEInstalledHelper(TransformerEngineHelperBase):
 
   @staticmethod
   def is_fp8_enabled():
-    return te.fp8.FP8Helper.is_fp8_enabled()
+    return te.quantize.QuantizeConfig.is_fp8_enabled()
 
   @staticmethod
   @contextmanager
