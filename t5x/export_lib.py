@@ -1377,18 +1377,23 @@ def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
   else:
     output_dirs = dict(output_dir)
   if 'cpu' not in output_dirs:
-    if 'tpu' not in output_dirs:
-      raise ValueError('output_dir["cpu"] or output_dir["tpu"] is mandatory')
-    export_version = os.path.basename(output_dirs['tpu'])
+    # Add an output dir for cpu, with a default name.
+    output_dir = output_dirs.get('tpu', output_dirs.get('gpu'))
+    if output_dir is None:
+      raise ValueError('output_dir["gpu"] or output_dir["tpu"] is mandatory')
+    output_dirs['cpu'] = os.path.join(
+        os.path.dirname(output_dir) + '_cpu', os.path.basename(output_dir)
+    )
+  for key in ['tpu', 'gpu']:
+    if key not in output_dirs:
+      continue
+    export_version = os.path.basename(output_dirs[key])
     if not export_version.isdigit():
       raise ValueError(
           'output_dir must be in the form ${BASE}/${VERSION}, '
           'where  ${VERSION} is an integer. Got a non-numeric '
           f'version {export_version}.'
       )
-    output_dirs['cpu'] = os.path.join(
-        os.path.dirname(output_dirs['tpu']) + '_cpu', export_version
-    )
   logging.info('Result standardized output_dirs: %s', output_dirs)
   return output_dirs
 
