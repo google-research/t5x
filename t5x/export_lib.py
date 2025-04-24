@@ -1384,16 +1384,20 @@ def _standardize_output_dirs(output_dir: Union[str, Mapping[str, str]]):
     output_dirs['cpu'] = os.path.join(
         os.path.dirname(output_dir) + '_cpu', os.path.basename(output_dir)
     )
-  for key in ['tpu', 'gpu']:
-    if key not in output_dirs:
-      continue
-    export_version = os.path.basename(output_dirs[key])
-    if not export_version.isdigit():
-      raise ValueError(
-          'output_dir must be in the form ${BASE}/${VERSION}, '
-          'where  ${VERSION} is an integer. Got a non-numeric '
-          f'version {export_version}.'
-      )
+    # We only check the version number when cpu directory is not provided. This
+    # is to be backwards compatible with the old behavior. The old behavior
+    # is relied upon by some TFLex pipelines which create both cpu and tpu
+    # output directories without a version number as final directory.
+    for key in ['tpu', 'gpu']:
+      if key not in output_dirs:
+        continue
+      export_version = os.path.basename(output_dirs[key])
+      if not export_version.isdigit():
+        raise ValueError(
+            'output_dir must be in the form ${BASE}/${VERSION}, '
+            'where  ${VERSION} is an integer. Got a non-numeric '
+            f'version {export_version}.'
+        )
   logging.info('Result standardized output_dirs: %s', output_dirs)
   return output_dirs
 
