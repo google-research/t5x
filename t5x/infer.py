@@ -316,7 +316,7 @@ def write_inferences_to_file(
         if output_ids:
           pred = _json_compat(tf.constant(predictions).numpy())
           # Truncate padding tokens.
-          pred = pred[: pred.index(0)] if 0 in pred else pred
+          pred = pred[: pred.index(0)] if 0 in pred else pred  # pytype: disable=attribute-error
           json_dict['prediction_tokens'] = pred
         json_dict['aux'] = jax.tree.map(_json_compat, aux_values)
       else:

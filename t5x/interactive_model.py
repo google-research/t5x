@@ -1015,7 +1015,7 @@ def _get_equal_length_batches(
   if isinstance(batches[0], Mapping):
     return [batches for i in range(length)]
   if len(batches) < length:
-    batches = batches * (length // len(batches))
+    batches = batches * (length // len(batches))  # pytype: disable=unsupported-operands
   # If multiple batches are provided, only use the first `length` batches.
   logging.warning(
       "We will only use the first %s batches provided for training.", length
