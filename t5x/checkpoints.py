@@ -2285,7 +2285,7 @@ class OrbaxCheckpointManagerInterface:
         max_to_keep=keep,
         save_interval_steps=period,
         keep_period=force_keep_period,
-        best_fn=best_fn if metric_name_to_monitor is not None else None,
+        get_metric_fn=best_fn if metric_name_to_monitor is not None else None,
         best_mode=metric_mode,
         keep_checkpoints_without_metrics=keep_checkpoints_without_metrics,
         cleanup_tmp_directories=True,
