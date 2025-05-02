@@ -54,7 +54,7 @@ def int32_bsearch(
   predicate_satisfied = predicate(midpoint)
   current_bits = current_bits | jnp.where(
       predicate_satisfied, jnp.uint32(1 << 31), jnp.uint32(0)
-  )
+  ).astype(jnp.int32)
   del midpoint, predicate_satisfied
 
   def loop_body(i, current_bits):
