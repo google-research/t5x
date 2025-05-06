@@ -2216,7 +2216,7 @@ class OrbaxCheckpointManagerInterface:
 
     def _get_old_steps_to_remove(self) -> List[int]:
       """Update metrics for Orbax management, if available."""
-      if self._track_best:
+      if self._options.best_fn is not None:
         metric_name_to_monitor = self._options.metric_name_to_monitor  # pytype: disable=attribute-error
         step_to_metric = populate_metrics_for_steps(
             os.fspath(self.directory),
