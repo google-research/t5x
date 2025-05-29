@@ -1,4 +1,4 @@
-# Copyright 2024 The T5X Authors.
+# Copyright 2025 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -386,7 +386,7 @@ def train(
 
   # 3. If no checkpoint to restore, init from scratch.
   train_state = train_state or train_state_initializer.from_scratch(init_rng)
-  train_state_axes = train_state_initializer.train_state_axes
+  train_state_axes = train_state_initializer.train_state_axes  # pytype: disable=attribute-error  # jax-api-types
   init_or_restore_secs = time.time() - init_or_restore_tick
   logging.info(
       'Initialize/restore complete (%.2f seconds).', init_or_restore_secs
@@ -395,7 +395,7 @@ def train(
   # Log the variable shapes information and write to a file.
   log_file = os.path.join(model_dir, 'model-info.txt')
   utils.log_model_info(
-      log_file, train_state_initializer.global_train_state_shape, partitioner
+      log_file, train_state_initializer.global_train_state_shape, partitioner  # pytype: disable=attribute-error  # jax-api-types
   )
 
   # Restore step from last checkpoint or set to 0 if training from scratch.

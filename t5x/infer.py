@@ -1,4 +1,4 @@
-# Copyright 2024 The T5X Authors.
+# Copyright 2025 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -510,7 +510,7 @@ def infer(
   if shard_id == 0:
     utils.log_model_info(
         model_info_log_file,
-        train_state_initializer.global_train_state_shape,
+        train_state_initializer.global_train_state_shape,  # pytype: disable=attribute-error  # jax-api-types
         partitioner,
     )
 
@@ -541,7 +541,7 @@ def infer(
       utils.get_infer_fn(
           infer_step=infer_step,
           batch_size=batch_size,
-          train_state_axes=train_state_initializer.train_state_axes,
+          train_state_axes=train_state_initializer.train_state_axes,  # pytype: disable=attribute-error  # jax-api-types
           partitioner=partitioner,
           keep_aux_as_numpy=keep_aux_as_numpy,
       ),

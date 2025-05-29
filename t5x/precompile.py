@@ -1,4 +1,4 @@
-# Copyright 2024 The T5X Authors.
+# Copyright 2025 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -95,8 +95,8 @@ def precompile(
       input_types=input_types,
       partitioner=partitioner,
   )
-  train_state_shape = train_state_initializer.global_train_state_shape
-  train_state_axes = train_state_initializer.train_state_axes
+  train_state_shape = train_state_initializer.global_train_state_shape  # pytype: disable=attribute-error  # jax-api-types
+  train_state_axes = train_state_initializer.train_state_axes  # pytype: disable=attribute-error  # jax-api-types
 
   def train_step(train_state, batch):
     return trainer_lib.train_with_lr(  # pytype: disable=wrong-arg-types  # jax-ndarray

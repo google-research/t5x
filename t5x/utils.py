@@ -1,4 +1,4 @@
-# Copyright 2024 The T5X Authors.
+# Copyright 2025 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -1091,9 +1091,9 @@ class TrainStateInitializer:
     # setup as the training step/loop to initialize everything "in-place" and
     # avoid communication or OOM.
     p_initialize_train_state_fn = self._partitioner.partition(
-        self._initialize_train_state,
+        self._initialize_train_state,  # pytype: disable=attribute-error  # jax-api-types
         in_axis_resources=None,
-        out_axis_resources=self.train_state_axes,
+        out_axis_resources=self.train_state_axes,  # pytype: disable=attribute-error  # jax-api-types
     )
     return p_initialize_train_state_fn(init_rng)
 
@@ -1129,7 +1129,7 @@ class TrainStateInitializer:
       if cfg is None:
         raise ValueError('Expected valid `RestoreCheckpointConfig`.')
       restore_checkpointer = cfg.checkpointer_cls(
-          train_state=self.global_train_state_shape,
+          train_state=self.global_train_state_shape,  # pytype: disable=attribute-error  # jax-api-types
           partitioner=self._partitioner,
           checkpoints_dir='',  # unused for restore
           dataset_iterator=ds_iter if cfg.restore_dataset else None,
@@ -1229,7 +1229,7 @@ def create_checkpoint_manager_and_restore(
     checkpoint_manager = create_orbax_checkpoint_manager(
         save_cfg=save_checkpoint_cfg,
         restore_cfg=restore_checkpoint_cfg,
-        train_state=train_state_initializer.global_train_state_shape,
+        train_state=train_state_initializer.global_train_state_shape,  # pytype: disable=attribute-error  # jax-api-types
         partitioner=partitioner,
         ds_iter=ds_iter,
         model_dir=model_dir,
@@ -1244,7 +1244,7 @@ def create_checkpoint_manager_and_restore(
     checkpoint_manager = LegacyCheckpointManager(
         save_cfg=save_checkpoint_cfg,
         restore_cfg=restore_checkpoint_cfg,
-        train_state_shape=train_state_initializer.global_train_state_shape,
+        train_state_shape=train_state_initializer.global_train_state_shape,  # pytype: disable=attribute-error  # jax-api-types
         partitioner=partitioner,
         ds_iter=ds_iter,
         model_dir=model_dir,

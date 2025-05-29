@@ -1,4 +1,4 @@
-# Copyright 2024 The T5X Authors.
+# Copyright 2025 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -281,11 +281,11 @@ def evaluate(
       input_shapes=input_shapes,
       partitioner=partitioner,
   )
-  train_state_axes = train_state_initializer.train_state_axes
+  train_state_axes = train_state_initializer.train_state_axes  # pytype: disable=attribute-error  # jax-api-types
   # Log the variable shapes information and write to a file.
   log_file = os.path.join(output_dir, 'model-info.txt')
   utils.log_model_info(
-      log_file, train_state_initializer.global_train_state_shape, partitioner
+      log_file, train_state_initializer.global_train_state_shape, partitioner  # pytype: disable=attribute-error  # jax-api-types
   )
 
   if training_evaluator_cls:
