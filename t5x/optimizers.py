@@ -1,4 +1,4 @@
-# Copyright 2024 The T5X Authors.
+# Copyright 2025 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -203,7 +203,7 @@ class OptaxStatePartitionRules:
       optax.AddNoiseState: lambda state, params_axes: optax.AddNoiseState(  # pytype: disable=wrong-arg-types  # numpy-scalars
           count=None, rng_key=None
       ),
-      optax.contrib.DifferentiallyPrivateAggregateState: lambda state, params_axes: optax.contrib.DifferentiallyPrivateAggregateState(
+      optax.contrib.DifferentiallyPrivateAggregateState: lambda state, params_axes: optax.contrib.DifferentiallyPrivateAggregateState(  # pytype: disable=wrong-arg-types  # numpy-scalars
           rng_key=None
       ),
       optax.EmaState: lambda state, params_axes: optax.EmaState(  # pytype: disable=wrong-arg-types  # numpy-scalars
