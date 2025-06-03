@@ -742,10 +742,10 @@ class UtilsTest(parameterized.TestCase):
         expected_keep_checkpoints_without_metrics,
     )
     if expected_metric is None:
-      self.assertIsNone(manager._manager._options.best_fn)
+      self.assertIsNone(manager._manager._options.get_metric_fn)
     else:
       self.assertEqual(
-          manager._manager._options.best_fn(metrics),
+          manager._manager._options.get_metric_fn(metrics),
           expected_metric,
       )
 
@@ -812,7 +812,7 @@ class UtilsTest(parameterized.TestCase):
     self.assertEqual(manager._manager._options.best_mode, "max")
     self.assertTrue(manager._manager._options.keep_checkpoints_without_metrics)
     self.assertEqual(
-        manager._manager._options.best_fn(
+        manager._manager._options.get_metric_fn(
             {"train/accuracy": 0.8, "train/loss": 0.1}
         ),
         0.8,
