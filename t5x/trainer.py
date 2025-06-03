@@ -620,6 +620,7 @@ class BaseTrainer(abc.ABC):
       num_steps = 0
       mm.start_duration_timer(block_on=train_state)
       for batch in batch_iter:
+        logging.info("Eval step : %s", num_steps)
         num_steps += 1
         utils.multihost_assert_equal(
             jnp.array(num_steps),
