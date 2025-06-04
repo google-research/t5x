@@ -269,7 +269,7 @@ def get_train_state_initializer(
       partitioner=partitioner,
   )
   utils.log_model_info(
-      None, train_state_initializer.global_train_state_shape, partitioner
+      None, train_state_initializer.global_train_state_shape, partitioner  # pytype: disable=attribute-error  # jax-api-types
   )
   return train_state_initializer
 
@@ -317,7 +317,7 @@ def create_inference_function(
         # TODO(b/121310741): Re-enable pytype.
         # pytype:disable=wrong-arg-types
         in_axis_resources=(
-            train_state_initializer.train_state_axes.params,
+            train_state_initializer.train_state_axes.params,  # pytype: disable=attribute-error  # jax-api-types
             partitioning.PartitionSpec(
                 'data',
             ),
