@@ -206,7 +206,7 @@ class InteractiveModel(abc.ABC):
         save_cfg=self._save_checkpoint_cfg,
         restore_cfg=self._restore_checkpoint_cfg,
         train_state_shape=(
-            self._train_state_initializer.global_train_state_shape
+            self._train_state_initializer.global_train_state_shape  # pytype: disable=attribute-error  # jax-api-types
         ),
         partitioner=self._partitioner,
         ds_iter=None,
@@ -266,13 +266,13 @@ class InteractiveModel(abc.ABC):
       self._train_state = self._train_state_initializer.from_scratch(
           self._init_rng
       )
-    self._train_state_axes = self._train_state_initializer.train_state_axes
+    self._train_state_axes = self._train_state_initializer.train_state_axes  # pytype: disable=attribute-error  # jax-api-types
 
     # Log the variable shapes information and write to a file.
     log_file = os.path.join(self._output_dir, "model-info.txt")
     utils.log_model_info(
         log_file,
-        self._train_state_initializer.global_train_state_shape,
+        self._train_state_initializer.global_train_state_shape,  # pytype: disable=attribute-error  # jax-api-types
         self._partitioner,
     )
 
@@ -489,7 +489,7 @@ class InteractiveModel(abc.ABC):
       self._cached_infer_fns[infer_fn_key] = utils.get_infer_fn(
           infer_step=functools.partial(infer_step, **inference_kwargs),
           batch_size=self._batch_size,
-          train_state_axes=self._train_state_initializer.train_state_axes,
+          train_state_axes=self._train_state_initializer.train_state_axes,  # pytype: disable=attribute-error  # jax-api-types
           partitioner=self._partitioner,
       )
     infer_fn = functools.partial(
