@@ -35,6 +35,7 @@ import clu.metrics
 import clu.values
 from flax.core import FrozenDict
 import jax
+from jax.experimental import multihost_utils
 import jax.lax
 import jax.numpy as jnp
 import jax.random
@@ -648,6 +649,99 @@ class BaseTrainer(abc.ABC):
     # TODO(adarob): Return futures.
     return {k: v.result() for k, v in eval_summaries.items()}
 
+  def eval_dali(
+      self, batch_iters: Mapping[str,
+                                 Iterator[BatchType]],
+      batch_size: int,
+      shard_id: int,
+      num_shards: int,
+      eval_steps: Optional[int] = None) -> Mapping[str, Array]:
+    """For DALI datasets, runs evaluation loop over the iterator and prints summary."""
+
+    def _remove_padding_eval(all_evaluations, all_nonpaddings):
+      """Remove padded examples."""
+
+      for k in all_evaluations:
+        all_evaluations[k] = all_evaluations[k][all_nonpaddings]
+      return all_evaluations
+
+    eval_summaries = {}
+    train_state = self.train_state
+
+    for iter_name, ds in batch_iters.items():
+      logging.info("Evaluating: %s.", iter_name)
+      metrics = None
+      # Use a pre-compiled step function, if available.
+      eval_step_fn = self._compiled_eval_steps.get(iter_name,
+                                                   self._partitioned_eval_step)
+
+      mm = self.eval_metrics_managers[iter_name]
+      nonpaddings = []
+      metrics = {}
+      last_source = None
+      batches_per_shard = None
+
+      num_steps = 0
+      mm.start_duration_timer(block_on=train_state)
+
+      for batch in ds:
+        num_steps += 1
+
+        utils.multihost_assert_equal(
+            jnp.array(num_steps),
+            "Eval step mismatch across hosts. Check for empty dataset shard.")
+
+        batch_nonpadding = ds.is_nonpadding
+
+        if jax.process_count() > 1:
+          batch, batch_nonpadding = partitioning.host_local_array_to_global_array(
+              (batch, batch_nonpadding), self._partitioner.mesh,
+              self._partitioner.data_partition_spec)
+
+        metrics_update, batch_nonpadding = eval_step_fn(train_state, batch, batch_nonpadding)
+
+        metrics_update, batch_nonpadding = (
+            multihost_utils.global_array_to_host_local_array(
+                (metrics_update, batch_nonpadding), self._partitioner.mesh,
+                (jax.sharding.PartitionSpec(), jax.sharding.PartitionSpec())
+            )
+        )
+
+        for k in metrics_update:
+          if k in metrics:
+            metrics[k] = np.concatenate((metrics[k], metrics_update[k]))
+          else:
+            metrics[k] = np.array(metrics_update[k])
+
+        if len(nonpaddings) == 0:
+          nonpaddings = batch_nonpadding
+        else:
+          nonpaddings = np.concatenate([nonpaddings, batch_nonpadding], axis=None)
+
+        if batches_per_shard is None:
+           meta = ds._iterator.wrapped_pipeline.meta
+           batches_per_shard = meta['epoch_size_padded'] / len(batch_nonpadding)
+
+        utils.multihost_assert_equal(
+          jnp.array(-1),
+          "Eval step mismatch across hosts. Check for empty dataset shard.")
+
+        ## indicates that we have reached the end of eval
+        if (eval_steps and num_steps >= eval_steps) or (num_steps >= batches_per_shard):
+          break
+
+      metrics = _remove_padding_eval(metrics, nonpaddings)
+      metrics = {k: jnp.mean(metrics[k]) for k in metrics.keys()}
+      eval_summaries[iter_name] = metrics
+
+      clu_metrics = {k: clu.metrics.Average.from_model_output(jnp.asarray([metrics[k]])) for k in metrics}
+      eval_summaries[iter_name] = mm.write_metrics_summary(  # pytype: disable=wrong-arg-types  # jax-ndarray
+        clu_metrics, train_state.step, num_steps)
+
+
+      logging.info(f'Completed eval. Metrics: {metrics}')
+    return {k: v.result() for k, v in eval_summaries.items()}
+
   def compile_eval(self, batches: Mapping[str, BatchType]) -> None:
     """Pre-compiles eval step (if not yet compiled).
 
@@ -687,6 +781,44 @@ class BaseTrainer(abc.ABC):
       self.eval_metrics_managers[eval_name].write_scalar(  # pytype: disable=wrong-arg-types  # jax-ndarray
           "timing/compilation_seconds", tock - tick, self.train_state.step
       )
+
+  def compile_eval_dali(self,
+                        batches: Mapping[str, BatchType],
+                        nonpadding: jnp.ndarray) -> None:
+    """For DALI datasets, pre-compiles eval step (if not yet compiled).
+
+    Not required.
+
+    Pre-compiles the evaluation step for each evaluation dataset, reusing cached
+    compilations where possible. In other words, if multiple evaluation datasets
+    have equivalent shapes/dtypes for the batch and initial metrics,
+    recompilation will be avoided.
+
+    If not called before `eval`, compilation will occur automatically on the
+    first step and JAX's "jit cache" will be used to avoid recompilation for
+    future steps.
+
+    Args:
+      batches: a mapping from evaluation dataset name to a sample batch. The
+        batch may contain dummy values, but the shapes and dtypes must be
+        correct.
+       nonpadding: a dummy boolean array of padding values.
+    """
+    for eval_name, batch in batches.items():
+      tick = time.time()
+      cache_key: BatchSpec = FrozenDict(jax.eval_shape(lambda: batch))  # pylint:disable=cell-var-from-loop
+      if cache_key not in self._compiled_eval_step_cache:
+        if jax.process_count() > 1:
+          batch = partitioning.host_local_array_to_global_array(
+              batch, self._partitioner.mesh,
+              self._partitioner.data_partition_spec)
+        self._compiled_eval_step_cache[cache_key] = self._partitioner.compile(
+            self._partitioned_score_step, self.train_state, batch, nonpadding)
+      self._compiled_eval_steps[eval_name] = self._compiled_eval_step_cache[
+          cache_key]
+      tock = time.time()
+      self.eval_metrics_managers[eval_name].write_scalar(
+          "timing/compilation_seconds", tock - tick, self.train_state.step)
 
   @property
   @abc.abstractmethod
@@ -916,6 +1048,10 @@ def eval_step(
     # pytype: enable=wrong-arg-types
   return metrics
 
+def score_step(model: models.BaseModel, train_state: train_state_lib.TrainState,
+               batch: Mapping[str, jnp.ndarray], nonpaddings: jnp.ndarray) -> MetricMapType:
+  metrics = model.get_metrics_per_batch(train_state.params, batch)
+  return metrics, nonpaddings
 
 def train_with_lr(
     train_state: train_state_lib.TrainState,
@@ -1049,6 +1185,16 @@ class Trainer(BaseTrainer):
         ),
         out_axis_resources=None,
     )
+
+  @cached_property
+  def _partitioned_score_step(self) -> PartitionedEvalCallable:
+    return self._partitioner.partition(
+        lambda train_state, batch, nonpaddings: score_step(self._model, train_state,
+                                                           batch, nonpaddings),
+        in_axis_resources=(self._train_state_axes,
+                           self._partitioner.data_partition_spec,
+                           self._partitioner.data_partition_spec),
+        out_axis_resources=None)
 
 
 def _warn_action_not_run(action, task, metric):
