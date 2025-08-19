@@ -18,6 +18,7 @@ import functools
 from typing import Any, Callable, Mapping, Optional, Tuple, Union
 import flax
 from flax import traverse_util
+import gin
 import jax
 from jax import lax
 from jax import random
@@ -736,6 +737,25 @@ def brevity_penalty(alpha: float, length: int) -> jnp.ndarray:
 # Beam handling utility functions:
 
 
+@gin.configurable
+def cache_exclusion_patterns(value: Optional[list[str]] = None) -> list[str]:
+  """The list of patterns in Flax variable names to exclude from caching."""
+  if not value:
+    return ['cached_bias', 'position_embedder_index']
+  return value
+
+
+@gin.configurable
+def cache_exclusion_fn(
+    value: Optional[Callable[[str], bool]] = None,
+) -> Optional[Callable[[str], bool]]:
+  """Returns function indicating Flax variable names to exclude from caching."""
+  if value:
+    return value
+  else:
+    return lambda _: False
+
+
 def cache_map(fn, cache, apply_to_index: bool = False):
   """Maps function over that caches, even multiple caches in various layers.
 
@@ -759,8 +779,17 @@ def cache_map(fn, cache, apply_to_index: bool = False):
   # Also excludes scalar index in absolute position embedder from expansion.
   # TODO(levskaya): generalize cache_map to accept a list of leaf names to
   #   map over, instead of doing this ad-hoc.
-  exclusion_list = ['cached_bias', 'position_embedder_index']
-  keyvals = {k: v for k, v in keyvals.items() if k[-1] not in exclusion_list}
+  exclude_patterns = cache_exclusion_patterns()
+  exclude_fn = cache_exclusion_fn()
+
+  def _filter_keyvals(orig):
+    result = dict()
+    for k, v in orig.items():
+      if k[-1] not in exclude_patterns and not exclude_fn(k[-1]):
+        result[k] = v
+    return result
+
+  keyvals = _filter_keyvals(keyvals)
 
   keyvals = jax.tree.map(fn, keyvals)
   flat_cache.update(keyvals)
@@ -792,7 +821,9 @@ def unflatten_beam_dim(
     x: jnp.ndarray, batch_size: int, beam_size: int, offset: int = 0
 ) -> jnp.ndarray:
   """Unflattens the first, flat batch*beam dimension of a non-scalar array."""
-  assert batch_size * beam_size == x.shape[offset]
+  assert batch_size * beam_size == x.shape[offset], (
+      f'Expected batch={batch_size} * beam={beam_size}, but got shape '
+      f'{x.shape} at axis {offset}')
   xshape = list(x.shape)
   newshape = xshape[:offset] + [batch_size, beam_size] + xshape[offset + 1 :]
   return x.reshape(newshape)
