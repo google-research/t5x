@@ -500,7 +500,7 @@ class DenseTest(parameterized.TestCase):
         dtype=np.float32)
     params = module.init(random.PRNGKey(0), inputs, deterministic=True)
     self.assertEqual(
-        jax.tree_map(lambda a: a.tolist(), params), {
+        jax.tree_util.tree_map(lambda a: a.tolist(), params), {
             'params': {
                 'wi': {
                     'kernel': [[
@@ -559,7 +559,7 @@ class RelativePositionBiasesTest(absltest.TestCase):
     """Tests that bidirectional relative position biases have expected params."""
     params = self.relative_attention.init(
         random.PRNGKey(0), self.query_len, self.key_len, bidirectional=True)
-    param_shapes = jax.tree_map(lambda x: x.shape, params)
+    param_shapes = jax.tree_util.tree_map(lambda x: x.shape, params)
     self.assertEqual(
         param_shapes, {
             'params': {
@@ -589,7 +589,7 @@ class RelativePositionBiasesTest(absltest.TestCase):
     """Tests that unidirectional relative position biases have expected params."""
     params = self.relative_attention.init(
         random.PRNGKey(0), self.query_len, self.key_len, bidirectional=False)
-    param_shapes = jax.tree_map(lambda x: x.shape, params)
+    param_shapes = jax.tree_util.tree_map(lambda x: x.shape, params)
     self.assertEqual(
         param_shapes, {
             'params': {
