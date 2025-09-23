@@ -727,6 +727,10 @@ class BasePartitioner(metaclass=abc.ABCMeta):
     self._dcn_mesh_shape = dcn_mesh_shape
 
   @property
+  def use_shardy_partitioner(self) -> bool:
+    raise NotImplementedError
+
+  @property
   def mesh(self) -> Mesh:
     raise NotImplementedError
 
@@ -1080,6 +1084,7 @@ class PjitPartitioner(BasePjitPartitioner):
     (self._data_axis,) = flax_partitioning.logical_to_mesh_axes(
         ['batch'], self._logical_axis_rules
     )
+    self._use_shardy_partitioner = jax.config.jax_use_shardy_partitioner
 
   def partition(
       self,
@@ -1090,6 +1095,11 @@ class PjitPartitioner(BasePjitPartitioner):
       donate_argnums: Union[int, Sequence[int]] = ()
   ) -> PjittedFnWithContext:
     """Partitions the function using jax.pjit."""
+    if jax.config.jax_use_shardy_partitioner != self._use_shardy_partitioner:
+      raise ValueError(
+          'Value of jax.config.jax_use_shardy_partitioner not expected to be'
+          'changed after initialization.'
+      )
     pjitted = pjit(
         fn,
         in_shardings=in_axis_resources,
@@ -1099,6 +1109,11 @@ class PjitPartitioner(BasePjitPartitioner):
     )
 
     return PjittedFnWithContext(pjitted, self.mesh, self._logical_axis_rules)
+
+  @property
+  def use_shardy_partitioner(self) -> bool:
+    """Returns whether the partitioner uses jax.shardy_partitioner."""
+    return self._use_shardy_partitioner
 
   @property
   def logical_axis_rules(self):
