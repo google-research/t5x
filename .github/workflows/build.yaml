@@ -1,6 +1,6 @@
 name: build
 
-on: [push, workflow_dispatch]
+on: [push]
 
 jobs:
   build:
