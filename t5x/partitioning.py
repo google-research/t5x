@@ -398,6 +398,60 @@ def default_mesh(
         mps = (4, 4, 1, 1)
       else:
         mps = (2, 2, 4, 1)
+  elif (device_kind == 'TPU v5' or
+        device_kind == 'TPU v5 lite') and bounds[3] == 1:
+    if num_partitions == 1:
+      mps = (1, 1, 1, 1)
+    elif num_partitions == 2:
+      mps = (2, 1, 1, 1)
+    # required for streaming on viperlite
+    elif num_partitions == 4:
+      if bounds[0] >= 4:
+        mps = (4, 1, 1, 1)
+      else:
+        mps = (2, 2, 1, 1)
+    elif num_partitions == 8:
+      if bounds[0] >= 8:
+        mps = (8, 1, 1, 1)
+      else:
+        mps = (4, 2, 1, 1)
+    elif num_partitions == 16:
+      mps = (16, 1, 1, 1)
+  elif device_kind == 'TPU7x' or device_kind == 'TPU v6 lite':
+    if bounds[3] == 1:
+      if num_partitions == 1:
+        mps = (1, 1, 1, 1)
+      elif num_partitions == 2:
+        mps = (2, 1, 1, 1)
+      elif num_partitions == 4:
+        if bounds[0] >= 4:
+          mps = (4, 1, 1, 1)
+        else:
+          mps = (2, 2, 1, 1)
+      elif num_partitions == 8:
+        if bounds[0] >= 8:
+          mps = (8, 1, 1, 1)
+        else:
+          mps = (4, 2, 1, 1)
+      elif num_partitions == 16:
+        mps = (16, 1, 1, 1)
+    elif bounds[3] == 2:
+      if num_partitions == 1:
+        mps = (1, 1, 1, 1)
+      elif num_partitions == 2:
+        mps = (1, 1, 1, 2)
+      elif num_partitions == 4:
+        mps = (2, 1, 1, 2)
+      elif num_partitions == 8:
+        if bounds[0] >= 4:
+          mps = (4, 1, 1, 2)
+        else:
+          mps = (2, 2, 1, 2)
+      elif num_partitions == 16:
+        if bounds[0] >= 8:
+          mps = (8, 1, 1, 2)
+        else:
+          mps = (4, 2, 1, 2)
 
   if mps is None:
     raise ValueError(
