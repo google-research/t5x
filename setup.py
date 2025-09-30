@@ -59,6 +59,7 @@ setuptools.setup(
             'jestimator @'
             ' git+https://github.com/google-research/jestimator#egg=jestimator'
         ),
+        'jaxtyping',
         'numpy',
         'optax @ git+https://github.com/deepmind/optax#egg=optax',
         'orbax-checkpoint >= 0.5',
