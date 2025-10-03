@@ -64,7 +64,6 @@ setuptools.setup(
         'optax @ git+https://github.com/deepmind/optax#egg=optax',
         'orbax-checkpoint >= 0.5',
         'seqio @ git+https://github.com/google/seqio#egg=seqio',
-        'tensorflow-cpu',
         'tensorstore >= 0.1.20',
     ],
     extras_require={
