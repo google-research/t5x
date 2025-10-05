@@ -29,6 +29,11 @@ LOG_DIR=$5       # Output log directory
 MODEL_DIR_LOCAL=${6:-"model_dir"}
 MODEL_DIR=${PWD}/${MODEL_DIR_LOCAL}
 NUM_MICROBATCHES=${7:-0}
+ENABLE_FP8=${8:-1}
+[[ $ENABLE_FP8 -eq 1 ]] && PREC='bfloat16' # Required for t5x te fp8 to work
+TRANSPOSE_BS=${9:-1}
+FUSE_QKV=${10:-1}
+PACK=${11:-0}
 
 echo $MODEL_DIR
 
@@ -49,5 +54,13 @@ python3 -u ${T5X_DIR}/t5x/train.py \
   --gin.train/utils.DatasetConfig.batch_size=${BSIZE} \
   --gin.trainer.Trainer.num_microbatches=${NUM_MICROBATCHES} \
   --gin.train_eval/utils.DatasetConfig.batch_size=${BSIZE} \
-  --gin.infer_eval/utils.DatasetConfig.batch_size=${BSIZE} &> \
-  ${LOG_DIR}/${T5_SIZE}_gpu_${NUM_GPUS}_${PREC}_gbs_${BSIZE}.log
+  --gin.infer_eval/utils.DatasetConfig.batch_size=${BSIZE} \
+  --gin.train/utils.DatasetConfig.pack=${PACK} \
+  --gin.train_eval/utils.DatasetConfig.pack=${PACK} \
+  --gin.train.te_config_cls=@te_helper.TransformerEngineConfig \
+  --gin.te_helper.TransformerEngineConfig.enable_fp8=${ENABLE_FP8} \
+  --gin.te_helper.TransformerEngineConfig.fp8_format=\"hybrid\" \
+  --gin.network.T5Config.transpose_batch_sequence=${TRANSPOSE_BS} \
+  --gin.network.T5Config.fuse_qkv_params=${FUSE_QKV} \
+  2>&1 | tee \
+  ${LOG_DIR}/${T5_SIZE}_gpu_${NUM_GPUS}_${PREC}_gbs_${BSIZE}_fp8_${ENABLE_FP8}_fuseqkv_${FUSE_QKV}_transbs_${TRANSPOSE_BS}.log
