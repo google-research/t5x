@@ -1134,6 +1134,9 @@ class Checkpointer(object):
         lazy_parameters=lazy_parameters,
     )
 
+    for fn in state_transformation_fns:
+      state_dict = fn(state_dict, dummy_written_state_dict)
+
     # If `fallback_state` was specified, then fill the missing parameters.
     if fallback_state is not None:
       state_dict = state_utils.merge_state(state_dict, fallback_state)
