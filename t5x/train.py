@@ -122,7 +122,7 @@ def train(
     train_state_initializer_cls: Type[
         utils.TrainStateInitializer
     ] = utils.TrainStateInitializer,
-    use_orbax: bool = True,
+    use_orbax: bool = False,
     verify_matching_vocabs_fn: Optional[
         Callable[[utils.DatasetConfig, models.BaseTransformerModel], None]
     ] = utils.verify_matching_vocabs,
