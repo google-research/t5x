@@ -1,7 +1,7 @@
 # Gin Primer
 
 
-[Gin](https://github.com/google/gin-config/blob/main/README.md) is a lightweight configuration framework for Python,
+[Gin](https://github.com/google/gin-config#readme) is a lightweight configuration framework for Python,
 based on dependency injection. While T5X does not employ gin in its core
 libraries, it is used to configure runs of the `train`, `eval`, and `infer`
 scripts. This usage is a bit different (and more limited) than how gin is
@@ -9,7 +9,7 @@ typically applied, so this primer should be useful even for those who may be
 familiar with gin from other libaries (e.g., T5 or Mesh TensorFlow).
 
 Nevertheless, you may still find it helpful to refer to the
-[gin documentation](https://github.com/google/gin-config/blob/main/README.md) for more background.
+[gin documentation](https://github.com/google/gin-config#readme) for more background.
 
 [TOC]
 
@@ -237,7 +237,7 @@ in the fourth block.
 ### Scoping
 
 The above example lacks one key component of gin:
-[scopes](https://github.com/google/gin-config/blob/main/README.md#4-configuring-the-same-function-in-different-ways-scopes).
+[scopes](https://github.com/google/gin-config#4-configuring-the-same-function-in-different-ways-scopes).
 
 What happens if you need to use a class or function multiple times but with
 different bound values?
