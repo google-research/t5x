@@ -53,6 +53,7 @@ models.get_output_vocabulary.model = %MODEL  # imported from separate gin file
 
 
 # Typical for inference settings:
+# Use 'bfloat16' for TPUs and NVIDIA A100, 'float32' for other GPUs and CPUs.
 ACTIVATION_DTYPE = 'bfloat16'
 
 export_lib.save:
@@ -76,7 +77,10 @@ export_lib.save:
 utils.RestoreCheckpointConfig:
   path = %CHECKPOINT_PATH
   mode = 'specific'
-  dtype = 'bfloat16'
+  # Controls type for model weights that are used when model is exported.
+  # In general case it should be same as ACTIVATION_DTYPE to avoid
+  # casts from weight type to the type model is using internally.
+  dtype = %ACTIVATION_DTYPE
   checkpointer_cls = @checkpoints.Checkpointer
 
 export_lib.create_preprocessor:
