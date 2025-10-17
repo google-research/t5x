@@ -330,6 +330,10 @@ def default_mesh(
   last_device = devices[-1]
   platform = last_device.platform
   device_kind = last_device.device_kind
+  if platform == 'cpu':
+    return get_cpu_mesh()
+  elif platform == 'gpu':
+    return get_gpu_mesh(num_partitions)
   bounds = bounds_from_last_device(last_device)
 
   if ici_mesh_shape is not None and dcn_mesh_shape is not None:
@@ -354,11 +358,6 @@ def default_mesh(
 
   if model_parallel_submesh:
     return get_mesh(model_parallel_submesh, backend=backend)
-
-  if platform == 'cpu':
-    return get_cpu_mesh()
-  elif platform == 'gpu':
-    return get_gpu_mesh(num_partitions)
 
   mps = None
   if device_kind in ('TPU v2', 'TPU v3'):
