@@ -289,7 +289,6 @@ def get_restore_parameters(directory: epath.Path, structure: PyTree) -> PyTree:
       skip_deserialize = meta_or_value.skip_deserialize
     return ocp.type_handlers.ParamInfo(
         name=name,
-        path=directory / name,
         parent_dir=directory,
         skip_deserialize=skip_deserialize,
         is_ocdbt_checkpoint=is_ocdbt_checkpoint,
