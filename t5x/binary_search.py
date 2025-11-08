@@ -294,6 +294,11 @@ def topp_mask(
   threshold = float32_bsearch(batch_shape, predicate)
   # threshold: [batch..., 1]
   threshold = lax.expand_dims(threshold, (threshold.ndim,))
-  return jnp.where(
-      probs >= threshold, logits, jnp.full_like(logits, replace_val)
-  )
+
+  # Find the maximum probability for each batch element.
+  max_probs = jnp.max(probs, axis=-1, keepdims=True)
+
+  # Keep elements if they are greater than or equal to the threshold,
+  # or if they are equal to the maximum probability in the batch.
+  keep_mask = (probs >= threshold) | (probs == max_probs)
+  return jnp.where(keep_mask, logits, jnp.full_like(logits, replace_val))
