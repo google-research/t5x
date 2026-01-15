@@ -2131,6 +2131,33 @@ def _construct_orbax_restoration_transforms(
       restore_args, state_dict_to_restore
   )
 
+  def _clear_restore_args_for_none_states(arg, val):
+    """Sets restore_args to None if the corresponding state value is None.
+
+    This is necessary because the restoration args tree structure might imply
+    restoration for parameters that are actually None in the target state dict
+    (e.g. unused parameters in a MultiOptimizer). If we don't clear these args,
+    Orbax might attempt to restore them or validation might fail.
+
+    Args:
+      arg: The restoration argument from `restore_args`.
+      val: The corresponding state value from `state_dict_to_restore`.
+
+    Returns:
+      None if `val` is None, otherwise returns `arg`.
+    """
+    if val is None:
+      return None
+    return arg
+
+  restore_args = jax.tree_util.tree_map(
+      _clear_restore_args_for_none_states,
+      restore_args,
+      state_dict_to_restore,
+      is_leaf=lambda x: x is None
+      or isinstance(x, (ocp.RestoreArgs, ocp.ArrayRestoreArgs)),
+  )
+
   def _transform_fn(
       item_: PyTree, structure_: PyTree, param_infos_: PyTree
   ) -> Tuple[PyTree, PyTree]:
