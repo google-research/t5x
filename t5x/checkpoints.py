@@ -823,7 +823,7 @@ class Checkpointer(object):
       # Finalize checkpoint directory.
       if final_dir.startswith('gs://'):
         subprocess.run(
-            ['gsutil', '-m', 'mv', tmp_dir, final_dir],
+            ['gcloud', 'storage', 'mv', tmp_dir, final_dir],
             stdout=subprocess.DEVNULL,
             check=True,
         )
