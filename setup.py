@@ -1,4 +1,4 @@
-# Copyright 2025 The T5X Authors.
+# Copyright 2026 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -49,6 +49,7 @@ setuptools.setup(
         'airio @ git+https://github.com/google/airio#egg=airio',
         'absl-py',
         'cached_property',
+        'chex',
         'clu @ git+https://github.com/google/CommonLoopUtils#egg=clu',
         'flax @ git+https://github.com/google/flax#egg=flax',
         'fiddle >= 0.2.5',

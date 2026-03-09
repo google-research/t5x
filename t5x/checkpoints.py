@@ -1,4 +1,4 @@
-# Copyright 2025 The T5X Authors.
+# Copyright 2026 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -823,7 +823,7 @@ class Checkpointer(object):
       # Finalize checkpoint directory.
       if final_dir.startswith('gs://'):
         subprocess.run(
-            ['gsutil', '-m', 'mv', tmp_dir, final_dir],
+            ['gcloud', 'storage', 'mv', tmp_dir, final_dir],
             stdout=subprocess.DEVNULL,
             check=True,
         )
