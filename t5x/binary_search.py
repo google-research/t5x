@@ -98,7 +98,7 @@ def _monotonic_int32_to_float32_bit_pattern(x: int) -> int:
   # negative bit pattern (it's -0.0). Flipping all the non-sign bits makes the
   # int32 sort order consistent with the float32 sort order.
   x = x ^ jnp.where(x < 0, non_sign_bits, jnp.int32(0))
-  return x
+  return x  # pytype: disable=bad-return-type
 
 
 def _monotonic_int32_to_float32(x: int) -> jax.Array:
