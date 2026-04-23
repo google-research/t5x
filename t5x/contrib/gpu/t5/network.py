@@ -13,14 +13,18 @@
 # limitations under the License.
 
 """T5.1.1 Transformer model."""
-
 from typing import Any, Sequence
+from enum import Enum
 
 from flax import linen as nn
 from flax import struct
 import jax.numpy as jnp
 from t5x.contrib.gpu.t5 import layers
+from t5x.te_helper import TransformerEngineHelper
 
+class SeqDataFormat(Enum):
+    BATCH_SEQ_HIDDEN = 'bsh'
+    SEQ_BATCH_HIDDEN = 'sbh'
 
 @struct.dataclass
 class T5Config:
@@ -43,6 +47,10 @@ class T5Config:
   float32_attention_logits: bool = False
   # Whether to scale attention logits by sqrt(d_k). Default to False for adafactor
   scale_attn_logits: bool = False
+  # Whether to transpose batch and sequence to avoid explicit transposes in MHA
+  transpose_batch_sequence: bool = False
+  # Whether to fuse the QKV proj in MHA
+  fuse_qkv_params: bool = False
 
 
 class EncoderLayer(nn.Module):
@@ -51,12 +59,13 @@ class EncoderLayer(nn.Module):
   relative_embedding: nn.Module
 
   @nn.compact
-  def __call__(self, inputs, encoder_mask=None, deterministic=False):
+  def __call__(self, inputs, attention_mask=None, deterministic=False):
     cfg = self.config
 
     # Relative position embedding as attention biases.
-    encoder_bias = self.relative_embedding(inputs.shape[-2], inputs.shape[-2],
-                                           True)
+    sequence_dim = 0 if cfg.transpose_batch_sequence else 1
+    encoder_bias = self.relative_embedding(
+        inputs.shape[sequence_dim], inputs.shape[sequence_dim], True)
 
     # Attention block.
     assert inputs.ndim == 3
@@ -72,7 +81,7 @@ class EncoderLayer(nn.Module):
         float32_logits=cfg.float32_attention_logits,
         name='attention',
         scale_attn_logits=cfg.scale_attn_logits)(
-            x, x, encoder_mask, encoder_bias, deterministic=deterministic)
+            x, x, attention_mask, encoder_bias, deterministic=deterministic)
     x = nn.Dropout(
         rate=cfg.dropout_rate, broadcast_dims=(-2,))(
             x, deterministic=deterministic)
@@ -105,7 +114,7 @@ class DecoderLayer(nn.Module):
   def __call__(self,
                inputs,
                encoded,
-               decoder_mask=None,
+               attention_mask=None,
                encoder_decoder_mask=None,
                deterministic=False,
                decode=False,
@@ -113,7 +122,8 @@ class DecoderLayer(nn.Module):
     cfg = self.config
 
     # Relative position embedding as attention biases.
-    l = max_decode_length if decode and max_decode_length else inputs.shape[-2]
+    sequence_dim = 0 if cfg.transpose_batch_sequence else 1
+    l = max_decode_length if decode and max_decode_length else inputs.shape[sequence_dim]
     decoder_bias = self.relative_embedding(l, l, False)
 
     # inputs: embedded inputs to the decoder with shape [batch, length, emb_dim]
@@ -132,7 +142,7 @@ class DecoderLayer(nn.Module):
         scale_attn_logits=cfg.scale_attn_logits)(
             x,
             x,
-            decoder_mask,
+            attention_mask,
             decoder_bias,
             deterministic=deterministic,
             decode=decode)
@@ -185,8 +195,11 @@ class Encoder(nn.Module):
   def __call__(self,
                encoder_input_tokens,
                encoder_mask=None,
-               deterministic=False):
-    cfg = self.config
+               deterministic=False,
+               output_format=SeqDataFormat.BATCH_SEQ_HIDDEN):
+
+    cfg = TransformerEngineHelper.get_t5x_config(self.config)
+
     assert encoder_input_tokens.ndim == 2  # [batch, length]
     rel_emb = layers.RelativePositionBiases(
         num_buckets=32,
@@ -199,6 +212,9 @@ class Encoder(nn.Module):
 
     # [batch, length] -> [batch, length, emb_dim]
     x = self.shared_embedding(encoder_input_tokens.astype('int32'))
+    if cfg.transpose_batch_sequence:
+        # [batch, length, emb_dim] -> [length, batch, emb_dim]
+        x = x.transpose((1, 0, 2))
     x = nn.Dropout(
         rate=cfg.dropout_rate, broadcast_dims=(-2,))(
             x, deterministic=deterministic)
@@ -206,12 +222,20 @@ class Encoder(nn.Module):
 
     for lyr in range(cfg.num_encoder_layers):
       # [batch, length, emb_dim] -> [batch, length, emb_dim]
-      x = EncoderLayer(
+      encoder_lyr = TransformerEngineHelper.get_encoder_layer(
           config=cfg, relative_embedding=rel_emb,
-          name=f'layers_{lyr}')(x, encoder_mask, deterministic)
+          name=f'layers_{lyr}', original_cls=EncoderLayer)
+      x = encoder_lyr(x, attention_mask=encoder_mask, deterministic=deterministic)
 
     x = layers.LayerNorm(dtype=cfg.dtype, name='encoder_norm')(x)
-    return nn.Dropout(rate=cfg.dropout_rate)(x, deterministic=deterministic)
+    x = nn.Dropout(rate=cfg.dropout_rate)(x, deterministic=deterministic)
+
+    if (cfg.transpose_batch_sequence and output_format is SeqDataFormat.BATCH_SEQ_HIDDEN) or \
+       (not cfg.transpose_batch_sequence and output_format is SeqDataFormat.SEQ_BATCH_HIDDEN):
+      x = x.transpose((1, 0, 2))
+
+    return x
+
 
 
 class Decoder(nn.Module):
@@ -228,8 +252,16 @@ class Decoder(nn.Module):
                encoder_decoder_mask=None,
                deterministic=False,
                decode=False,
-               max_decode_length=None):
-    cfg = self.config
+               max_decode_length=None,
+               encoded_format=SeqDataFormat.BATCH_SEQ_HIDDEN,
+               output_format=SeqDataFormat.BATCH_SEQ_HIDDEN):
+    cfg = TransformerEngineHelper.get_t5x_config(self.config)
+
+    if (cfg.transpose_batch_sequence and encoded_format is SeqDataFormat.BATCH_SEQ_HIDDEN) or \
+       (not cfg.transpose_batch_sequence and encoded_format is SeqDataFormat.SEQ_BATCH_HIDDEN):
+        encoded = encoded.transpose((1, 0, 2))
+
+
     assert decoder_input_tokens.ndim == 2  # [batch, len]
     rel_emb = layers.RelativePositionBiases(
         num_buckets=32,
@@ -242,6 +274,10 @@ class Decoder(nn.Module):
 
     # [batch, length] -> [batch, length, emb_dim]
     y = self.shared_embedding(decoder_input_tokens.astype('int32'))
+    if cfg.transpose_batch_sequence:
+        # [batch, length, emb_dim] -> [length, batch, emb_dim]
+        y = y.transpose((1, 0, 2))
+
     y = nn.Dropout(
         rate=cfg.dropout_rate, broadcast_dims=(-2,))(
             y, deterministic=deterministic)
@@ -249,15 +285,16 @@ class Decoder(nn.Module):
 
     for lyr in range(cfg.num_decoder_layers):
       # [batch, length, emb_dim] -> [batch, length, emb_dim]
-      y = DecoderLayer(
-          config=cfg, relative_embedding=rel_emb, name=f'layers_{lyr}')(
-              y,
-              encoded,
-              decoder_mask=decoder_mask,
-              encoder_decoder_mask=encoder_decoder_mask,
-              deterministic=deterministic,
-              decode=decode,
-              max_decode_length=max_decode_length)
+      decoder_lyr = TransformerEngineHelper.get_decoder_layer(
+        config=cfg, relative_embedding=rel_emb,
+        name=f'layers_{lyr}', original_cls=DecoderLayer)
+      y = decoder_lyr(y,
+            encoded,
+            attention_mask=decoder_mask,
+            encoder_decoder_mask=encoder_decoder_mask,
+            deterministic=deterministic,
+            decode=decode,
+            max_decode_length=max_decode_length)
 
     y = layers.LayerNorm(dtype=cfg.dtype, name='decoder_norm')(y)
     y = nn.Dropout(
@@ -277,6 +314,11 @@ class Decoder(nn.Module):
           kernel_axes=('embed', 'vocab'),
           name='logits_dense')(
               y)
+
+    if (cfg.transpose_batch_sequence and output_format is SeqDataFormat.BATCH_SEQ_HIDDEN) or \
+       (not cfg.transpose_batch_sequence and output_format is SeqDataFormat.SEQ_BATCH_HIDDEN):
+        # [length, batch, vocab_size] -> [batch, length, vocab_size]
+        logits = logits.transpose((1, 0, 2))
     return logits
 
 
@@ -285,7 +327,7 @@ class Transformer(nn.Module):
   config: T5Config
 
   def setup(self):
-    cfg = self.config
+    cfg = TransformerEngineHelper.get_t5x_config(self.config)
     self.shared_embedding = layers.Embed(
         num_embeddings=cfg.vocab_size,
         features=cfg.emb_dim,
@@ -301,7 +343,8 @@ class Transformer(nn.Module):
   def encode(self,
              encoder_input_tokens,
              encoder_segment_ids=None,
-             enable_dropout=True):
+             enable_dropout=True,
+             output_format=SeqDataFormat.BATCH_SEQ_HIDDEN):
     """Applies Transformer encoder-branch on the inputs."""
     cfg = self.config
     assert encoder_input_tokens.ndim == 2  # (batch, len)
@@ -319,8 +362,11 @@ class Transformer(nn.Module):
               jnp.equal,
               dtype=cfg.dtype))
 
+    encoder_mask = TransformerEngineHelper.get_attn_mask(encoder_mask)
+
     return self.encoder(
-        encoder_input_tokens, encoder_mask, deterministic=not enable_dropout)
+        encoder_input_tokens, encoder_mask, deterministic=not enable_dropout,
+        output_format=output_format)
 
   def decode(
       self,
@@ -333,7 +379,9 @@ class Transformer(nn.Module):
       decoder_positions=None,
       enable_dropout=True,
       decode=False,
-      max_decode_length=None):
+      max_decode_length=None,
+      encoded_format=SeqDataFormat.BATCH_SEQ_HIDDEN,
+      output_format=SeqDataFormat.BATCH_SEQ_HIDDEN):
     """Applies Transformer decoder-branch on encoded-input and target."""
     cfg = self.config
 
@@ -369,6 +417,9 @@ class Transformer(nn.Module):
               jnp.equal,
               dtype=cfg.dtype))
 
+    decoder_mask = decoder_mask if decode else TransformerEngineHelper.get_attn_mask(decoder_mask)
+    encoder_decoder_mask = TransformerEngineHelper.get_attn_mask(encoder_decoder_mask)
+
     logits = self.decoder(
         encoded,
         decoder_input_tokens=decoder_input_tokens,
@@ -377,7 +428,9 @@ class Transformer(nn.Module):
         encoder_decoder_mask=encoder_decoder_mask,
         deterministic=not enable_dropout,
         decode=decode,
-        max_decode_length=max_decode_length)
+        max_decode_length=max_decode_length,
+        encoded_format=encoded_format,
+        output_format=output_format)
     return logits
 
   def __call__(self,
@@ -412,10 +465,15 @@ class Transformer(nn.Module):
     Returns:
       logits array from full transformer.
     """
+    cfg = TransformerEngineHelper.get_t5x_config(self.config)
+    encoded_format = SeqDataFormat.BATCH_SEQ_HIDDEN
+    if cfg.transpose_batch_sequence:
+        encoded_format = SeqDataFormat.SEQ_BATCH_HIDDEN
     encoded = self.encode(
         encoder_input_tokens,
         encoder_segment_ids=encoder_segment_ids,
-        enable_dropout=enable_dropout)
+        enable_dropout=enable_dropout,
+        output_format=encoded_format)
 
     return self.decode(
         encoded,
@@ -426,4 +484,5 @@ class Transformer(nn.Module):
         decoder_segment_ids=decoder_segment_ids,
         decoder_positions=decoder_positions,
         enable_dropout=enable_dropout,
-        decode=decode)
+        decode=decode,
+        encoded_format=encoded_format)

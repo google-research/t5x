@@ -73,7 +73,7 @@ train/utils.DatasetConfig:
   shuffle = %SHUFFLE_TRAIN_EXAMPLES
   seed = None  # use a new seed each run/restart
   use_cached = %USE_CACHED_TASKS
-  pack = True
+  pack = False
   module = %MIXTURE_OR_TASK_MODULE
 
 train_eval/utils.DatasetConfig:
@@ -84,7 +84,7 @@ train_eval/utils.DatasetConfig:
   shuffle = False
   seed = 42
   use_cached = %USE_CACHED_TASKS
-  pack = True
+  pack = False
   module = %MIXTURE_OR_TASK_MODULE
 
 utils.CheckpointConfig:

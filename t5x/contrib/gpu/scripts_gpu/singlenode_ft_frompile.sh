@@ -35,6 +35,11 @@ NUM_MICROBATCHES=${8:-0}
 # If true, this will duplicate the last checkpoint in MODEL_DIR and add a date/time string. It will finetune on this directory. Useful if running many experiments on the same pretrained checkpoint.
 # Otherwise, be wary of overriding your pretrained checkpoint with the finetuned one.
 MAKE_FT_DIR=${9:-false} # 'true' or 'false'. 
+ENABLE_FP8=${10:-1}
+[[ $ENABLE_FP8 -eq 1 ]] && PREC='bfloat16' # Required for t5x te fp8 to work
+TRANSPOSE_BS=${11:-1}
+FUSE_QKV=${12:-1}
+PACK=${13:-0}
 
 case $MAKE_FT_DIR in
   true)
@@ -77,5 +82,13 @@ python3 -u ${T5X_DIR}/t5x/train.py \
   --gin.train/utils.DatasetConfig.batch_size=${BSIZE} \
   --gin.trainer.Trainer.num_microbatches=${NUM_MICROBATCHES} \
   --gin.train_eval/utils.DatasetConfig.batch_size=${BSIZE} \
-  --gin.infer_eval/utils.DatasetConfig.batch_size=${BSIZE} &> \
-  ${LOG_DIR}/ft_${T5_SIZE}_gpu_${NUM_GPUS}_${PREC}_gbs_${BSIZE}.log
+  --gin.infer_eval/utils.DatasetConfig.batch_size=${BSIZE} \
+  --gin.train/utils.DatasetConfig.pack=${PACK} \
+  --gin.train_eval/utils.DatasetConfig.pack=${PACK} \
+  --gin.train.te_config_cls=@te_helper.TransformerEngineConfig \
+  --gin.te_helper.TransformerEngineConfig.enable_fp8=${ENABLE_FP8} \
+  --gin.te_helper.TransformerEngineConfig.fp8_format=\"hybrid\" \
+  --gin.network.T5Config.transpose_batch_sequence=${TRANSPOSE_BS} \
+  --gin.network.T5Config.fuse_qkv_params=${FUSE_QKV} \
+  2>&1 | tee \
+  ${LOG_DIR}/ft_${T5_SIZE}_gpu_${NUM_GPUS}_${PREC}_gbs_${BSIZE}_fp8_${ENABLE_FP8}_fuseqkv_${FUSE_QKV}_transbs_${TRANSPOSE_BS}.log
