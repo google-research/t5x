@@ -166,7 +166,7 @@ class CheckpointsUtilsTest(absltest.TestCase):
     ret = checkpoint_utils.detect_checkpoint_type(
         orbax_ckpt, expected=checkpoint_utils.CheckpointTypes.ORBAX
     )
-    self.assertEqual(ret, checkpoint_utils.CheckpointTypes.T5X)
+    self.assertEqual(ret, checkpoint_utils.CheckpointTypes.ORBAX)
 
     with self.assertLogs(level="WARN") as log_output:
       checkpoint_utils.detect_checkpoint_type(
@@ -185,7 +185,7 @@ class CheckpointsUtilsTest(absltest.TestCase):
     self.assertRegex(
         log_output[0][0].message,
         ".*to be CheckpointTypes.T5X_TF format, but the actual detected format"
-        " was CheckpointTypes.T5X.*",
+        " was CheckpointTypes.ORBAX.*",
     )
 
 
