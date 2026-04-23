@@ -1,4 +1,4 @@
-# T5.1.1 Small model.
+# T5.1.0 Small model.
 
 include 't5x/examples/t5/t5_1_0/base.gin'  # imports vocab, optimizer and model.
 
