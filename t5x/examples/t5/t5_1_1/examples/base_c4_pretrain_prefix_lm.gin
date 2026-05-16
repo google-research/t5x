@@ -1,0 +1,34 @@
+# Trains a base-sized T5 model with a prefix LM objective on C4.
+
+from __gin__ import dynamic_registration
+# Register necessary SeqIO Tasks/Mixtures.
+import t5.data.mixtures
+import t5x.models
+import __main__ as train_script
+
+# Replace 'base' with a different size model (e.g., 'xxl'), if desired.
+include 't5x/examples/t5/t5_1_1/base.gin'
+include 't5x/configs/runs/pretrain.gin'
+
+TRAIN_STEPS = 100_000
+DROPOUT_RATE = 0.0
+BATCH_SIZE = 2048
+
+# This is a pre-packed task with no padding.
+MIXTURE_OR_TASK_NAME = "c4_prefix_lm_objective_encoder_decoder_architecture"
+
+# Task features include packing information.
+TASK_FEATURE_LENGTHS = {
+    'decoder_input_tokens': 626,
+    'decoder_loss_weights': 626,
+    'decoder_positions': 626,
+    'decoder_segment_ids': 626,
+    'decoder_target_tokens': 626,
+    'encoder_input_tokens': 626,
+    'encoder_positions': 626,
+    'encoder_segment_ids': 626,
+    'targets': 626
+}
+
+# Use a pass-through converter since we have pre-packed examples.
+models.EncoderDecoderModel.feature_converter_cls = @seqio.PassThroughFeatureConverter
