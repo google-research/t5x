@@ -731,7 +731,7 @@ def accumulate_grads_microbatched(
   """
   batch_size = next(iter(batch.values())).shape[0]
 
-  grad_fn = jax.value_and_grad(model.loss_fn, has_aux=True)
+  grad_fn = jax.value_and_grad(model.loss_fn, has_aux=True, allow_int=True)
 
   # We assume that the model loss_fn supports flax mutables if and only if
   # the train state includes non-empty flax mutables.
