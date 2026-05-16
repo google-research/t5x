@@ -568,6 +568,7 @@ def train(
           trainer.train_state,
           checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
       )
+      checkpoint_manager.wait_until_finished()
 
   # If we take manual control of the garbage collector, we need to disable it
   # before starting training.
@@ -685,6 +686,7 @@ def train(
                 trainer.train_state,
                 checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
             )
+            checkpoint_manager.wait_until_finished()
           logging.info(
               'Stopping training loop early since `stop_training` is requested.'
           )
@@ -737,6 +739,7 @@ def train(
               trainer.train_state,
               checkpoint_cfg.save.state_transformation_fns,  # pytype: disable=attribute-error
           )
+          checkpoint_manager.wait_until_finished()
           # Increment the checkpoint_step_index only if a checkpoint was saved.
           if (
               checkpoint_steps
