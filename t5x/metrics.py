@@ -76,7 +76,7 @@ class Sum(clu_metrics.Metric):
   def merge(self, other: "Sum") -> "Sum":
     return type(self)(total=self.total + other.total)
 
-  def compute(self) -> jnp.ndarray:
+  def compute(self) -> Scalar:
     return jnp.array(self.total)
 
 
