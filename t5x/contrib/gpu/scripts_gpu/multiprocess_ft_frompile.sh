@@ -1,6 +1,4 @@
 #! /bin/bash
-# Assumes you are using a SLURM cluster. Edit flags under --multiprocess_gpu below to suit your setup
-
 # Copyright 2022 The T5X Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,26 +13,55 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set -x
+set -eoux pipefail
 
-TFDS_DATA_DIR="/t5x_home/datasets/"
-T5X_DIR=${PWD}
+export BASE_XLA_FLAGS="${BASE_XLA_FLAGS:---xla_gpu_enable_triton_gemm=false --xla_gpu_enable_latency_hiding_scheduler=true --xla_gpu_all_reduce_combine_threshold_bytes=8589934592}"
+export XLA_FLAGS="${BASE_XLA_FLAGS} ${XLA_FLAGS:-}"
 
-# Arguments
-FT_TASK=$1       # currently supported: mnli2, squad1
-T5_SIZE=$2       # Model size (small, base, large, xl, xxl)
-PREC="$3"        # Precision (float32, float16, bfloat16)
-NUM_GPUS=$4      # Number of GPUs (1, 2, 4, 8)
-BSIZE_PER_GPU=$5 # Batch size per GPU 
-LOG_DIR=$6       # Output log directory
-MODEL_DIR_LOCAL=${7:-"model_dir"}
-MODEL_DIR=${PWD}/${MODEL_DIR_LOCAL}
-NUM_MICROBATCHES=${8:-0}
+#! Change these values !#
+FT_TASK=${FT_TASK:=mnli2}       # currently supported: mnli2, squad1
+PREC=${PREC:="bfloat16"}
+T5_SIZE=${T5_SIZE:="large"}
+BSIZE_PER_GPU=${BSIZE_PER_GPU:=32}
+ENC_SL=${ENC_SL:=512}
+DEC_SL=${DEC_SL:=128}
+NUM_MICROBATCHES=${NUM_MICROBATCHES:=1}
+ENABLE_FP8=${ENABLE_FP8:=1}
+[[ $ENABLE_FP8 -eq 1 ]] && PREC='bfloat16' # Required for t5x te fp8 to work
+TP_SIZE=${TP_SIZE:=1}
+TRANSPOSE_BS=${TRANSPOSE_BS:=1}
+FUSE_QKV=${FUSE_QKV:=1}
+PACK=${PACK:=0}
+CHECKPOINT_DISABLE=${CHECKPOINT_DISABLE:=0}
+ADDITIONAL_CLI_ARGS=${ADDITIONAL_CLI_ARGS:-}
+
+MODEL_DIR=${MODEL_DIR:=model_dir}
+MODEL_DIR=${T5X_WORKSPACE_DIR}/${MODEL_DIR}
+
+WITH_MP=${WITH_MP:-1}
+# If using slurm:
+#   - NUM_PROCESSES, GPUS_PER_NODE are inferred from slurm output env variables
+# If calling this outside of slurm:
+#   - Set NUM_PROCESSES, GPUS_PER_NODE
+#   - Set ADDITIONAL_CLI_ARGS="--coordinator_address=<ip-add-with-port> --process_count=${NUM_PROCESSES} --process_index=<proc-id>"
+NUM_PROCESSES=${NUM_PROCESSES:-${SLURM_STEP_NUM_TASKS}}
+if [[ -z "$SLURM_STEP_TASKS_PER_NODE" ]]; then
+  GPUS_PER_NODE=${GPUS_PER_NODE:-8}
+else
+  # SLURM_STEP_TASKS_PER_NODE can look like "2(x2)" or "2(x2),1" for homogeneous and heterogeneous setups respectively. This script will only support homogeneous requests
+  if [[ "$SLURM_STEP_TASKS_PER_NODE" == *,* ]]; then
+      echo "SLURM_STEP_TASKS_PER_NODE=$SLURM_STEP_TASKS_PER_NODE but this script does not support heterogeneous GPU allocations"
+      exit 1
+  fi
+  # This egrep infers the number of homoegeneous tasks per node:
+  # If SLURM_STEP_TASKS_PER_NODE=8(x2) then GPUS_PER_NODE=8
+  GPUS_PER_NODE=$(echo "$SLURM_STEP_TASKS_PER_NODE" | egrep -o '^[^\(]+')
+fi
 
 # If true, this will duplicate the last checkpoint in MODEL_DIR and add a date/time string. It will finetune on this directory. Useful if running many experiments on the same pretrained checkpoint.
-MAKE_FT_DIR=${9:-false} # 'true' or 'false'. 
+MAKE_FT_DIR=${MAKE_FT_DIR:-false} # 'true' or 'false'. 
 
-export XLA_FLAGS="--xla_gpu_simplify_all_fp_conversions --xla_gpu_all_reduce_combine_threshold_bytes=136314880 ${XLA_FLAGS}"
+WITH_NSYS=${WITH_NSYS:-0}
 
 case $MAKE_FT_DIR in
   true)
@@ -65,18 +92,48 @@ case $FT_TASK in
 esac
 
 # Global batch size
-BSIZE=$(( NUM_GPUS * BSIZE_PER_GPU * SLURM_JOB_NUM_NODES ))
+BSIZE=$(( BSIZE_PER_GPU * NUM_PROCESSES / TP_SIZE))
+export GPU_DEVICES=$(seq -s, 0 $((GPUS_PER_NODE - 1)))
+export CUDA_VISIBLE_DEVICES="${GPU_DEVICES}"
+export CUDA_DEVICE_MAX_CONNECTIONS=${CUDA_DEVICE_MAX_CONNECTIONS:-1}
 
-python3 -u ${T5X_DIR}/t5x/train.py \
-  --gin_file="t5x/contrib/gpu/t5/t5_1_1/examples/${T5_SIZE}_${FT_TASK}_finetune_adam.gin" \
+if [[ "${WITH_NSYS}" -eq 1 ]]; then
+  CONFIG=PILE_MODEL-${T5_SIZE}_GBS-${BSIZE}_DP-${DP_SIZE}_TP-${TP_SIZE}_FP8-${ENABLE_FP8}_FUSEQKV-${FUSE_QKV}_TRANSBS-${TRANSPOSE_BS}_ID-${HOSTID}
+  NSYS_CMD="nsys profile -t nvtx,cuda,cublas -o ${CONFIG} -f true -c cudaProfilerApi"
+fi
+
+# Enable muiltprocessing if WITH_MP=1
+if [[ "${WITH_MP}" -eq 1 ]]; then
+    ADDITIONAL_CLI_ARGS+=" --multiprocess_gpu"
+fi
+
+# Disable checkpointing if desired
+if [[ "${CHECKPOINT_DISABLE}" -eq 1 ]]; then
+    ADDITIONAL_CLI_ARGS+=" --gin.utils.CheckpointConfig.save=None"
+fi
+
+${NSYS_CMD:-} \
+python3 -u -m t5x.train \
+  --gin_file="${T5X_DIR}/t5x/contrib/gpu/t5/t5_1_1/examples/${T5_SIZE}_${FT_TASK}_finetune_adam.gin" \
   --gin.MODEL_DIR=\"${MODEL_DIR}\" \
   --gin.network.T5Config.dtype=\"${PREC}\" \
-  --tfds_data_dir=${TFDS_DATA_DIR} \
-  --gin.train/utils.DatasetConfig.batch_size=${BSIZE} \
+  --gin.TASK_FEATURE_LENGTHS="{\"inputs\": ${ENC_SL}, \"targets\": ${DEC_SL}}" \
+  --gin.partitioning.PjitPartitioner.num_partitions=${TP_SIZE} \
   --gin.trainer.Trainer.num_microbatches=${NUM_MICROBATCHES} \
+  --gin.train/utils.DatasetConfig.batch_size=${BSIZE} \
+  --tfds_data_dir=${TFDS_DATA_DIR} \
+  --gin.train.stats_period=1000 \
+  --gin.train.eval_period=1000 \
+  --gin.train.gc_period=2000 \
+  --gin.train.te_config_cls=@te_helper.TransformerEngineConfig \
+  --gin.te_helper.TransformerEngineConfig.enable_fp8=${ENABLE_FP8} \
+  --gin.te_helper.TransformerEngineConfig.fp8_format=\"hybrid\" \
+  --gin.network.T5Config.transpose_batch_sequence=${TRANSPOSE_BS} \
+  --gin.network.T5Config.fuse_qkv_params=${FUSE_QKV} \
   --gin.train_eval/utils.DatasetConfig.batch_size=${BSIZE} \
   --gin.infer_eval/utils.DatasetConfig.batch_size=${BSIZE} \
-  --multiprocess_gpu \
-  --coordinator_address=${SLURM_LAUNCH_NODE_IPADDR}:12345 \
-  --process_count=${SLURM_NTASKS} \
-  --process_index=${SLURM_PROCID}
+  --gin.train/utils.DatasetConfig.pack=${PACK} \
+  --gin.train_eval/utils.DatasetConfig.pack=${PACK} \
+  ${ADDITIONAL_CLI_ARGS}
+
+echo Finished

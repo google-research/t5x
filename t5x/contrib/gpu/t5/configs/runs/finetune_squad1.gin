@@ -40,6 +40,7 @@ MIXTURE_OR_TASK_NAME = %gin.REQUIRED
 TASK_FEATURE_LENGTHS = %gin.REQUIRED
 MIXTURE_OR_TASK_MODULE = %gin.REQUIRED
 TRAIN_STEPS = %gin.REQUIRED
+RESET_STATE_AFTER = None # a flag to reset optimizer and fp8 states (if exist) after a set number of sets (i.e. after pretraining)
 INITIAL_CHECKPOINT_PATH = %gin.REQUIRED
 
 # Commonly overridden
@@ -80,6 +81,7 @@ train_script.train:
   use_hardware_rng = %USE_HARDWARE_RNG
   summarize_config_fn = @gin_utils.summarize_gin_config
   inference_evaluator_cls = @seqio.Evaluator
+  reset_state_after = %RESET_STATE_AFTER
 
 partitioning.PjitPartitioner:
   num_partitions = 1
@@ -102,7 +104,7 @@ train/utils.DatasetConfig:
   shuffle = True
   seed = None  # use a new seed each run/restart
   use_cached = %USE_CACHED_TASKS
-  pack = True
+  pack = False
   module = %MIXTURE_OR_TASK_MODULE
 
 train_eval/utils.DatasetConfig:
@@ -113,7 +115,7 @@ train_eval/utils.DatasetConfig:
   shuffle = False
   seed = 42
   use_cached = %USE_CACHED_TASKS
-  pack = True
+  pack = False
   module = %MIXTURE_OR_TASK_MODULE
 
 infer_eval/utils.DatasetConfig:

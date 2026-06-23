@@ -14,6 +14,7 @@ include "t5x/contrib/gpu/t5/configs/runs/finetune_mnli.gin"
 MIXTURE_OR_TASK_NAME = "glue_mnli_v2"
 TASK_FEATURE_LENGTHS = {"inputs": 512, "targets": 16}
 TRAIN_STEPS = 1_015_001  # 1000000 pre-trained steps + 15000 fine-tuning steps.
+RESET_STATE_AFTER = 1_000_000 # 1000000 pre-trained steps, after which we should reset optimizer states and fp8 metas, if they exist
 DROPOUT_RATE = 0.1
 INITIAL_CHECKPOINT_PATH = "gs://t5-data/pretrained_models/t5x/t5_1_1_small/checkpoint_1000000"
 # `LOSS_NORMALIZING_FACTOR`: When fine-tuning a model that was pre-trained
