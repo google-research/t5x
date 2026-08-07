@@ -34,6 +34,8 @@ TASK_FEATURE_LENGTHS = None # auto-computes the maximum features length to use.
 # DEPRECATED: Import the this module in your gin file.
 MIXTURE_OR_TASK_MODULE = None
 
+MIXTURE_OR_TASK_SPLIT = 'test'
+
 eval_script.evaluate:
   model = %MODEL  # imported from separate gin file
   dataset_cfg = @utils.DatasetConfig()
@@ -54,7 +56,7 @@ seqio.Evaluator:
 utils.DatasetConfig:
   mixture_or_task_name = %MIXTURE_OR_TASK_NAME
   task_feature_lengths = %TASK_FEATURE_LENGTHS
-  split = 'test'
+  split = %MIXTURE_OR_TASK_SPLIT
   batch_size = 32
   shuffle = False
   seed = 42
