@@ -233,7 +233,7 @@ def create_global_mesh(mesh_shape, axis_names):
   size = np.prod(mesh_shape)
   if len(jax.devices()) < size:
     raise unittest.SkipTest(f'Test requires {size} global devices.')
-  devices = sorted(jax.devices(), key=lambda d: d.id)
+  devices = sorted(jax.devices())
   mesh_devices = np.array(devices[:size]).reshape(mesh_shape)
   global_mesh = Mesh(mesh_devices, axis_names)
   return global_mesh
