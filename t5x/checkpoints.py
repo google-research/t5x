@@ -2371,7 +2371,12 @@ class OrbaxCheckpointManagerInterface:
         _DATASET_KEY: DatasetArgs(self._dataset_iterator),
     }
     args = ocp.args.Composite(**args)
-    saved = self._manager.save(step, args=args, force=force)
+    saved = self._manager.save(
+        step,
+        args=args,
+        force=force,
+        metrics=self._options.metric_name_to_monitor,
+    )
 
     # Record JAX monitoring events.
     end_time = time.time()
