@@ -1,9 +1,12 @@
+# Trains a base-sized T5 model with a span corruption objective on C4.
+
 # Register necessary SeqIO Tasks/Mixtures.
 from __gin__ import dynamic_registration
 import t5.data.mixtures
 import __main__ as train_script
 
 
+# Replace 'base' with a different size model (e.g., 'xxl'), if desired.
 include 't5x/examples/t5/t5_1_1/base.gin'
 include 't5x/configs/runs/pretrain.gin'
 
