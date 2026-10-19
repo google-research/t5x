@@ -1,5 +1,7 @@
 # T5X
 
+[English](README.md) | [简体中文](https://github.com/google-research/t5x/blob/main/README.zh.md)
+
 *Go to [T5X ReadTheDocs Documentation Page](https://t5x.readthedocs.io/).*
 
 T5X is a modular, composable, research-friendly framework for high-performance,
